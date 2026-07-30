@@ -55,7 +55,6 @@ import {
 import {attachPickerListeners, type PickerDetach} from './picking/dom_adapter.js';
 import {planAnnotationFromCandidate} from './recommend/candidate_to_annotation.js';
 import {filterCandidatesForAnnotationType} from './recommend/recommend_types.js';
-import type {RecommendedType} from './recommend/recommend_types.js';
 import type {
     AnnotatorPickResult,
     CanvasAnnotationDraft,
@@ -75,6 +74,7 @@ import {
     deriveCanvasPresentation,
     deriveProductStage,
     listEntityBusinessObjects,
+    recognitionGuideMessage,
     resolveCheckIssueRecovery,
     summarizeEntityDraft,
     type AnnotatorProductStage,
@@ -93,6 +93,7 @@ const props = defineProps<{
 const emit = defineEmits<{
     (e: 'exit'): void;
     (e: 'pickModeChange', picking: boolean): void;
+    (e: 'debugState', detail: string): void;
 }>();
 
 const viewport = ref({
@@ -112,6 +113,9 @@ const objectPanelOpen = ref(false);
 const pickRequestedType = ref<BusinessObjectAddOption['type'] | null>(null);
 const pickError = ref<string | null>(null);
 const reviewPending = ref(false);
+const guideVisible = ref(false);
+const guideMessage = ref('');
+let guideTimer: ReturnType<typeof setTimeout> | null = null;
 const pickTargetEntityId = ref<string | null>(null);
 const pickTargetAnnotationId = ref<string | null>(null);
 const pickCandidates = ref<PickCandidate[]>([]);
@@ -327,6 +331,21 @@ const currentEntitySummary = computed(() => summarizeEntityDraft(currentEntity.v
 const currentBusinessObjects = computed(() =>
     listEntityBusinessObjects(currentEntity.value, props.state.latestCheck));
 const currentAddOptions = computed(() => businessObjectAddOptions(currentEntity.value));
+const annotatorDebugJson = computed(() => JSON.stringify({
+    mode: props.state.mode,
+    profileName: props.state.profileName,
+    canvasDraft: props.state.canvasDraft,
+    currentEntityId: props.state.currentEntityId,
+    currentAnnotationId: props.state.currentAnnotationId,
+    artifactRevision: props.state.artifactRevision,
+    dirty: props.state.dirty,
+    stale: props.state.stale,
+    latestCheck: props.state.latestCheck,
+    visualBindings: props.state.visualBindings,
+    pickPurpose: pickPurpose.value,
+    pickCandidates: pickCandidates.value,
+    pickCandidateIndex: pickCandidateIndex.value,
+}));
 const pickIntentLabel = computed(() =>
     currentAddOptions.value.find((option) => option.type === pickRequestedType.value)?.label.replace(/^添加/u, '') ?? null);
 
@@ -353,7 +372,7 @@ const isBusy = computed(() => operation.value !== null || props.state.mode === '
 const busyLabel = computed(() => {
     if (operation.value === 'recognize') {return '正在分析当前页面…';}
     if (operation.value === 'check' || props.state.mode === 'checking') {return '正在检查标注…';}
-    if (operation.value === 'save' || props.state.mode === 'saving') {return '正在保存规则…';}
+    if (operation.value === 'save' || props.state.mode === 'saving') {return '正在保存…';}
     if (operation.value === 'pick') {return '正在识别所选对象…';}
     return '';
 });
@@ -462,21 +481,6 @@ const selectEntity = (entityId: string): void => {
     }));
 };
 
-const updateSelectedAnnotation = (patch: Partial<CanvasAnnotationDraft>): void => {
-    if (!selectedEntity.value || !selectedAnnotation.value) {return;}
-    onUpdateAnnotation(selectedEntity.value.id, selectedAnnotation.value.id, patch);
-};
-
-const profileNameModel = computed({
-    get: () => props.state.profileName ?? '',
-    set: (value: string) => {
-        if (!props.state.canvasDraft) {return;}
-        const profileName = value.trim();
-        const nextDraft = {...props.state.canvasDraft, profileName};
-        applyState({...draftEdited(props.state, nextDraft), profileName});
-    },
-});
-
 const entityNameModel = computed({
     get: () => currentEntity.value?.name ?? '',
     set: (value: string) => {
@@ -489,6 +493,27 @@ const entityNameModel = computed({
         applyState(draftEdited(props.state, nextDraft));
     },
 });
+
+const dismissGuide = (): void => {
+    guideVisible.value = false;
+    reviewPending.value = false;
+    if (guideTimer) {
+        clearTimeout(guideTimer);
+        guideTimer = null;
+    }
+};
+
+const showRecognitionGuide = (entity: CanvasEntityDraft): void => {
+    if (guideTimer) {clearTimeout(guideTimer);}
+    guideMessage.value = recognitionGuideMessage(entity);
+    guideVisible.value = true;
+    reviewPending.value = true;
+    guideTimer = setTimeout(() => {
+        guideTimer = null;
+        guideVisible.value = false;
+        reviewPending.value = false;
+    }, 6000);
+};
 
 const selectedCandidate = computed<PickCandidate | null>(() =>
     chooseCandidate(pickCandidates.value, pickCandidateIndex.value),
@@ -599,11 +624,12 @@ const runRecognizeFromState = async (sourceState: AnnotatorState): Promise<void>
         markVisualBindingCapture();
         applyState(withGeometry);
         if (!withGeometry.error && wasFirstRecognition && withGeometry.canvasDraft?.entities[0]) {
-            reviewPending.value = false;
+            const recognizedEntity = withGeometry.canvasDraft.entities[0];
             applyState(pickReceived(withGeometry, {
-                entityId: withGeometry.canvasDraft.entities[0].id,
+                entityId: recognizedEntity.id,
                 annotationId: null,
             }));
+            showRecognitionGuide(recognizedEntity);
         }
     } finally {
         operation.value = null;
@@ -774,7 +800,7 @@ const onPickEvent = async (event: {fingerprint: PickFingerprint; pointer: {x: nu
     }
     if (pickPurpose.value === 'entity' && candidates.length === 0) {
         exitPickMode();
-        applyState(failed(props.state, '当前范围无法保存为业务区域，请点击区域内部的字段、表格或表单后重试。'));
+        applyState(failed(props.state, '没有识别到完整区域，请点击区域内的字段或表格后重试。'));
         return;
     }
     pickError.value = null;
@@ -788,7 +814,7 @@ const onPickConfirm = async (): Promise<void> => {
     if (pickPurpose.value === 'entity') {
         if (!isConfirmableEntityCandidate(candidate)) {
             exitPickMode();
-            applyState(failed(props.state, '当前范围缺少可持久化的业务区域目标，请重新选择。'));
+            applyState(failed(props.state, '没有找到可保存的区域，请重新选择。'));
             return;
         }
         try {
@@ -891,27 +917,58 @@ const onNavigate = (direction: 'outer' | 'inner'): void => {
     }
 };
 
-const onUpdateAnnotation = (
-    entityId: string,
-    annotationId: string,
-    patch: Partial<CanvasAnnotationDraft>,
-): void => {
+const applyDraftUpdate = (nextDraft: CanvasDraft): void => {
+    applyState(draftEdited(props.state, nextDraft));
+};
+
+const onUpdateName = (entityId: string, annotationId: string, name: string): void => {
     if (!props.state.canvasDraft) {return;}
     const entity = entities.value.find((item) => item.id === entityId);
     if (!entity) {return;}
-    let nextDraft: CanvasDraft;
     if (annotationId === entityVisualId(entityId)) {
-        nextDraft = updateEntity(props.state.canvasDraft, entityId, {name: patch.name, businessTag: patch.businessKey});
-    } else if (entity.columns.some((column) => column.id === annotationId)) {
-        nextDraft = updateColumn(props.state.canvasDraft, entityId, annotationId, {name: patch.name, fieldKey: patch.businessKey});
-    } else if (entity.columns.some((column) => column.actions.some((action) => action.id === annotationId))) {
-        nextDraft = updateColumnAction(props.state.canvasDraft, entityId, annotationId, {text: patch.name, actionIntent: patch.businessKey});
-    } else if (annotationId === paginationPageVisualId(entityId)) {
-        nextDraft = updatePagination(props.state.canvasDraft, entityId, {actionIntent: patch.businessKey || patch.name || ''});
-    } else {
-        nextDraft = updateAnnotation(props.state.canvasDraft, entityId, annotationId, patch);
+        applyDraftUpdate(updateEntity(props.state.canvasDraft, entityId, {name}));
+        return;
     }
-    applyState(draftEdited(props.state, nextDraft));
+    if (entity.columns.some((column) => column.id === annotationId)) {
+        applyDraftUpdate(updateColumn(props.state.canvasDraft, entityId, annotationId, {name}));
+        return;
+    }
+    if (entity.columns.some((column) => column.actions.some((action) => action.id === annotationId))) {
+        applyDraftUpdate(updateColumnAction(props.state.canvasDraft, entityId, annotationId, {text: name}));
+        return;
+    }
+    if (annotationId !== paginationPageVisualId(entityId)) {
+        applyDraftUpdate(updateAnnotation(props.state.canvasDraft, entityId, annotationId, {name}));
+    }
+};
+
+const onBindField = (entityId: string, annotationId: string, fieldKey: string): void => {
+    if (!props.state.canvasDraft) {return;}
+    applyDraftUpdate(updateAnnotation(props.state.canvasDraft, entityId, annotationId, {businessKey: fieldKey}));
+};
+
+const onSetActionIntent = (entityId: string, annotationId: string, actionIntent: string): void => {
+    if (!props.state.canvasDraft) {return;}
+    const entity = entities.value.find((item) => item.id === entityId);
+    if (!entity) {return;}
+    if (entity.columns.some((column) => column.actions.some((action) => action.id === annotationId))) {
+        applyDraftUpdate(updateColumnAction(props.state.canvasDraft, entityId, annotationId, {actionIntent}));
+        return;
+    }
+    if (annotationId === paginationPageVisualId(entityId)) {
+        applyDraftUpdate(updatePagination(props.state.canvasDraft, entityId, {actionIntent}));
+        return;
+    }
+    applyDraftUpdate(updateAnnotation(props.state.canvasDraft, entityId, annotationId, {businessKey: actionIntent}));
+};
+
+const onSetColumnKind = (
+    entityId: string,
+    columnId: string,
+    kind: 'text' | 'number' | 'date' | 'status' | 'action_column',
+): void => {
+    if (!props.state.canvasDraft) {return;}
+    applyDraftUpdate(updateColumn(props.state.canvasDraft, entityId, columnId, {kind}));
 };
 
 const onSetColumnPrimaryKey = (
@@ -941,21 +998,6 @@ const onIgnoreAnnotation = (annotationId: string): void => {
     if (!entityId) {return;}
     const nextDraft = ignoreVisualItem(props.state.canvasDraft, entityId, annotationId);
     applyState(draftEdited(props.state, nextDraft));
-};
-
-const onChooseType = (recommended: RecommendedType): void => {
-    const candidate = selectedCandidate.value;
-    if (!candidate) {return;}
-    const entityId = ensurePickTargetEntity();
-    const entity = entities.value.find((e) => e.id === entityId);
-    if (!entity) {return;}
-    const plan = planAnnotationFromCandidate(candidate, entity, recommended);
-    if (pickTargetAnnotationId.value) {
-        onUpdateAnnotation(entity.id, pickTargetAnnotationId.value, {
-            type: plan.annotation.type,
-            target: plan.annotation.target,
-        });
-    }
 };
 
 const onKeyDown = (event: KeyboardEvent): void => {
@@ -1097,6 +1139,10 @@ onUnmounted(() => {
         clearTimeout(visualBindingTimer);
         visualBindingTimer = null;
     }
+    if (guideTimer) {
+        clearTimeout(guideTimer);
+        guideTimer = null;
+    }
     document.removeEventListener('keydown', onKeyDown, true);
     document.removeEventListener('click', onDomMarkerClick, true);
     clearDomMarkers(document);
@@ -1163,6 +1209,12 @@ watch(
             enterEntityPickMode();
         }
     },
+);
+
+watch(
+    annotatorDebugJson,
+    (detail) => emit('debugState', detail),
+    {immediate: true},
 );
 
 watch(
@@ -1240,7 +1292,11 @@ watch(
             v-if="(productStage === 'review' || productStage === 'edit') && !pickMode"
             class="floating-dock edit-dock dock-bottom"
         >
-            <strong class="dock-copy">{{ currentEntity?.name || '业务对象' }}</strong>
+            <span v-if="guideVisible" class="dock-guide">
+                <span class="dock-guide-copy">{{ guideMessage }}</span>
+                <button type="button" aria-label="关闭提示" @click="dismissGuide">×</button>
+            </span>
+            <strong v-else class="dock-copy">{{ currentEntity?.name || '识别结果' }}</strong>
             <button type="button" aria-label="撤销" title="撤销" :disabled="state.history.past.length === 0 || isBusy" @click="applyUndo">↶</button>
             <button type="button" aria-label="重做" title="重做" :disabled="state.history.future.length === 0 || isBusy" @click="applyRedo">↷</button>
             <i></i>
@@ -1250,7 +1306,7 @@ watch(
                 :class="{active: objectPanelOpen}"
                 :disabled="isBusy"
                 @click="objectPanelOpen = !objectPanelOpen"
-            >业务对象 {{ currentEntitySummary.total }}</button>
+            >识别结果 {{ currentEntitySummary.total }}</button>
             <button type="button" :disabled="isBusy" @click="enterEntityPickMode">调整范围</button>
             <button
                 type="button"
@@ -1273,16 +1329,12 @@ watch(
             class="settings-popover dock-bottom"
         >
             <header>
-                <strong>区域与保存设置</strong>
+                <strong>区域设置</strong>
                 <button type="button" aria-label="关闭设置" @click="settingsOpen = false">×</button>
             </header>
             <label>
                 <span>业务区域名称</span>
                 <input v-model="entityNameModel" type="text" placeholder="例如：订单查询列表" />
-            </label>
-            <label>
-                <span>规则名称</span>
-                <input v-model="profileNameModel" type="text" placeholder="自动生成" />
             </label>
             <button type="button" class="quiet-action" :disabled="isBusy" @click="runRecognize">重新识别</button>
         </div>
@@ -1290,8 +1342,8 @@ watch(
         <div v-if="pickMode && !selectedCandidate" class="pick-guide">
             <span class="pick-guide-icon">⌖</span>
             <div>
-                <strong>{{ pickError || (pickPurpose === 'entity' ? '点击业务区域内任意位置' : `点击要作为${pickIntentLabel || '业务对象'}的页面元素`) }}</strong>
-                <small>{{ pickPurpose === 'entity' ? '随后可以扩大或缩小范围，再确认整个区域。' : '只修改页面绑定；已有对象的业务名称和标识不会改变。' }}</small>
+                <strong>{{ pickError || (pickPurpose === 'entity' ? '点击要自动化的区域' : `点击要添加的${pickIntentLabel || '页面对象'}`) }}</strong>
+                <small>{{ pickPurpose === 'entity' ? '点击区域内任意内容后确认。' : '选择后可确认或调整范围。' }}</small>
             </div>
             <button type="button" @click="onPickCancel">退出选择</button>
         </div>
@@ -1327,12 +1379,14 @@ watch(
         :viewport-height="viewport.height"
         @select="onSelectAnnotation"
         @move="onMoveLabel"
-        @update-annotation="onUpdateAnnotation"
+        @update-name="onUpdateName"
+        @bind-field="onBindField"
+        @set-action-intent="onSetActionIntent"
+        @set-column-kind="onSetColumnKind"
         @reselect="(annotationId) => annotationId === entityVisualId(currentEntity?.id || '') ? enterEntityPickMode() : enterPickMode(annotationId)"
         @navigate="onNavigate"
         @delete="onDeleteAnnotation"
         @ignore="onIgnoreAnnotation"
-        @choose-type="onChooseType"
         @set-primary-key="onSetColumnPrimaryKey"
         @close="applyState(pickReceived(state, {annotationId: null, entityId: currentEntity?.id || null}))"
     />
@@ -1377,6 +1431,31 @@ watch(
 .settings-popover,
 .annotator-toast,
 .pick-guide { pointer-events: auto; }
+.dock-guide {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 260px;
+    color: #334155;
+    font-size: 11px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+.dock-guide-copy {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.dock-guide button {
+    width: 24px;
+    min-width: 24px;
+    height: 24px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: #64748b;
+}
+.dock-guide button:hover { background: #f1f5f9; }
 .dock-primary {
     min-height: 36px;
     border: 1px solid #2563eb;

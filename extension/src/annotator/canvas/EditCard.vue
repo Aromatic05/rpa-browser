@@ -2,12 +2,16 @@
 import {computed} from 'vue';
 import type {
     CanvasAnnotationDraft,
-    CanvasAnnotationType,
+    CanvasColumnDraft,
     CanvasEntityDraft,
     PickCandidate,
 } from '../types.js';
-import type {RecommendedType} from '../recommend/recommend_types.js';
 import type {AnnotationBoxKind} from '../layout/annotation_boxes.js';
+import {
+    businessActionIntentOptions,
+    businessColumnKindOptions,
+    businessFieldBindingOptions,
+} from '../state/product_ui.js';
 
 const props = defineProps<{
     annotation: CanvasAnnotationDraft | null;
@@ -16,7 +20,6 @@ const props = defineProps<{
     candidate: PickCandidate | null;
     candidateIndex: number;
     candidateChainLength: number;
-    canChangeType: boolean;
     canDelete: boolean;
     canReselect: boolean;
     canIgnore: boolean;
@@ -25,61 +28,81 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-    (e: 'update', patch: Partial<CanvasAnnotationDraft>): void;
+    (e: 'updateName', name: string): void;
+    (e: 'bindField', fieldKey: string): void;
+    (e: 'setActionIntent', actionIntent: string): void;
+    (e: 'setColumnKind', kind: NonNullable<CanvasColumnDraft['kind']>): void;
     (e: 'reselect'): void;
     (e: 'outer'): void;
     (e: 'inner'): void;
     (e: 'delete'): void;
     (e: 'ignore'): void;
-    (e: 'chooseType', type: RecommendedType): void;
     (e: 'setPrimaryKey', selected: boolean): void;
     (e: 'close'): void;
 }>();
 
-const annotationTypes = computed<Array<{value: CanvasAnnotationType; label: string}>>(() => {
-    if (props.entity?.kind === 'table') {
-        return [
-            {value: 'field', label: '筛选字段'},
-            {value: 'action', label: '区域操作'},
-        ];
-    }
-    if (props.entity?.kind === 'form') {
-        return [
-            {value: 'field', label: '表单字段'},
-            {value: 'action', label: '表单操作'},
-        ];
-    }
-    return [
-        {value: 'field', label: '字段'},
-        {value: 'action', label: '操作'},
-    ];
+const selectedColumn = computed(() =>
+    props.entity?.columns.find((column) => column.id === props.annotation?.id) ?? null,
+);
+const selectedRowAction = computed(() =>
+    props.entity?.columns.flatMap((column) => column.actions)
+        .find((action) => action.id === props.annotation?.id) ?? null,
+);
+const isNativeField = computed(() =>
+    props.annotationKind === 'field' && props.annotation?.type === 'field' && !selectedColumn.value,
+);
+const isAction = computed(() => props.annotationKind === 'action');
+const isPagination = computed(() => props.annotationKind === 'pagination');
+
+const typeLabel = computed(() => {
+    if (props.annotationKind === 'column') {return '表格列';}
+    if (isPagination.value) {return '翻页';}
+    if (selectedRowAction.value) {return '行操作';}
+    if (props.entity?.kind === 'table' && isNativeField.value) {return '筛选字段';}
+    if (props.entity?.kind === 'table' && isAction.value) {return '列表操作';}
+    if (props.entity?.kind === 'form' && isNativeField.value) {return '表单字段';}
+    if (props.entity?.kind === 'form' && isAction.value) {return '表单操作';}
+    return isAction.value ? '操作' : '字段';
 });
 
+const displayName = computed(() => {
+    if (isPagination.value) {return '分页控件';}
+    return props.annotation?.name?.trim() || typeLabel.value;
+});
 const nameModel = computed({
     get: () => props.annotation?.name ?? '',
-    set: (value: string) => emit('update', {name: value}),
+    set: (value: string) => emit('updateName', value),
 });
-
-const businessKeyModel = computed({
+const fieldBindingOptions = computed(() => {
+    const options = businessFieldBindingOptions(props.entity);
+    const currentValue = props.annotation?.businessKey ?? '';
+    if (currentValue && !options.some((option) => option.value === currentValue)) {
+        return [{value: currentValue, label: props.annotation?.name?.trim() || '当前字段'}, ...options];
+    }
+    return options;
+});
+const fieldBindingModel = computed({
     get: () => props.annotation?.businessKey ?? '',
-    set: (value: string) => emit('update', {businessKey: value}),
+    set: (value: string) => emit('bindField', value),
 });
-
-const typeModel = computed({
-    get: () => props.annotation?.type ?? 'field',
-    set: (value: CanvasAnnotationType) => emit('update', {type: value}),
+const columnKindOptions = businessColumnKindOptions();
+const columnKindModel = computed({
+    get: () => selectedColumn.value?.kind ?? (selectedColumn.value?.actions.length ? 'action_column' : 'text'),
+    set: (value: NonNullable<CanvasColumnDraft['kind']>) => emit('setColumnKind', value),
+});
+const actionIntentOptions = computed(() => businessActionIntentOptions(
+    props.entity,
+    selectedRowAction.value ? 'row_action' : 'action',
+    selectedRowAction.value?.actionIntent ?? props.annotation?.businessKey ?? '',
+    props.annotation?.name ?? '',
+));
+const actionIntentModel = computed({
+    get: () => selectedRowAction.value?.actionIntent ?? props.annotation?.businessKey ?? '',
+    set: (value: string) => emit('setActionIntent', value),
 });
 
 const canNavigateOuter = computed(() => props.candidateIndex < props.candidateChainLength - 1);
 const canNavigateInner = computed(() => props.candidateIndex > 0);
-const typeLabel = computed(() => {
-    if (props.annotationKind === 'entity') {return '业务区域';}
-    if (props.annotationKind === 'column') {return '表格列';}
-    if (props.annotationKind === 'pagination') {return '翻页';}
-    if (props.entity?.kind === 'table' && typeModel.value === 'field') {return '筛选字段';}
-    if (props.entity?.kind === 'table' && typeModel.value === 'action') {return '区域操作';}
-    return annotationTypes.value.find((item) => item.value === typeModel.value)?.label ?? '对象';
-});
 </script>
 
 <template>
@@ -87,31 +110,42 @@ const typeLabel = computed(() => {
         <header>
             <div>
                 <span>{{ typeLabel }}</span>
-                <strong>{{ annotation?.name || annotation?.businessKey || '未命名对象' }}</strong>
+                <strong>{{ displayName }}</strong>
             </div>
             <button type="button" class="close-card" aria-label="关闭编辑卡片" @click="emit('close')">×</button>
         </header>
 
-        <div class="card-fields">
-            <label>
-                <span>业务名称</span>
-                <input v-model="nameModel" type="text" placeholder="例如：采购人" />
-            </label>
-            <label>
-                <span>业务标识</span>
-                <input v-model="businessKeyModel" type="text" placeholder="buyer" />
-            </label>
-        </div>
+        <label v-if="!isPagination" class="business-field">
+            <span>名称</span>
+            <input v-model="nameModel" type="text" />
+        </label>
 
-        <div v-if="canChangeType" class="type-choice" aria-label="对象类型">
-            <button
-                v-for="item in annotationTypes"
-                :key="item.value"
-                type="button"
-                :class="{active: typeModel === item.value}"
-                @click="typeModel = item.value"
-            >{{ item.label }}</button>
-        </div>
+        <label v-if="isNativeField && entity?.kind === 'table' && fieldBindingOptions.length" class="business-field">
+            <span>对应表格列</span>
+            <select v-model="fieldBindingModel">
+                <option v-for="option in fieldBindingOptions" :key="option.value" :value="option.value">
+                    {{ option.label }}
+                </option>
+            </select>
+        </label>
+
+        <label v-if="annotationKind === 'column'" class="business-field">
+            <span>内容类型</span>
+            <select v-model="columnKindModel">
+                <option v-for="option in columnKindOptions" :key="option.value" :value="option.value">
+                    {{ option.label }}
+                </option>
+            </select>
+        </label>
+
+        <label v-if="isAction" class="business-field">
+            <span>作用</span>
+            <select v-model="actionIntentModel">
+                <option v-for="option in actionIntentOptions" :key="option.value" :value="option.value">
+                    {{ option.label }}
+                </option>
+            </select>
+        </label>
 
         <button
             v-if="canSetPrimaryKey"
@@ -130,14 +164,14 @@ const typeLabel = computed(() => {
         </button>
 
         <div v-if="candidateChainLength > 1" class="range-actions">
-            <button type="button" :disabled="!canNavigateInner" @click="emit('inner')">选择内部</button>
-            <button type="button" :disabled="!canNavigateOuter" @click="emit('outer')">选择外层</button>
+            <button type="button" :disabled="!canNavigateInner" @click="emit('inner')">缩小范围</button>
+            <button type="button" :disabled="!canNavigateOuter" @click="emit('outer')">扩大范围</button>
         </div>
 
         <footer>
             <div>
                 <button v-if="canReselect" type="button" class="secondary" @click="emit('reselect')">重新选择位置</button>
-                <button v-if="canIgnore" type="button" class="secondary" @click="emit('ignore')">忽略</button>
+                <button v-if="canIgnore" type="button" class="secondary" @click="emit('ignore')">不使用</button>
             </div>
             <button v-if="canDelete" type="button" class="danger" @click="emit('delete')">删除</button>
         </footer>
@@ -147,7 +181,7 @@ const typeLabel = computed(() => {
 <style scoped>
 .canvas-edit-card {
     display: grid;
-    gap: 11px;
+    gap: 10px;
     color: #0f172a;
     font-size: 12px;
 }
@@ -173,8 +207,8 @@ const typeLabel = computed(() => {
     white-space: nowrap;
 }
 .close-card {
-    width: 26px;
-    height: 26px;
+    width: 28px;
+    height: 28px;
     border: 0;
     border-radius: 7px;
     background: transparent;
@@ -182,17 +216,13 @@ const typeLabel = computed(() => {
     cursor: pointer;
 }
 .close-card:hover { background: #f1f5f9; }
-.card-fields {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
-}
-.card-fields label { display: grid; gap: 4px; min-width: 0; }
-.card-fields label > span { color: #475569; font-size: 10px; font-weight: 700; }
-.card-fields input {
+.business-field { display: grid; gap: 5px; }
+.business-field > span { color: #475569; font-size: 10px; font-weight: 700; }
+.business-field input,
+.business-field select {
     width: 100%;
     min-width: 0;
-    height: 34px;
+    height: 36px;
     border: 1px solid #cbd5e1;
     border-radius: 8px;
     padding: 0 9px;
@@ -201,35 +231,10 @@ const typeLabel = computed(() => {
     color: #0f172a;
     font: inherit;
 }
-.card-fields input:focus {
+.business-field input:focus,
+.business-field select:focus {
     border-color: #2563eb;
     box-shadow: 0 0 0 3px rgba(37, 99, 235, .12);
-}
-.type-choice,
-.range-actions {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 5px;
-    padding: 4px;
-    border-radius: 9px;
-    background: #f1f5f9;
-}
-.range-actions { grid-template-columns: 1fr 1fr; }
-.type-choice button,
-.range-actions button {
-    min-height: 30px;
-    border: 0;
-    border-radius: 7px;
-    background: transparent;
-    color: #475569;
-    font-size: 10px;
-    font-weight: 700;
-    cursor: pointer;
-}
-.type-choice button.active {
-    background: #fff;
-    color: #1d4ed8;
-    box-shadow: 0 1px 4px rgba(15, 23, 42, .12);
 }
 .primary-key-choice {
     width: 100%;
@@ -246,10 +251,7 @@ const typeLabel = computed(() => {
     text-align: left;
     cursor: pointer;
 }
-.primary-key-choice.active {
-    border-color: #f59e0b;
-    background: #fffbeb;
-}
+.primary-key-choice.active { border-color: #f59e0b; background: #fffbeb; }
 .primary-key-icon {
     width: 30px;
     height: 30px;
@@ -258,58 +260,67 @@ const typeLabel = computed(() => {
     border-radius: 8px;
     background: #f1f5f9;
     color: #64748b;
-    font-size: 8px;
-    font-weight: 900;
-    letter-spacing: .04em;
+    font-size: 9px;
+    font-weight: 800;
 }
 .primary-key-choice.active .primary-key-icon { background: #fef3c7; color: #92400e; }
-.primary-key-copy strong { display: block; font-size: 10px; }
-.primary-key-copy small { display: block; margin-top: 2px; color: #94a3b8; font-size: 8px; }
+.primary-key-copy { min-width: 0; }
+.primary-key-copy strong,
+.primary-key-copy small { display: block; }
+.primary-key-copy strong { font-size: 11px; }
+.primary-key-copy small { margin-top: 2px; color: #64748b; font-size: 9px; }
 .primary-key-switch {
-    position: relative;
-    width: 28px;
-    height: 16px;
+    width: 30px;
+    height: 18px;
+    padding: 2px;
     border-radius: 999px;
     background: #cbd5e1;
-    transition: background .15s ease;
 }
 .primary-key-switch i {
-    position: absolute;
-    top: 2px;
-    left: 2px;
-    width: 12px;
-    height: 12px;
+    display: block;
+    width: 14px;
+    height: 14px;
     border-radius: 50%;
     background: #fff;
-    box-shadow: 0 1px 3px rgba(15, 23, 42, .28);
-    transition: transform .15s ease;
+    transition: transform 120ms ease;
 }
 .primary-key-choice.active .primary-key-switch { background: #f59e0b; }
 .primary-key-choice.active .primary-key-switch i { transform: translateX(12px); }
-.range-actions button:hover:not(:disabled),
-.type-choice button:hover { background: rgba(255, 255, 255, .75); }
+.range-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 5px;
+    padding: 4px;
+    border-radius: 9px;
+    background: #f1f5f9;
+}
+.range-actions button {
+    min-height: 32px;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: #475569;
+    font-size: 10px;
+    font-weight: 700;
+    cursor: pointer;
+}
 .range-actions button:disabled { opacity: .35; cursor: default; }
 .canvas-edit-card footer {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 8px;
-    padding-top: 1px;
+    padding-top: 2px;
 }
 .canvas-edit-card footer > div { display: flex; gap: 6px; }
 .canvas-edit-card footer button {
-    min-height: 30px;
+    min-height: 32px;
     border-radius: 8px;
-    padding: 0 9px;
+    padding: 0 10px;
     font-size: 10px;
     font-weight: 700;
     cursor: pointer;
 }
 .secondary { border: 1px solid #cbd5e1; background: #fff; color: #334155; }
-.secondary:hover { background: #f8fafc; }
-.danger { border: 1px solid #fecdd3; background: #fff; color: #be123c; }
-.danger:hover { background: #fff1f2; }
-@media (max-width: 420px) {
-    .card-fields { grid-template-columns: 1fr; }
-}
+.danger { border: 1px solid #fecaca; background: #fff7f7; color: #b91c1c; }
 </style>

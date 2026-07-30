@@ -55,7 +55,7 @@ const dockSide = computed<'top' | 'bottom'>(() => {
         <div class="scope-summary">
             <span class="scope-dot" aria-hidden="true"></span>
             <div>
-                <small>{{ purpose === 'entity' ? '当前实体范围' : (intentLabel ? `正在${intentLabel}` : '当前页面对象') }}</small>
+                <small>{{ purpose === 'entity' ? '当前选择范围' : (intentLabel ? `正在${intentLabel}` : '当前页面对象') }}</small>
                 <strong>{{ displayName }}</strong>
             </div>
             <em>{{ objectType }}<template v-if="candidatePosition"> · {{ candidatePosition }}</template></em>
@@ -68,7 +68,7 @@ const dockSide = computed<'top' | 'bottom'>(() => {
                 aria-label="缩小选择范围"
                 @click.stop="emit('navigate', 'inner')"
             >
-                ↓ 选择内部
+                ↓ 缩小范围
             </button>
             <button
                 type="button"
@@ -76,7 +76,7 @@ const dockSide = computed<'top' | 'bottom'>(() => {
                 aria-label="扩大选择范围"
                 @click.stop="emit('navigate', 'outer')"
             >
-                ↑ 选择外层
+                ↑ 扩大范围
             </button>
         </div>
 

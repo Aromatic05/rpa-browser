@@ -11,6 +11,9 @@ import {
     candidateDisplayName,
     businessObjectAddOptions,
     listEntityBusinessObjects,
+    businessFieldBindingOptions,
+    businessColumnKindOptions,
+    recognitionGuideMessage,
 } from '../state/product_ui.js';
 import type {AnnotationBox} from '../layout/annotation_boxes.js';
 import type {CanvasEntityDraft, PickCandidate} from '../types.js';
@@ -140,14 +143,15 @@ test('listEntityBusinessObjects exposes table semantics instead of generic DOM t
         message: 'missing',
         nodeIds: [],
     }]);
-    assert.deepEqual(items.map((item) => [item.annotationId, item.roleLabel, item.name, item.businessKey]), [
-        ['f1', '筛选字段', '订单编号', 'orderNo'],
-        ['a1', '区域操作', '查询', 'search'],
-        ['c1', '表格列', '订单编号', 'orderNo'],
-        ['c2', '表格列', '操作', 'actions'],
-        ['edit', '行操作', '编辑', 'edit'],
-        ['e0_pgpage', '翻页操作', '下一页', 'nextPage'],
+    assert.deepEqual(items.map((item) => [item.annotationId, item.roleLabel, item.name]), [
+        ['f1', '筛选字段', '订单编号'],
+        ['a1', '列表操作', '查询'],
+        ['c1', '表格列', '订单编号'],
+        ['c2', '表格列', '操作'],
+        ['edit', '行操作', '编辑'],
+        ['e0_pgpage', '分页', '下一页'],
     ]);
+    assert.equal('businessKey' in items[0], false);
     assert.equal(items[0].validation, 'missing');
     assert.equal(items[1].validation, 'unchecked');
     assert.equal(items.find((item) => item.annotationId === 'c1')?.canReselect, false);
@@ -157,13 +161,35 @@ test('listEntityBusinessObjects exposes table semantics instead of generic DOM t
 test('businessObjectAddOptions uses business roles for forms and tables', () => {
     assert.deepEqual(businessObjectAddOptions(entity()).map((item) => [item.type, item.label]), [
         ['field', '添加筛选字段'],
-        ['action', '添加区域操作'],
+        ['action', '添加列表操作'],
     ]);
     const form = {...entity(), kind: 'form' as const};
     assert.deepEqual(businessObjectAddOptions(form).map((item) => [item.type, item.label]), [
         ['field', '添加表单字段'],
         ['action', '添加表单操作'],
     ]);
+});
+
+
+test('business edit choices expose visible semantics while keeping internal keys as values', () => {
+    assert.deepEqual(businessFieldBindingOptions(entity()), [
+        {value: 'orderNo', label: '订单编号'},
+    ]);
+    assert.deepEqual(businessColumnKindOptions(), [
+        {value: 'text', label: '文本'},
+        {value: 'number', label: '数字'},
+        {value: 'date', label: '日期时间'},
+        {value: 'status', label: '状态'},
+        {value: 'action_column', label: '操作列'},
+    ]);
+});
+
+test('recognition guide stays short and calls out a missing table primary key', () => {
+    assert.equal(recognitionGuideMessage(entity()), '识别完成，请选择主键列并检查遗漏项。');
+    const withPrimaryKey = entity();
+    withPrimaryKey.primaryKey = {fieldKey: 'orderNo'};
+    assert.equal(recognitionGuideMessage(withPrimaryKey), '识别完成，请检查遗漏项后保存。');
+    assert.equal(recognitionGuideMessage({...entity(), kind: 'form'}), '识别完成，请检查遗漏项后保存。');
 });
 
 test('groupAnnotationBoxes hides entity frame and groups business objects', () => {

@@ -128,7 +128,6 @@ export type BusinessObjectItem = {
     role: BusinessObjectRole;
     roleLabel: string;
     name: string;
-    businessKey: string;
     origin: CanvasEntityDraft['origin'];
     disposition: 'active' | 'ignored';
     validation: CheckResultByAnnotation['status'] | 'unchecked';
@@ -136,7 +135,7 @@ export type BusinessObjectItem = {
 };
 
 const annotationRoleLabel = (entity: CanvasEntityDraft, type: 'field' | 'action'): string => {
-    if (entity.kind === 'table') {return type === 'field' ? '筛选字段' : '区域操作';}
+    if (entity.kind === 'table') {return type === 'field' ? '筛选字段' : '列表操作';}
     if (entity.kind === 'form') {return type === 'field' ? '表单字段' : '表单操作';}
     return type === 'field' ? '字段' : '操作';
 };
@@ -155,7 +154,6 @@ export const listEntityBusinessObjects = (
             role: annotation.type,
             roleLabel: annotationRoleLabel(entity, annotation.type),
             name: annotation.name?.trim() || annotation.businessKey,
-            businessKey: annotation.businessKey,
             origin: annotation.origin,
             disposition: annotation.disposition,
             validation: validation.get(annotation.id) ?? 'unchecked',
@@ -168,7 +166,6 @@ export const listEntityBusinessObjects = (
             role: 'column',
             roleLabel: '表格列',
             name: column.name?.trim() || column.fieldKey,
-            businessKey: column.fieldKey,
             origin: column.origin,
             disposition: column.disposition,
             validation: validation.get(column.id) ?? 'unchecked',
@@ -180,7 +177,6 @@ export const listEntityBusinessObjects = (
                 role: 'row_action',
                 roleLabel: '行操作',
                 name: action.text?.trim() || action.actionIntent,
-                businessKey: action.actionIntent,
                 origin: action.origin,
                 disposition: action.disposition,
                 validation: validation.get(action.id) ?? 'unchecked',
@@ -193,9 +189,8 @@ export const listEntityBusinessObjects = (
         result.push({
             annotationId,
             role: 'pagination',
-            roleLabel: '翻页操作',
+            roleLabel: '分页',
             name: '下一页',
-            businessKey: entity.pagination.actionIntent,
             origin: entity.origin,
             disposition: 'active',
             validation: validation.get(annotationId) ?? 'unchecked',
@@ -216,7 +211,7 @@ export const businessObjectAddOptions = (entity: CanvasEntityDraft | null): Busi
     if (entity.kind === 'table') {
         return [
             {type: 'field', label: '添加筛选字段', description: '用于向列表筛选条件输入内容'},
-            {type: 'action', label: '添加区域操作', description: '用于查询、下载等列表级操作'},
+            {type: 'action', label: '添加列表操作', description: '用于查询、下载等列表级操作'},
         ];
     }
     if (entity.kind === 'form') {
@@ -229,6 +224,67 @@ export const businessObjectAddOptions = (entity: CanvasEntityDraft | null): Busi
         {type: 'field', label: '添加字段', description: '用于读取或填写页面内容'},
         {type: 'action', label: '添加操作', description: '用于点击页面操作'},
     ];
+};
+
+export type BusinessChoice = {value: string; label: string};
+
+export const businessFieldBindingOptions = (entity: CanvasEntityDraft | null): BusinessChoice[] =>
+    entity?.columns
+        .filter((column) => column.disposition === 'active' && column.kind !== 'action_column' && column.actions.length === 0)
+        .map((column) => ({
+            value: column.fieldKey,
+            label: column.name?.trim() || column.fieldKey,
+        })) ?? [];
+
+export const businessColumnKindOptions = (): BusinessChoice[] => [
+    {value: 'text', label: '文本'},
+    {value: 'number', label: '数字'},
+    {value: 'date', label: '日期时间'},
+    {value: 'status', label: '状态'},
+    {value: 'action_column', label: '操作列'},
+];
+
+export const recognitionGuideMessage = (entity: CanvasEntityDraft | null): string => {
+    if (entity?.kind === 'table' && !entity.primaryKey) {
+        return '识别完成，请选择主键列并检查遗漏项。';
+    }
+    return '识别完成，请检查遗漏项后保存。';
+};
+
+export const businessActionIntentOptions = (
+    entity: CanvasEntityDraft | null,
+    role: 'action' | 'row_action',
+    currentValue: string,
+    currentLabel: string,
+): BusinessChoice[] => {
+    const options = role === 'row_action'
+        ? [
+            {value: 'view', label: '查看'},
+            {value: 'edit', label: '编辑'},
+            {value: 'delete', label: '删除'},
+            {value: 'confirm', label: '确认'},
+            {value: 'approve', label: '通过'},
+            {value: 'reject', label: '拒绝'},
+        ]
+        : entity?.kind === 'form'
+            ? [
+                {value: 'submit', label: '提交'},
+                {value: 'save', label: '保存'},
+                {value: 'cancel', label: '取消'},
+                {value: 'next', label: '下一步'},
+                {value: 'previous', label: '上一步'},
+            ]
+            : [
+                {value: 'search', label: '查询'},
+                {value: 'reset', label: '重置条件'},
+                {value: 'export', label: '导出列表'},
+                {value: 'refresh', label: '刷新列表'},
+                {value: 'create', label: '新增记录'},
+            ];
+    if (currentValue && !options.some((option) => option.value === currentValue)) {
+        return [{value: currentValue, label: currentLabel || '当前操作'}, ...options];
+    }
+    return options;
 };
 
 export type AnnotationBoxGroups = {

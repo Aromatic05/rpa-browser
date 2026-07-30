@@ -233,8 +233,12 @@ await log('floating UI restores the original standalone annotator launcher', asy
     assert.equal(source.includes('.annotate-launch'), true);
     assert.equal(source.includes("annotateLaunch.textContent = '标注页面'"), true);
     assert.equal(source.includes("'Rules'"), false);
+    assert.equal(source.includes("'ER'"), true);
+    assert.equal(source.includes('setAnnotatorDebugState'), true);
     assert.equal(contentSource.includes("annotator/annotator.js"), true);
     assert.equal(contentSource.includes('startAnnotator'), true);
+    assert.equal(contentSource.includes("panel.style.display = 'none'"), false);
+    assert.equal(contentSource.includes('launcher.hidden = !visible'), true);
     assert.equal(resources.includes('annotator/*.js'), true);
 });
 

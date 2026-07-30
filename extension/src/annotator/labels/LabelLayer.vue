@@ -5,7 +5,6 @@ import type {LabelPlacement} from '../layout/label_layout.js';
 import type {CanvasAnnotationDraft, CanvasEntityDraft} from '../types.js';
 import type {CheckResultByAnnotation, PickCandidate} from '../types.js';
 import EditCard from '../canvas/EditCard.vue';
-import type {RecommendedType} from '../recommend/recommend_types.js';
 import {entityVisualId, paginationPageVisualId} from '../visual_ids.js';
 import {annotationVisualState} from '../state/product_ui.js';
 
@@ -26,12 +25,14 @@ const props = defineProps<{
 const emit = defineEmits<{
     (e: 'select', annotationId: string): void;
     (e: 'move', annotationId: string, dx: number, dy: number): void;
-    (e: 'updateAnnotation', entityId: string, annotationId: string, patch: Partial<CanvasAnnotationDraft>): void;
+    (e: 'updateName', entityId: string, annotationId: string, name: string): void;
+    (e: 'bindField', entityId: string, annotationId: string, fieldKey: string): void;
+    (e: 'setActionIntent', entityId: string, annotationId: string, actionIntent: string): void;
+    (e: 'setColumnKind', entityId: string, columnId: string, kind: 'text' | 'number' | 'date' | 'status' | 'action_column'): void;
     (e: 'reselect', annotationId: string | null): void;
     (e: 'navigate', direction: 'outer' | 'inner'): void;
     (e: 'delete', annotationId: string): void;
     (e: 'ignore', annotationId: string): void;
-    (e: 'chooseType', type: RecommendedType): void;
     (e: 'setPrimaryKey', entityId: string, columnId: string, selected: boolean): void;
     (e: 'close'): void;
 }>();
@@ -119,11 +120,6 @@ const selectedEntity = computed((): CanvasEntityDraft | null => {
     return props.canvasDraft.find((entity) => entity.id === selectedBox.value!.entityId) ?? null;
 });
 
-const selectedIsNativeAnnotation = computed((): boolean => {
-    if (!props.selectedAnnotationId || !selectedEntity.value) {return false;}
-    return selectedEntity.value.annotations.some((annotation) => annotation.id === props.selectedAnnotationId);
-});
-
 const selectedCanSetPrimaryKey = computed((): boolean =>
     selectedBox.value?.kind === 'column' && selectedEntity.value?.kind === 'table',
 );
@@ -151,8 +147,7 @@ const editCardStyle = computed((): Record<string, string> => {
     const desiredLeft = placement.box.x + placement.box.width / 2 - width / 2;
     const left = Math.max(12, Math.min(desiredLeft, props.viewportWidth - width - 12));
     const estimatedHeight =
-        150 +
-        (selectedIsNativeAnnotation.value ? 40 : 0) +
+        190 +
         (props.candidateChainLength > 1 ? 38 : 0) +
         (selectedCanSetPrimaryKey.value ? 58 : 0);
     const desiredTop = placement.box.y - 16;
@@ -216,11 +211,6 @@ const onLabelPointerUp = (event: PointerEvent): void => {
     if (shouldSelect) {onSelect(annotationId);}
 };
 
-const onUpdate = (patch: Partial<CanvasAnnotationDraft>): void => {
-    if (!selectedBox.value || !selectedAnnotation.value) {return;}
-    emit('updateAnnotation', selectedBox.value.entityId, selectedAnnotation.value.id, patch);
-};
-
 const onReselect = (): void => {
     emit('reselect', props.selectedAnnotationId);
 };
@@ -247,10 +237,6 @@ const onReselect = (): void => {
             @pointercancel.stop="onLabelPointerUp"
         >
             <span class="annotator-label-name">{{ label.labelName }}</span>
-            <template v-if="label.businessKey !== label.labelName">
-                <span class="annotator-label-divider">/</span>
-                <span class="annotator-label-key">{{ label.businessKey }}</span>
-            </template>
             <span v-if="label.primaryKey" class="annotator-primary-key-badge">主键</span>
             <span
                 v-if="label.matchCount > 1"
@@ -269,19 +255,20 @@ const onReselect = (): void => {
                 :candidate="candidate"
                 :candidate-index="candidateIndex"
                 :candidate-chain-length="candidateChainLength"
-                :can-change-type="selectedIsNativeAnnotation"
                 :can-delete="selectedBox?.kind !== 'entity'"
                 :can-reselect="selectedCanReselect"
                 :can-ignore="selectedBox?.kind !== 'entity' && selectedBox?.kind !== 'pagination'"
                 :can-set-primary-key="selectedCanSetPrimaryKey"
                 :is-primary-key="selectedIsPrimaryKey"
-                @update="onUpdate"
+                @update-name="(name) => selectedBox && selectedAnnotation && emit('updateName', selectedBox.entityId, selectedAnnotation.id, name)"
+                @bind-field="(fieldKey) => selectedBox && selectedAnnotation && emit('bindField', selectedBox.entityId, selectedAnnotation.id, fieldKey)"
+                @set-action-intent="(actionIntent) => selectedBox && selectedAnnotation && emit('setActionIntent', selectedBox.entityId, selectedAnnotation.id, actionIntent)"
+                @set-column-kind="(kind) => selectedBox && emit('setColumnKind', selectedBox.entityId, selectedBox.annotationId, kind)"
                 @reselect="onReselect"
                 @outer="emit('navigate', 'outer')"
                 @inner="emit('navigate', 'inner')"
                 @delete="selectedAnnotation && emit('delete', selectedAnnotation.id)"
                 @ignore="selectedAnnotation && emit('ignore', selectedAnnotation.id)"
-                @choose-type="(t) => emit('chooseType', t)"
                 @set-primary-key="(selected) => selectedBox && emit('setPrimaryKey', selectedBox.entityId, selectedBox.annotationId, selected)"
                 @close="emit('close')"
             />
@@ -339,11 +326,6 @@ const onReselect = (): void => {
 }
 .annotator-label-name {
     font-weight: 700;
-}
-.annotator-label-divider { color: #cbd5e1; }
-.annotator-label-key {
-    color: #475569;
-    font-size: 11px;
 }
 .annotator-label-count {
     margin-left: auto;

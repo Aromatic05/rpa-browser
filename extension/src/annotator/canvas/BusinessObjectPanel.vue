@@ -23,12 +23,10 @@ const emit = defineEmits<{
 }>();
 
 const stateLabel = (item: BusinessObjectItem): string => {
-    if (item.disposition === 'ignored') {return '已忽略';}
-    if (item.validation === 'missing') {return '未找到';}
-    if (item.validation === 'multiple') {return '匹配多个';}
-    if (item.validation === 'invalid') {return '无效';}
-    if (item.validation === 'unique') {return '已验证';}
-    return item.origin === 'inferred' ? '自动识别' : '已确认';
+    if (item.disposition === 'ignored') {return '不使用';}
+    if (item.validation === 'missing' || item.validation === 'multiple' || item.validation === 'invalid') {return '需要处理';}
+    if (item.validation === 'unique') {return '已定位';}
+    return item.origin === 'inferred' ? '已识别' : '已调整';
 };
 
 const stateClass = (item: BusinessObjectItem): string => {
@@ -45,19 +43,18 @@ const stateClass = (item: BusinessObjectItem): string => {
     <section class="business-object-panel" data-rpa-snapshot-ignore="true">
         <header>
             <div>
-                <small>当前业务实体</small>
-                <strong>{{ entity.name || entity.businessTag }}</strong>
-                <span>{{ entity.businessTag }}</span>
+                <small>识别结果</small>
+                <strong>{{ entity.name || '当前区域' }}</strong>
             </div>
-            <button type="button" aria-label="关闭业务对象面板" @click="emit('close')">×</button>
+            <button type="button" aria-label="关闭识别结果" @click="emit('close')">×</button>
         </header>
 
-        <div class="object-summary" aria-label="业务对象统计">
-            <span v-if="summary.fields">字段 {{ summary.fields }}</span>
-            <span v-if="summary.queryActions">区域操作 {{ summary.queryActions }}</span>
+        <div class="object-summary" aria-label="识别结果统计">
+            <span v-if="summary.fields">查询条件 {{ summary.fields }}</span>
+            <span v-if="summary.queryActions">列表操作 {{ summary.queryActions }}</span>
             <span v-if="summary.columns">表格列 {{ summary.columns }}</span>
             <span v-if="summary.rowActions">行操作 {{ summary.rowActions }}</span>
-            <span v-if="summary.pagination">翻页 {{ summary.pagination }}</span>
+            <span v-if="summary.pagination">分页 {{ summary.pagination }}</span>
         </div>
 
         <div class="object-list">
@@ -81,7 +78,6 @@ const stateClass = (item: BusinessObjectItem): string => {
                     <span class="object-role">{{ item.roleLabel }}</span>
                     <span class="object-copy">
                         <strong>{{ item.name }}</strong>
-                        <small>{{ item.businessKey }}</small>
                     </span>
                     <em>{{ stateLabel(item) }}</em>
                 </button>
@@ -91,7 +87,7 @@ const stateClass = (item: BusinessObjectItem): string => {
                     class="object-reselect"
                     :disabled="busy"
                     @click="emit('reselect', item.annotationId)"
-                >重新选择</button>
+                >重选位置</button>
             </article>
         </div>
 
@@ -115,11 +111,11 @@ const stateClass = (item: BusinessObjectItem): string => {
 <style scoped>
 .business-object-panel {
     position: fixed;
-    left: 50%;
+    right: 16px;
     bottom: 70px;
     z-index: 2147483646;
-    width: min(620px, calc(100vw - 24px));
-    max-height: min(640px, calc(100vh - 100px));
+    width: min(400px, calc(100vw - 32px));
+    max-height: min(440px, calc(100vh - 100px));
     display: grid;
     grid-template-rows: auto auto minmax(0, 1fr) auto;
     gap: 10px;
@@ -129,7 +125,6 @@ const stateClass = (item: BusinessObjectItem): string => {
     background: rgba(255, 255, 255, .98);
     box-shadow: 0 20px 60px rgba(15, 23, 42, .28);
     color: #0f172a;
-    transform: translateX(-50%);
     pointer-events: auto;
     backdrop-filter: blur(18px);
 }
@@ -144,7 +139,7 @@ const stateClass = (item: BusinessObjectItem): string => {
 .business-object-panel header span {
     display: block;
     color: #64748b;
-    font-size: 10px;
+    font-size: 11px;
 }
 .business-object-panel header strong {
     display: block;
@@ -203,7 +198,7 @@ const stateClass = (item: BusinessObjectItem): string => {
 .object-main {
     min-width: 0;
     display: grid;
-    grid-template-columns: 70px minmax(0, 1fr) auto;
+    grid-template-columns: 76px minmax(0, 1fr) auto;
     gap: 9px;
     align-items: center;
     border: 0;
@@ -229,10 +224,9 @@ const stateClass = (item: BusinessObjectItem): string => {
     white-space: nowrap;
 }
 .object-copy strong { font-size: 12px; }
-.object-copy small { margin-top: 2px; color: #94a3b8; font-size: 9px; }
 .object-main em {
     color: #64748b;
-    font-size: 9px;
+    font-size: 10px;
     font-style: normal;
     font-weight: 700;
 }
@@ -246,7 +240,7 @@ const stateClass = (item: BusinessObjectItem): string => {
     padding: 0 9px;
     background: #fff;
     color: #334155;
-    font-size: 9px;
+    font-size: 10px;
     font-weight: 700;
     cursor: pointer;
 }

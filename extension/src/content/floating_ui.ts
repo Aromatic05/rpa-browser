@@ -16,12 +16,13 @@ export type FloatingUIOptions = {
 export type FloatingUIHandle = {
     unmount: () => void;
     scheduleRefresh: () => void;
+    setAnnotatorDebugState: (detail: string) => void;
 };
 
 type WorkspaceItem = { workspaceName: string; activeTabName?: string; tabCount: number };
 type TabItem = { tabName: string; url: string; title: string; active: boolean };
 
-type ViewKey = 'Conn' | 'WS' | 'Tabs' | 'Rec' | 'Play' | 'Flow' | 'Log';
+type ViewKey = 'Conn' | 'WS' | 'Tabs' | 'Rec' | 'Play' | 'Flow' | 'ER' | 'Log';
 const UUIDorUnsafe = (): string => {
     if (typeof globalThis.crypto.randomUUID === 'function') {
         return globalThis.crypto.randomUUID();
@@ -34,7 +35,11 @@ const UUIDorUnsafe = (): string => {
 export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     const ROOT_ID = 'rpa-floating-panel';
     if (document.getElementById(ROOT_ID)) {
-        return { unmount: () => undefined, scheduleRefresh: () => undefined };
+        return {
+            unmount: () => undefined,
+            scheduleRefresh: () => undefined,
+            setAnnotatorDebugState: () => undefined,
+        };
     }
     const manifest = chrome.runtime.getManifest();
     const buildId = manifest.version_name ?? manifest.version;
@@ -57,6 +62,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         unsavedStepCount: 0,
         dslRaw: '{}',
         checkpointRaw: '{}',
+        annotatorDebug: null as unknown,
     };
 
     const host = document.createElement('div');
@@ -98,6 +104,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
       .footer pre { margin:0; max-height:120px; overflow:auto; white-space:pre-wrap; font-size:11px; }
       .log-list { display:flex; flex-direction:column; gap:6px; }
       .log-item { font-size:11px; border:1px solid #e2e8f0; border-radius:6px; padding:6px; }
+      .debug-json { margin:0; max-height:300px; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; font:11px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace; color:#0f172a; }
     `;
 
     const wrap = document.createElement('div');
@@ -539,6 +546,32 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         return root;
     };
 
+    const renderEntityRules = () => {
+        const root = document.createElement('div');
+        const box = document.createElement('div');
+        box.className = 'section';
+        box.appendChild(Object.assign(document.createElement('div'), {
+            className: 'title',
+            textContent: 'Entity Rules State',
+        }));
+        const row = document.createElement('div');
+        row.className = 'row';
+        row.append(
+            createButton('Copy JSON', async () => {
+                await navigator.clipboard.writeText(JSON.stringify(state.annotatorDebug, null, 2));
+            }),
+            createButton('Clear View', () => { state.annotatorDebug = null; renderActiveView(); }),
+        );
+        const pre = document.createElement('pre');
+        pre.className = 'debug-json';
+        pre.textContent = state.annotatorDebug
+            ? JSON.stringify(state.annotatorDebug, null, 2)
+            : 'Open the annotator to inspect CanvasDraft, internal keys, bindings and validation results.';
+        box.append(row, pre);
+        root.append(box);
+        return root;
+    };
+
     const renderLog = () => {
         const root = document.createElement('div');
         const box = document.createElement('div');
@@ -577,10 +610,11 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         if (state.activeView === 'Rec') {body.appendChild(renderRec());}
         if (state.activeView === 'Play') {body.appendChild(renderPlay());}
         if (state.activeView === 'Flow') {body.appendChild(renderFlow());}
+        if (state.activeView === 'ER') {body.appendChild(renderEntityRules());}
         if (state.activeView === 'Log') {body.appendChild(renderLog());}
     };
 
-    const views: ViewKey[] = ['Conn', 'WS', 'Tabs', 'Rec', 'Play', 'Flow', 'Log'];
+    const views: ViewKey[] = ['Conn', 'WS', 'Tabs', 'Rec', 'Play', 'Flow', 'ER', 'Log'];
     views.forEach((name) => {
         const btn = document.createElement('button');
         btn.textContent = name;
@@ -622,5 +656,13 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
             host.remove();
         },
         scheduleRefresh,
+        setAnnotatorDebugState: (raw: string) => {
+            try {
+                state.annotatorDebug = JSON.parse(raw) as unknown;
+            } catch {
+                state.annotatorDebug = {parseError: true, raw};
+            }
+            if (state.activeView === 'ER') {renderActiveView();}
+        },
     };
 };

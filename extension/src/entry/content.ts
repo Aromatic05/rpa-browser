@@ -28,7 +28,10 @@ type FloatingUIExports = {
         onAction: (type: string, payload?: unknown, scope?: Record<string, unknown>) => Promise<unknown>;
         onEvent?: (handler: (action: ActionShape) => void) => void;
         onEnterAnnotation?: () => void;
-    }) => { scheduleRefresh: () => void };
+    }) => {
+        scheduleRefresh: () => void;
+        setAnnotatorDebugState: (detail: string) => void;
+    };
 };
 
 type AnnotatorHandle = {
@@ -50,6 +53,7 @@ type AnnotatorExports = {
             onCheck: () => void;
             onSave: () => void;
             dispatch?: (type: string, payload?: Record<string, unknown>) => Promise<unknown>;
+            onDebugState?: (detail: string) => void;
         },
         doc?: Document,
     ) => AnnotatorHandle;
@@ -293,7 +297,10 @@ const loadAnnotator = (() => {
     };
 
     // UI 注入（浮层模块）
-    let uiHandle: { scheduleRefresh: () => void } | null = null;
+    let uiHandle: {
+        scheduleRefresh: () => void;
+        setAnnotatorDebugState: (detail: string) => void;
+    } | null = null;
     let consumeActionEvent: ((action: ActionShape) => void) | null = null;
     let annotatorHandle: AnnotatorHandle | null = null;
     void (async () => {
@@ -318,6 +325,16 @@ const loadAnnotator = (() => {
             consumeActionEvent?.(reply);
             return reply;
         };
+        const setAnnotatorLauncherVisible = (visible: boolean): void => {
+            const panel = document.getElementById('rpa-floating-panel');
+            if (!panel) {return;}
+            panel.style.display = '';
+            const launcher = panel.shadowRoot?.querySelector('.annotate-launch');
+            if (launcher instanceof HTMLElement) {
+                launcher.hidden = !visible;
+            }
+        };
+
         uiHandle = mountFloatingUI({
             tabName,
             workspaceName,
@@ -358,16 +375,14 @@ const loadAnnotator = (() => {
                                     onExit: () => {
                                         annotatorHandle?.exit();
                                         annotatorHandle?.hide();
-                                        const panel = document.getElementById('rpa-floating-panel');
-                                        if (panel) {
-                                            panel.style.display = '';
-                                        }
+                                        setAnnotatorLauncherVisible(true);
                                     },
                                     onUndo: () => undefined,
                                     onRedo: () => undefined,
                                     onCheck: () => undefined,
                                     onSave: () => undefined,
                                     dispatch: (type, payload) => dispatchAnnotator(type, payload),
+                                    onDebugState: (detail) => uiHandle?.setAnnotatorDebugState(detail),
                                 },
                                 document,
                             );
@@ -376,10 +391,7 @@ const loadAnnotator = (() => {
                             return;
                         }
                     }
-                    const panel = document.getElementById('rpa-floating-panel');
-                    if (panel) {
-                        panel.style.display = 'none';
-                    }
+                    setAnnotatorLauncherVisible(false);
                     annotatorHandle.show();
                     const openReply = await dispatchAnnotator('entity_rules.annotator.open', {
                         url: location.href,
@@ -387,6 +399,7 @@ const loadAnnotator = (() => {
                     if (openReply.type.endsWith('.failed')) {
                         console.error('[rpa] annotator open failed:', openReply.payload);
                         annotatorHandle.exit();
+                        setAnnotatorLauncherVisible(true);
                         return;
                     }
                     if (isRecord(openReply.payload)) {

@@ -19,6 +19,7 @@ export type AnnotatorHandlers = {
     onCheck: () => void;
     onSave: () => void;
     onPickModeChange?: (picking: boolean) => void;
+    onDebugState?: (detail: string) => void;
     dispatch?: AnnotatorDispatch;
 };
 

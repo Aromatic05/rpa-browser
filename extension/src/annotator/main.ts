@@ -90,6 +90,7 @@ const mountVueApp: MountAppFn = (root, handlers) => {
         sessionStore,
         onExit: handlers.onExit,
         onPickModeChange: handlers.onPickModeChange,
+        onDebugState: handlers.onDebugState,
     });
     app.mount(appRoot);
     const handle: AnnotatorAppHandle = {
