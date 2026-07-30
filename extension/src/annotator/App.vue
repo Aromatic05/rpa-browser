@@ -2,6 +2,7 @@
 import {computed, nextTick, onMounted, onUnmounted, ref, watch} from 'vue';
 import AnnotatorCanvas from './canvas/AnnotatorCanvas.vue';
 import BusinessObjectPanel from './canvas/BusinessObjectPanel.vue';
+import EditCard from './canvas/EditCard.vue';
 import LabelLayer from './labels/LabelLayer.vue';
 import PickOverlay from './picking/PickOverlay.vue';
 import type {AnnotatorClient} from './protocol/annotator_client.js';
@@ -79,6 +80,7 @@ import {
     summarizeEntityDraft,
     type AnnotatorProductStage,
     type BusinessObjectAddOption,
+    type BusinessObjectEditPatch,
 } from './state/product_ui.js';
 import {enrichInferredFieldNamesFromDom} from './state/dom_labels.js';
 import {enrichVisualBindingsFromDom} from './state/dom_geometry.js';
@@ -109,6 +111,7 @@ const pickMode = ref(false);
 const pickPurpose = ref<PickPurpose>('annotation');
 const operation = ref<'recognize' | 'check' | 'save' | 'pick' | null>(null);
 const settingsOpen = ref(false);
+const settingsNameValue = ref('');
 const objectPanelOpen = ref(false);
 const pickRequestedType = ref<BusinessObjectAddOption['type'] | null>(null);
 const pickError = ref<string | null>(null);
@@ -121,6 +124,14 @@ const pickTargetAnnotationId = ref<string | null>(null);
 const pickCandidates = ref<PickCandidate[]>([]);
 const pickCandidateIndex = ref(0);
 const pickPointer = ref<{x: number; y: number} | null>(null);
+type PendingAnnotationEdit = {
+    entityId: string;
+    annotation: CanvasAnnotationDraft;
+    candidate: PickCandidate;
+};
+const pendingAnnotationEdit = ref<PendingAnnotationEdit | null>(null);
+const pendingEditorOffset = ref({x: 0, y: 0});
+const detailEditorDirty = ref(false);
 const coordinateProbe = ref<HTMLElement | null>(null);
 const overlaySpace = ref({x: 0, y: 0, scaleX: 1, scaleY: 1});
 let pickerDetach: PickerDetach | null = null;
@@ -327,6 +338,37 @@ const currentEntity = computed<CanvasEntityDraft | null>(() => {
     return entities.value.find((entity) => entity.id === props.state.currentEntityId) ?? null;
 });
 
+const settingsDirty = computed(() =>
+    settingsOpen.value &&
+    settingsNameValue.value.trim() !== (currentEntity.value?.name ?? ''),
+);
+
+const cancelSettings = (): void => {
+    settingsOpen.value = false;
+    settingsNameValue.value = currentEntity.value?.name ?? '';
+};
+
+const toggleSettings = (): void => {
+    if (settingsOpen.value) {
+        cancelSettings();
+        return;
+    }
+    settingsNameValue.value = currentEntity.value?.name ?? '';
+    settingsOpen.value = true;
+};
+
+const applySettings = (): void => {
+    if (!props.state.canvasDraft || !currentEntity.value) {return;}
+    const name = settingsNameValue.value.trim() || '业务区域';
+    const nextDraft = updateEntity(
+        props.state.canvasDraft,
+        currentEntity.value.id,
+        {name},
+    );
+    applyState(draftEdited(props.state, nextDraft));
+    settingsOpen.value = false;
+};
+
 const currentEntitySummary = computed(() => summarizeEntityDraft(currentEntity.value));
 const currentBusinessObjects = computed(() =>
     listEntityBusinessObjects(currentEntity.value, props.state.latestCheck));
@@ -345,6 +387,9 @@ const annotatorDebugJson = computed(() => JSON.stringify({
     pickPurpose: pickPurpose.value,
     pickCandidates: pickCandidates.value,
     pickCandidateIndex: pickCandidateIndex.value,
+    pendingAnnotationEdit: pendingAnnotationEdit.value,
+    detailEditorDirty: detailEditorDirty.value,
+    settingsDirty: settingsDirty.value,
 }));
 const pickIntentLabel = computed(() =>
     currentAddOptions.value.find((option) => option.type === pickRequestedType.value)?.label.replace(/^添加/u, '') ?? null);
@@ -481,19 +526,6 @@ const selectEntity = (entityId: string): void => {
     }));
 };
 
-const entityNameModel = computed({
-    get: () => currentEntity.value?.name ?? '',
-    set: (value: string) => {
-        if (!props.state.canvasDraft || !currentEntity.value) {return;}
-        const nextDraft = updateEntity(
-            props.state.canvasDraft,
-            currentEntity.value.id,
-            {name: value.trim() || '业务区域'},
-        );
-        applyState(draftEdited(props.state, nextDraft));
-    },
-});
-
 const dismissGuide = (): void => {
     guideVisible.value = false;
     reviewPending.value = false;
@@ -525,6 +557,29 @@ const pickHighlightBox = computed<PickRect | null>(() => {
     return hoverBox.value;
 });
 
+const pendingEditorStyle = computed<Record<string, string>>(() => {
+    const pending = pendingAnnotationEdit.value;
+    const bbox = pending?.candidate.bbox ? toOverlayRect(pending.candidate.bbox) : null;
+    if (!pending || !bbox) {return {display: 'none'};}
+    const width = Math.min(320, Math.max(280, viewport.value.width - 24));
+    const left = Math.max(12, Math.min(
+        bbox.x + bbox.width / 2 - width / 2 + pendingEditorOffset.value.x,
+        viewport.value.width - width - 12,
+    ));
+    const top = Math.max(12, Math.min(
+        bbox.y - 16 + pendingEditorOffset.value.y,
+        Math.max(12, viewport.value.height - 310),
+    ));
+    return {left: `${left}px`, top: `${top}px`, width: `${width}px`};
+});
+
+const movePendingEditor = (dx: number, dy: number): void => {
+    pendingEditorOffset.value = {
+        x: pendingEditorOffset.value.x + dx,
+        y: pendingEditorOffset.value.y + dy,
+    };
+};
+
 const selectedAnnotationEntityId = computed<string | null>(() => {
     if (!props.state.currentAnnotationId) {return null;}
     return entityIdForAnnotation(props.state.currentAnnotationId);
@@ -532,6 +587,7 @@ const selectedAnnotationEntityId = computed<string | null>(() => {
 
 const onSelectAnnotation = (annotationId: string): void => {
     if (annotationId.startsWith('entity:')) {return;}
+    detailEditorDirty.value = false;
     const entityId = entityIdForAnnotation(annotationId);
     pickCandidates.value = [];
     pickCandidateIndex.value = 0;
@@ -557,7 +613,15 @@ const runCheck = async (): Promise<void> => {
 };
 
 const runCheckAndSave = async (): Promise<void> => {
-    if (!props.state.canvasDraft || !props.state.dirty || pickMode.value || isBusy.value) {return;}
+    if (
+        !props.state.canvasDraft ||
+        !props.state.dirty ||
+        pickMode.value ||
+        isBusy.value ||
+        pendingAnnotationEdit.value ||
+        detailEditorDirty.value ||
+        settingsDirty.value
+    ) {return;}
     operation.value = 'check';
     applyState({...props.state, mode: 'checking', error: null});
     try {
@@ -676,6 +740,7 @@ const enterPickMode = (
         applyState(failed(props.state, '请先选择并确认实体区域。'));
         return;
     }
+    detailEditorDirty.value = false;
     pickPurpose.value = 'annotation';
     pickRequestedType.value = annotationId ? null : requestedType;
     pickError.value = null;
@@ -865,21 +930,28 @@ const onPickConfirm = async (): Promise<void> => {
         pickTargetAnnotationId.value ? undefined : pickRequestedType.value ?? undefined,
     );
     if (!props.state.canvasDraft) {return;}
-    let nextDraft: CanvasDraft;
     if (pickTargetAnnotationId.value) {
-        nextDraft = replaceVisualItemSelection(
+        const nextDraft = replaceVisualItemSelection(
             props.state.canvasDraft,
             entityId,
             pickTargetAnnotationId.value,
             {target: plan.annotation.target},
         );
-    } else {
-        nextDraft = addAnnotation(props.state.canvasDraft, entityId, plan.annotation);
+        applyState(draftEdited(props.state, nextDraft));
+        applyState(pickReceived(props.state, {
+            annotationId: pickTargetAnnotationId.value,
+            entityId,
+        }));
+        exitPickMode();
+        return;
     }
-    applyState(draftEdited(props.state, nextDraft));
-    const newAnnotationId = pickTargetAnnotationId.value ?? plan.annotation.id;
-    applyState(pickReceived(props.state, {annotationId: newAnnotationId, entityId}));
-    pickTargetAnnotationId.value = newAnnotationId;
+    pendingAnnotationEdit.value = {
+        entityId,
+        annotation: plan.annotation,
+        candidate,
+    };
+    pendingEditorOffset.value = {x: 0, y: 0};
+    applyState(pickReceived(props.state, {annotationId: null, entityId}));
     exitPickMode({keepChain: true});
 };
 
@@ -898,17 +970,32 @@ const onNavigate = (direction: 'outer' | 'inner'): void => {
         : selectInner(pickCandidates.value, pickCandidateIndex.value);
     if (next === pickCandidateIndex.value) {return;}
     pickCandidateIndex.value = next;
-    if (!pickMode.value && pickTargetAnnotationId.value) {
+    if (!pickMode.value) {
         const candidate = chooseCandidate(pickCandidates.value, next);
         const entityId = ensurePickTargetEntity();
-        if (candidate && entityId && props.state.canvasDraft) {
+        const entity = entityId ? entities.value.find((item) => item.id === entityId) : null;
+        if (!candidate || !entity) {return;}
+        if (pendingAnnotationEdit.value) {
             const plan = planAnnotationFromCandidate(
                 candidate,
-                entities.value.find((e) => e.id === entityId)!,
+                entity,
+                pendingAnnotationEdit.value.annotation.type,
             );
+            pendingAnnotationEdit.value = {
+                ...pendingAnnotationEdit.value,
+                candidate,
+                annotation: {
+                    ...pendingAnnotationEdit.value.annotation,
+                    target: plan.annotation.target,
+                },
+            };
+            return;
+        }
+        if (pickTargetAnnotationId.value && props.state.canvasDraft) {
+            const plan = planAnnotationFromCandidate(candidate, entity);
             const nextDraft = replaceVisualItemSelection(
                 props.state.canvasDraft,
-                entityId,
+                entityId!,
                 pickTargetAnnotationId.value,
                 {target: plan.annotation.target},
             );
@@ -921,66 +1008,90 @@ const applyDraftUpdate = (nextDraft: CanvasDraft): void => {
     applyState(draftEdited(props.state, nextDraft));
 };
 
-const onUpdateName = (entityId: string, annotationId: string, name: string): void => {
+const onApplyBusinessEdit = (
+    entityId: string,
+    annotationId: string,
+    patch: BusinessObjectEditPatch,
+): void => {
     if (!props.state.canvasDraft) {return;}
     const entity = entities.value.find((item) => item.id === entityId);
     if (!entity) {return;}
-    if (annotationId === entityVisualId(entityId)) {
-        applyDraftUpdate(updateEntity(props.state.canvasDraft, entityId, {name}));
-        return;
+    let nextDraft = props.state.canvasDraft;
+    if (patch.name !== undefined) {
+        if (annotationId === entityVisualId(entityId)) {
+            nextDraft = updateEntity(nextDraft, entityId, {name: patch.name});
+        } else if (entity.columns.some((column) => column.id === annotationId)) {
+            nextDraft = updateColumn(nextDraft, entityId, annotationId, {name: patch.name});
+        } else if (entity.columns.some((column) => column.actions.some((action) => action.id === annotationId))) {
+            nextDraft = updateColumnAction(nextDraft, entityId, annotationId, {text: patch.name});
+        } else if (annotationId !== paginationPageVisualId(entityId)) {
+            nextDraft = updateAnnotation(nextDraft, entityId, annotationId, {name: patch.name});
+        }
     }
-    if (entity.columns.some((column) => column.id === annotationId)) {
-        applyDraftUpdate(updateColumn(props.state.canvasDraft, entityId, annotationId, {name}));
-        return;
+    if (patch.fieldKey !== undefined) {
+        nextDraft = updateAnnotation(nextDraft, entityId, annotationId, {businessKey: patch.fieldKey});
     }
-    if (entity.columns.some((column) => column.actions.some((action) => action.id === annotationId))) {
-        applyDraftUpdate(updateColumnAction(props.state.canvasDraft, entityId, annotationId, {text: name}));
-        return;
+    if (patch.actionIntent !== undefined) {
+        if (entity.columns.some((column) => column.actions.some((action) => action.id === annotationId))) {
+            nextDraft = updateColumnAction(nextDraft, entityId, annotationId, {
+                actionIntent: patch.actionIntent,
+            });
+        } else if (annotationId === paginationPageVisualId(entityId)) {
+            nextDraft = updatePagination(nextDraft, entityId, {actionIntent: patch.actionIntent});
+        } else {
+            nextDraft = updateAnnotation(nextDraft, entityId, annotationId, {
+                businessKey: patch.actionIntent,
+            });
+        }
     }
-    if (annotationId !== paginationPageVisualId(entityId)) {
-        applyDraftUpdate(updateAnnotation(props.state.canvasDraft, entityId, annotationId, {name}));
+    if (patch.columnKind !== undefined) {
+        nextDraft = updateColumn(nextDraft, entityId, annotationId, {kind: patch.columnKind});
     }
+    if (patch.primaryKey !== undefined) {
+        nextDraft = setColumnPrimaryKey(nextDraft, entityId, annotationId, patch.primaryKey);
+    }
+    applyDraftUpdate(nextDraft);
+    detailEditorDirty.value = false;
+    applyState(pickReceived(props.state, {annotationId: null, entityId}));
 };
 
-const onBindField = (entityId: string, annotationId: string, fieldKey: string): void => {
-    if (!props.state.canvasDraft) {return;}
-    applyDraftUpdate(updateAnnotation(props.state.canvasDraft, entityId, annotationId, {businessKey: fieldKey}));
+const onApplyPendingEdit = (patch: BusinessObjectEditPatch): void => {
+    const pending = pendingAnnotationEdit.value;
+    if (!pending || !props.state.canvasDraft) {return;}
+    const annotation: CanvasAnnotationDraft = {
+        ...pending.annotation,
+        ...(patch.name !== undefined ? {name: patch.name} : {}),
+        ...(patch.fieldKey !== undefined ? {businessKey: patch.fieldKey} : {}),
+        ...(patch.actionIntent !== undefined ? {businessKey: patch.actionIntent} : {}),
+        target: {...pending.annotation.target},
+    };
+    const nextDraft = addAnnotation(
+        props.state.canvasDraft,
+        pending.entityId,
+        annotation,
+    );
+    applyDraftUpdate(nextDraft);
+    pendingAnnotationEdit.value = null;
+    pendingEditorOffset.value = {x: 0, y: 0};
+    detailEditorDirty.value = false;
+    pickCandidates.value = [];
+    pickCandidateIndex.value = 0;
+    pickTargetEntityId.value = null;
+    pickTargetAnnotationId.value = null;
+    applyState(pickReceived(props.state, {
+        annotationId: null,
+        entityId: pending.entityId,
+    }));
 };
 
-const onSetActionIntent = (entityId: string, annotationId: string, actionIntent: string): void => {
-    if (!props.state.canvasDraft) {return;}
-    const entity = entities.value.find((item) => item.id === entityId);
-    if (!entity) {return;}
-    if (entity.columns.some((column) => column.actions.some((action) => action.id === annotationId))) {
-        applyDraftUpdate(updateColumnAction(props.state.canvasDraft, entityId, annotationId, {actionIntent}));
-        return;
-    }
-    if (annotationId === paginationPageVisualId(entityId)) {
-        applyDraftUpdate(updatePagination(props.state.canvasDraft, entityId, {actionIntent}));
-        return;
-    }
-    applyDraftUpdate(updateAnnotation(props.state.canvasDraft, entityId, annotationId, {businessKey: actionIntent}));
-};
-
-const onSetColumnKind = (
-    entityId: string,
-    columnId: string,
-    kind: 'text' | 'number' | 'date' | 'status' | 'action_column',
-): void => {
-    if (!props.state.canvasDraft) {return;}
-    applyDraftUpdate(updateColumn(props.state.canvasDraft, entityId, columnId, {kind}));
-};
-
-const onSetColumnPrimaryKey = (
-    entityId: string,
-    columnId: string,
-    selected: boolean,
-): void => {
-    if (!props.state.canvasDraft) {return;}
-    applyState(draftEdited(
-        props.state,
-        setColumnPrimaryKey(props.state.canvasDraft, entityId, columnId, selected),
-    ));
+const cancelPendingEdit = (): void => {
+    pendingAnnotationEdit.value = null;
+    pendingEditorOffset.value = {x: 0, y: 0};
+    detailEditorDirty.value = false;
+    pickCandidates.value = [];
+    pickCandidateIndex.value = 0;
+    pickTargetEntityId.value = null;
+    pickTargetAnnotationId.value = null;
 };
 
 const onDeleteAnnotation = (annotationId: string): void => {
@@ -989,6 +1100,7 @@ const onDeleteAnnotation = (annotationId: string): void => {
     if (!entityId) {return;}
     const nextDraft = deleteVisualItem(props.state.canvasDraft, entityId, annotationId);
     applyState(draftEdited(props.state, nextDraft));
+    detailEditorDirty.value = false;
     applyState(pickReceived(props.state, {annotationId: null, entityId}));
 };
 
@@ -998,6 +1110,8 @@ const onIgnoreAnnotation = (annotationId: string): void => {
     if (!entityId) {return;}
     const nextDraft = ignoreVisualItem(props.state.canvasDraft, entityId, annotationId);
     applyState(draftEdited(props.state, nextDraft));
+    detailEditorDirty.value = false;
+    applyState(pickReceived(props.state, {annotationId: null, entityId}));
 };
 
 const onKeyDown = (event: KeyboardEvent): void => {
@@ -1072,6 +1186,46 @@ const onDomMarkerClick = (event: MouseEvent): void => {
     onSelectAnnotation(annotationId);
 };
 
+const eventPathHasClass = (event: Event, className: string): boolean =>
+    event.composedPath().some((node) => node instanceof Element && node.classList.contains(className));
+
+const eventPathHasAction = (event: Event, action: string): boolean =>
+    event.composedPath().some((node) =>
+        node instanceof Element && node.getAttribute('data-annotator-action') === action,
+    );
+
+const onGlobalPointerDown = (event: PointerEvent): void => {
+    if (pickMode.value) {return;}
+    const insideEditor = eventPathHasClass(event, 'annotator-edit-anchor') ||
+        eventPathHasClass(event, 'pending-edit-anchor');
+    if (!insideEditor) {
+        if (pendingAnnotationEdit.value) {cancelPendingEdit();}
+        if (props.state.currentAnnotationId) {
+            detailEditorDirty.value = false;
+            applyState(pickReceived(props.state, {
+                annotationId: null,
+                entityId: props.state.currentEntityId,
+            }));
+        }
+    }
+    if (
+        objectPanelOpen.value &&
+        !eventPathHasClass(event, 'business-object-panel') &&
+        !eventPathHasAction(event, 'business-objects')
+    ) {
+        objectPanelOpen.value = false;
+    }
+    if (
+        settingsOpen.value &&
+        !eventPathHasClass(event, 'settings-popover') &&
+        !event.composedPath().some((node) =>
+            node instanceof Element && node.getAttribute('aria-label') === '设置',
+        )
+    ) {
+        cancelSettings();
+    }
+};
+
 let persistTimer: ReturnType<typeof setTimeout> | null = null;
 const schedulePersist = (): void => {
     if (!props.state.dirty || !props.state.canvasDraft) {
@@ -1108,6 +1262,7 @@ onMounted(() => {
         },
     });
     document.addEventListener('keydown', onKeyDown, true);
+    document.addEventListener('pointerdown', onGlobalPointerDown, true);
     document.addEventListener('click', onDomMarkerClick, true);
     document.addEventListener('scroll', scheduler.schedule, true);
     const w = win();
@@ -1144,6 +1299,7 @@ onUnmounted(() => {
         guideTimer = null;
     }
     document.removeEventListener('keydown', onKeyDown, true);
+    document.removeEventListener('pointerdown', onGlobalPointerDown, true);
     document.removeEventListener('click', onDomMarkerClick, true);
     clearDomMarkers(document);
     document.removeEventListener('scroll', scheduler.schedule, true);
@@ -1312,15 +1468,16 @@ watch(
                 type="button"
                 class="dock-primary annotator-save-action"
                 :class="{saved: !state.dirty && Boolean(state.artifactRevision)}"
-                :disabled="!state.dirty || isBusy || !state.profileName"
+                :disabled="!state.dirty || isBusy || !state.profileName || Boolean(pendingAnnotationEdit) || detailEditorDirty || settingsDirty"
+                :title="pendingAnnotationEdit || detailEditorDirty || settingsDirty ? '请先应用或取消当前修改' : '保存规则'"
                 @click="runCheckAndSave"
             >
                 <span v-if="operation === 'check'">检查中…</span>
                 <span v-else-if="operation === 'save'">保存中…</span>
                 <span v-else-if="!state.dirty && state.artifactRevision">✓ 已保存</span>
-                <span v-else>保存</span>
+                <span v-else>保存规则</span>
             </button>
-            <button type="button" aria-label="设置" title="设置" :class="{active: settingsOpen}" @click="settingsOpen = !settingsOpen">⚙</button>
+            <button type="button" aria-label="设置" title="设置" :class="{active: settingsOpen}" @click="toggleSettings">⚙</button>
             <button type="button" aria-label="退出" title="退出" @click="emit('exit')">×</button>
         </div>
 
@@ -1330,13 +1487,23 @@ watch(
         >
             <header>
                 <strong>区域设置</strong>
-                <button type="button" aria-label="关闭设置" @click="settingsOpen = false">×</button>
+                <button type="button" aria-label="关闭设置" @click="cancelSettings">×</button>
             </header>
             <label>
                 <span>业务区域名称</span>
-                <input v-model="entityNameModel" type="text" placeholder="例如：订单查询列表" />
+                <input v-model="settingsNameValue" type="text" placeholder="例如：订单查询列表" />
             </label>
-            <button type="button" class="quiet-action" :disabled="isBusy" @click="runRecognize">重新识别</button>
+            <div class="settings-actions">
+                <button type="button" class="quiet-action" @click="cancelSettings">取消</button>
+                <button type="button" class="dock-primary" :disabled="!settingsDirty || isBusy" @click="applySettings">应用</button>
+            </div>
+            <button
+                type="button"
+                class="quiet-action"
+                :disabled="isBusy || settingsDirty"
+                :title="settingsDirty ? '请先应用或取消名称修改' : '重新分析当前区域'"
+                @click="runRecognize"
+            >重新识别</button>
         </div>
 
         <div v-if="pickMode && !selectedCandidate" class="pick-guide">
@@ -1379,17 +1546,41 @@ watch(
         :viewport-height="viewport.height"
         @select="onSelectAnnotation"
         @move="onMoveLabel"
-        @update-name="onUpdateName"
-        @bind-field="onBindField"
-        @set-action-intent="onSetActionIntent"
-        @set-column-kind="onSetColumnKind"
+        @apply-edit="onApplyBusinessEdit"
+        @edit-dirty-change="detailEditorDirty = $event"
         @reselect="(annotationId) => annotationId === entityVisualId(currentEntity?.id || '') ? enterEntityPickMode() : enterPickMode(annotationId)"
         @navigate="onNavigate"
         @delete="onDeleteAnnotation"
         @ignore="onIgnoreAnnotation"
-        @set-primary-key="onSetColumnPrimaryKey"
         @close="applyState(pickReceived(state, {annotationId: null, entityId: currentEntity?.id || null}))"
     />
+    <div
+        v-if="pendingAnnotationEdit && !pickMode"
+        class="pending-edit-anchor"
+        :style="pendingEditorStyle"
+    >
+        <EditCard
+            :annotation="pendingAnnotationEdit.annotation"
+            :annotation-kind="pendingAnnotationEdit.annotation.type"
+            :entity="entities.find((item) => item.id === pendingAnnotationEdit?.entityId) || null"
+            :candidate="pendingAnnotationEdit.candidate"
+            :candidate-index="pickCandidateIndex"
+            :candidate-chain-length="pickCandidates.length"
+            :can-delete="false"
+            :can-reselect="false"
+            :can-ignore="false"
+            :can-set-primary-key="false"
+            :is-primary-key="false"
+            :is-new="true"
+            @apply="onApplyPendingEdit"
+            @move="movePendingEditor"
+            @dirty-change="detailEditorDirty = $event"
+            @outer="onNavigate('outer')"
+            @inner="onNavigate('inner')"
+            @close="cancelPendingEdit"
+        />
+    </div>
+
     <PickOverlay
         v-if="pickMode"
         :candidate="selectedCandidate"
@@ -1541,6 +1732,25 @@ watch(
     box-shadow: 0 16px 40px rgba(15, 23, 42, .18);
     z-index: 9;
 }
+.pending-edit-anchor {
+    position: fixed;
+    z-index: 2147483646;
+    padding: 12px;
+    border: 1px solid #cbd5e1;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, .98);
+    box-shadow: 0 18px 48px rgba(15, 23, 42, .26);
+    backdrop-filter: blur(16px);
+    pointer-events: auto;
+    max-height: calc(100vh - 24px);
+    overflow: auto;
+}
+.settings-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 7px;
+}
+.settings-popover .dock-primary { min-height: 34px; }
 .settings-popover header { display: flex; align-items: center; justify-content: space-between; }
 .settings-popover header strong { font-size: 11px; }
 .settings-popover header button { width: 28px; height: 28px; border: 0; border-radius: 8px; background: transparent; cursor: pointer; }

@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import {computed} from 'vue';
+import {computed, ref, watch} from 'vue';
 import type {AnnotationBox, AnnotationBoxKind} from '../layout/annotation_boxes.js';
 import type {LabelPlacement} from '../layout/label_layout.js';
 import type {CanvasAnnotationDraft, CanvasEntityDraft} from '../types.js';
 import type {CheckResultByAnnotation, PickCandidate} from '../types.js';
 import EditCard from '../canvas/EditCard.vue';
 import {entityVisualId, paginationPageVisualId} from '../visual_ids.js';
-import {annotationVisualState} from '../state/product_ui.js';
+import {annotationVisualState, type BusinessObjectEditPatch} from '../state/product_ui.js';
 
 const props = defineProps<{
     boxes: AnnotationBox[];
@@ -25,10 +25,8 @@ const props = defineProps<{
 const emit = defineEmits<{
     (e: 'select', annotationId: string): void;
     (e: 'move', annotationId: string, dx: number, dy: number): void;
-    (e: 'updateName', entityId: string, annotationId: string, name: string): void;
-    (e: 'bindField', entityId: string, annotationId: string, fieldKey: string): void;
-    (e: 'setActionIntent', entityId: string, annotationId: string, actionIntent: string): void;
-    (e: 'setColumnKind', entityId: string, columnId: string, kind: 'text' | 'number' | 'date' | 'status' | 'action_column'): void;
+    (e: 'applyEdit', entityId: string, annotationId: string, patch: BusinessObjectEditPatch): void;
+    (e: 'editDirtyChange', dirty: boolean): void;
     (e: 'reselect', annotationId: string | null): void;
     (e: 'navigate', direction: 'outer' | 'inner'): void;
     (e: 'delete', annotationId: string): void;
@@ -140,17 +138,30 @@ const editCardPlacement = computed((): LabelPlacement | null => {
     return props.placements[props.selectedAnnotationId] ?? null;
 });
 
+const editCardOffset = ref({x: 0, y: 0});
+watch(
+    () => props.selectedAnnotationId,
+    () => { editCardOffset.value = {x: 0, y: 0}; },
+);
+
+const moveEditCard = (dx: number, dy: number): void => {
+    editCardOffset.value = {
+        x: editCardOffset.value.x + dx,
+        y: editCardOffset.value.y + dy,
+    };
+};
+
 const editCardStyle = computed((): Record<string, string> => {
     const placement = editCardPlacement.value;
     if (!placement) {return {display: 'none'};}
     const width = Math.min(320, Math.max(280, props.viewportWidth - 24));
-    const desiredLeft = placement.box.x + placement.box.width / 2 - width / 2;
+    const desiredLeft = placement.box.x + placement.box.width / 2 - width / 2 + editCardOffset.value.x;
     const left = Math.max(12, Math.min(desiredLeft, props.viewportWidth - width - 12));
     const estimatedHeight =
-        190 +
+        250 +
         (props.candidateChainLength > 1 ? 38 : 0) +
         (selectedCanSetPrimaryKey.value ? 58 : 0);
-    const desiredTop = placement.box.y - 16;
+    const desiredTop = placement.box.y - 16 + editCardOffset.value.y;
     const top = Math.max(12, Math.min(
         desiredTop,
         Math.max(12, props.viewportHeight - estimatedHeight - 12),
@@ -260,16 +271,14 @@ const onReselect = (): void => {
                 :can-ignore="selectedBox?.kind !== 'entity' && selectedBox?.kind !== 'pagination'"
                 :can-set-primary-key="selectedCanSetPrimaryKey"
                 :is-primary-key="selectedIsPrimaryKey"
-                @update-name="(name) => selectedBox && selectedAnnotation && emit('updateName', selectedBox.entityId, selectedAnnotation.id, name)"
-                @bind-field="(fieldKey) => selectedBox && selectedAnnotation && emit('bindField', selectedBox.entityId, selectedAnnotation.id, fieldKey)"
-                @set-action-intent="(actionIntent) => selectedBox && selectedAnnotation && emit('setActionIntent', selectedBox.entityId, selectedAnnotation.id, actionIntent)"
-                @set-column-kind="(kind) => selectedBox && emit('setColumnKind', selectedBox.entityId, selectedBox.annotationId, kind)"
+                @apply="(patch) => selectedBox && selectedAnnotation && emit('applyEdit', selectedBox.entityId, selectedAnnotation.id, patch)"
+                @move="moveEditCard"
+                @dirty-change="(dirty) => emit('editDirtyChange', dirty)"
                 @reselect="onReselect"
                 @outer="emit('navigate', 'outer')"
                 @inner="emit('navigate', 'inner')"
                 @delete="selectedAnnotation && emit('delete', selectedAnnotation.id)"
                 @ignore="selectedAnnotation && emit('ignore', selectedAnnotation.id)"
-                @set-primary-key="(selected) => selectedBox && emit('setPrimaryKey', selectedBox.entityId, selectedBox.annotationId, selected)"
                 @close="emit('close')"
             />
         </div>

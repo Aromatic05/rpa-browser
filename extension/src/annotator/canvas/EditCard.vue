@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import {computed} from 'vue';
+import {computed, ref, watch} from 'vue';
 import type {
     CanvasAnnotationDraft,
     CanvasColumnDraft,
@@ -11,6 +11,7 @@ import {
     businessActionIntentOptions,
     businessColumnKindOptions,
     businessFieldBindingOptions,
+    type BusinessObjectEditPatch,
 } from '../state/product_ui.js';
 
 const props = defineProps<{
@@ -25,19 +26,18 @@ const props = defineProps<{
     canIgnore: boolean;
     canSetPrimaryKey: boolean;
     isPrimaryKey: boolean;
+    isNew?: boolean;
 }>();
 
 const emit = defineEmits<{
-    (e: 'updateName', name: string): void;
-    (e: 'bindField', fieldKey: string): void;
-    (e: 'setActionIntent', actionIntent: string): void;
-    (e: 'setColumnKind', kind: NonNullable<CanvasColumnDraft['kind']>): void;
+    (e: 'apply', patch: BusinessObjectEditPatch): void;
+    (e: 'move', dx: number, dy: number): void;
+    (e: 'dirtyChange', dirty: boolean): void;
     (e: 'reselect'): void;
     (e: 'outer'): void;
     (e: 'inner'): void;
     (e: 'delete'): void;
     (e: 'ignore'): void;
-    (e: 'setPrimaryKey', selected: boolean): void;
     (e: 'close'): void;
 }>();
 
@@ -56,7 +56,7 @@ const isPagination = computed(() => props.annotationKind === 'pagination');
 
 const typeLabel = computed(() => {
     if (props.annotationKind === 'column') {return '表格列';}
-    if (isPagination.value) {return '翻页';}
+    if (isPagination.value) {return '分页';}
     if (selectedRowAction.value) {return '行操作';}
     if (props.entity?.kind === 'table' && isNativeField.value) {return '筛选字段';}
     if (props.entity?.kind === 'table' && isAction.value) {return '列表操作';}
@@ -69,60 +69,135 @@ const displayName = computed(() => {
     if (isPagination.value) {return '分页控件';}
     return props.annotation?.name?.trim() || typeLabel.value;
 });
-const nameModel = computed({
-    get: () => props.annotation?.name ?? '',
-    set: (value: string) => emit('updateName', value),
-});
+
+const nameValue = ref('');
+const fieldKeyValue = ref('');
+const columnKindValue = ref<NonNullable<CanvasColumnDraft['kind']>>('text');
+const actionIntentValue = ref('');
+const primaryKeyValue = ref(false);
+
+const resetLocalDraft = (): void => {
+    nameValue.value = props.annotation?.name ?? '';
+    fieldKeyValue.value = props.annotation?.businessKey ?? '';
+    columnKindValue.value = selectedColumn.value?.kind ??
+        (selectedColumn.value?.actions.length ? 'action_column' : 'text');
+    actionIntentValue.value = selectedRowAction.value?.actionIntent ?? props.annotation?.businessKey ?? '';
+    primaryKeyValue.value = props.isPrimaryKey;
+};
+
+watch(
+    () => [
+        props.annotation?.id,
+        props.annotation?.name,
+        props.annotation?.businessKey,
+        selectedColumn.value?.kind,
+        selectedColumn.value?.actions.length,
+        selectedRowAction.value?.actionIntent,
+        props.isPrimaryKey,
+    ],
+    resetLocalDraft,
+    {immediate: true},
+);
+
 const fieldBindingOptions = computed(() => {
     const options = businessFieldBindingOptions(props.entity);
-    const currentValue = props.annotation?.businessKey ?? '';
-    if (currentValue && !options.some((option) => option.value === currentValue)) {
-        return [{value: currentValue, label: props.annotation?.name?.trim() || '当前字段'}, ...options];
+    if (fieldKeyValue.value && !options.some((option) => option.value === fieldKeyValue.value)) {
+        return [{value: fieldKeyValue.value, label: props.annotation?.name?.trim() || '当前字段'}, ...options];
     }
     return options;
 });
-const fieldBindingModel = computed({
-    get: () => props.annotation?.businessKey ?? '',
-    set: (value: string) => emit('bindField', value),
-});
 const columnKindOptions = businessColumnKindOptions();
-const columnKindModel = computed({
-    get: () => selectedColumn.value?.kind ?? (selectedColumn.value?.actions.length ? 'action_column' : 'text'),
-    set: (value: NonNullable<CanvasColumnDraft['kind']>) => emit('setColumnKind', value),
-});
 const actionIntentOptions = computed(() => businessActionIntentOptions(
     props.entity,
     selectedRowAction.value ? 'row_action' : 'action',
-    selectedRowAction.value?.actionIntent ?? props.annotation?.businessKey ?? '',
+    actionIntentValue.value,
     props.annotation?.name ?? '',
 ));
-const actionIntentModel = computed({
-    get: () => selectedRowAction.value?.actionIntent ?? props.annotation?.businessKey ?? '',
-    set: (value: string) => emit('setActionIntent', value),
+
+const hasChanges = computed(() => {
+    if (props.isNew) {return true;}
+    if (!isPagination.value && nameValue.value !== (props.annotation?.name ?? '')) {return true;}
+    if (isNativeField.value && fieldKeyValue.value !== (props.annotation?.businessKey ?? '')) {return true;}
+    if (props.annotationKind === 'column') {
+        const initialKind = selectedColumn.value?.kind ??
+            (selectedColumn.value?.actions.length ? 'action_column' : 'text');
+        if (columnKindValue.value !== initialKind) {return true;}
+        if (primaryKeyValue.value !== props.isPrimaryKey) {return true;}
+    }
+    if (isAction.value) {
+        const initialIntent = selectedRowAction.value?.actionIntent ?? props.annotation?.businessKey ?? '';
+        if (actionIntentValue.value !== initialIntent) {return true;}
+    }
+    return false;
 });
+
+watch(hasChanges, (dirty) => emit('dirtyChange', dirty), {immediate: true});
+
+const applyChanges = (): void => {
+    const patch: BusinessObjectEditPatch = {};
+    if (!isPagination.value) {patch.name = nameValue.value.trim();}
+    if (isNativeField.value) {patch.fieldKey = fieldKeyValue.value;}
+    if (props.annotationKind === 'column') {
+        patch.columnKind = columnKindValue.value;
+        patch.primaryKey = primaryKeyValue.value;
+    }
+    if (isAction.value) {patch.actionIntent = actionIntentValue.value;}
+    emit('apply', patch);
+};
 
 const canNavigateOuter = computed(() => props.candidateIndex < props.candidateChainLength - 1);
 const canNavigateInner = computed(() => props.candidateIndex > 0);
+
+let cardDrag: {pointerId: number; x: number; y: number} | null = null;
+const onDragStart = (event: PointerEvent): void => {
+    if (event.button !== 0) {return;}
+    const handle = event.currentTarget as HTMLElement;
+    cardDrag = {pointerId: event.pointerId, x: event.clientX, y: event.clientY};
+    handle.setPointerCapture(event.pointerId);
+    event.preventDefault();
+};
+const onDragMove = (event: PointerEvent): void => {
+    if (!cardDrag || cardDrag.pointerId !== event.pointerId) {return;}
+    const dx = event.clientX - cardDrag.x;
+    const dy = event.clientY - cardDrag.y;
+    if (dx === 0 && dy === 0) {return;}
+    cardDrag.x = event.clientX;
+    cardDrag.y = event.clientY;
+    emit('move', dx, dy);
+};
+const onDragEnd = (event: PointerEvent): void => {
+    if (!cardDrag || cardDrag.pointerId !== event.pointerId) {return;}
+    const handle = event.currentTarget as HTMLElement;
+    if (handle.hasPointerCapture(event.pointerId)) {handle.releasePointerCapture(event.pointerId);}
+    cardDrag = null;
+};
 </script>
 
 <template>
     <section class="canvas-edit-card annotator-edit-card" data-rpa-snapshot-ignore="true">
         <header>
-            <div>
+            <div
+                class="edit-card-drag-handle"
+                title="拖动详情卡"
+                @pointerdown="onDragStart"
+                @pointermove="onDragMove"
+                @pointerup="onDragEnd"
+                @pointercancel="onDragEnd"
+            >
                 <span>{{ typeLabel }}</span>
                 <strong>{{ displayName }}</strong>
             </div>
-            <button type="button" class="close-card" aria-label="关闭编辑卡片" @click="emit('close')">×</button>
+            <button type="button" class="close-card" aria-label="取消并关闭详情" @pointerdown.stop @click="emit('close')">×</button>
         </header>
 
         <label v-if="!isPagination" class="business-field">
             <span>名称</span>
-            <input v-model="nameModel" type="text" />
+            <input v-model="nameValue" type="text" />
         </label>
 
         <label v-if="isNativeField && entity?.kind === 'table' && fieldBindingOptions.length" class="business-field">
             <span>对应表格列</span>
-            <select v-model="fieldBindingModel">
+            <select v-model="fieldKeyValue">
                 <option v-for="option in fieldBindingOptions" :key="option.value" :value="option.value">
                     {{ option.label }}
                 </option>
@@ -131,7 +206,7 @@ const canNavigateInner = computed(() => props.candidateIndex > 0);
 
         <label v-if="annotationKind === 'column'" class="business-field">
             <span>内容类型</span>
-            <select v-model="columnKindModel">
+            <select v-model="columnKindValue">
                 <option v-for="option in columnKindOptions" :key="option.value" :value="option.value">
                     {{ option.label }}
                 </option>
@@ -140,7 +215,7 @@ const canNavigateInner = computed(() => props.candidateIndex > 0);
 
         <label v-if="isAction" class="business-field">
             <span>作用</span>
-            <select v-model="actionIntentModel">
+            <select v-model="actionIntentValue">
                 <option v-for="option in actionIntentOptions" :key="option.value" :value="option.value">
                     {{ option.label }}
                 </option>
@@ -151,9 +226,9 @@ const canNavigateInner = computed(() => props.candidateIndex > 0);
             v-if="canSetPrimaryKey"
             type="button"
             class="primary-key-choice"
-            :class="{active: isPrimaryKey}"
-            :aria-pressed="isPrimaryKey"
-            @click="emit('setPrimaryKey', !isPrimaryKey)"
+            :class="{active: primaryKeyValue}"
+            :aria-pressed="primaryKeyValue"
+            @click="primaryKeyValue = !primaryKeyValue"
         >
             <span class="primary-key-icon">KEY</span>
             <span class="primary-key-copy">
@@ -168,12 +243,15 @@ const canNavigateInner = computed(() => props.candidateIndex > 0);
             <button type="button" :disabled="!canNavigateOuter" @click="emit('outer')">扩大范围</button>
         </div>
 
-        <footer>
-            <div>
-                <button v-if="canReselect" type="button" class="secondary" @click="emit('reselect')">重新选择位置</button>
-                <button v-if="canIgnore" type="button" class="secondary" @click="emit('ignore')">不使用</button>
-            </div>
+        <div class="secondary-actions">
+            <button v-if="canReselect" type="button" class="secondary" @click="emit('reselect')">重新选择位置</button>
+            <button v-if="canIgnore" type="button" class="secondary" @click="emit('ignore')">不使用</button>
             <button v-if="canDelete" type="button" class="danger" @click="emit('delete')">删除</button>
+        </div>
+
+        <footer>
+            <button type="button" class="secondary" @click="emit('close')">取消</button>
+            <button type="button" class="apply" :disabled="!hasChanges" @click="applyChanges">应用</button>
         </footer>
     </section>
 </template>
@@ -191,15 +269,22 @@ const canNavigateInner = computed(() => props.candidateIndex > 0);
     justify-content: space-between;
     gap: 10px;
 }
-.canvas-edit-card header > div { min-width: 0; }
-.canvas-edit-card header span {
+.edit-card-drag-handle {
+    min-width: 0;
+    flex: 1;
+    padding: 2px 0;
+    cursor: move;
+    touch-action: none;
+    user-select: none;
+}
+.edit-card-drag-handle span {
     display: block;
     margin-bottom: 2px;
     color: #64748b;
     font-size: 10px;
     font-weight: 700;
 }
-.canvas-edit-card header strong {
+.edit-card-drag-handle strong {
     display: block;
     overflow: hidden;
     font-size: 14px;
@@ -294,25 +379,8 @@ const canNavigateInner = computed(() => props.candidateIndex > 0);
     border-radius: 9px;
     background: #f1f5f9;
 }
-.range-actions button {
-    min-height: 32px;
-    border: 0;
-    border-radius: 7px;
-    background: transparent;
-    color: #475569;
-    font-size: 10px;
-    font-weight: 700;
-    cursor: pointer;
-}
-.range-actions button:disabled { opacity: .35; cursor: default; }
-.canvas-edit-card footer {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    padding-top: 2px;
-}
-.canvas-edit-card footer > div { display: flex; gap: 6px; }
+.range-actions button,
+.secondary-actions button,
 .canvas-edit-card footer button {
     min-height: 32px;
     border-radius: 8px;
@@ -321,6 +389,25 @@ const canNavigateInner = computed(() => props.candidateIndex > 0);
     font-weight: 700;
     cursor: pointer;
 }
+.range-actions button {
+    border: 0;
+    background: transparent;
+    color: #475569;
+}
+.range-actions button:disabled { opacity: .35; cursor: default; }
+.secondary-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.canvas-edit-card footer {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 7px;
+    padding-top: 2px;
+}
 .secondary { border: 1px solid #cbd5e1; background: #fff; color: #334155; }
 .danger { border: 1px solid #fecaca; background: #fff7f7; color: #b91c1c; }
+.apply { border: 1px solid #2563eb; background: #2563eb; color: #fff; }
+.apply:disabled { opacity: .4; cursor: default; }
 </style>

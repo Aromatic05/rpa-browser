@@ -1,6 +1,7 @@
 import type {AnnotationBox} from '../layout/annotation_boxes.js';
 import {entityVisualId, paginationPageVisualId} from '../visual_ids.js';
 import type {
+    CanvasColumnDraft,
     CanvasEntityDraft,
     CheckResultByAnnotation,
     PickCandidate,
@@ -227,6 +228,14 @@ export const businessObjectAddOptions = (entity: CanvasEntityDraft | null): Busi
 };
 
 export type BusinessChoice = {value: string; label: string};
+
+export type BusinessObjectEditPatch = {
+    name?: string;
+    fieldKey?: string;
+    actionIntent?: string;
+    columnKind?: NonNullable<CanvasColumnDraft['kind']>;
+    primaryKey?: boolean;
+};
 
 export const businessFieldBindingOptions = (entity: CanvasEntityDraft | null): BusinessChoice[] =>
     entity?.columns

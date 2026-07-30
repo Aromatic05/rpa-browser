@@ -107,18 +107,20 @@ export const attachPickerListeners = (
         );
     };
 
-    const onClick = (event: MouseEvent): void => {
-        if (!handlers.isActive()) {return;}
-        if (!(event.target instanceof Element)) {return;}
-        if (!shouldInterceptClick(event.target)) {return;}
+    const consumePageInteraction = (event: Event): event is PointerEvent | MouseEvent => {
+        if (!handlers.isActive()) {return false;}
+        if (!(event.target instanceof Element)) {return false;}
+        if (!shouldInterceptClick(event.target)) {return false;}
         event.preventDefault();
-        event.stopPropagation();
-        if (event.target instanceof HTMLElement) {
-            const tag = event.target.tagName.toUpperCase();
-            if (INTERACTIVE_TAGS.has(tag)) {
-                event.target.blur();
-            }
+        event.stopImmediatePropagation();
+        if (event.target instanceof HTMLElement && INTERACTIVE_TAGS.has(event.target.tagName.toUpperCase())) {
+            event.target.blur();
         }
+        return event instanceof PointerEvent || event instanceof MouseEvent;
+    };
+
+    const onPointerDown = (event: PointerEvent): void => {
+        if (event.button !== 0 || !consumePageInteraction(event)) {return;}
         const hit = buildHitTest(event);
         const fingerprint = buildFingerprintFromHitTest(hit);
         handlers.onPick?.({
@@ -127,11 +129,23 @@ export const attachPickerListeners = (
         });
     };
 
+    const onBlockedInteraction = (event: Event): void => {
+        consumePageInteraction(event);
+    };
+
     const options = {capture: true} as EventListenerOptions;
     doc.addEventListener('pointermove', onPointerMove, options);
-    doc.addEventListener('click', onClick, true);
+    doc.addEventListener('pointerdown', onPointerDown, options);
+    doc.addEventListener('mousedown', onBlockedInteraction, options);
+    doc.addEventListener('pointerup', onBlockedInteraction, options);
+    doc.addEventListener('mouseup', onBlockedInteraction, options);
+    doc.addEventListener('click', onBlockedInteraction, options);
     return () => {
         doc.removeEventListener('pointermove', onPointerMove, options);
-        doc.removeEventListener('click', onClick, true);
+        doc.removeEventListener('pointerdown', onPointerDown, options);
+        doc.removeEventListener('mousedown', onBlockedInteraction, options);
+        doc.removeEventListener('pointerup', onBlockedInteraction, options);
+        doc.removeEventListener('mouseup', onBlockedInteraction, options);
+        doc.removeEventListener('click', onBlockedInteraction, options);
     };
 };
