@@ -62,6 +62,8 @@ const typeLabel = computed(() => {
     if (props.annotationKind === 'entity') {return '业务区域';}
     if (props.annotationKind === 'column') {return '表格列';}
     if (props.annotationKind === 'pagination') {return '翻页';}
+    if (props.entity?.kind === 'table' && typeModel.value === 'field') {return '筛选字段';}
+    if (props.entity?.kind === 'table' && typeModel.value === 'action') {return '区域操作';}
     return ANNOTATION_TYPES.find((item) => item.value === typeModel.value)?.label ?? '对象';
 });
 </script>

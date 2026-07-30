@@ -1,4 +1,5 @@
 import type {AnnotationBox} from '../layout/annotation_boxes.js';
+import {entityVisualId, paginationPageVisualId} from '../visual_ids.js';
 import type {
     CanvasEntityDraft,
     CheckResultByAnnotation,
@@ -147,6 +148,34 @@ export const candidateDisplayName = (
     if (text) {return text.length > 28 ? `${text.slice(0, 28)}…` : text;}
     if (purpose === 'entity') {return '业务区域';}
     return fallbackByLevel[candidate.level];
+};
+
+export type CheckIssueRecovery =
+    | {kind: 'entity'; entityId: string; annotationId: string}
+    | {kind: 'item'; entityId: string; annotationId: string}
+    | null;
+
+export const resolveCheckIssueRecovery = (
+    entities: readonly CanvasEntityDraft[],
+    issue: CheckResultByAnnotation | null,
+): CheckIssueRecovery => {
+    if (!issue) {return null;}
+    for (const entity of entities) {
+        if (issue.canvasAnnotationId === entityVisualId(entity.id)) {
+            return {kind: 'entity', entityId: entity.id, annotationId: issue.canvasAnnotationId};
+        }
+        if (entity.annotations.some((annotation) => annotation.id === issue.canvasAnnotationId)) {
+            return {kind: 'item', entityId: entity.id, annotationId: issue.canvasAnnotationId};
+        }
+        if (entity.columns.some((column) =>
+            column.actions.some((action) => action.id === issue.canvasAnnotationId))) {
+            return {kind: 'item', entityId: entity.id, annotationId: issue.canvasAnnotationId};
+        }
+        if (issue.canvasAnnotationId === paginationPageVisualId(entity.id)) {
+            return {kind: 'item', entityId: entity.id, annotationId: issue.canvasAnnotationId};
+        }
+    }
+    return null;
 };
 
 export const checkIssueMessage = (

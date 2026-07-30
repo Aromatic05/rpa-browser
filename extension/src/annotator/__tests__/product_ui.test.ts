@@ -6,6 +6,7 @@ import {
     checkIssueMessage,
     deriveProductStage,
     groupAnnotationBoxes,
+    resolveCheckIssueRecovery,
     summarizeEntityDraft,
     candidateDisplayName,
 } from '../state/product_ui.js';
@@ -183,4 +184,31 @@ test('checkIssueMessage explains blocking results without technical vocabulary',
         }, '查询按钮'),
         '“查询按钮”匹配到多个对象，请缩小选择范围。',
     );
+});
+
+
+test('resolveCheckIssueRecovery routes broken objects to direct reselection', () => {
+    const draftEntity = entity();
+    const issue = (canvasAnnotationId: string) => ({
+        canvasAnnotationId,
+        status: 'missing' as const,
+        matchCount: 0,
+        expected: 'unique' as const,
+        message: 'missing',
+        nodeIds: [],
+    });
+
+    assert.deepEqual(resolveCheckIssueRecovery([draftEntity], issue('entity:e0')), {
+        kind: 'entity', entityId: 'e0', annotationId: 'entity:e0',
+    });
+    assert.deepEqual(resolveCheckIssueRecovery([draftEntity], issue('f1')), {
+        kind: 'item', entityId: 'e0', annotationId: 'f1',
+    });
+    assert.deepEqual(resolveCheckIssueRecovery([draftEntity], issue('edit')), {
+        kind: 'item', entityId: 'e0', annotationId: 'edit',
+    });
+    assert.deepEqual(resolveCheckIssueRecovery([draftEntity], issue('e0_pgpage')), {
+        kind: 'item', entityId: 'e0', annotationId: 'e0_pgpage',
+    });
+    assert.equal(resolveCheckIssueRecovery([draftEntity], issue('c1')), null);
 });

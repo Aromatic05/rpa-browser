@@ -71,6 +71,7 @@ import {
     checkIssueMessage,
     deriveCanvasPresentation,
     deriveProductStage,
+    resolveCheckIssueRecovery,
     type AnnotatorProductStage,
 } from './state/product_ui.js';
 import {enrichInferredFieldNamesFromDom} from './state/dom_labels.js';
@@ -425,6 +426,18 @@ const firstBlockingCheckIssue = (state: AnnotatorState) => state.latestCheck?.fi
     (item.expected === 'unique' && item.status === 'multiple'),
 );
 
+const blockingCheckIssue = computed(() => firstBlockingCheckIssue(props.state) ?? null);
+
+const blockingIssueRecovery = computed(() =>
+    resolveCheckIssueRecovery(entities.value, blockingCheckIssue.value));
+
+const errorActionLabel = computed(() => {
+    if (productStage.value === 'scope') {return '重新选择范围';}
+    if (blockingIssueRecovery.value) {return '重新选择位置';}
+    if (blockingCheckIssue.value || productStage.value === 'recognize') {return '重新识别';}
+    return '重试';
+});
+
 const selectEntity = (entityId: string): void => {
     applyState(pickReceived(props.state, {
         entityId,
@@ -635,6 +648,32 @@ const enterEntityPickMode = (): void => {
     pickMode.value = true;
     reviewPending.value = false;
     applyState({...props.state, error: null});
+};
+
+const recoverFromError = (): void => {
+    if (productStage.value === 'scope') {
+        enterEntityPickMode();
+        return;
+    }
+    const issue = blockingCheckIssue.value;
+    const recovery = blockingIssueRecovery.value;
+    if (recovery?.kind === 'entity') {
+        enterEntityPickMode();
+        return;
+    }
+    if (recovery?.kind === 'item') {
+        applyState(pickReceived(props.state, {
+            annotationId: recovery.annotationId,
+            entityId: recovery.entityId,
+        }));
+        enterPickMode(recovery.annotationId);
+        return;
+    }
+    if (issue || productStage.value === 'recognize') {
+        void runRecognize();
+        return;
+    }
+    void runCheck();
 };
 
 const exitPickMode = (options: {keepChain?: boolean} = {}): void => {
@@ -1109,8 +1148,9 @@ watch(
             <button
                 type="button"
                 :disabled="isBusy"
-                @click="productStage === 'scope' ? enterEntityPickMode() : (productStage === 'recognize' ? runRecognize() : runCheck())"
-            >重试</button>
+                data-annotator-action="recover-error"
+                @click="recoverFromError"
+            >{{ errorActionLabel }}</button>
         </div>
 
         <div v-if="isBusy && !pickMode" class="annotator-toast busy" role="status" aria-live="polite">
