@@ -54,7 +54,7 @@ export const buildSessionKey = (state: AnnotatorState): SessionDraftKey | null =
         workspaceName: state.pageIdentity.workspaceName,
         tabName: state.pageIdentity.tabName,
         pageIdentity: state.pageIdentity,
-        profileName: state.profileName,
+        profileName: state.profileName || state.canvasDraft?.profileName || defaultProfileName(state),
     });
 };
 
@@ -160,7 +160,12 @@ export const restoreSessionDraft = async (
     if (!draft) {
         return state;
     }
-    return draftEdited(state, draft);
+    const restored = draftEdited(state, draft);
+    return {
+        ...restored,
+        profileName: state.profileName || draft.profileName || null,
+        currentEntityId: draft.entities[0]?.id ?? restored.currentEntityId,
+    };
 };
 
 export const persistSessionDraft = async (

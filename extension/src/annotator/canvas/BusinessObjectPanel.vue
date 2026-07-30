@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {computed, ref} from 'vue';
 import type {CanvasEntityDraft} from '../types.js';
 import type {
     BusinessObjectAddOption,
@@ -37,16 +38,62 @@ const stateClass = (item: BusinessObjectItem): string => {
     if (item.validation === 'unique') {return 'valid';}
     return item.origin === 'inferred' ? 'inferred' : 'confirmed';
 };
+
+const panelRef = ref<HTMLElement | null>(null);
+const panelPosition = ref<{left: number; top: number} | null>(null);
+const panelStyle = computed(() => panelPosition.value ? {
+    left: `${panelPosition.value.left}px`,
+    top: `${panelPosition.value.top}px`,
+    right: 'auto',
+    bottom: 'auto',
+} : {});
+let drag: {pointerId: number; x: number; y: number} | null = null;
+
+const onDragStart = (event: PointerEvent): void => {
+    if (event.button !== 0 || !panelRef.value) {return;}
+    const rect = panelRef.value.getBoundingClientRect();
+    panelPosition.value = {left: rect.left, top: rect.top};
+    drag = {pointerId: event.pointerId, x: event.clientX, y: event.clientY};
+    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+    event.preventDefault();
+};
+
+const onDragMove = (event: PointerEvent): void => {
+    if (!drag || drag.pointerId !== event.pointerId || !panelRef.value || !panelPosition.value) {return;}
+    const rect = panelRef.value.getBoundingClientRect();
+    const dx = event.clientX - drag.x;
+    const dy = event.clientY - drag.y;
+    drag.x = event.clientX;
+    drag.y = event.clientY;
+    panelPosition.value = {
+        left: Math.max(8, Math.min(panelPosition.value.left + dx, window.innerWidth - rect.width - 8)),
+        top: Math.max(8, Math.min(panelPosition.value.top + dy, window.innerHeight - rect.height - 8)),
+    };
+};
+
+const onDragEnd = (event: PointerEvent): void => {
+    if (!drag || drag.pointerId !== event.pointerId) {return;}
+    const handle = event.currentTarget as HTMLElement;
+    if (handle.hasPointerCapture(event.pointerId)) {handle.releasePointerCapture(event.pointerId);}
+    drag = null;
+};
 </script>
 
 <template>
-    <section class="business-object-panel" data-rpa-snapshot-ignore="true">
+    <section ref="panelRef" class="business-object-panel" :style="panelStyle" data-rpa-snapshot-ignore="true" role="dialog" aria-label="识别结果">
         <header>
-            <div>
+            <div
+                class="panel-drag-handle"
+                title="拖动识别结果"
+                @pointerdown="onDragStart"
+                @pointermove="onDragMove"
+                @pointerup="onDragEnd"
+                @pointercancel="onDragEnd"
+            >
                 <small>识别结果</small>
                 <strong>{{ entity.name || '当前区域' }}</strong>
             </div>
-            <button type="button" aria-label="关闭识别结果" @click="emit('close')">×</button>
+            <button type="button" aria-label="关闭识别结果" @pointerdown.stop @click="emit('close')">×</button>
         </header>
 
         <div class="object-summary" aria-label="识别结果统计">
@@ -58,6 +105,7 @@ const stateClass = (item: BusinessObjectItem): string => {
         </div>
 
         <div class="object-list">
+            <p v-if="items.length === 0" class="object-empty">没有识别到内容，可从下方手动添加。</p>
             <article
                 v-for="item in items"
                 :key="item.annotationId"
@@ -135,6 +183,7 @@ const stateClass = (item: BusinessObjectItem): string => {
     gap: 12px;
 }
 .business-object-panel header > div { min-width: 0; }
+.panel-drag-handle { flex: 1; cursor: move; touch-action: none; user-select: none; }
 .business-object-panel header small,
 .business-object-panel header span {
     display: block;
@@ -172,6 +221,7 @@ const stateClass = (item: BusinessObjectItem): string => {
     font-size: 10px;
     font-weight: 700;
 }
+.object-empty { margin: 12px 4px; color: #64748b; font-size: 11px; text-align: center; }
 .object-list {
     min-height: 80px;
     overflow: auto;
@@ -265,11 +315,18 @@ const stateClass = (item: BusinessObjectItem): string => {
 .business-object-panel footer strong,
 .business-object-panel footer small { display: block; }
 .business-object-panel footer strong { font-size: 11px; }
-.business-object-panel footer small { margin-top: 3px; color: #475569; font-size: 9px; }
+.business-object-panel footer small { margin-top: 3px; color: #475569; font-size: 10px; }
 .business-object-panel button:disabled { opacity: .45; cursor: default; }
 @media (max-width: 560px) {
     .object-main { grid-template-columns: 62px minmax(0, 1fr); }
     .object-main em { grid-column: 2; }
     .business-object-panel footer { grid-template-columns: 1fr; }
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+    outline: 2px solid #2563eb;
+    outline-offset: 2px;
 }
 </style>

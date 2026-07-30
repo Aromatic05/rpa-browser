@@ -7,6 +7,7 @@ import type {CheckResultByAnnotation, PickCandidate} from '../types.js';
 import EditCard from '../canvas/EditCard.vue';
 import {entityVisualId, paginationPageVisualId} from '../visual_ids.js';
 import {annotationVisualState, type BusinessObjectEditPatch} from '../state/product_ui.js';
+import {placeFloatingPanel} from '../layout/floating_panel.js';
 
 const props = defineProps<{
     boxes: AnnotationBox[];
@@ -152,25 +153,27 @@ const moveEditCard = (dx: number, dy: number): void => {
 };
 
 const editCardStyle = computed((): Record<string, string> => {
-    const placement = editCardPlacement.value;
-    if (!placement) {return {display: 'none'};}
+    if (!editCardPlacement.value) {return {display: 'none'};}
     const width = Math.min(320, Math.max(280, props.viewportWidth - 24));
-    const desiredLeft = placement.box.x + placement.box.width / 2 - width / 2 + editCardOffset.value.x;
-    const left = Math.max(12, Math.min(desiredLeft, props.viewportWidth - width - 12));
     const estimatedHeight =
         250 +
         (props.candidateChainLength > 1 ? 38 : 0) +
         (selectedCanSetPrimaryKey.value ? 58 : 0);
-    const desiredTop = placement.box.y - 16 + editCardOffset.value.y;
+    const target = selectedBox.value?.boxes[0] ?? null;
+    const base = placeFloatingPanel({
+        target,
+        viewport: {width: props.viewportWidth, height: props.viewportHeight},
+        panel: {width, height: estimatedHeight},
+    });
+    const left = Math.max(12, Math.min(
+        base.left + editCardOffset.value.x,
+        props.viewportWidth - width - 12,
+    ));
     const top = Math.max(12, Math.min(
-        desiredTop,
+        base.top + editCardOffset.value.y,
         Math.max(12, props.viewportHeight - estimatedHeight - 12),
     ));
-    return {
-        left: `${left}px`,
-        top: `${top}px`,
-        width: `${width}px`,
-    };
+    return {left: `${left}px`, top: `${top}px`, width: `${width}px`};
 });
 
 const labelStyle = (label: LabelVM): Record<string, string> => ({

@@ -227,6 +227,26 @@ test('restoreSessionDraft restores an unsaved draft when page identity matches',
     assert.equal(next.dirty, true);
 });
 
+test('restoreSessionDraft finds a first-time unsaved profile by its stable page-derived name', async () => {
+    const storage = createMemoryStorage();
+    const store = createSessionStore(storage);
+    const empty = openLoaded(initialState(), makeOpenResult({
+        profileName: null,
+        canvasDraft: null,
+        artifactRevision: null,
+    }));
+    const draft = makeDraft('page-test-page');
+    const editing = {
+        ...draftEdited(empty, draft),
+        profileName: 'page-test-page',
+    };
+    await persistSessionDraft(editing, store);
+    const restored = await restoreSessionDraft(empty, store);
+    assert.deepEqual(restored.canvasDraft, draft);
+    assert.equal(restored.profileName, 'page-test-page');
+    assert.equal(restored.dirty, true);
+});
+
 test('restoreSessionDraft returns state unchanged when no stored draft', async () => {
     const storage = createMemoryStorage();
     const store = createSessionStore(storage);

@@ -75,6 +75,7 @@ const fieldKeyValue = ref('');
 const columnKindValue = ref<NonNullable<CanvasColumnDraft['kind']>>('text');
 const actionIntentValue = ref('');
 const primaryKeyValue = ref(false);
+const deleteConfirmVisible = ref(false);
 
 const resetLocalDraft = (): void => {
     nameValue.value = props.annotation?.name ?? '';
@@ -83,6 +84,7 @@ const resetLocalDraft = (): void => {
         (selectedColumn.value?.actions.length ? 'action_column' : 'text');
     actionIntentValue.value = selectedRowAction.value?.actionIntent ?? props.annotation?.businessKey ?? '';
     primaryKeyValue.value = props.isPrimaryKey;
+    deleteConfirmVisible.value = false;
 };
 
 watch(
@@ -246,7 +248,18 @@ const onDragEnd = (event: PointerEvent): void => {
         <div class="secondary-actions">
             <button v-if="canReselect" type="button" class="secondary" @click="emit('reselect')">重新选择位置</button>
             <button v-if="canIgnore" type="button" class="secondary" @click="emit('ignore')">不使用</button>
-            <button v-if="canDelete" type="button" class="danger" @click="emit('delete')">删除</button>
+            <button
+                v-if="canDelete && !deleteConfirmVisible"
+                type="button"
+                class="danger"
+                @click="deleteConfirmVisible = true"
+            >删除…</button>
+        </div>
+
+        <div v-if="deleteConfirmVisible" class="delete-confirm" role="alert">
+            <span>确认删除这个对象？</span>
+            <button type="button" class="secondary" @click="deleteConfirmVisible = false">取消</button>
+            <button type="button" class="danger" @click="emit('delete')">确认删除</button>
         </div>
 
         <footer>
@@ -302,7 +315,7 @@ const onDragEnd = (event: PointerEvent): void => {
 }
 .close-card:hover { background: #f1f5f9; }
 .business-field { display: grid; gap: 5px; }
-.business-field > span { color: #475569; font-size: 10px; font-weight: 700; }
+.business-field > span { color: #475569; font-size: 11px; font-weight: 700; }
 .business-field input,
 .business-field select {
     width: 100%;
@@ -353,7 +366,7 @@ const onDragEnd = (event: PointerEvent): void => {
 .primary-key-copy strong,
 .primary-key-copy small { display: block; }
 .primary-key-copy strong { font-size: 11px; }
-.primary-key-copy small { margin-top: 2px; color: #64748b; font-size: 9px; }
+.primary-key-copy small { margin-top: 2px; color: #64748b; font-size: 10px; }
 .primary-key-switch {
     width: 30px;
     height: 18px;
@@ -400,6 +413,28 @@ const onDragEnd = (event: PointerEvent): void => {
     flex-wrap: wrap;
     gap: 6px;
 }
+
+.delete-confirm {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 6px;
+    align-items: center;
+    padding: 7px;
+    border: 1px solid #fecaca;
+    border-radius: 9px;
+    background: #fff7f7;
+    color: #991b1b;
+    font-size: 10px;
+    font-weight: 700;
+}
+.delete-confirm button {
+    min-height: 30px;
+    border-radius: 7px;
+    padding: 0 9px;
+    font-size: 9px;
+    font-weight: 700;
+    cursor: pointer;
+}
 .canvas-edit-card footer {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -410,4 +445,11 @@ const onDragEnd = (event: PointerEvent): void => {
 .danger { border: 1px solid #fecaca; background: #fff7f7; color: #b91c1c; }
 .apply { border: 1px solid #2563eb; background: #2563eb; color: #fff; }
 .apply:disabled { opacity: .4; cursor: default; }
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+    outline: 2px solid #2563eb;
+    outline-offset: 2px;
+}
 </style>

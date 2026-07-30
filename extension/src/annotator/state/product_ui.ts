@@ -102,10 +102,13 @@ export const summarizeEntityDraft = (entity: CanvasEntityDraft | null): EntityOb
     if (!entity) {
         return {fields: 0, queryActions: 0, columns: 0, rowActions: 0, pagination: 0, total: 0};
     }
-    const fields = entity.annotations.filter((item) => item.type === 'field').length;
-    const queryActions = entity.annotations.filter((item) => item.type === 'action').length;
-    const rowActions = entity.columns.reduce((sum, column) => sum + column.actions.length, 0);
-    const columns = entity.columns.length;
+    const fields = entity.annotations.filter((item) =>
+        item.type === 'field' && item.disposition === 'active').length;
+    const queryActions = entity.annotations.filter((item) =>
+        item.type === 'action' && item.disposition === 'active').length;
+    const rowActions = entity.columns.reduce((sum, column) =>
+        sum + column.actions.filter((action) => action.disposition === 'active').length, 0);
+    const columns = entity.columns.filter((column) => column.disposition === 'active').length;
     const pagination = entity.pagination ? 1 : 0;
     return {
         fields,

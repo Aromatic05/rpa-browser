@@ -121,7 +121,7 @@ const dockSide = computed<'top' | 'bottom'>(() => {
 }
 .scope-dot { width: 9px; height: 9px; flex: 0 0 auto; border-radius: 50%; background: #2563eb; box-shadow: 0 0 0 4px rgba(37, 99, 235, .12); }
 .scope-summary > div { min-width: 0; }
-.scope-summary small { display: block; color: #64748b; font-size: 9px; line-height: 1.2; }
+.scope-summary small { display: block; color: #64748b; font-size: 11px; line-height: 1.2; }
 .scope-summary strong {
     display: block;
     overflow: hidden;
@@ -184,5 +184,12 @@ const dockSide = computed<'top' | 'bottom'>(() => {
     .scope-summary { flex-basis: calc(100% - 120px); }
     .scope-layer-actions { order: 3; flex: 1 1 100%; }
     .scope-layer-actions button { flex: 1; }
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+    outline: 2px solid #2563eb;
+    outline-offset: 2px;
 }
 </style>

@@ -134,6 +134,20 @@ test('summarizeEntityDraft reports user-facing object counts', () => {
     });
 });
 
+test('summarizeEntityDraft excludes objects marked as not used', () => {
+    const draft = entity();
+    draft.annotations[0].disposition = 'ignored';
+    draft.columns[1].actions[0].disposition = 'ignored';
+    assert.deepEqual(summarizeEntityDraft(draft), {
+        fields: 0,
+        queryActions: 1,
+        columns: 2,
+        rowActions: 0,
+        pagination: 1,
+        total: 4,
+    });
+});
+
 test('listEntityBusinessObjects exposes table semantics instead of generic DOM types', () => {
     const items = listEntityBusinessObjects(entity(), [{
         canvasAnnotationId: 'f1',
