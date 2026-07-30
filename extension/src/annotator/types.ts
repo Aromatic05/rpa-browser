@@ -202,6 +202,11 @@ export type PageIdentity = {
     url: string;
 };
 
+export type AnnotatorProfileOption = {
+    profileName: string;
+    label: string;
+};
+
 export type AnnotatorOpenResult = {
     workspaceName: string;
     tabName: string;
@@ -211,6 +216,8 @@ export type AnnotatorOpenResult = {
     canvasDraft: CanvasDraft | null;
     artifactRevision: string | null;
     visualTargetRefs: VisualTargetRef[];
+    availableProfiles?: AnnotatorProfileOption[];
+    suggestedProfileName?: string;
 };
 
 export type AnnotatorPickResult = {

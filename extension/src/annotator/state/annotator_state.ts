@@ -4,6 +4,7 @@ import type {
     VisualTargetRef,
     AnnotatorOpenResult,
     PageIdentity,
+    AnnotatorProfileOption,
 } from '../types.js';
 
 export type AnnotatorMode = 'idle' | 'loading' | 'editing' | 'checking' | 'saving';
@@ -18,6 +19,8 @@ export type AnnotatorState = {
     artifactRevision: string | null;
     pageIdentity: PageIdentity | null;
     profileName: string | null;
+    availableProfiles: AnnotatorProfileOption[];
+    suggestedProfileName: string | null;
     history: { past: CanvasDraft[]; future: CanvasDraft[] };
     visualBindings: VisualTargetRef[];
     latestCheck: CheckResultByAnnotation[] | null;
@@ -34,6 +37,8 @@ export const initialState = (): AnnotatorState => ({
     artifactRevision: null,
     pageIdentity: null,
     profileName: null,
+    availableProfiles: [],
+    suggestedProfileName: null,
     history: { past: [], future: [] },
     visualBindings: [],
     latestCheck: null,
@@ -55,6 +60,8 @@ export const openLoaded = (state: AnnotatorState, result: AnnotatorOpenResult): 
     artifactRevision: result.artifactRevision,
     pageIdentity: { workspaceName: result.workspaceName, tabName: result.tabName, url: result.url },
     profileName: result.profileName,
+    availableProfiles: result.availableProfiles ?? [],
+    suggestedProfileName: result.suggestedProfileName ?? null,
     visualBindings: result.visualTargetRefs,
     dirty: false,
     stale: false,

@@ -721,6 +721,39 @@ test('legacy canvas annotator protocol is adapted to the V2 PageSession and Quer
         }, memory.workflow);
         assert.equal((saved.reply.payload as {saved: boolean}).saved, true);
         assert.equal(memory.profiles.has('order-form'), true);
+
+        const discovered = await invoke(runtime, 'entity_rules.annotator.open', {
+            workspaceName: 'ws-1',
+            tabName: 'tab-1',
+            url: page.url(),
+        }, memory.workflow);
+        const discoveredPayload = discovered.reply.payload as {
+            profileName: string | null;
+            canvasDraft: unknown;
+            artifactRevision: string | null;
+            availableProfiles: Array<{profileName: string; label: string}>;
+            suggestedProfileName: string;
+        };
+        assert.equal(discoveredPayload.profileName, null);
+        assert.equal(discoveredPayload.canvasDraft, null);
+        assert.equal(discoveredPayload.artifactRevision, null);
+        assert.deepEqual(discoveredPayload.availableProfiles.map((item) => item.profileName), ['order-form']);
+        assert.notEqual(discoveredPayload.suggestedProfileName, 'order-form');
+
+        const explicitlyOpened = await invoke(runtime, 'entity_rules.annotator.open', {
+            workspaceName: 'ws-1',
+            tabName: 'tab-1',
+            url: page.url(),
+            profileName: 'order-form',
+        }, memory.workflow);
+        const explicitlyOpenedPayload = explicitlyOpened.reply.payload as {
+            profileName: string | null;
+            canvasDraft: unknown;
+            artifactRevision: string | null;
+        };
+        assert.equal(explicitlyOpenedPayload.profileName, 'order-form');
+        assert.ok(explicitlyOpenedPayload.canvasDraft);
+        assert.ok(explicitlyOpenedPayload.artifactRevision);
     } finally {
         await browser.close();
     }

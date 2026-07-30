@@ -21,7 +21,7 @@ export type AnnotatorDispatch = (
 ) => Promise<AnnotatorReply>;
 
 export type AnnotatorClient = {
-    open: (payload: { workspaceName: string; tabName: string; url: string }) => Promise<AnnotatorOpenResult>;
+    open: (payload: { tabName: string; url: string; profileName?: string }) => Promise<AnnotatorOpenResult>;
     pick: (payload: { fingerprint: PickFingerprint; purpose: PickPurpose }) => Promise<AnnotatorPickResult>;
     recognize: (payload: { canvasDraft?: CanvasDraft | null }) => Promise<AnnotatorRecognizeResult>;
     visualize: (payload: {canvasDraft: CanvasDraft}) => Promise<AnnotatorVisualizeResult>;

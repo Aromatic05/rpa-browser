@@ -12,6 +12,7 @@ import {
     draftEdited,
     pickReceived,
     failed,
+    openLoaded,
     type AnnotatorState,
 } from './state/annotator_state.js';
 import type {SessionStore} from './state/session_store.js';
@@ -115,6 +116,10 @@ const settingsOpen = ref(false);
 const settingsNameValue = ref('');
 const objectPanelOpen = ref(false);
 const exitConfirmOpen = ref(false);
+const entryChoiceOpen = ref(false);
+const entryChoiceBusy = ref(false);
+const recoverableSessionState = ref<AnnotatorState | null>(null);
+const selectedProfileName = ref('');
 const pickRequestedType = ref<BusinessObjectAddOption['type'] | null>(null);
 const pickError = ref<string | null>(null);
 const pickGuideVisible = ref(false);
@@ -393,6 +398,83 @@ const applySettings = (): void => {
     settingsOpen.value = false;
 };
 
+const entryChoiceMessage = computed(() => {
+    const hasDraft = Boolean(recoverableSessionState.value?.canvasDraft);
+    const hasSaved = props.state.availableProfiles.length > 0;
+    if (hasDraft && hasSaved) {return '发现未完成草稿和已有标注';}
+    if (hasDraft) {return '发现未完成草稿';}
+    return '发现已有标注';
+});
+
+const startFreshAnnotation = async (): Promise<void> => {
+    if (entryChoiceBusy.value) {return;}
+    entryChoiceBusy.value = true;
+    try {
+        const recoverable = recoverableSessionState.value;
+        const recoverableKey = recoverable ? buildSessionKey(recoverable) : null;
+        if (recoverableKey && props.sessionStore) {
+            await props.sessionStore.clearDraft(recoverableKey);
+        }
+        const next: AnnotatorState = {
+            ...props.state,
+            canvasDraft: null,
+            currentEntityId: null,
+            currentAnnotationId: null,
+            dirty: false,
+            stale: false,
+            artifactRevision: null,
+            profileName: props.state.suggestedProfileName,
+            history: {past: [], future: []},
+            visualBindings: [],
+            latestCheck: null,
+            error: null,
+        };
+        recoverableSessionState.value = null;
+        entryChoiceOpen.value = false;
+        entryPreparedFor = entrySignatureForState(next);
+        applyState(next);
+        enterEntityPickMode();
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        applyState(failed(props.state, `无法新建标注：${message}`));
+    } finally {
+        entryChoiceBusy.value = false;
+    }
+};
+
+const continueSessionDraft = (): void => {
+    const recovered = recoverableSessionState.value;
+    if (!recovered?.canvasDraft) {return;}
+    entryChoiceOpen.value = false;
+    recoverableSessionState.value = null;
+    entryPreparedFor = entrySignatureForState(recovered);
+    applyState(recovered);
+};
+
+const editSelectedProfile = async (): Promise<void> => {
+    const page = props.state.pageIdentity;
+    const profileName = selectedProfileName.value;
+    if (!page || !profileName || !props.client || entryChoiceBusy.value) {return;}
+    entryChoiceBusy.value = true;
+    try {
+        const result = await props.client.open({
+            tabName: page.tabName,
+            url: page.url,
+            profileName,
+        });
+        const next = openLoaded(props.state, result);
+        entryChoiceOpen.value = false;
+        recoverableSessionState.value = null;
+        entryPreparedFor = entrySignatureForState(next);
+        applyState(next);
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        applyState(failed(props.state, `无法打开已有标注：${message}`));
+    } finally {
+        entryChoiceBusy.value = false;
+    }
+};
+
 const requestExit = (): void => {
     if (hasLocalPendingChanges.value) {
         showActionGuide('请先应用或取消当前修改。');
@@ -463,6 +545,9 @@ const annotatorDebugJson = computed(() => JSON.stringify({
     pendingAnnotationEdit: pendingAnnotationEdit.value,
     detailEditorDirty: detailEditorDirty.value,
     settingsDirty: settingsDirty.value,
+    entryChoiceOpen: entryChoiceOpen.value,
+    availableProfiles: props.state.availableProfiles,
+    recoverableSessionDraft: Boolean(recoverableSessionState.value?.canvasDraft),
     exitConfirmOpen: exitConfirmOpen.value,
     pickGuideVisible: pickGuideVisible.value,
 }));
@@ -1263,6 +1348,8 @@ const onKeyDown = (event: KeyboardEvent): void => {
             let handled = true;
             if (exitConfirmOpen.value) {
                 exitConfirmOpen.value = false;
+            } else if (entryChoiceOpen.value) {
+                emit('exit');
             } else if (pickMode.value) {
                 onPickCancel();
             } else if (pendingAnnotationEdit.value) {
@@ -1429,10 +1516,20 @@ const schedulePersist = (): void => {
     }, 400);
 };
 
-const sessionSignature = (): string | null => buildSessionKey(props.state);
+const entrySignatureForState = (state: AnnotatorState): string | null => {
+    const page = state.pageIdentity;
+    if (!page) {return null;}
+    return [
+        page.workspaceName,
+        page.tabName,
+        page.url,
+        state.profileName ?? '__new__',
+        state.artifactRevision ?? '__none__',
+    ].join('|');
+};
 
-let sessionRestoredFor: string | null = null;
-let sessionRestoreRequest = 0;
+let entryPreparedFor: string | null = null;
+let entryPrepareRequest = 0;
 
 onMounted(() => {
     void nextTick().then(() => {
@@ -1541,20 +1638,14 @@ watch(
 watch(
     () => props.state.mode,
     (mode) => {
-        if (mode === 'idle') {
-            sessionRestoredFor = null;
-            sessionRestoreRequest += 1;
-            exitPickMode();
-            return;
-        }
-        if (
-            mode === 'editing'
-            && !props.state.canvasDraft
-            && !pickMode.value
-            && sessionRestoredFor === sessionSignature()
-        ) {
-            enterEntityPickMode();
-        }
+        if (mode !== 'idle') {return;}
+        entryPreparedFor = null;
+        entryPrepareRequest += 1;
+        entryChoiceOpen.value = false;
+        entryChoiceBusy.value = false;
+        recoverableSessionState.value = null;
+        selectedProfileName.value = '';
+        exitPickMode();
     },
 );
 
@@ -1565,29 +1656,45 @@ watch(
 );
 
 watch(
-    () => props.state.pageIdentity,
-    (pageIdentity) => {
-        if (!pageIdentity) {
+    () => [
+        props.state.pageIdentity,
+        props.state.availableProfiles,
+        props.state.canvasDraft,
+        props.state.profileName,
+        props.state.artifactRevision,
+    ],
+    () => {
+        if (props.state.mode !== 'editing' || !props.state.pageIdentity) {return;}
+        const sig = entrySignatureForState(props.state);
+        if (!sig || entryPreparedFor === sig) {return;}
+        if (props.state.canvasDraft) {
+            entryPreparedFor = sig;
+            entryChoiceOpen.value = false;
+            recoverableSessionState.value = null;
             return;
         }
-        const sig = sessionSignature();
-        if (!sig || sessionRestoredFor === sig) {
-            return;
-        }
-        const request = ++sessionRestoreRequest;
+        const request = ++entryPrepareRequest;
         void (async () => {
-            const next = await restoreSessionDraft(props.state, props.sessionStore);
-            if (request !== sessionRestoreRequest || sessionSignature() !== sig) {
+            const recovered = await restoreSessionDraft(props.state, props.sessionStore);
+            if (request !== entryPrepareRequest || entrySignatureForState(props.state) !== sig) {return;}
+            entryPreparedFor = sig;
+            recoverableSessionState.value = recovered.canvasDraft ? recovered : null;
+            const firstProfile = props.state.availableProfiles[0]?.profileName ?? '';
+            if (!selectedProfileName.value || !props.state.availableProfiles.some(
+                (profile) => profile.profileName === selectedProfileName.value,
+            )) {
+                selectedProfileName.value = firstProfile;
+            }
+            if (recoverableSessionState.value || props.state.availableProfiles.length > 0) {
+                entryChoiceOpen.value = true;
+                exitPickMode();
                 return;
             }
-            applyState(next);
-            sessionRestoredFor = sig;
-            if (next.mode === 'editing' && !next.canvasDraft && !pickMode.value) {
-                enterEntityPickMode();
-            }
+            entryChoiceOpen.value = false;
+            enterEntityPickMode();
         })();
     },
-    {immediate: true},
+    {deep: true, immediate: true},
 );
 </script>
 
@@ -1601,6 +1708,7 @@ watch(
         :data-annotator-profile="state.profileName || ''"
         :data-product-stage="productStage"
         :data-pick-mode="pickMode ? 'active' : 'inactive'"
+        :data-entry-choice="entryChoiceOpen ? 'active' : 'inactive'"
         :class="{picking: pickMode}"
     >
         <div ref="coordinateProbe" class="coordinate-probe" aria-hidden="true"></div>
@@ -1619,6 +1727,44 @@ watch(
         <div v-if="isBusy && !pickMode" class="annotator-toast busy" role="status" aria-live="polite">
             <span class="busy-spinner"></span>
             <p>{{ busyLabel }}</p>
+        </div>
+
+        <div
+            v-if="entryChoiceOpen && !pickMode"
+            class="floating-dock entry-choice-dock dock-bottom"
+            data-annotator-action="entry-choice"
+        >
+            <strong>{{ entryChoiceMessage }}</strong>
+            <button
+                v-if="recoverableSessionState?.canvasDraft"
+                type="button"
+                data-annotator-action="continue-draft"
+                :disabled="entryChoiceBusy"
+                @click="continueSessionDraft"
+            >继续草稿</button>
+            <template v-if="state.availableProfiles.length">
+                <select v-model="selectedProfileName" aria-label="选择已有标注" :disabled="entryChoiceBusy">
+                    <option
+                        v-for="profile in state.availableProfiles"
+                        :key="profile.profileName"
+                        :value="profile.profileName"
+                    >{{ profile.label }}</option>
+                </select>
+                <button
+                    type="button"
+                    data-annotator-action="edit-existing"
+                    :disabled="entryChoiceBusy || !selectedProfileName"
+                    @click="editSelectedProfile"
+                >编辑已有</button>
+            </template>
+            <button
+                type="button"
+                class="dock-primary"
+                data-annotator-action="start-fresh"
+                :disabled="entryChoiceBusy"
+                @click="startFreshAnnotation"
+            >新建标注</button>
+            <button type="button" aria-label="退出标注" :disabled="entryChoiceBusy" @click="emit('exit')">×</button>
         </div>
 
         <BusinessObjectPanel
@@ -1974,6 +2120,31 @@ watch(
     pointer-events: auto;
 }
 .floating-dock > .dock-primary { pointer-events: auto; }
+.entry-choice-dock { gap: 7px; }
+.entry-choice-dock strong {
+    max-width: 220px;
+    overflow: hidden;
+    padding: 0 6px;
+    color: #334155;
+    font-size: 11px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.entry-choice-dock select {
+    max-width: 190px;
+    height: 34px;
+    border: 1px solid #cbd5e1;
+    border-radius: 9px;
+    padding: 0 9px;
+    background: #fff;
+    color: #0f172a;
+    font-size: 11px;
+    pointer-events: auto;
+}
+.entry-choice-dock select:focus-visible {
+    outline: 2px solid #2563eb;
+    outline-offset: 2px;
+}
 .floating-dock > button:not(.dock-primary):hover:not(:disabled) { background: #f1f5f9; color: #0f172a; }
 .floating-dock > button:disabled { opacity: .35; cursor: default; }
 .floating-dock > i { width: 1px; height: 22px; background: #e2e8f0; }

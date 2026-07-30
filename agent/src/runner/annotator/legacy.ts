@@ -151,7 +151,11 @@ const legacyOpen = async (
 ): Promise<ControlPlaneResult> => {
     const tabName = optionalString(payload.tabName);
     const current = await ensureFreshPageSession(deps, input.workspace.name, {tabName});
-    const profile = findProfile(input.workspace.workflow, optionalString(payload.profileName), current.entry.pageUrl);
+    const requestedProfileName = optionalString(payload.profileName);
+    const availableProfiles = findMatchingProfiles(input.workspace.workflow, current.entry.pageUrl);
+    const profile = requestedProfileName
+        ? findProfileByName(input.workspace.workflow, requestedProfileName)
+        : undefined;
     const evaluation = profile
         ? evaluateAnnotatorDraft(current.entry, profileToDraft(profile), 'check')
         : undefined;
@@ -171,6 +175,11 @@ const legacyOpen = async (
             canvasDraft,
             artifactRevision: profile ? revision(current.entry) : null,
             visualTargetRefs: canvasDraft ? visualRefs(current.entry, projection, canvasDraft) : [],
+            availableProfiles: availableProfiles.map((candidate) => ({
+                profileName: candidate.name,
+                label: profileDisplayName(candidate),
+            })),
+            suggestedProfileName: suggestProfileName(input.workspace.workflow, current.entry.pageUrl),
         }),
         events: [],
     };
@@ -1168,27 +1177,64 @@ const hasTarget = (target: LegacyTarget): boolean => Boolean(
     || target.placeholderEquals || target.classContains || target.textContains || target.ariaContains || target.relation,
 );
 
-const findProfile = (
+const findProfileByName = (
     workflow: WorkspaceRouterInput['workspace']['workflow'],
-    requestedName: string | undefined,
-    pageUrl: string,
+    requestedName: string,
 ): WorkflowEntityRules | undefined => {
-    if (requestedName) {
-        const found = workflow.get(requestedName, {kind: 'entity_rules'});
-        return found?.kind === 'entity_rules' ? found : undefined;
-    }
+    const found = workflow.get(requestedName, {kind: 'entity_rules'});
+    return found?.kind === 'entity_rules' ? found : undefined;
+};
+
+const findMatchingProfiles = (
+    workflow: WorkspaceRouterInput['workspace']['workflow'],
+    pageUrl: string,
+): WorkflowEntityRules[] => {
+    const matches: WorkflowEntityRules[] = [];
     for (const item of workflow.list({kind: 'entity_rules'})) {
         const found = workflow.get(item.name, {kind: 'entity_rules'});
         if (found?.kind !== 'entity_rules') {continue;}
-        if (!found.page?.urlPattern) {return found;}
+        if (!found.page?.urlPattern) {
+            matches.push(found);
+            continue;
+        }
         try {
-            if (new RegExp(found.page.urlPattern).test(pageUrl)) {return found;}
+            if (new RegExp(found.page.urlPattern).test(pageUrl)) {matches.push(found);}
         } catch {
             continue;
         }
     }
-    return undefined;
+    return matches;
 };
+
+const profileDisplayName = (profile: WorkflowEntityRules): string => {
+    const root = profile.annotation.bindings.find((binding) =>
+        typeof binding.businessTag === 'string') ?? profile.annotation.bindings[0];
+    return readString(root?.displayName)
+        ?? readString(root?.businessName)
+        ?? profile.name;
+};
+const suggestProfileName = (
+    workflow: WorkspaceRouterInput['workspace']['workflow'],
+    pageUrl: string,
+): string => {
+    let suffix = 'rule';
+    try {
+        const url = new URL(pageUrl);
+        suffix = `${url.hostname}${url.pathname}`
+            .replace(/[^a-z0-9]+/gi, '-')
+            .replace(/^-|-$/g, '')
+            .toLowerCase() || 'rule';
+    } catch {
+        // Keep the stable fallback.
+    }
+    const base = `page-${suffix}`;
+    const existing = new Set(workflow.list({kind: 'entity_rules'}).map((item) => item.name));
+    if (!existing.has(base)) {return base;}
+    let index = 2;
+    while (existing.has(`${base}-${index}`)) {index += 1;}
+    return `${base}-${index}`;
+};
+
 
 const profileToDraft = (profile: WorkflowEntityRules): AnnotatorDraft => ({
     profileName: profile.name,
