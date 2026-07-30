@@ -28,6 +28,9 @@ const createDeps = async (options: {
         pageUrl: currentUrl,
         capture: async () => fixture.capture,
     });
+    const currentEntry = deps.pageSession.read(page as never);
+    assert.ok(currentEntry);
+    deps.pageSession.ensureFresh = async () => currentEntry;
     return deps;
 };
 

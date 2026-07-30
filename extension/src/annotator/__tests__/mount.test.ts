@@ -104,6 +104,11 @@ test('mountAnnotator appends host to documentElement and returns a handle that c
     assert.equal(host.style.pointerEvents, 'none', 'pick mode must let pointer input reach the page');
     mountedHandlers?.onPickModeChange?.(false);
     assert.equal(host.style.pointerEvents, 'none', 'leaving pick mode must not turn the host into a click shield');
+    handle.setHighlightOnly(true);
+    assert.equal(host.hasAttribute('data-rpa-highlight-only'), true);
+    assert.equal(host.style.pointerEvents, 'none', 'highlight-only mode must keep the page clickable');
+    handle.setHighlightOnly(false);
+    assert.equal(host.hasAttribute('data-rpa-highlight-only'), false);
     handle.hide();
     assert.equal(host.style.display, 'none');
     handle.unmount();

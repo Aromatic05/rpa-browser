@@ -1350,7 +1350,13 @@ const onIgnoreAnnotation = (annotationId: string): void => {
     showActionGuide('已设为不使用，可使用撤销恢复。');
 };
 
+const isHighlightOnlyMode = (): boolean => {
+    const root = coordinateProbe.value?.getRootNode();
+    return root instanceof ShadowRoot && root.host.hasAttribute('data-rpa-highlight-only');
+};
+
 const onKeyDown = (event: KeyboardEvent): void => {
+    if (isHighlightOnlyMode()) {return;}
     const action = resolveKeyboardAction(event, {
         annotatorActive: props.state.mode !== 'idle',
         inPickMode: pickMode.value,
@@ -1443,7 +1449,7 @@ const syncDomMarkers = (): void => {
 };
 
 const onDomMarkerClick = (event: MouseEvent): void => {
-    if (pickMode.value || props.state.mode !== 'editing') {return;}
+    if (isHighlightOnlyMode() || pickMode.value || props.state.mode !== 'editing') {return;}
     const annotationId = annotationIdFromDomTarget(event.target);
     if (!annotationId) {return;}
     event.preventDefault();
@@ -1460,7 +1466,7 @@ const eventPathHasAction = (event: Event, action: string): boolean =>
     );
 
 const onGlobalPointerDown = (event: PointerEvent): void => {
-    if (pickMode.value) {return;}
+    if (isHighlightOnlyMode() || pickMode.value) {return;}
     const insideEditor = eventPathHasClass(event, 'annotator-edit-anchor') ||
         eventPathHasClass(event, 'pending-edit-anchor');
     const insideDock = eventPathHasClass(event, 'floating-dock');

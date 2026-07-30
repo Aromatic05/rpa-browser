@@ -213,6 +213,13 @@ test('maybePickCheckpoint: entityExists matches by businessTag', async () => {
         },
     ]);
     const deps = await createDepsWithBusinessEntity();
+    const refreshReasons: Array<'explicit' | undefined> = [];
+    deps.pageSession.ensureFresh = async (input) => {
+        refreshReasons.push(input.reason);
+        const cached = deps.pageSession.read(input.pageKey);
+        assert.ok(cached);
+        return cached;
+    };
     const result = await maybePickCheckpoint(
         createCtx({
             failedCtx: createFailedCtx({
@@ -222,6 +229,7 @@ test('maybePickCheckpoint: entityExists matches by businessTag', async () => {
     );
     assert.equal(result.active, true);
     assert.equal(result.checkpoint?.id, 'cp-entity-tag');
+    assert.deepEqual(refreshReasons, ['explicit']);
 });
 
 test('maybeBindCheckpoint: binds variables', async () => {

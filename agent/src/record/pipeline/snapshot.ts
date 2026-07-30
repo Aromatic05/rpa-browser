@@ -3,6 +3,7 @@ import {getLogger} from '../../logging/logger';
 import type {RunStepsDeps} from '../../runner/run_steps_types';
 import {ensurePageSessionForPage} from '../../runner/session/capture';
 import type {PageSnapshotCapture} from '../../snapshot';
+import type {StepEntityRulesControl} from '../../snapshot/rules/model';
 import type {RecorderEvent} from '../capture/recorder';
 import type {RecordingState} from './state';
 
@@ -14,6 +15,7 @@ export type RecordingSnapshotPort = {
         workspaceName: string;
         page: Page;
         explicit?: boolean;
+        entityRules?: StepEntityRulesControl;
     }) => Promise<RecordPageSnapshot>;
 };
 
@@ -22,7 +24,10 @@ export const createRecordingSnapshotPort = (deps: RunStepsDeps): RecordingSnapsh
         deps.pageSession.markDirty(page, reason);
     },
     ensureFresh: async (input) => (
-        await ensurePageSessionForPage(deps, input.workspaceName, input.page, {explicit: input.explicit})
+        await ensurePageSessionForPage(deps, input.workspaceName, input.page, {
+            explicit: input.explicit,
+            entityRules: input.entityRules,
+        })
     ).capture,
 });
 
@@ -66,7 +71,16 @@ export const resolveRecordSnapshotForEvent = async (input: {
         return undefined;
     }
     try {
-        const snapshot = await state.snapshotPort.ensureFresh({workspaceName, page});
+        const session = state.checkpointRecordings.get(workspaceName);
+        const entityRules = session?.profileName
+            ? {selection: 'explicit' as const, profiles: [session.profileName], strict: true}
+            : undefined;
+        const snapshot = await state.snapshotPort.ensureFresh({
+            workspaceName,
+            page,
+            explicit: Boolean(entityRules),
+            entityRules,
+        });
         recordLog('record_snapshot_resolve', {
             result: 'page_session',
             eventType: event.type,

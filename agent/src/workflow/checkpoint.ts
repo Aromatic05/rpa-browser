@@ -82,6 +82,7 @@ export const createWorkflowCheckpointProvider = (
 ): DslCheckpointProvider => ({
     getCheckpoint: (id: string) => checkpoints.get(id)?.checkpoint ?? null,
     getCheckpointResolves: (id: string) => checkpoints.get(id)?.stepResolves ?? null,
+    listCheckpoints: () => [...checkpoints.values()].map((item) => item.checkpoint),
 });
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>

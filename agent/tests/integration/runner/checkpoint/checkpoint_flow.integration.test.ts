@@ -11,7 +11,7 @@ import {
     setRunStepsDeps,
 } from '../../../../src/runner/run_steps';
 import { loadRunnerConfig } from '../../../../src/config/loader';
-import type { StepUnion } from '../../../../src/runner/steps/types';
+import type { StepResolve, StepUnion } from '../../../../src/runner/steps/types';
 import type { Checkpoint } from '../../../../src/runner/checkpoint';
 import { completeRunStepsDeps } from '../../../helpers/run_steps_workspace';
 
@@ -29,13 +29,15 @@ const createRuntime = () => ({
 });
 
 const createDeps = (executors: Record<string, (step: StepUnion) => Promise<any>>) => {
-    setRunStepsDeps(completeRunStepsDeps({
+    const deps = completeRunStepsDeps({
         runtime: createRuntime() as any,
         config: loadRunnerConfig({ configPath: '__non_exist__.json' }),
         pluginHost: {
             getExecutors: () => executors,
         } as any,
-    }));
+    });
+    setRunStepsDeps(deps);
+    return deps;
 };
 
 const baseStep = (): StepUnion => ({ id: 's1', name: 'browser.click', args: { selector: '#x' } }) as StepUnion;
@@ -43,9 +45,21 @@ const baseStep = (): StepUnion => ({ id: 's1', name: 'browser.click', args: { se
 const runOne = async (opts: {
     executors: Record<string, (step: StepUnion) => Promise<any>>;
     checkpoints?: Checkpoint[];
+    persistedCheckpoints?: Checkpoint[];
+    persistedCheckpointResolves?: Record<string, Record<string, StepResolve>>;
     onCheckpoint?: (cp: any, signals: any) => void | Promise<void>;
 }) => {
-    createDeps(opts.executors);
+    const deps = createDeps(opts.executors);
+    if (opts.persistedCheckpoints) {
+        const workspace = deps.resolveWorkspace('ws-1') as any;
+        workspace.checkpoint = {
+            getProvider: () => ({
+                getCheckpoint: (id: string) => opts.persistedCheckpoints?.find((item) => item.id === id) ?? null,
+                getCheckpointResolves: (id: string) => opts.persistedCheckpointResolves?.[id] ?? null,
+                listCheckpoints: () => opts.persistedCheckpoints ?? [],
+            }),
+        };
+    }
     const queue = createStepsQueue([baseStep()], { closed: true });
     const pipe = createResultPipe();
     const signals = createSignalChannel();
@@ -76,6 +90,69 @@ test('failed step without checkpoint stays failed', async () => {
     assert.equal(results.length, 1);
     assert.equal(results[0].ok, false);
     assert.equal(results[0].error?.code, 'ERR_NOT_FOUND');
+});
+
+test('failed step loads persisted checkpoints when request does not override candidates', async () => {
+    let clickAttempts = 0;
+    const {cp, results} = await runOne({
+        executors: {
+            'browser.click': async (step) => {
+                clickAttempts += 1;
+                return clickAttempts === 1
+                    ? {stepId: step.id, ok: false, error: {code: 'ERR_NOT_FOUND', message: 'boom'}}
+                    : {stepId: step.id, ok: true};
+            },
+            'browser.fill': async (step) => ({stepId: step.id, ok: true}),
+        },
+        persistedCheckpoints: [{
+            id: 'persisted-recovery',
+            name: 'persisted recovery',
+            trigger: {matchRules: [{errorCode: 'ERR_NOT_FOUND'}]},
+            content: [{id: 'repair', name: 'browser.fill', args: {selector: '#repair', value: 'done'}} as StepUnion],
+        }],
+    });
+    assert.equal(cp.status, 'completed');
+    assert.equal(results[0].ok, true);
+    assert.equal(clickAttempts, 2);
+});
+
+test('persisted recovery uses its own resolve sidecar', async () => {
+    let clickAttempts = 0;
+    let observedResolveSelector: string | undefined;
+    const {cp, results} = await runOne({
+        executors: {
+            'browser.click': async (step) => {
+                clickAttempts += 1;
+                return clickAttempts === 1
+                    ? {stepId: step.id, ok: false, error: {code: 'ERR_NOT_FOUND', message: 'boom'}}
+                    : {stepId: step.id, ok: true};
+            },
+            'browser.fill': async (step) => {
+                observedResolveSelector = step.resolve?.hint?.raw?.selector;
+                return {stepId: step.id, ok: true};
+            },
+        },
+        persistedCheckpoints: [{
+            id: 'persisted-recovery',
+            kind: 'recovery',
+            name: 'persisted recovery',
+            trigger: {matchRules: [{errorCode: 'ERR_NOT_FOUND'}]},
+            content: [{
+                id: 'repair',
+                name: 'browser.fill',
+                args: {resolveId: 'repair-target', value: 'done'},
+            } as StepUnion],
+        }],
+        persistedCheckpointResolves: {
+            'persisted-recovery': {
+                'repair-target': {hint: {raw: {selector: '#repair'}}},
+            },
+        },
+    });
+    assert.equal(cp.status, 'completed');
+    assert.equal(results[0].ok, true);
+    assert.equal(clickAttempts, 2);
+    assert.equal(observedResolveSelector, '#repair');
 });
 
 test('failed step hits checkpoint, content success, original step retry succeeds', async () => {

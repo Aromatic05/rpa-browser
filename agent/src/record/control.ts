@@ -35,7 +35,9 @@ import {isValidStepResolve} from '../runner/steps/resolve_utils';
 import type { WorkflowDummy, WorkflowRecording } from '../workflow';
 import {
     buildRecordedCheckpoint,
+    checkpointEntityRuleOptions,
     checkpointStepSummary,
+    requireCheckpointEntityRuleOption,
 } from './checkpoint_recording';
 import type { ExecutionBindings } from '../runtime/execution/bindings';
 import type { PageRegistry } from '../runtime/browser/page_registry';
@@ -173,7 +175,7 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
             requireWorkspaceState(workspace, 'idle', action.type);
             const workspaceName = requireWorkspaceName(action, action.type);
             if (getCheckpointRecordingSession(services.recordingState, workspaceName)) {
-                throw new ActionError(ERROR_CODES.ERR_BAD_STATE, '已有恢复步骤等待保存或取消');
+                throw new ActionError(ERROR_CODES.ERR_BAD_STATE, '已有检查点录制等待保存或取消');
             }
             const activeTab = workspace.tabs.getActiveTab();
             if (!activeTab) {throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'active tab not found');}
@@ -183,6 +185,13 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
                 tabName: activeTab.name,
                 timeoutMs: 1500,
             });
+            const checkpointPayload = isRecord(action.payload) ? action.payload : {};
+            const requestedKind = checkpointPayload.kind === 'recovery' ? 'recovery' : 'procedure';
+            const entityOption = requireCheckpointEntityRuleOption(
+                workspace,
+                binding.page.url(),
+                checkpointPayload,
+            );
             if (!listExecutableTabs(workspace).length) {
                 throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, '当前没有可录制的页面');
             }
@@ -197,11 +206,21 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
                     title: tab.title,
                     active: tab.name === activeTab.name,
                 })),
+                kind: requestedKind,
+                profileName: entityOption.profileName,
+                businessTag: entityOption.businessTag,
+                entityKind: entityOption.entityKind,
             });
             try {
                 const started = await startRecordingCapture(services, workspace, action.type);
                 return {
-                    reply: replyAction(action, {status: 'recording', stepCount: 0, pageUrl: started.pageUrl}),
+                    reply: replyAction(action, {
+                        status: 'recording',
+                        stepCount: 0,
+                        pageUrl: started.pageUrl,
+                        kind: requestedKind,
+                        entityRule: entityOption,
+                    }),
                     events: [],
                 };
             } catch (error) {
@@ -215,7 +234,7 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
             const workspaceName = requireWorkspaceName(action, action.type);
             const session = getCheckpointRecordingSession(services.recordingState, workspaceName);
             if (session?.status !== 'recording') {
-                throw new ActionError(ERROR_CODES.ERR_BAD_STATE, '没有正在录制的恢复步骤');
+                throw new ActionError(ERROR_CODES.ERR_BAD_STATE, '没有正在录制的检查点');
             }
             await stopRecordingCapture(services, workspace, action.type);
             await awaitRecordingEnhancementsForToken(services.recordingState, session.token);
@@ -230,7 +249,14 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
                 reply: replyAction(action, {
                     status: 'review',
                     stepCount: ordered.length,
-                    steps: checkpointStepSummary(ordered),
+                    steps: checkpointStepSummary(ordered, recordedBundle.enrichments),
+                    entityRules: checkpointEntityRuleOptions(workspace, recordedBundle.manifest?.entryUrl || workspace.tabs.getActiveTab()?.page?.url() || ''),
+                    kind: session.kind,
+                    entityRule: session.profileName ? {
+                        profileName: session.profileName,
+                        businessTag: session.businessTag,
+                        entityKind: session.entityKind,
+                    } : null,
                 }),
                 events: [],
             };
@@ -240,14 +266,27 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
             const workspaceName = requireWorkspaceName(action, action.type);
             const session = getCheckpointRecordingSession(services.recordingState, workspaceName);
             if (!session) {
-                return {reply: replyAction(action, {status: 'idle', stepCount: 0, steps: []}), events: []};
+                const pageUrl = workspace.tabs.getActiveTab()?.page?.url() || '';
+                return {reply: replyAction(action, {
+                    status: 'idle',
+                    stepCount: 0,
+                    steps: [],
+                    entityRules: checkpointEntityRuleOptions(workspace, pageUrl),
+                }), events: []};
             }
             const bundle = getRecordingBundle(services.recordingState, session.token);
             return {
                 reply: replyAction(action, {
                     status: session.status,
                     stepCount: bundle.steps.length,
-                    steps: checkpointStepSummary(bundle.steps),
+                    steps: checkpointStepSummary(bundle.steps, bundle.enrichments),
+                    entityRules: checkpointEntityRuleOptions(workspace, bundle.manifest?.entryUrl || ''),
+                    kind: session.kind,
+                    entityRule: session.profileName ? {
+                        profileName: session.profileName,
+                        businessTag: session.businessTag,
+                        entityKind: session.entityKind,
+                    } : null,
                 }),
                 events: [],
             };
@@ -273,18 +312,24 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
             const workspaceName = requireWorkspaceName(action, action.type);
             const session = getCheckpointRecordingSession(services.recordingState, workspaceName);
             if (session?.status !== 'review') {
-                throw new ActionError(ERROR_CODES.ERR_BAD_STATE, '请先完成恢复步骤录制');
+                throw new ActionError(ERROR_CODES.ERR_BAD_STATE, '请先完成检查点录制');
             }
             const bundle = getRecordingBundle(services.recordingState, session.token);
             const artifact = buildRecordedCheckpoint(
                 workspace,
                 bundle.steps,
                 bundle.enrichments,
-                action.payload || {},
+                {
+                    ...(action.payload || {}),
+                    kind: session.kind,
+                    profileName: session.profileName,
+                    businessTag: session.businessTag,
+                    entityKind: session.entityKind,
+                },
             );
             const saved = workspace.workflow.save(artifact);
             if (saved.kind !== 'checkpoint') {
-                throw new ActionError(ERROR_CODES.ERR_INTERNAL, '保存恢复步骤失败');
+                throw new ActionError(ERROR_CODES.ERR_INTERNAL, '保存检查点失败');
             }
             clearCheckpointRecording(services.recordingState, workspaceName);
             return {

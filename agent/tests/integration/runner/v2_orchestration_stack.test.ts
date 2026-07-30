@@ -52,6 +52,15 @@ test('V2 PageSession supports Step refs, content refs, manual entities, Checkpoi
         pageUrl: page.url(),
         capture: async () => fixture.capture,
     });
+    const ensureFresh = deps.pageSession.ensureFresh.bind(deps.pageSession);
+    deps.pageSession.ensureFresh = async (input) => {
+        if (input.reason === 'explicit') {
+            const current = deps.pageSession.read(page as never);
+            assert.ok(current);
+            return current;
+        }
+        return await ensureFresh(input);
+    };
 
     const steps: StepUnion[] = [
         {

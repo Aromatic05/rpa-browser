@@ -23,7 +23,7 @@ const flush = async (): Promise<void> => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 };
 
-test('checkpoint recorder keeps user input after a failed save and only exposes task language', async () => {
+const setupDom = () => {
     const dom = new JSDOM('<!doctype html><html><body></body></html>', {url: 'https://example.test/orders'});
     const previous = {
         window: globalThis.window,
@@ -45,27 +45,68 @@ test('checkpoint recorder keeps user input after a failed save and only exposes 
         Event: dom.window.Event,
         Node: dom.window.Node,
     });
-
     const host = document.createElement('div');
     const shadow = host.attachShadow({mode: 'open'});
     const launchers = document.createElement('div');
     const surface = document.createElement('div');
     shadow.append(launchers, surface);
     document.body.appendChild(host);
+    return {
+        dom,
+        previous,
+        shadow,
+        cleanup: () => {
+            Object.assign(globalThis, previous);
+            dom.window.close();
+        },
+        launchers,
+        surface,
+    };
+};
 
+const procedureReviewPayload = {
+    status: 'review',
+    stepCount: 3,
+    steps: [
+        {index: 1, stepId: 'fill-order', stepName: 'browser.fill', label: '填写 订单编号', recordedValue: 'SO-001', profileName: 'order-query-rule', businessTag: 'orders.query', fieldKey: 'orderNo', fieldHint: '订单编号'},
+        {index: 2, stepId: 'fill-buyer', stepName: 'browser.fill', label: '填写 采购人', recordedValue: '王小虎', profileName: 'order-query-rule', businessTag: 'orders.query', fieldKey: 'buyer', fieldHint: '采购人'},
+        {index: 3, stepId: 'click-query', stepName: 'browser.click', label: '点击 查询', profileName: 'order-query-rule', businessTag: 'orders.query', actionHint: 'query'},
+    ],
+    kind: 'procedure',
+    entityRule: {profileName: 'order-query-rule', businessTag: 'orders.query', entityKind: 'table'},
+    entityRules: [{
+        profileName: 'order-query-rule',
+        businessTag: 'orders.query',
+        entityKind: 'table',
+        label: '订单查询',
+        fields: [
+            {fieldKey: 'orderNo', label: '订单编号', targetKind: 'table.filter'},
+            {fieldKey: 'buyer', label: '采购人', targetKind: 'table.filter'},
+        ],
+        actions: [{actionIntent: 'query', label: '查询', targetKind: 'table.module_action'}],
+        outputs: [
+            {kind: 'none', label: '无'},
+            {kind: 'table.currentRows', label: '当前列表数据'},
+        ],
+    }],
+};
+
+test('checkpoint recorder defaults to a business procedure and preserves mappings after save failure', async () => {
+    const fixture = setupDom();
     const calls: Array<{type: string; payload?: Record<string, unknown>}> = [];
     let saveAttempts = 0;
     const active: boolean[] = [];
+    const previews: unknown[] = [];
     const handle = mountCheckpointRecorderUI({
-        launchers,
-        surface,
+        launchers: fixture.launchers,
+        surface: fixture.surface,
         onActiveChange: (value) => active.push(value),
+        onEntityRulePreview: (value) => {previews.push(value);},
         sendAction: async (type, payload) => {
             calls.push({type, payload});
+            if (type === 'checkpoint.record.get') {return reply(type, {...procedureReviewPayload, status: 'idle', steps: []});}
             if (type === 'checkpoint.record.start') {return reply(type, {status: 'recording'});}
-            if (type === 'checkpoint.record.stop') {
-                return reply(type, {status: 'review', stepCount: 1, steps: [{index: 1, label: '点击'}]});
-            }
+            if (type === 'checkpoint.record.stop') {return reply(type, procedureReviewPayload);}
             if (type === 'checkpoint.record.save') {
                 saveAttempts += 1;
                 return saveAttempts === 1
@@ -77,167 +118,174 @@ test('checkpoint recorder keeps user input after a failed save and only exposes 
     });
 
     try {
-        const launcher = shadow.querySelector('.checkpoint-launch') as HTMLButtonElement;
+        const launcher = fixture.shadow.querySelector('.checkpoint-launch') as HTMLButtonElement;
+        assert.equal(launcher.textContent, '录制检查点');
         launcher.click();
         await flush();
-        assert.equal(shadow.textContent?.includes('正在录制恢复步骤'), true);
-        assert.deepEqual(active, [true]);
-
-        shadow.querySelector('[data-rpa-checkpoint-action="stop"]')
-            ?.dispatchEvent(new dom.window.MouseEvent('click', {bubbles: true}));
+        assert.equal(fixture.shadow.textContent?.includes('选择业务区域'), true);
+        assert.equal(fixture.shadow.textContent?.includes('高亮不会拦截操作'), true);
+        assert.deepEqual(previews.at(-1), {
+            profileName: 'order-query-rule',
+            businessTag: 'orders.query',
+            entityKind: 'table',
+        });
+        fixture.shadow.querySelector('[data-rpa-checkpoint-action="start"]')
+            ?.dispatchEvent(new fixture.dom.window.MouseEvent('click', {bubbles: true}));
         await flush();
-        assert.equal(shadow.textContent?.includes('已录制：点击'), true);
-
-        const name = shadow.querySelector('input[type="text"]') as HTMLInputElement;
-        name.value = '关闭登录提示';
-        name.dispatchEvent(new dom.window.Event('input', {bubbles: true}));
-        const selects = [...shadow.querySelectorAll('select')] as HTMLSelectElement[];
-        selects[0].value = 'text_visible';
-        selects[0].dispatchEvent(new dom.window.Event('change', {bubbles: true}));
-        const textInputs = [...shadow.querySelectorAll('input[type="text"]')] as HTMLInputElement[];
-        textInputs[1].value = '登录已失效';
-        textInputs[1].dispatchEvent(new dom.window.Event('input', {bubbles: true}));
-        selects[1].value = 'click';
-        selects[1].dispatchEvent(new dom.window.Event('change', {bubbles: true}));
-
-        shadow.querySelector('[data-rpa-checkpoint-action="save"]')
-            ?.dispatchEvent(new dom.window.MouseEvent('click', {bubbles: true}));
+        assert.equal(fixture.shadow.textContent?.includes('正在录制检查点'), true);
+        assert.deepEqual(calls.find((call) => call.type === 'checkpoint.record.start')?.payload, {
+            kind: 'procedure',
+            profileName: 'order-query-rule',
+            businessTag: 'orders.query',
+            entityKind: 'table',
+        });
+        fixture.shadow.querySelector('[data-rpa-checkpoint-action="stop"]')
+            ?.dispatchEvent(new fixture.dom.window.MouseEvent('click', {bubbles: true}));
         await flush();
-        assert.equal(shadow.textContent?.includes('暂时无法保存'), true);
-        assert.equal((shadow.querySelector('input[type="text"]') as HTMLInputElement).value, '关闭登录提示');
-        const retainedInputs = [...shadow.querySelectorAll('input[type="text"]')] as HTMLInputElement[];
-        assert.equal(retainedInputs[1].value, '登录已失效');
 
-        shadow.querySelector('[data-rpa-checkpoint-action="save"]')
-            ?.dispatchEvent(new dom.window.MouseEvent('click', {bubbles: true}));
+        assert.equal(fixture.shadow.textContent?.includes('标注检查点'), true);
+        assert.equal(fixture.shadow.textContent?.includes('成立条件'), true);
+        assert.equal(fixture.shadow.textContent?.includes('输入'), true);
+        assert.equal(fixture.shadow.textContent?.includes('输出'), true);
+        assert.equal(fixture.shadow.textContent?.includes('操作失败时'), false);
+
+        const name = fixture.shadow.querySelector('[data-rpa-checkpoint-field="name"]') as HTMLInputElement;
+        name.value = '查询订单';
+        name.dispatchEvent(new fixture.dom.window.Event('input', {bubbles: true}));
+
+        const mappingOrder = fixture.shadow.querySelector('[data-rpa-checkpoint-map="fill-order"]') as HTMLSelectElement;
+        const mappingBuyer = fixture.shadow.querySelector('[data-rpa-checkpoint-map="fill-buyer"]') as HTMLSelectElement;
+        const mappingAction = fixture.shadow.querySelector('[data-rpa-checkpoint-map="click-query"]') as HTMLSelectElement;
+        assert.equal(mappingOrder.value, 'input:orderNo');
+        assert.equal(mappingBuyer.value, 'input:buyer');
+        assert.equal(mappingAction.value, 'action:query');
+
+        fixture.shadow.querySelector('[data-rpa-checkpoint-action="save"]')
+            ?.dispatchEvent(new fixture.dom.window.MouseEvent('click', {bubbles: true}));
         await flush();
-        assert.equal(shadow.textContent?.includes('恢复步骤已保存'), true);
+        assert.equal(fixture.shadow.textContent?.includes('暂时无法保存'), true);
+        assert.equal((fixture.shadow.querySelector('[data-rpa-checkpoint-field="name"]') as HTMLInputElement).value, '查询订单');
+        assert.equal((fixture.shadow.querySelector('[data-rpa-checkpoint-map="fill-order"]') as HTMLSelectElement).value, 'input:orderNo');
+
+        fixture.shadow.querySelector('[data-rpa-checkpoint-action="save"]')
+            ?.dispatchEvent(new fixture.dom.window.MouseEvent('click', {bubbles: true}));
+        await flush();
+        assert.equal(fixture.shadow.textContent?.includes('检查点已保存'), true);
         assert.deepEqual(active, [true, false]);
 
         const saveCalls = calls.filter((call) => call.type === 'checkpoint.record.save');
-        assert.equal(saveCalls.length, 2);
-        assert.deepEqual(saveCalls[1].payload, {
-            name: '关闭登录提示',
-            triggerKind: 'text_visible',
-            triggerValue: '登录已失效',
-            operation: 'click',
-            retryOriginal: true,
+        assert.deepEqual(saveCalls.at(-1)?.payload, {
+            kind: 'procedure',
+            name: '查询订单',
+            mappings: [
+                {stepId: 'fill-order', kind: 'input', fieldKey: 'orderNo'},
+                {stepId: 'fill-buyer', kind: 'input', fieldKey: 'buyer'},
+                {stepId: 'click-query', kind: 'action', actionIntent: 'query'},
+            ],
+            outputKind: 'none',
         });
-        const visibleText = shadow.textContent || '';
-        assert.equal(visibleText.includes('checkpointId'), false);
-        assert.equal(visibleText.includes('matchRules'), false);
-        assert.equal(visibleText.includes('resolveId'), false);
+        const visibleText = fixture.shadow.textContent || '';
+        assert.equal(/checkpointId|matchRules|resolveId|businessTag|profileName/.test(visibleText), false);
     } finally {
         handle.unmount();
-        Object.assign(globalThis, previous);
-        dom.window.close();
+        fixture.cleanup();
     }
 });
 
-test('checkpoint recorder restores a review session and lets the user discard it directly', async () => {
-    const dom = new JSDOM('<!doctype html><html><body></body></html>', {url: 'https://example.test/orders'});
-    const previous = {
-        window: globalThis.window,
-        document: globalThis.document,
-        HTMLElement: globalThis.HTMLElement,
-        HTMLButtonElement: globalThis.HTMLButtonElement,
-        HTMLInputElement: globalThis.HTMLInputElement,
-        HTMLSelectElement: globalThis.HTMLSelectElement,
-        Event: globalThis.Event,
-        Node: globalThis.Node,
-    };
-    Object.assign(globalThis, {
-        window: dom.window,
-        document: dom.window.document,
-        HTMLElement: dom.window.HTMLElement,
-        HTMLButtonElement: dom.window.HTMLButtonElement,
-        HTMLInputElement: dom.window.HTMLInputElement,
-        HTMLSelectElement: dom.window.HTMLSelectElement,
-        Event: dom.window.Event,
-        Node: dom.window.Node,
-    });
-
-    const host = document.createElement('div');
-    const shadow = host.attachShadow({mode: 'open'});
-    const launchers = document.createElement('div');
-    const surface = document.createElement('div');
-    shadow.append(launchers, surface);
-    document.body.appendChild(host);
-    const actions: string[] = [];
-    const active: boolean[] = [];
+test('error recovery remains an explicit secondary checkpoint type', async () => {
+    const fixture = setupDom();
+    const calls: Array<{type: string; payload?: Record<string, unknown>}> = [];
+    const previews: unknown[] = [];
     const handle = mountCheckpointRecorderUI({
-        launchers,
-        surface,
-        onActiveChange: (value) => active.push(value),
-        sendAction: async (type) => {
-            actions.push(type);
+        launchers: fixture.launchers,
+        surface: fixture.surface,
+        onEntityRulePreview: (value) => {previews.push(value);},
+        sendAction: async (type, payload) => {
+            calls.push({type, payload});
             if (type === 'checkpoint.record.get') {
-                return reply(type, {status: 'review', stepCount: 1, steps: [{index: 1, label: '点击'}]});
+                return reply(type, {...procedureReviewPayload, status: 'idle', steps: []});
             }
-            return reply(type, {canceled: true});
+            if (type === 'checkpoint.record.start') {return reply(type, {status: 'recording', kind: 'recovery'});}
+            if (type === 'checkpoint.record.stop') {
+                return reply(type, {
+                    status: 'review',
+                    kind: 'recovery',
+                    stepCount: 1,
+                    steps: [{index: 1, stepId: 'click-close', stepName: 'browser.click', label: '点击 关闭', profileName: 'order-query-rule', businessTag: 'orders.query', actionHint: 'query'}],
+                    entityRule: procedureReviewPayload.entityRule,
+                    entityRules: procedureReviewPayload.entityRules,
+                });
+            }
+            return reply(type, {saved: true});
         },
     });
-
     try {
+        const launcher = fixture.shadow.querySelector('.checkpoint-launch') as HTMLButtonElement;
+        launcher.click();
         await flush();
-        assert.equal(shadow.textContent?.includes('标注恢复步骤'), true);
-        assert.equal(shadow.textContent?.includes('1 个操作'), true);
-        assert.deepEqual(active, [true]);
-        (shadow.querySelector('[data-rpa-checkpoint-action="discard"]') as HTMLButtonElement).click();
+        const kind = fixture.shadow.querySelector('[data-rpa-checkpoint-field="kind"]') as HTMLSelectElement;
+        kind.value = 'recovery';
+        kind.dispatchEvent(new fixture.dom.window.Event('change', {bubbles: true}));
+        assert.equal(fixture.shadow.textContent?.includes('错误状态会保持高亮'), true);
+        assert.equal(fixture.shadow.textContent?.includes('业务区域'), false);
+        assert.equal(fixture.shadow.textContent?.includes('错误状态'), true);
+        assert.deepEqual(previews.at(-1), {
+            profileName: 'order-query-rule',
+            businessTag: 'orders.query',
+            entityKind: 'table',
+        });
+        fixture.shadow.querySelector('[data-rpa-checkpoint-action="start"]')
+            ?.dispatchEvent(new fixture.dom.window.MouseEvent('click', {bubbles: true}));
         await flush();
-        assert.equal(shadow.querySelector('.checkpoint-recorder')?.hasAttribute('hidden'), true);
-        assert.equal((shadow.querySelector('.checkpoint-launch') as HTMLButtonElement).textContent, '录制恢复');
-        assert.deepEqual(actions, ['checkpoint.record.get', 'checkpoint.record.cancel']);
-        assert.deepEqual(active, [true, false]);
+        assert.deepEqual(calls.find((call) => call.type === 'checkpoint.record.start')?.payload, {
+            kind: 'recovery',
+            profileName: 'order-query-rule',
+            businessTag: 'orders.query',
+            entityKind: 'table',
+        });
+        fixture.shadow.querySelector('[data-rpa-checkpoint-action="stop"]')
+            ?.dispatchEvent(new fixture.dom.window.MouseEvent('click', {bubbles: true}));
+        await flush();
+        assert.equal(fixture.shadow.textContent?.includes('错误状态'), true);
+        assert.equal(fixture.shadow.textContent?.includes('订单查询'), true);
+        assert.equal(fixture.shadow.textContent?.includes('操作失败时，如果'), false);
+
+        const name = fixture.shadow.querySelector('[data-rpa-checkpoint-field="name"]') as HTMLInputElement;
+        name.value = '关闭登录提示';
+        name.dispatchEvent(new fixture.dom.window.Event('input', {bubbles: true}));
+        fixture.shadow.querySelector('[data-rpa-checkpoint-action="save"]')
+            ?.dispatchEvent(new fixture.dom.window.MouseEvent('click', {bubbles: true}));
+        await flush();
+        assert.deepEqual(calls.at(-1), {
+            type: 'checkpoint.record.save',
+            payload: {
+                kind: 'recovery',
+                name: '关闭登录提示',
+                operation: 'any',
+                retryOriginal: true,
+            },
+        });
     } finally {
         handle.unmount();
-        Object.assign(globalThis, previous);
-        dom.window.close();
+        fixture.cleanup();
     }
 });
 
 test('restored recording status auto-hides without losing the active launcher', async () => {
-    const dom = new JSDOM('<!doctype html><html><body></body></html>', {url: 'https://example.test/orders'});
-    const previous = {
-        window: globalThis.window,
-        document: globalThis.document,
-        HTMLElement: globalThis.HTMLElement,
-        HTMLButtonElement: globalThis.HTMLButtonElement,
-        HTMLInputElement: globalThis.HTMLInputElement,
-        HTMLSelectElement: globalThis.HTMLSelectElement,
-        Event: globalThis.Event,
-        Node: globalThis.Node,
-    };
-    Object.assign(globalThis, {
-        window: dom.window,
-        document: dom.window.document,
-        HTMLElement: dom.window.HTMLElement,
-        HTMLButtonElement: dom.window.HTMLButtonElement,
-        HTMLInputElement: dom.window.HTMLInputElement,
-        HTMLSelectElement: dom.window.HTMLSelectElement,
-        Event: dom.window.Event,
-        Node: dom.window.Node,
-    });
-    const host = document.createElement('div');
-    const shadow = host.attachShadow({mode: 'open'});
-    const launchers = document.createElement('div');
-    const surface = document.createElement('div');
-    shadow.append(launchers, surface);
-    document.body.appendChild(host);
+    const fixture = setupDom();
     const handle = mountCheckpointRecorderUI({
-        launchers,
-        surface,
+        launchers: fixture.launchers,
+        surface: fixture.surface,
         recordingAutoHideMs: 5,
         sendAction: async (type) => reply(type, {status: 'recording', stepCount: 0, steps: []}),
     });
     try {
         await new Promise((resolve) => setTimeout(resolve, 20));
-        assert.equal(shadow.querySelector('.checkpoint-recorder')?.hasAttribute('hidden'), true);
-        assert.equal((shadow.querySelector('.checkpoint-launch') as HTMLButtonElement).textContent, '录制中');
-        assert.equal((shadow.querySelector('.checkpoint-launch') as HTMLButtonElement).classList.contains('active'), true);
+        assert.equal(fixture.shadow.querySelector('.checkpoint-recorder')?.hasAttribute('hidden'), true);
+        assert.equal((fixture.shadow.querySelector('.checkpoint-launch') as HTMLButtonElement).textContent, '录制中');
+        assert.equal((fixture.shadow.querySelector('.checkpoint-launch') as HTMLButtonElement).classList.contains('active'), true);
     } finally {
         handle.unmount();
-        Object.assign(globalThis, previous);
-        dom.window.close();
+        fixture.cleanup();
     }
 });

@@ -83,6 +83,7 @@ export type AnnotatorHandle = {
     getState: () => AnnotatorState;
     open: (result: AnnotatorOpenResult) => void;
     exit: () => void;
+    setHighlightOnly: (enabled: boolean) => void;
 };
 
 export const mountAnnotator = (opts: AnnotatorMountOptions): AnnotatorHandle => {
@@ -119,6 +120,9 @@ export const mountAnnotator = (opts: AnnotatorMountOptions): AnnotatorHandle => 
         },
         exit: () => {
             app.setState(exitAnnotation(app.getState()));
+        },
+        setHighlightOnly: (enabled) => {
+            host.toggleAttribute('data-rpa-highlight-only', enabled);
         },
     };
 };

@@ -72,7 +72,10 @@ export const createPageTools = (base: ToolsBuildContext): PageTools => ({
                 ({ expression, arg }) => {
                     try {
                         const fn = new Function('arg', `return (${expression});`) as (arg: unknown) => unknown;
-                        return fn(arg);
+                        const value = fn(arg);
+                        return typeof value === 'function'
+                            ? (value as (arg: unknown) => unknown)(arg)
+                            : value;
                     } catch {
                         const fn = new Function('arg', expression) as (arg: unknown) => unknown;
                         return fn(arg);

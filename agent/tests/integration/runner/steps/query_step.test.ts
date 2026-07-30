@@ -9,6 +9,8 @@ import {createV2BusinessPage} from '../../../helpers/v2_business_page';
 const createDeps = async (): Promise<{
     deps: RunStepsDeps;
     nodeIds: Record<string, string>;
+    page: {url: () => string};
+    refreshReasons: Array<string | undefined>;
 }> => {
     const page = {url: () => 'https://example.test/orders'};
     const deps = completeRunStepsDeps({config: {} as never, pluginHost: {} as never}, {
@@ -22,7 +24,14 @@ const createDeps = async (): Promise<{
         pageUrl: page.url(),
         capture: async () => fixture.capture,
     });
-    return {deps, nodeIds: fixture.nodeIds};
+    const currentEntry = deps.pageSession.read(page as never);
+    assert.ok(currentEntry);
+    const refreshReasons: Array<string | undefined> = [];
+    deps.pageSession.ensureFresh = async (input) => {
+        refreshReasons.push(input.reason);
+        return currentEntry;
+    };
+    return {deps, nodeIds: fixture.nodeIds, page, refreshReasons};
 };
 
 test('browser.query finds canonical rows from PageSession descendants', async () => {
@@ -111,6 +120,24 @@ test('browser.query executes business query and target through V2 EntityView', a
     }, deps, 'ws-1');
     assert.equal(moduleAction.ok, true);
     if (moduleAction.ok) {assert.equal((moduleAction.data as any).nodeId, nodeIds.submit);}
+});
+
+test('business queries refresh rule selection instead of inheriting a prior explicit profile', async () => {
+    const {deps, refreshReasons} = await createDeps();
+
+    await executeBrowserQuery({
+        id: 'q-explicit',
+        name: 'browser.query',
+        args: {op: 'entity', businessTag: 'order.table.main', query: 'table.rowCount'},
+        entityRules: {selection: 'explicit', profiles: ['orders-table'], strict: true},
+    }, deps, 'ws-1');
+    await executeBrowserQuery({
+        id: 'q-default',
+        name: 'browser.query',
+        args: {op: 'entity', businessTag: 'order.table.main', query: 'table.rowCount'},
+    }, deps, 'ws-1');
+
+    assert.deepEqual(refreshReasons, ['explicit', 'explicit']);
 });
 
 test('browser.query returns ERR_BAD_ARGS on invalid relation or unsupported from', async () => {

@@ -13,6 +13,7 @@ import {
 import {
     readControlOptionByNodeId,
     readSelectedValuesFromControl,
+    resolveRecordNodeBinding,
     resolveRecordTargetBinding,
 } from '../../../src/record/pipeline/target_binding';
 import type {RecorderEvent} from '../../../src/record/capture/recorder';
@@ -48,7 +49,8 @@ const createCapture = (): {capture: PageSnapshotCapture; nodeIds: Record<string,
         scopes: [{id: 'main', kind: 'document', rootCaptureId: 'html', status: 'captured', completeness}],
         nodes: [
             node('html', 'html', undefined, ['body']),
-            node('body', 'body', 'html', ['trigger', 'popup']),
+            node('body', 'body', 'html', ['ordinary', 'trigger', 'popup']),
+            node('ordinary', 'button', 'body', [], {id: 'Ordinary'}, 'Ordinary'),
             node('trigger', 'input', 'body', [], {
                 id: 'Status',
                 role: 'combobox',
@@ -89,6 +91,29 @@ const event = (selector: string): RecorderEvent => ({
     ts: 1,
     type: 'click',
     selector,
+});
+
+
+test('record node binding accepts an ordinary semantic target without treating it as a select control', async () => {
+    const {capture, nodeIds} = createCapture();
+    const resolveSnapshot = async () => capture;
+    const nodeBinding = await resolveRecordNodeBinding({
+        event: event('#Ordinary'),
+        state: createTestRecordingState(),
+        workspaceName: 'ws-1',
+        resolveSnapshot,
+    });
+    assert.ok(nodeBinding);
+    assert.equal(nodeBinding.targetNodeId, nodeIds.ordinary);
+    assert.equal(nodeBinding.matchedBy, 'attr.id');
+
+    const selectBinding = await resolveRecordTargetBinding({
+        event: event('#Ordinary'),
+        state: createTestRecordingState(),
+        workspaceName: 'ws-1',
+        resolveSnapshot,
+    });
+    assert.equal(selectBinding, undefined);
 });
 
 test('record target binding resolves V2 custom-select trigger and option nodes', async () => {
@@ -142,4 +167,42 @@ test('record enhancement emits V2 identity and canonical target facts', async ()
         assert.equal(enhancement.resolveHint?.target?.nodeId, nodeIds.trigger);
         assert.equal(enhancement.resolveHint?.raw?.selector, '#Status');
         assert.equal(enhancement.resolveHint?.capture?.source, 'record_enrichment');
+});
+
+
+test('record enhancement keeps pre-action marker semantics when the target disappears before the snapshot', async () => {
+    const {capture} = createCapture();
+    const state = createTestRecordingState();
+    state.checkpointRecordings.set('ws-1', {
+        token: 'checkpoint:ws-1:test',
+        previousToken: 'unsaved:ws-1',
+        status: 'recording',
+        startedAt: 1,
+        kind: 'recovery',
+        profileName: 'expired-session-rule',
+        businessTag: 'auth.expired',
+        entityKind: 'form',
+    });
+    const {enrichRecordedStepWithSnapshot} = await import('../../../src/record/enhancement/build');
+    const enhancement = await enrichRecordedStepWithSnapshot({
+        event: {
+            ...event('#dismiss-session'),
+            semanticHint: {
+                profileName: 'expired-session-rule',
+                businessTag: 'auth.expired',
+                entityKind: 'form',
+                actionIntent: 'dismiss',
+            },
+        } as RecorderEvent,
+        state,
+        workspaceName: 'ws-1',
+        resolveSnapshot: async () => capture,
+        tabName: 'tab-1',
+    });
+    assert.deepEqual(enhancement.semanticHints, {
+        profileName: 'expired-session-rule',
+        businessTag: 'auth.expired',
+        entityKind: 'form',
+        actionIntent: 'dismiss',
+    });
 });

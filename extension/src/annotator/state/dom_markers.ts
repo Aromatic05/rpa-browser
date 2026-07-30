@@ -1,6 +1,7 @@
 import type {
     CanvasDraft,
     CheckResultByAnnotation,
+    EntityKind,
 } from '../types.js';
 import {
     resolveColumnHeader,
@@ -15,6 +16,7 @@ const STATE_ATTR = 'data-rpa-annotation-state';
 const COLUMN_POSITION_ATTR = 'data-rpa-column-position';
 const PRIMARY_KEY_ATTR = 'data-rpa-primary-key';
 const COLUMN_GROUP_ATTR = 'data-rpa-column-group';
+const RECORD_SEMANTIC_ATTR = 'data-rpa-record-semantic';
 
 const STYLE_TEXT = `
 [${MARKER_ATTR}] {
@@ -76,6 +78,13 @@ type MarkerTarget = {
     columnPosition?: 'first' | 'middle' | 'last';
     primaryKey?: boolean;
     columnGroup?: Element;
+    recordSemantic: {
+        profileName: string;
+        businessTag: string;
+        entityKind: EntityKind;
+        fieldKey?: string;
+        actionIntent?: string;
+    };
 };
 
 const paginationElements = (nextElements: Element[], entityElement: Element): Element[] => {
@@ -140,6 +149,13 @@ const collectMarkerTargets = (
                 kind: annotation.type === 'pagination' ? 'pagination' : annotation.type,
                 state: markerState(annotation.origin, annotation.id, selectedAnnotationId, checks),
                 elements: annotation.type === 'action' ? elements.slice(0, 1) : elements,
+                recordSemantic: {
+                    profileName: draft.profileName,
+                    businessTag: entity.businessTag,
+                    entityKind: entity.kind,
+                    ...(annotation.type === 'field' ? {fieldKey: annotation.businessKey} : {}),
+                    ...(annotation.type === 'action' ? {actionIntent: annotation.businessKey} : {}),
+                },
             });
         }
         for (const [columnIndex, column] of entity.columns.entries()) {
@@ -155,6 +171,12 @@ const collectMarkerTargets = (
                         : columnIndex === entity.columns.length - 1 ? 'last' : 'middle',
                     primaryKey: entity.primaryKey?.fieldKey === column.fieldKey,
                     columnGroup: header.closest('tr') ?? header.parentElement ?? undefined,
+                    recordSemantic: {
+                        profileName: draft.profileName,
+                        businessTag: entity.businessTag,
+                        entityKind: entity.kind,
+                        fieldKey: column.fieldKey,
+                    },
                 });
             }
             for (const action of column.actions) {
@@ -165,6 +187,12 @@ const collectMarkerTargets = (
                     kind: 'action',
                     state: markerState(action.origin, action.id, selectedAnnotationId, checks),
                     elements: elements.slice(0, 1),
+                    recordSemantic: {
+                        profileName: draft.profileName,
+                        businessTag: entity.businessTag,
+                        entityKind: entity.kind,
+                        actionIntent: action.actionIntent,
+                    },
                 });
             }
         }
@@ -180,6 +208,11 @@ const collectMarkerTargets = (
                     kind: 'pagination',
                     state: markerState(entity.origin, annotationId, selectedAnnotationId, checks),
                     elements,
+                    recordSemantic: {
+                        profileName: draft.profileName,
+                        businessTag: entity.businessTag,
+                        entityKind: entity.kind,
+                    },
                 });
             }
         }
@@ -194,6 +227,7 @@ export const clearDomMarkers = (documentRef: Document): void => {
         element.removeAttribute(STATE_ATTR);
         element.removeAttribute(COLUMN_POSITION_ATTR);
         element.removeAttribute(PRIMARY_KEY_ATTR);
+        element.removeAttribute(RECORD_SEMANTIC_ATTR);
     }
     for (const element of Array.from(documentRef.querySelectorAll(`[${COLUMN_GROUP_ATTR}]`))) {
         element.removeAttribute(COLUMN_GROUP_ATTR);
@@ -218,6 +252,7 @@ export const applyDomMarkers = (
             element.setAttribute(MARKER_ATTR, target.annotationId);
             element.setAttribute(KIND_ATTR, target.kind);
             element.setAttribute(STATE_ATTR, target.state);
+            element.setAttribute(RECORD_SEMANTIC_ATTR, JSON.stringify(target.recordSemantic));
             if (target.columnPosition) {
                 element.setAttribute(COLUMN_POSITION_ATTR, target.columnPosition);
             }

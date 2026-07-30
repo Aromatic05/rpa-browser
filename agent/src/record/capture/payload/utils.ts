@@ -361,3 +361,44 @@ export const findCheckboxInput = (target: Element | null): HTMLInputElement | nu
     }
     return null;
 };
+
+export type RecordedSemanticHint = {
+    profileName: string;
+    businessTag: string;
+    entityKind: 'form' | 'table' | 'dialog' | 'list' | 'panel' | 'toolbar' | 'kv';
+    fieldKey?: string;
+    actionIntent?: string;
+};
+
+const RECORD_SEMANTIC_ATTRIBUTE = 'data-rpa-record-semantic';
+
+export const buildRecordedSemanticHint = (element: Element): RecordedSemanticHint | undefined => {
+    const marked = element.closest(`[${RECORD_SEMANTIC_ATTRIBUTE}]`);
+    const raw = marked?.getAttribute(RECORD_SEMANTIC_ATTRIBUTE);
+    if (!raw) {return undefined;}
+    try {
+        const parsed = JSON.parse(raw) as Record<string, unknown>;
+        const profileName = typeof parsed.profileName === 'string' ? parsed.profileName.trim() : '';
+        const businessTag = typeof parsed.businessTag === 'string' ? parsed.businessTag.trim() : '';
+        const entityKinds = new Set(['form', 'table', 'dialog', 'list', 'panel', 'toolbar', 'kv']);
+        const entityKind = typeof parsed.entityKind === 'string' && entityKinds.has(parsed.entityKind)
+            ? parsed.entityKind as RecordedSemanticHint['entityKind']
+            : undefined;
+        if (!profileName || !businessTag || !entityKind) {return undefined;}
+        const fieldKey = typeof parsed.fieldKey === 'string' && parsed.fieldKey.trim()
+            ? parsed.fieldKey.trim()
+            : undefined;
+        const actionIntent = typeof parsed.actionIntent === 'string' && parsed.actionIntent.trim()
+            ? parsed.actionIntent.trim()
+            : undefined;
+        return {
+            profileName,
+            businessTag,
+            entityKind,
+            ...(fieldKey ? {fieldKey} : {}),
+            ...(actionIntent ? {actionIntent} : {}),
+        };
+    } catch {
+        return undefined;
+    }
+};

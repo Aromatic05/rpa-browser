@@ -183,3 +183,33 @@ test('protective merge preserves confirmed and manual targets, refreshes inferre
         existing.byId['lifecycle:confirmed'].annotation.primaryKey,
     );
 });
+
+test('protective merge activates a confirmed binding that had never resolved when the rule later matches', () => {
+    const profileName = 'recoverable';
+    const annotations: SemanticAnnotationRecord[] = [
+        {ruleId: 'error-panel', origin: 'confirmed', businessTag: 'auth.expired', entityKind: 'panel'},
+    ];
+    const existing = buildSemanticLayer({
+        execution: execution(profileName, [
+            queryBinding(profileName, 'error-panel', [], [], false),
+        ]),
+        annotations,
+        snapshots: {},
+    }).bindings;
+    const fresh = buildSemanticLayer({
+        execution: execution(profileName, [
+            queryBinding(profileName, 'error-panel', ['node-panel']),
+        ]),
+        annotations,
+        snapshots: {},
+    }).bindings;
+
+    const merged = mergeSemanticBindings(existing, fresh);
+    assert.equal(existing.byId['recoverable:error-panel'].status, 'invalidated');
+    assert.deepEqual(existing.byId['recoverable:error-panel'].target.nodeIds, []);
+    assert.equal(merged.bindings.byId['recoverable:error-panel'].status, 'active');
+    assert.deepEqual(merged.bindings.byId['recoverable:error-panel'].target.nodeIds, ['node-panel']);
+    assert.equal(merged.bindings.byId['recoverable:error-panel'].origin, 'confirmed');
+    assert.equal(merged.bindings.byId['recoverable:error-panel'].annotation.businessTag, 'auth.expired');
+    assert.equal(merged.stats.refreshed, 1);
+});

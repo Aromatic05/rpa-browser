@@ -9,8 +9,13 @@ import type {ResolveHint} from '../../runner/steps/types';
 import {normalizeResolveHint} from '../../runner/steps/resolve_utils';
 import type {RecorderEvent} from '../capture/recorder';
 import type {RecordingState} from '../pipeline/state';
-import type {RecordedEntityBinding, RecordedStepEnhancement, RecordedTargetFingerprint} from '../types';
-import {resolveRecordTargetBinding, type RecordSnapshotResolver} from '../pipeline/target_binding';
+import type {
+    RecordedEntityBinding,
+    RecordedSemanticHints,
+    RecordedStepEnhancement,
+    RecordedTargetFingerprint,
+} from '../types';
+import {resolveRecordNodeBinding, type RecordSnapshotResolver} from '../pipeline/target_binding';
 import {
     recordSnapshotId,
     resolveRecordSnapshotForEvent,
@@ -29,6 +34,10 @@ export const enrichRecordedStepWithSnapshot = async (input: {
 }): Promise<RecordedStepEnhancement> => {
     const recordLog = getLogger('record');
     const {event, page, state} = input;
+    const checkpointSession = input.workspaceName
+        ? input.state.checkpointRecordings.get(input.workspaceName)
+        : undefined;
+    const capturedSemanticHints = semanticHintsFromEvent(event, checkpointSession);
     if (isPageLevelEvent(event)) {
         const snapshot = await (input.resolveSnapshot ?? resolveRecordSnapshotForEvent)({
             event,
@@ -45,14 +54,17 @@ export const enrichRecordedStepWithSnapshot = async (input: {
             : withRawContext(event, buildLowConfidenceRawOnlyResolve(event));
     }
     if (requiresTargetSelector(event) && !event.selector) {
-        return withRawContext(event, buildLowConfidenceRawOnlyResolve(event, {
-            reason: ['missing_selector_for_target_event'],
-            warnings: ['MISSING_SELECTOR_FOR_TARGET_EVENT', 'LOW_CONFIDENCE_RAW_ONLY'],
-            confidence: 0.2,
-        }));
+        return withRawContext(event, {
+            ...buildLowConfidenceRawOnlyResolve(event, {
+                reason: ['missing_selector_for_target_event'],
+                warnings: ['MISSING_SELECTOR_FOR_TARGET_EVENT', 'LOW_CONFIDENCE_RAW_ONLY'],
+                confidence: 0.2,
+            }),
+            ...(capturedSemanticHints ? {semanticHints: capturedSemanticHints} : {}),
+        });
     }
 
-    const binding = await resolveRecordTargetBinding({
+    const binding = await resolveRecordNodeBinding({
         event,
         page,
         state,
@@ -66,12 +78,23 @@ export const enrichRecordedStepWithSnapshot = async (input: {
             selector: event.selector,
             reason: 'binding_missing',
         });
-        return withRawContext(event, buildLowConfidenceRawOnlyResolve(event));
+        return withRawContext(event, {
+            ...buildLowConfidenceRawOnlyResolve(event),
+            ...(capturedSemanticHints ? {semanticHints: capturedSemanticHints} : {}),
+        });
     }
 
-    const target = buildTargetFingerprint(binding.snapshot, binding.targetNodeId);
+    const target = buildTargetFingerprint(
+        binding.snapshot,
+        binding.targetNodeId,
+        checkpointSession,
+        capturedSemanticHints,
+    );
     if (!target) {
-        return withRawContext(event, buildLowConfidenceRawOnlyResolve(event));
+        return withRawContext(event, {
+            ...buildLowConfidenceRawOnlyResolve(event),
+            ...(capturedSemanticHints ? {semanticHints: capturedSemanticHints} : {}),
+        });
     }
     const entityBindings = buildEntityBindings(binding.snapshot, binding.targetNodeId);
     const confidenceInfo = computeRecordConfidence(event, binding.snapshot, binding.targetNodeId);
@@ -96,13 +119,13 @@ export const enrichRecordedStepWithSnapshot = async (input: {
         eventType: event.type,
         selector: event.selector,
         targetNodeId: binding.targetNodeId,
-        componentKind: binding.componentKind,
     });
     return withRawContext(event, {
         version: 1,
         eventType: event.type,
         snapshot: buildSnapshotMetadata(binding.snapshot, input),
         target,
+        ...(target.semanticHints ? {semanticHints: target.semanticHints} : {}),
         entityBindings,
         resolveHint: resolveDraft.hint,
         resolvePolicy: resolveDraft.policy,
@@ -191,6 +214,8 @@ const withRawContext = (event: RecorderEvent, enhancement?: RecordedStepEnhancem
 const buildTargetFingerprint = (
     snapshot: RecordPageSnapshot,
     nodeId: ObservationNodeId,
+    checkpointSession?: {profileName?: string; businessTag?: string; entityKind?: 'form' | 'table' | 'dialog' | 'list' | 'panel' | 'toolbar' | 'kv'},
+    capturedSemanticHints?: RecordedSemanticHints,
 ): RecordedTargetFingerprint | undefined => {
     const observation = snapshot.control.observation;
     const node = new Map(Object.entries(observation.nodes)).get(nodeId);
@@ -210,7 +235,7 @@ const buildTargetFingerprint = (
         attrs: Object.keys(attrs).length > 0 ? attrs : undefined,
         bbox: geometry ? {...geometry.rect} : undefined,
         runtimeState: cloneRuntimeState(observation.runtimeState[nodeId]),
-        semanticHints: buildStructuralSemanticHints(snapshot, nodeId),
+        semanticHints: buildRecordedSemanticHints(snapshot, nodeId, checkpointSession, capturedSemanticHints),
     };
 };
 
@@ -284,6 +309,76 @@ const buildEntityBindings = (
     }
     return bindings.length > 0 ? bindings : undefined;
 };
+
+const buildRecordedSemanticHints = (
+    snapshot: RecordPageSnapshot,
+    nodeId: ObservationNodeId,
+    checkpointSession?: {profileName?: string; businessTag?: string; entityKind?: 'form' | 'table' | 'dialog' | 'list' | 'panel' | 'toolbar' | 'kv'},
+    capturedSemanticHints?: RecordedSemanticHints,
+): RecordedTargetFingerprint['semanticHints'] => {
+    const structural = buildStructuralSemanticHints(snapshot, nodeId);
+    const profileName = checkpointSession?.profileName;
+    if (!profileName) {
+        return capturedSemanticHints
+            ? {...(structural || {}), ...capturedSemanticHints}
+            : structural;
+    }
+    const profile = snapshot.entityRules?.profiles[profileName];
+    const bindings = profile ? Object.values(profile.semanticBindings.byId) : [];
+    const formMemberIds = new Set(snapshot.form.forms.byNodeId[nodeId] ?? []);
+    const tableMemberIds = new Set(snapshot.table.tables.byNodeId[nodeId] ?? []);
+    const targetMatches = (binding: (typeof bindings)[number]): boolean =>
+        binding.target.nodeIds.includes(nodeId)
+        || binding.target.fieldIds.some((id) => formMemberIds.has(id))
+        || binding.target.actionIds.some((id) => formMemberIds.has(id))
+        || binding.target.rowIds.some((id) => tableMemberIds.has(id))
+        || binding.target.columnIds.some((id) => tableMemberIds.has(id))
+        || binding.target.componentIds.some((id) => formMemberIds.has(id) || tableMemberIds.has(id));
+    const matched = bindings.filter((binding) =>
+        binding.status === 'active'
+        && binding.disposition === 'active'
+        && targetMatches(binding));
+    const field = matched.find((binding) => typeof binding.annotation.fieldKey === 'string');
+    const action = matched.find((binding) => typeof binding.annotation.actionIntent === 'string');
+    const fieldKey = readAnnotationText(field?.annotation.fieldKey);
+    const actionIntent = readAnnotationText(action?.annotation.actionIntent);
+    return {
+        ...(structural || {}),
+        profileName,
+        businessTag: checkpointSession.businessTag,
+        entityKind: checkpointSession.entityKind ?? structural?.entityKind,
+        ...(fieldKey ? {
+            fieldKey,
+            fieldLabel: readAnnotationText(field?.annotation.fieldName) ?? structural?.fieldLabel,
+        } : {}),
+        ...(actionIntent ? {
+            actionIntent,
+            actionTargetNodeId: nodeId,
+        } : {}),
+        ...(capturedSemanticHints || {}),
+    };
+};
+
+const semanticHintsFromEvent = (
+    event: RecorderEvent,
+    checkpointSession?: {profileName?: string; businessTag?: string; entityKind?: 'form' | 'table' | 'dialog' | 'list' | 'panel' | 'toolbar' | 'kv'},
+): RecordedSemanticHints | undefined => {
+    const hint = event.semanticHint;
+    if (!hint || !checkpointSession?.profileName || !checkpointSession.businessTag) {return undefined;}
+    if (hint.profileName !== checkpointSession.profileName || hint.businessTag !== checkpointSession.businessTag) {
+        return undefined;
+    }
+    return {
+        profileName: hint.profileName,
+        businessTag: hint.businessTag,
+        entityKind: checkpointSession.entityKind ?? hint.entityKind,
+        ...(hint.fieldKey ? {fieldKey: hint.fieldKey} : {}),
+        ...(hint.actionIntent ? {actionIntent: hint.actionIntent} : {}),
+    };
+};
+
+const readAnnotationText = (value: unknown): string | undefined =>
+    typeof value === 'string' && value.trim() ? value.trim() : undefined;
 
 const buildStructuralSemanticHints = (
     snapshot: RecordPageSnapshot,

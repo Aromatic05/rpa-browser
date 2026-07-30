@@ -361,6 +361,14 @@ export type StepArgsMap = {
               businessTag: string;
               target:
                   | {
+                        kind: 'entity.field';
+                        fieldKey: string;
+                    }
+                  | {
+                        kind: 'entity.action';
+                        actionIntent: string;
+                    }
+                  | {
                         kind: 'form.field';
                         fieldKey: string;
                     }

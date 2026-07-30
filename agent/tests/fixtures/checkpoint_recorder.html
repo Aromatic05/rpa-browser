@@ -4,10 +4,14 @@
   <meta charset="utf-8">
   <title>Checkpoint Recorder Fixture</title>
   <style>
-    body { font-family: system-ui, sans-serif; margin: 0; padding: 80px; background: #f8fafc; }
-    main { max-width: 720px; margin: auto; padding: 32px; border-radius: 16px; background: white; box-shadow: 0 12px 40px rgba(15,23,42,.12); }
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 72px; background: #f8fafc; }
+    main { max-width: 760px; margin: auto; padding: 32px; border-radius: 16px; background: white; box-shadow: 0 12px 40px rgba(15,23,42,.12); }
+    form { display:grid; grid-template-columns:1fr 1fr auto; align-items:end; gap:14px; margin-top:24px; padding:20px; border:1px solid #cbd5e1; border-radius:12px; }
+    label { display:grid; gap:6px; font-size:13px; font-weight:650; }
+    input { height:36px; box-sizing:border-box; border:1px solid #94a3b8; border-radius:8px; padding:0 10px; }
     button { min-height: 38px; padding: 0 16px; }
-    #session-alert { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-top: 80px; padding: 18px; border: 1px solid #fca5a5; border-radius: 12px; background: #fef2f2; }
+    #query-result { display:block; margin-top:18px; min-height:24px; }
+    #session-alert { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-top: 48px; padding: 18px; border: 1px solid #fca5a5; border-radius: 12px; background: #fef2f2; }
   </style>
 </head>
 <body>
@@ -15,6 +19,13 @@
     <h1>订单工作台</h1>
     <button id="ordinary-action" type="button">普通操作</button>
     <output id="ordinary-count">0</output>
+    <p id="protected-message" style="display:none">恢复后的页面</p>
+    <form id="order-query" aria-label="订单查询">
+      <label for="order-no">订单编号<input id="order-no" name="orderNo" autocomplete="off"></label>
+      <label for="buyer">采购人<input id="buyer" name="buyer" autocomplete="off"></label>
+      <button id="query-orders" type="submit">查询</button>
+    </form>
+    <output id="query-result"></output>
     <section id="session-alert">
       <strong>登录已失效</strong>
       <button id="dismiss-session" type="button">关闭提示</button>
@@ -28,8 +39,21 @@
       const output = document.querySelector('#ordinary-count');
       output.textContent = String(Number(output.textContent || '0') + 1);
     });
+    for (const type of ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click']) {
+      document.querySelector('#query-orders').addEventListener(type, () => {
+        document.body.dataset[`query${type}`] = String(Number(document.body.dataset[`query${type}`] || '0') + 1);
+      });
+    }
+    document.querySelector('#order-query').addEventListener('submit', (event) => {
+      event.preventDefault();
+      const orderNo = document.querySelector('#order-no').value;
+      const buyer = document.querySelector('#buyer').value;
+      document.body.dataset.queryCount = String(Number(document.body.dataset.queryCount || '0') + 1);
+      document.querySelector('#query-result').textContent = `${orderNo}|${buyer}`;
+    });
     document.querySelector('#dismiss-session').addEventListener('click', () => {
       document.querySelector('#session-alert').style.display = 'none';
+      document.querySelector('#protected-message').style.display = 'block';
     });
   </script>
 </body>

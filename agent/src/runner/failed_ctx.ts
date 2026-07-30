@@ -1,6 +1,6 @@
 import type { RunStepsDeps } from './run_steps_types';
 import type { Checkpoint } from './checkpoint/types';
-import type { StepResult, StepUnion } from './steps/types';
+import type { StepResolve, StepResult, StepUnion } from './steps/types';
 
 export type FailedCtx = {
     runId: string;
@@ -14,8 +14,9 @@ export type FailedCtx = {
     checkpointMaxAttempts: number;
     inCheckpointFlow: boolean;
     deps: RunStepsDeps;
-    executeStep: (step: StepUnion) => Promise<StepResult>;
+    executeStep: (step: StepUnion, stepResolves?: Record<string, StepResolve>) => Promise<StepResult>;
     checkpoints?: Checkpoint[];
+    checkpointStepResolves?: Record<string, Record<string, StepResolve>>;
     currentUrl?: string;
 };
 
@@ -31,8 +32,9 @@ export const getFailedCtx = async (input: {
     checkpointMaxAttempts: number;
     inCheckpointFlow: boolean;
     deps: RunStepsDeps;
-    executeStep: (step: StepUnion) => Promise<StepResult>;
+    executeStep: (step: StepUnion, stepResolves?: Record<string, StepResolve>) => Promise<StepResult>;
     checkpoints?: Checkpoint[];
+    checkpointStepResolves?: Record<string, Record<string, StepResolve>>;
 }): Promise<FailedCtx> => {
     let currentUrl: string | undefined;
     try {
@@ -69,6 +71,7 @@ export const getFailedCtx = async (input: {
         deps: input.deps,
         executeStep: input.executeStep,
         checkpoints: input.checkpoints,
+        checkpointStepResolves: input.checkpointStepResolves,
         currentUrl,
     };
 };

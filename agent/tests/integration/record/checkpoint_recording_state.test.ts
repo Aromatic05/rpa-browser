@@ -45,7 +45,7 @@ test('canceling checkpoint recording removes only its isolated buffer', () => {
     const state = createRecordingState({snapshotPort});
     const ordinaryToken = resetWorkspaceUnsavedRecording(state, 'ws-1');
     state.recordings.set(ordinaryToken, [clickStep('ordinary')]);
-    const session = startCheckpointRecording(state, 'ws-1');
+    const session = startCheckpointRecording(state, 'ws-1', {kind: 'recovery'});
     state.recordings.set(session.token, [clickStep('recovery')]);
 
     clearCheckpointRecording(state, 'ws-1');
@@ -57,7 +57,7 @@ test('canceling checkpoint recording removes only its isolated buffer', () => {
 
 import {createRecordControl} from '../../../src/record/control';
 import type {Action} from '../../../src/actions/action_protocol';
-import type {WorkflowArtifact, WorkflowCheckpoint} from '../../../src/workflow';
+import type {WorkflowArtifact, WorkflowCheckpoint, WorkflowEntityRules} from '../../../src/workflow';
 
 const checkpointSaveAction = (payload: Record<string, unknown>): Action => ({
     v: 1,
@@ -71,7 +71,13 @@ test('checkpoint recording save creates a recovery artifact and leaves the ordin
     const state = createRecordingState({snapshotPort});
     const ordinaryToken = resetWorkspaceUnsavedRecording(state, 'ws-1');
     state.recordings.set(ordinaryToken, [clickStep('ordinary')]);
-    const session = startCheckpointRecording(state, 'ws-1');
+    const entitySelection = {
+        kind: 'recovery' as const,
+        profileName: 'expired-session-rule',
+        businessTag: 'auth.expired',
+        entityKind: 'panel' as const,
+    };
+    const session = startCheckpointRecording(state, 'ws-1', entitySelection);
     state.recordings.set(session.token, [clickStep('recovery')]);
     state.recordingEnhancements.set(session.token, {
         recovery: {
@@ -82,7 +88,36 @@ test('checkpoint recording save creates a recovery artifact and leaves the ordin
     });
     finishCheckpointRecording(state, 'ws-1');
 
-    const saved = new Map<string, WorkflowArtifact>();
+    const errorRule: WorkflowEntityRules = {
+        kind: 'entity_rules',
+        name: 'expired-session-rule',
+        page: {kind: 'panel'},
+        match: {
+            version: 2,
+            rules: [{ruleId: 'expired-root', source: 'region', expect: 'unique', match: {kind: 'panel'}}],
+        },
+        annotation: {
+            version: 2,
+            bindings: [{
+                ruleId: 'expired-root',
+                businessTag: 'auth.expired',
+                displayName: '登录失效提示',
+                legacyCanvas: {
+                    entities: [{
+                        kind: 'panel',
+                        businessTag: 'auth.expired',
+                        annotations: [{
+                            type: 'action',
+                            businessKey: 'dismiss',
+                            name: '关闭提示',
+                            disposition: 'active',
+                        }],
+                    }],
+                },
+            }],
+        },
+    };
+    const saved = new Map<string, WorkflowArtifact>([[errorRule.name, errorRule]]);
     const workflow = {
         name: 'ws-1',
         save: (artifact: WorkflowArtifact) => {
@@ -133,11 +168,12 @@ test('checkpoint recording save creates a recovery artifact and leaves the ordin
     });
 
     assert.equal(result.reply.type, 'checkpoint.record.save.result');
-    assert.equal(saved.size, 1);
-    const artifact = [...saved.values()][0] as WorkflowCheckpoint;
-    assert.equal(artifact.kind, 'checkpoint');
+    assert.equal(saved.size, 2);
+    const artifact = [...saved.values()].find((item): item is WorkflowCheckpoint => item.kind === 'checkpoint');
+    assert.ok(artifact);
     assert.equal(artifact.checkpoint.name, '关闭登录提示');
     assert.deepEqual(artifact.checkpoint.trigger?.matchRules, [
+        {entityExists: {query: '', kind: 'panel', businessTag: 'auth.expired'}},
         {errorCode: 'ERR_NOT_FOUND'},
         {stepName: 'browser.click'},
     ]);
@@ -147,7 +183,7 @@ test('checkpoint recording save creates a recovery artifact and leaves the ordin
     assert.equal(getCheckpointRecordingSession(state, 'ws-1'), null);
     assert.deepEqual(getWorkspaceUnsavedRecordingBundle(state, 'ws-1').steps.map((step) => step.id), ['ordinary']);
 
-    const retrySession = startCheckpointRecording(state, 'ws-1');
+    const retrySession = startCheckpointRecording(state, 'ws-1', entitySelection);
     state.recordings.set(retrySession.token, [clickStep('retry')]);
     finishCheckpointRecording(state, 'ws-1');
     await assert.rejects(
@@ -165,7 +201,7 @@ test('checkpoint recording save creates a recovery artifact and leaves the ordin
             workspace: workspace as never,
             workspaceRegistry: {} as never,
         }),
-        /已有同名恢复步骤/,
+        /已有同名检查点/,
     );
     assert.equal(getCheckpointRecordingSession(state, 'ws-1')?.status, 'review');
     clearCheckpointRecording(state, 'ws-1');

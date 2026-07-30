@@ -23,7 +23,13 @@ export const executeBrowserQuery = async (
     deps: RunStepsDeps,
     workspaceName: string,
 ): Promise<StepResult> => {
-    const {entry} = await ensureFreshPageSession(deps, workspaceName);
+    const {entry} = await ensureFreshPageSession(
+        deps,
+        workspaceName,
+        step.entityRules || 'op' in step.args
+            ? {explicit: true, entityRules: step.entityRules}
+            : undefined,
+    );
 
     if ('op' in step.args) {
         const result = step.args.op === 'entity'

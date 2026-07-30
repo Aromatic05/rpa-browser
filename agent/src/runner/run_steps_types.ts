@@ -93,6 +93,7 @@ export type RunStepsRequest = {
     stopOnError?: boolean;
     onCheckpoint?: (checkpoint: Checkpoint) => void | Promise<void>;
     checkpoints?: RunnerCheckpoint[];
+    checkpointStepResolves?: Record<string, Record<string, StepResolve>>;
     checkpointEnabled?: boolean;
     checkpointMaxAttempts?: number;
 };

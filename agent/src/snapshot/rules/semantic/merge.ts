@@ -29,6 +29,14 @@ const invalidatedTargetDiagnostic = (binding: SemanticBusinessBinding): Semantic
     message: `Protected semantic binding ${binding.id} no longer resolves to its confirmed target.`,
 });
 
+const semanticTargetEmpty = (binding: SemanticBusinessBinding): boolean =>
+    binding.target.componentIds.length === 0
+    && binding.target.nodeIds.length === 0
+    && binding.target.fieldIds.length === 0
+    && binding.target.actionIds.length === 0
+    && binding.target.rowIds.length === 0
+    && binding.target.columnIds.length === 0;
+
 export const mergeSemanticBindings = (
     existing: SemanticBindings,
     fresh: SemanticBindings,
@@ -49,6 +57,19 @@ export const mergeSemanticBindings = (
         if (current.disposition === 'ignored') {
             merged.push(cloneBinding(current));
             stats.preserved += 1;
+            continue;
+        }
+
+        if (current.origin === 'confirmed'
+            && current.status === 'invalidated'
+            && semanticTargetEmpty(current)
+            && next?.status === 'active') {
+            const reactivated = cloneBinding(next);
+            reactivated.annotation = cloneSemanticAnnotation(current.annotation);
+            reactivated.origin = 'confirmed';
+            reactivated.disposition = current.disposition;
+            merged.push(reactivated);
+            stats.refreshed += 1;
             continue;
         }
 

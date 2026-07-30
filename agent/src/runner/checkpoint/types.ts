@@ -18,6 +18,7 @@ export type Checkpoint = {
     input?: Record<string, unknown>;
     trigger?: {
         matchRules: MatchRule[];
+        entityRules?: StepEntityRulesControl;
     };
     prepare?: CheckpointAction[];
     content?: Array<SerializedStepUnion | CheckpointAction>;

@@ -36,7 +36,7 @@ const selectorEquals = (left: string | undefined, right: string | undefined): bo
 const isSelectOptionComponent = (component: ControlComponent): component is ControlComponent & {kind: SelectOptionKind} =>
     SUPPORTED_KINDS.has(component.kind) && component.capabilities.includes('select_option');
 
-export type RecordTargetBinding = {
+export type RecordNodeBinding = {
     snapshot: RecordPageSnapshot;
     snapshotId: string;
     targetNodeId: ObservationNodeId;
@@ -52,13 +52,16 @@ export type RecordTargetBinding = {
         | 'candidate.testid'
         | 'candidate.attr'
         | 'candidate.css';
+};
+
+export type RecordTargetBinding = RecordNodeBinding & {
     controlRef: string;
     component: ControlComponent & {kind: SelectOptionKind};
     componentKind: SelectOptionKind;
     controlRootNodeId: ObservationNodeId;
 };
 
-type MatchedNode = {nodeId: ObservationNodeId; matchedBy: RecordTargetBinding['matchedBy']};
+type MatchedNode = {nodeId: ObservationNodeId; matchedBy: RecordNodeBinding['matchedBy']};
 
 const orderedNodeIds = (snapshot: RecordPageSnapshot): ObservationNodeId[] => {
     const observation = snapshot.control.observation;
@@ -91,7 +94,7 @@ const locatorSelectors = (snapshot: RecordPageSnapshot, nodeId: ObservationNodeI
 
 const matchUnique = (
     nodeIds: readonly ObservationNodeId[],
-    matchedBy: RecordTargetBinding['matchedBy'],
+    matchedBy: RecordNodeBinding['matchedBy'],
 ): MatchedNode[] => nodeIds.map((nodeId) => ({nodeId, matchedBy}));
 
 const matchByRoleAndName = (
@@ -248,17 +251,17 @@ export const readSelectedValuesFromControl = (component: ControlComponent): stri
         .map(readOptionRecordedValue)
         .filter((value): value is string => Boolean(value));
 
-export const resolveRecordTargetBinding = async (input: {
+export const resolveRecordNodeBinding = async (input: {
     event: RecorderEvent;
     page?: Page;
     state: RecordingState;
     workspaceName: string;
     resolveSnapshot?: RecordSnapshotResolver;
-}): Promise<RecordTargetBinding | undefined> => {
+}): Promise<RecordNodeBinding | undefined> => {
     const recordLog = getLogger('record');
     const selector = normalize(input.event.selector);
     if (!selector && !normalize(input.event.a11yHint?.role)) {
-        recordLog('record_target_binding_result', {result: 'no_selector'});
+        recordLog('record_node_binding_result', {result: 'no_selector'});
         return undefined;
     }
     const snapshot = await (input.resolveSnapshot ?? resolveRecordSnapshotForEvent)({
@@ -268,46 +271,61 @@ export const resolveRecordTargetBinding = async (input: {
         page: input.page,
     });
     if (!snapshot) {
-        recordLog('record_target_binding_result', {result: 'no_snapshot', selector});
+        recordLog('record_node_binding_result', {result: 'no_snapshot', selector});
         return undefined;
     }
-
     const matched = collectMatchedNodeIds(snapshot, input.event);
     if (matched.length !== 1) {
-        recordLog('record_target_binding_result', {
+        recordLog('record_node_binding_result', {
             result: matched.length === 0 ? 'no_node' : 'ambiguous_node',
             selector,
             matchedNodeCount: matched.length,
         });
         return undefined;
     }
-
     const targetNodeId = matched[0].nodeId;
-    const byNode = findControlByNodeId(snapshot, targetNodeId);
-    if (!byNode) {
-        recordLog('record_target_binding_result', {
-            result: 'no_control',
-            selector,
-            targetNodeId,
-            matchedBy: matched[0].matchedBy,
-        });
-        return undefined;
-    }
-
-    recordLog('record_target_binding_result', {
+    recordLog('record_node_binding_result', {
         result: 'bound',
         selector,
         targetNodeId,
         matchedBy: matched[0].matchedBy,
-        controlRef: byNode.controlRef,
-        componentKind: byNode.componentKind,
-        controlRootNodeId: byNode.controlRootNodeId,
     });
     return {
         snapshot,
         snapshotId: recordSnapshotId(snapshot),
         targetNodeId,
         matchedBy: matched[0].matchedBy,
-        ...byNode,
     };
+};
+
+export const resolveRecordTargetBinding = async (input: {
+    event: RecorderEvent;
+    page?: Page;
+    state: RecordingState;
+    workspaceName: string;
+    resolveSnapshot?: RecordSnapshotResolver;
+}): Promise<RecordTargetBinding | undefined> => {
+    const recordLog = getLogger('record');
+    const nodeBinding = await resolveRecordNodeBinding(input);
+    if (!nodeBinding) {return undefined;}
+    const byNode = findControlByNodeId(nodeBinding.snapshot, nodeBinding.targetNodeId);
+    if (!byNode) {
+        recordLog('record_target_binding_result', {
+            result: 'no_control',
+            selector: normalize(input.event.selector),
+            targetNodeId: nodeBinding.targetNodeId,
+            matchedBy: nodeBinding.matchedBy,
+        });
+        return undefined;
+    }
+    recordLog('record_target_binding_result', {
+        result: 'bound',
+        selector: normalize(input.event.selector),
+        targetNodeId: nodeBinding.targetNodeId,
+        matchedBy: nodeBinding.matchedBy,
+        controlRef: byNode.controlRef,
+        componentKind: byNode.componentKind,
+        controlRootNodeId: byNode.controlRootNodeId,
+    });
+    return {...nodeBinding, ...byNode};
 };

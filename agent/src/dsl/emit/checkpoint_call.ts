@@ -11,6 +11,7 @@ import { resolveDslValue } from '../runtime/refs';
 export type DslCheckpointProvider = {
     getCheckpoint(id: string): Checkpoint | null;
     getCheckpointResolves?: (id: string) => Record<string, StepResolve> | null;
+    listCheckpoints?: () => Checkpoint[];
 };
 
 export type RunDslCheckpointOptions = {
@@ -47,10 +48,13 @@ export const runDslCheckpointCall = async (
             if (!resolveId || !Object.hasOwn(stepResolves, resolveId)) {
                 return await options.executeStep(step);
             }
-            const runtimeStep: StepUnion = {
+            const runtimeStep = {
                 ...step,
+                args: Object.fromEntries(
+                    Object.entries(step.args).filter(([key]) => key !== 'resolveId'),
+                ),
                 resolve: stepResolves[resolveId],
-            };
+            } as StepUnion;
             return await options.executeStep(runtimeStep);
         },
     });

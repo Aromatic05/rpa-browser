@@ -1,5 +1,16 @@
 import type { ResolveHint, ResolvePolicy } from '../runner/steps/types';
 
+export type RecordedSemanticHints = {
+    entityNodeId?: string;
+    entityKind?: string;
+    profileName?: string;
+    businessTag?: string;
+    fieldKey?: string;
+    fieldLabel?: string;
+    actionIntent?: string;
+    actionTargetNodeId?: string;
+};
+
 export type RecordedTargetFingerprint = {
     nodeId: string;
     primaryDomId?: string;
@@ -11,13 +22,7 @@ export type RecordedTargetFingerprint = {
     attrs?: Record<string, string>;
     bbox?: { x: number; y: number; width: number; height: number };
     runtimeState?: Record<string, string>;
-    semanticHints?: {
-        entityNodeId?: string;
-        entityKind?: string;
-        fieldLabel?: string;
-        actionIntent?: string;
-        actionTargetNodeId?: string;
-    };
+    semanticHints?: RecordedSemanticHints;
 };
 
 export type RecordedEntityBinding = {
@@ -47,6 +52,7 @@ export type RecordedStepEnhancement = {
         capturedAt: number;
     };
     target?: RecordedTargetFingerprint;
+    semanticHints?: RecordedSemanticHints;
     entityBindings?: RecordedEntityBinding[];
     resolveHint?: ResolveHint;
     resolvePolicy?: ResolvePolicy;

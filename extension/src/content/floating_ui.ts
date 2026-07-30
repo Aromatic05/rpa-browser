@@ -12,6 +12,11 @@ export type FloatingUIOptions = {
     ) => Promise<Action>;
     onEvent?: (handler: (action: Action) => void) => void;
     onEnterAnnotation?: () => void;
+    onCheckpointEntityRulePreview?: (selection: {
+        profileName: string;
+        businessTag: string;
+        entityKind: 'form' | 'table' | 'dialog' | 'list' | 'panel' | 'toolbar' | 'kv';
+    } | null) => void | Promise<void>;
 };
 
 export type FloatingUIHandle = {
@@ -187,6 +192,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         onActiveChange: (active) => {
             annotateLaunch.hidden = active;
         },
+        onEntityRulePreview: (selection) => opts.onCheckpointEntityRulePreview?.(selection),
     });
 
     const refreshWorkspaces = async () => {

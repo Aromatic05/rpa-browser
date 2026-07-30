@@ -50,13 +50,17 @@ const createWorkspacePage = async (agent: AgentHandle, workspaceName: string, ur
     expect((await runStep(agent.endpoint, workspaceName, step('open-page', 'browser.goto', {url}))).ok).toBe(true);
 };
 
-const evaluate = async <T>(agent: AgentHandle, workspaceName: string, expression: string): Promise<T> => (
-    await runStep(
+const evaluate = async <T>(agent: AgentHandle, workspaceName: string, expression: string): Promise<T> => {
+    const result = await runStep(
         agent.endpoint,
         workspaceName,
         step(`evaluate-${crypto.randomUUID()}`, 'browser.evaluate', {expression}),
-    )
-).data as T;
+    );
+    if (!result.ok) {
+        throw new Error(`browser.evaluate failed: ${JSON.stringify(result.error || {})}`);
+    }
+    return result.data as T;
+};
 
 const clickPoint = async (agent: AgentHandle, workspaceName: string, point: Point): Promise<void> => {
     expect((await runStep(
@@ -96,13 +100,104 @@ const ordinaryRecordingSnapshot = async (agent: AgentHandle, workspaceName: stri
     return JSON.stringify((reply.payload as {steps?: unknown[]}).steps || []);
 };
 
-test('records and annotates a recovery checkpoint without changing the ordinary recording', async ({}, testInfo) => {
-    testInfo.setTimeout(150_000);
+const saveOrderQueryEntityRule = async (agent: AgentHandle, workspaceName: string): Promise<void> => {
+    const canvas = {
+        version: 1,
+        profileName: 'order-query-rule',
+        page: {kind: 'form', urlPattern: 'checkpoint_recorder\\.html'},
+        entities: [{
+            id: 'e0',
+            source: 'region',
+            kind: 'form',
+            name: '订单查询',
+            businessTag: 'orders.query',
+            target: {idEquals: 'order-query'},
+            expect: 'unique',
+            annotations: [
+                {id: 'f-order', type: 'field', name: '订单编号', businessKey: 'orderNo', target: {idEquals: 'order-no'}, expect: 'unique', origin: 'confirmed', disposition: 'active'},
+                {id: 'f-buyer', type: 'field', name: '采购人', businessKey: 'buyer', target: {idEquals: 'buyer'}, expect: 'unique', origin: 'confirmed', disposition: 'active'},
+                {id: 'a-query', type: 'action', name: '查询', businessKey: 'query', target: {idEquals: 'query-orders'}, expect: 'unique', origin: 'confirmed', disposition: 'active'},
+            ],
+            columns: [],
+            origin: 'confirmed',
+        }],
+        preserved: {},
+    };
+    const saved = await dispatch(agent.endpoint, action('entity_rules.save', workspaceName, {
+        profileName: 'order-query-rule',
+        page: {kind: 'form', urlPattern: 'checkpoint_recorder\\.html'},
+        match: {
+            version: 2,
+            rules: [
+                {ruleId: 'root', source: 'region', expect: 'unique', match: {idEquals: 'order-query'}},
+                {ruleId: 'order-no', source: 'node', expect: 'unique', within: 'root', match: {idEquals: 'order-no'}},
+                {ruleId: 'buyer', source: 'node', expect: 'unique', within: 'root', match: {idEquals: 'buyer'}},
+                {ruleId: 'query', source: 'node', expect: 'unique', within: 'root', match: {idEquals: 'query-orders'}},
+            ],
+        },
+        annotation: {
+            version: 2,
+            bindings: [
+                {ruleId: 'root', businessTag: 'orders.query', displayName: '订单查询', legacyCanvas: canvas},
+                {ruleId: 'order-no', fieldKey: 'orderNo', fieldRole: 'field', fieldName: '订单编号'},
+                {ruleId: 'buyer', fieldKey: 'buyer', fieldRole: 'field', fieldName: '采购人'},
+                {ruleId: 'query', actionIntent: 'query', actionRole: 'form', actionText: '查询'},
+            ],
+        },
+    }));
+    expect(saved.type).toBe('entity_rules.save.result');
+};
+
+const saveExpiredSessionEntityRule = async (agent: AgentHandle, workspaceName: string): Promise<void> => {
+    const canvas = {
+        version: 1,
+        profileName: 'expired-session-rule',
+        page: {kind: 'panel', urlPattern: 'checkpoint_recorder\\.html'},
+        entities: [{
+            id: 'expired',
+            source: 'region',
+            kind: 'panel',
+            name: '登录失效提示',
+            businessTag: 'auth.expired',
+            target: {idEquals: 'session-alert'},
+            expect: 'unique',
+            annotations: [
+                {id: 'dismiss', type: 'action', name: '关闭提示', businessKey: 'dismiss', target: {idEquals: 'dismiss-session'}, expect: 'unique', origin: 'confirmed', disposition: 'active'},
+            ],
+            columns: [],
+            origin: 'confirmed',
+        }],
+        preserved: {},
+    };
+    const saved = await dispatch(agent.endpoint, action('entity_rules.save', workspaceName, {
+        profileName: 'expired-session-rule',
+        page: {kind: 'panel', urlPattern: 'checkpoint_recorder\\.html'},
+        match: {
+            version: 2,
+            rules: [
+                {ruleId: 'root', source: 'region', expect: 'unique', match: {kind: 'panel', idEquals: 'session-alert'}},
+                {ruleId: 'dismiss', source: 'node', expect: 'unique', within: 'root', match: {idEquals: 'dismiss-session'}},
+            ],
+        },
+        annotation: {
+            version: 2,
+            bindings: [
+                {ruleId: 'root', businessTag: 'auth.expired', entityKind: 'panel', displayName: '登录失效提示', legacyCanvas: canvas},
+                {ruleId: 'dismiss', actionIntent: 'dismiss', actionRole: 'form', actionText: '关闭提示'},
+            ],
+        },
+    }));
+    expect(saved.type).toBe('entity_rules.save.result');
+};
+
+test('records a business checkpoint through entity-rule highlights without blocking the page', async ({}, testInfo) => {
+    testInfo.setTimeout(180_000);
     const fixture = await startFixtureServer();
     const agent = await startAgent();
     const workspaceName = `checkpoint-recorder-${Date.now()}`;
     try {
         await createWorkspacePage(agent, workspaceName, `${fixture.baseURL}/checkpoint_recorder.html`);
+        await saveOrderQueryEntityRule(agent, workspaceName);
         await expect.poll(async () => await evaluate(agent, workspaceName, `
             return Boolean(document.querySelector('#rpa-floating-panel')?.shadowRoot
                 ?.querySelector('[data-rpa-checkpoint-action="launch"]'));
@@ -123,51 +218,79 @@ test('records and annotates a recovery checkpoint without changing the ordinary 
             '[data-rpa-checkpoint-action="launch"]',
         ));
         await expect.poll(async () => await evaluate(agent, workspaceName, `
-            const root = document.querySelector('#rpa-floating-panel')?.shadowRoot;
+            const panelRoot = document.querySelector('#rpa-floating-panel')?.shadowRoot;
+            const annotator = document.querySelector('#rpa-entity-annotator-host');
+            const root = annotator?.shadowRoot;
+            const query = document.querySelector('#query-orders');
+            const rect = query?.getBoundingClientRect();
+            const hit = rect ? document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2) : null;
             return {
-                title: root?.querySelector('.checkpoint-recorder header strong')?.textContent || '',
-                annotateHidden: root?.querySelector('.annotate-launch')?.hasAttribute('hidden') || false,
+                title: panelRoot?.querySelector('.checkpoint-recorder header strong')?.textContent || '',
+                selected: panelRoot?.querySelector('[data-rpa-checkpoint-field="entity"]')?.selectedOptions?.[0]?.textContent || '',
+                highlightOnly: annotator?.hasAttribute('data-rpa-highlight-only') || false,
+                visible: annotator instanceof HTMLElement && annotator.style.display !== 'none',
+                boxes: root?.querySelectorAll('.annotator-box').length || 0,
+                labels: [...(root?.querySelectorAll('.annotator-label') || [])].map((item) => item.textContent?.replace(/\s+/g, ' ').trim()),
+                markers: [...document.querySelectorAll('[data-rpa-annotation-kind]')].map((item) => ({
+                    id: item.id,
+                    kind: item.getAttribute('data-rpa-annotation-kind'),
+                })),
+                labelsClickable: [...(root?.querySelectorAll('.annotator-label') || [])].some((item) => getComputedStyle(item).pointerEvents !== 'none'),
+                hitId: hit instanceof HTMLElement ? hit.id : '',
             };
-        `), {timeout: 15_000}).toEqual({title: '正在录制恢复步骤', annotateHidden: true});
+        `), {timeout: 25_000}).toEqual({
+            title: '选择业务区域',
+            selected: '订单查询',
+            highlightOnly: true,
+            visible: true,
+            boxes: 1,
+            labels: [],
+            markers: [
+                {id: 'order-no', kind: 'field'},
+                {id: 'buyer', kind: 'field'},
+                {id: 'query-orders', kind: 'action'},
+            ],
+            labelsClickable: false,
+            hitId: 'query-orders',
+        });
 
         await clickPoint(agent, workspaceName, await floatingPoint(
             agent,
             workspaceName,
-            '.checkpoint-recorder [aria-label="收起恢复步骤面板"]',
+            '[data-rpa-checkpoint-action="start"]',
         ));
         await expect.poll(async () => await evaluate(agent, workspaceName, `
             return document.querySelector('#rpa-floating-panel')?.shadowRoot
                 ?.querySelector('.checkpoint-recorder')?.hasAttribute('hidden') || false;
-        `)).toBe(true);
-
-        await evaluate(agent, workspaceName, `
-            setTimeout(() => location.reload(), 120);
-            return true;
-        `);
-        await expect.poll(async () => await evaluate(agent, workspaceName, `
-            return Number(document.body.dataset.loadCount || '0');
-        `), {timeout: 20_000}).toBeGreaterThanOrEqual(2);
-        await expect.poll(async () => await evaluate(agent, workspaceName, `
-            const root = document.querySelector('#rpa-floating-panel')?.shadowRoot;
-            return {
-                launcher: root?.querySelector('[data-rpa-checkpoint-action="launch"]')?.textContent || '',
-                title: root?.querySelector('.checkpoint-recorder header strong')?.textContent || '',
-                annotateHidden: root?.querySelector('.annotate-launch')?.hasAttribute('hidden') || false,
-            };
-        `), {timeout: 20_000}).toEqual({
-            launcher: '录制中',
-            title: '正在录制恢复步骤',
-            annotateHidden: true,
-        });
-        await expect.poll(async () => await evaluate(agent, workspaceName, `
-            return document.querySelector('#rpa-floating-panel')?.shadowRoot
-                ?.querySelector('.checkpoint-recorder')?.hasAttribute('hidden') || false;
         `), {timeout: 10_000}).toBe(true);
-        const dismissPoint = await pagePoint(agent, workspaceName, '#dismiss-session');
-        await clickPoint(agent, workspaceName, dismissPoint);
+
+        expect((await runStep(agent.endpoint, workspaceName, step('record-fill-order', 'browser.fill', {
+            selector: '#order-no',
+            value: 'SO-001',
+        }))).ok).toBe(true);
+        expect((await runStep(agent.endpoint, workspaceName, step('record-fill-buyer', 'browser.fill', {
+            selector: '#buyer',
+            value: '王小虎',
+        }))).ok).toBe(true);
+        await clickPoint(agent, workspaceName, await pagePoint(agent, workspaceName, '#query-orders'));
         await expect.poll(async () => await evaluate(agent, workspaceName, `
-            return getComputedStyle(document.querySelector('#session-alert')).display;
-        `)).toBe('none');
+            return {
+                result: document.querySelector('#query-result')?.textContent || '',
+                pointerdown: Number(document.body.dataset.querypointerdown || '0'),
+                mousedown: Number(document.body.dataset.querymousedown || '0'),
+                pointerup: Number(document.body.dataset.querypointerup || '0'),
+                mouseup: Number(document.body.dataset.querymouseup || '0'),
+                click: Number(document.body.dataset.queryclick || '0'),
+            };
+        `)).toEqual({
+            result: 'SO-001|王小虎',
+            pointerdown: 1,
+            mousedown: 1,
+            pointerup: 1,
+            mouseup: 1,
+            click: 1,
+        });
+
         await clickPoint(agent, workspaceName, await floatingPoint(
             agent,
             workspaceName,
@@ -182,36 +305,28 @@ test('records and annotates a recovery checkpoint without changing the ordinary 
             const root = document.querySelector('#rpa-floating-panel')?.shadowRoot;
             return {
                 title: root?.querySelector('.checkpoint-recorder header strong')?.textContent || '',
-                subtitle: root?.querySelector('.checkpoint-recorder header small')?.textContent || '',
-                internal: /checkpointId|matchRules|resolveId/.test(root?.querySelector('.checkpoint-recorder')?.textContent || ''),
+                order: root?.querySelector('[data-rpa-checkpoint-map]')?.value || '',
+                mappings: [...(root?.querySelectorAll('[data-rpa-checkpoint-map]') || [])]
+                    .map((item) => item.value),
+                internal: /checkpointId|matchRules|resolveId|businessTag|profileName/.test(root?.querySelector('.checkpoint-recorder')?.textContent || ''),
+                highlightVisible: document.querySelector('#rpa-entity-annotator-host') instanceof HTMLElement
+                    && document.querySelector('#rpa-entity-annotator-host').style.display !== 'none',
             };
-        `), {timeout: 20_000}).toEqual({title: '标注恢复步骤', subtitle: '2 个操作', internal: false});
+        `), {timeout: 25_000}).toEqual({
+            title: '标注检查点',
+            order: 'input:orderNo',
+            mappings: ['input:orderNo', 'input:buyer', 'action:query'],
+            internal: false,
+            highlightVisible: false,
+        });
         expect(await ordinaryRecordingSnapshot(agent, workspaceName)).toBe(ordinaryBefore);
 
         await evaluate(agent, workspaceName, `
             const root = document.querySelector('#rpa-floating-panel')?.shadowRoot;
-            const texts = [...(root?.querySelectorAll('.checkpoint-recorder input[type="text"]') || [])];
-            const selects = [...(root?.querySelectorAll('.checkpoint-recorder select') || [])];
-            const name = texts[0];
+            const name = root?.querySelector('[data-rpa-checkpoint-field="name"]');
             if (name instanceof HTMLInputElement) {
-                name.value = '关闭登录失效提示';
+                name.value = '查询订单';
                 name.dispatchEvent(new Event('input', {bubbles: true}));
-            }
-            const trigger = selects[0];
-            if (trigger instanceof HTMLSelectElement) {
-                trigger.value = 'text_visible';
-                trigger.dispatchEvent(new Event('change', {bubbles: true}));
-            }
-            const updatedTexts = [...(root?.querySelectorAll('.checkpoint-recorder input[type="text"]') || [])];
-            const value = updatedTexts[1];
-            if (value instanceof HTMLInputElement) {
-                value.value = '登录已失效';
-                value.dispatchEvent(new Event('input', {bubbles: true}));
-            }
-            const operation = selects[1];
-            if (operation instanceof HTMLSelectElement) {
-                operation.value = 'click';
-                operation.dispatchEvent(new Event('change', {bubbles: true}));
             }
         `);
         await clickPoint(agent, workspaceName, await floatingPoint(
@@ -222,35 +337,202 @@ test('records and annotates a recovery checkpoint without changing the ordinary 
         await expect.poll(async () => await evaluate(agent, workspaceName, `
             return document.querySelector('#rpa-floating-panel')?.shadowRoot
                 ?.querySelector('.checkpoint-recorder header strong')?.textContent || '';
-        `), {timeout: 20_000}).toBe('恢复步骤已保存');
+        `), {timeout: 20_000}).toBe('检查点已保存');
         expect(await ordinaryRecordingSnapshot(agent, workspaceName)).toBe(ordinaryBefore);
 
         const listed = await dispatch(agent.endpoint, action('checkpoint.list', workspaceName));
         expect(listed.type).toBe('checkpoint.list.result');
         const checkpoints = (listed.payload as {checkpoints?: Array<{
             checkpointId: string;
-            checkpoint: {name?: string; trigger?: {matchRules?: unknown[]}; content?: unknown[]};
+            checkpoint: {
+                kind?: string;
+                name?: string;
+                input?: Record<string, unknown>;
+                trigger?: {matchRules?: unknown[]};
+                content?: unknown[];
+                output?: unknown;
+            };
         }>}).checkpoints || [];
         expect(checkpoints).toHaveLength(1);
-        expect(checkpoints[0].checkpoint.name).toBe('关闭登录失效提示');
-        expect(checkpoints[0].checkpoint.trigger?.matchRules).toEqual([
-            {textVisible: '登录已失效'},
-            {stepName: 'browser.click'},
-        ]);
-        expect(checkpoints[0].checkpoint.content).toHaveLength(2);
+        const checkpoint = checkpoints[0];
+        expect(checkpoint.checkpoint.kind).toBe('procedure');
+        expect(checkpoint.checkpoint.name).toBe('查询订单');
+        expect(checkpoint.checkpoint.input).toEqual({orderNo: 'SO-001', buyer: '王小虎'});
+        expect(checkpoint.checkpoint.output).toBeUndefined();
+        expect(checkpoint.checkpoint.trigger?.matchRules).toEqual([{
+            entityExists: {query: '', kind: 'form', businessTag: 'orders.query'},
+        }]);
+        const serialized = JSON.stringify(checkpoint.checkpoint.content);
+        expect(serialized).not.toContain('SO-001');
+        expect(serialized).not.toContain('王小虎');
+        expect(serialized).not.toContain('#order-no');
 
         await evaluate(agent, workspaceName, `
-            document.querySelector('#session-alert').style.display = 'flex';
+            document.querySelector('#order-no').value = '';
+            document.querySelector('#buyer').value = '';
+            document.querySelector('#query-result').textContent = '';
         `);
         const executed = await runStep(
             agent.endpoint,
             workspaceName,
-            step('run-recorded-checkpoint', 'browser.checkpoint', {checkpointId: checkpoints[0].checkpointId}),
+            step('run-recorded-checkpoint', 'browser.checkpoint', {
+                checkpointId: checkpoint.checkpointId,
+                input: {orderNo: 'SO-999', buyer: '李雷'},
+            }),
         );
         expect(executed.ok, JSON.stringify(executed.error || {})).toBe(true);
         await expect.poll(async () => await evaluate(agent, workspaceName, `
-            return getComputedStyle(document.querySelector('#session-alert')).display;
-        `)).toBe('none');
+            return {
+                orderNo: document.querySelector('#order-no').value,
+                buyer: document.querySelector('#buyer').value,
+                result: document.querySelector('#query-result')?.textContent || '',
+            };
+        `)).toEqual({orderNo: 'SO-999', buyer: '李雷', result: 'SO-999|李雷'});
+    } finally {
+        await agent.close();
+        await fixture.close();
+    }
+});
+
+
+test('records an entity-rule driven recovery checkpoint and retries the original operation', async ({}, testInfo) => {
+    testInfo.setTimeout(180_000);
+    const fixture = await startFixtureServer();
+    const agent = await startAgent();
+    const workspaceName = `checkpoint-recovery-${Date.now()}`;
+    try {
+        await createWorkspacePage(agent, workspaceName, `${fixture.baseURL}/checkpoint_recorder.html`);
+        await saveExpiredSessionEntityRule(agent, workspaceName);
+        await expect.poll(async () => await evaluate(agent, workspaceName, `
+            return Boolean(document.querySelector('#rpa-floating-panel')?.shadowRoot
+                ?.querySelector('[data-rpa-checkpoint-action="launch"]'));
+        `), {timeout: 20_000}).toBe(true);
+
+        await clickPoint(agent, workspaceName, await floatingPoint(
+            agent,
+            workspaceName,
+            '[data-rpa-checkpoint-action="launch"]',
+        ));
+        await evaluate(agent, workspaceName, `
+            const root = document.querySelector('#rpa-floating-panel')?.shadowRoot;
+            const kind = root?.querySelector('[data-rpa-checkpoint-field="kind"]');
+            if (!(kind instanceof HTMLSelectElement)) return false;
+            kind.value = 'recovery';
+            kind.dispatchEvent(new Event('change', {bubbles: true}));
+            return true;
+        `);
+        await expect.poll(async () => await evaluate(agent, workspaceName, `
+            const panelRoot = document.querySelector('#rpa-floating-panel')?.shadowRoot;
+            const annotator = document.querySelector('#rpa-entity-annotator-host');
+            const dismiss = document.querySelector('#dismiss-session');
+            const rect = dismiss?.getBoundingClientRect();
+            const hit = rect ? document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2) : null;
+            return {
+                title: panelRoot?.querySelector('.checkpoint-recorder header strong')?.textContent || '',
+                selected: panelRoot?.querySelector('[data-rpa-checkpoint-field="entity"]')?.selectedOptions?.[0]?.textContent || '',
+                highlightOnly: annotator?.hasAttribute('data-rpa-highlight-only') || false,
+                marker: document.querySelector('#dismiss-session')?.getAttribute('data-rpa-annotation-kind') || '',
+                hitId: hit instanceof HTMLElement ? hit.id : '',
+            };
+        `), {timeout: 25_000}).toEqual({
+            title: '选择错误状态',
+            selected: '登录失效提示',
+            highlightOnly: true,
+            marker: 'action',
+            hitId: 'dismiss-session',
+        });
+
+        await clickPoint(agent, workspaceName, await floatingPoint(
+            agent,
+            workspaceName,
+            '[data-rpa-checkpoint-action="start"]',
+        ));
+        await expect.poll(async () => await evaluate(agent, workspaceName, `
+            return document.querySelector('#rpa-floating-panel')?.shadowRoot
+                ?.querySelector('.checkpoint-recorder')?.hasAttribute('hidden') || false;
+        `), {timeout: 10_000}).toBe(true);
+        await clickPoint(agent, workspaceName, await pagePoint(agent, workspaceName, '#dismiss-session'));
+        await expect.poll(async () => await evaluate(agent, workspaceName, `
+            return {
+                alert: getComputedStyle(document.querySelector('#session-alert')).display,
+                protected: getComputedStyle(document.querySelector('#protected-message')).display,
+            };
+        `)).toEqual({alert: 'none', protected: 'block'});
+
+        await clickPoint(agent, workspaceName, await floatingPoint(
+            agent,
+            workspaceName,
+            '[data-rpa-checkpoint-action="launch"]',
+        ));
+        await clickPoint(agent, workspaceName, await floatingPoint(
+            agent,
+            workspaceName,
+            '[data-rpa-checkpoint-action="stop"]',
+        ));
+        await expect.poll(async () => await evaluate(agent, workspaceName, `
+            const root = document.querySelector('#rpa-floating-panel')?.shadowRoot;
+            return {
+                title: root?.querySelector('.checkpoint-recorder header strong')?.textContent || '',
+                errorState: [...(root?.querySelectorAll('label') || [])]
+                    .some((label) => label.firstChild?.textContent?.trim() === '错误状态'),
+                selected: root?.querySelector('[data-rpa-checkpoint-field="entity"]')?.selectedOptions?.[0]?.textContent || '',
+            };
+        `), {timeout: 20_000}).toEqual({
+            title: '标注检查点',
+            errorState: true,
+            selected: '登录失效提示',
+        });
+        await evaluate(agent, workspaceName, `
+            const root = document.querySelector('#rpa-floating-panel')?.shadowRoot;
+            const name = root?.querySelector('[data-rpa-checkpoint-field="name"]');
+            if (name instanceof HTMLInputElement) {
+                name.value = '恢复登录失效状态';
+                name.dispatchEvent(new Event('input', {bubbles: true}));
+            }
+        `);
+        await clickPoint(agent, workspaceName, await floatingPoint(
+            agent,
+            workspaceName,
+            '[data-rpa-checkpoint-action="save"]',
+        ));
+        await expect.poll(async () => await evaluate(agent, workspaceName, `
+            return document.querySelector('#rpa-floating-panel')?.shadowRoot
+                ?.querySelector('.checkpoint-recorder header strong')?.textContent || '';
+        `), {timeout: 20_000}).toBe('检查点已保存');
+
+        const listed = await dispatch(agent.endpoint, action('checkpoint.list', workspaceName));
+        expect(listed.type).toBe('checkpoint.list.result');
+        const checkpoints = (listed.payload as {checkpoints?: Array<{
+            checkpointId: string;
+            checkpoint: {kind?: string; name?: string; trigger?: {matchRules?: unknown[]}; content?: unknown[]};
+        }>}).checkpoints || [];
+        expect(checkpoints).toHaveLength(1);
+        const checkpoint = checkpoints[0];
+        expect(checkpoint.checkpoint.kind).toBe('recovery');
+        expect(checkpoint.checkpoint.trigger?.matchRules).toEqual([{
+            entityExists: {query: '', kind: 'panel', businessTag: 'auth.expired'},
+        }]);
+        const serialized = JSON.stringify(checkpoint.checkpoint.content);
+        expect(serialized).not.toContain('#dismiss-session');
+        expect(serialized).toContain('auth.expired');
+        expect(serialized).toContain('dismiss');
+
+        await evaluate(agent, workspaceName, `
+            document.querySelector('#session-alert').style.display = 'flex';
+            document.querySelector('#protected-message').style.display = 'none';
+        `);
+        const recovered = await runStep(
+            agent.endpoint,
+            workspaceName,
+            step('protected-original-operation', 'browser.assert', {textVisible: '恢复后的页面'}),
+        );
+        expect(recovered.ok, JSON.stringify(recovered.error || {})).toBe(true);
+        await expect.poll(async () => await evaluate(agent, workspaceName, `
+            return {
+                alert: getComputedStyle(document.querySelector('#session-alert')).display,
+                visible: getComputedStyle(document.querySelector('#protected-message')).display,
+            };
+        `), {timeout: 20_000}).toEqual({alert: 'none', visible: 'block'});
     } finally {
         await agent.close();
         await fixture.close();

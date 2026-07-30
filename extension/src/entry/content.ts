@@ -28,6 +28,11 @@ type FloatingUIExports = {
         onAction: (type: string, payload?: unknown, scope?: Record<string, unknown>) => Promise<unknown>;
         onEvent?: (handler: (action: ActionShape) => void) => void;
         onEnterAnnotation?: () => void;
+        onCheckpointEntityRulePreview?: (selection: {
+            profileName: string;
+            businessTag: string;
+            entityKind: 'form' | 'table' | 'dialog' | 'list' | 'panel' | 'toolbar' | 'kv';
+        } | null) => void | Promise<void>;
     }) => {
         scheduleRefresh: () => void;
         setAnnotatorDebugState: (detail: string) => void;
@@ -42,6 +47,7 @@ type AnnotatorHandle = {
     getState: () => unknown;
     open: (result: unknown) => void;
     exit: () => void;
+    setHighlightOnly: (enabled: boolean) => void;
 };
 
 type AnnotatorExports = {
@@ -335,6 +341,63 @@ const loadAnnotator = (() => {
             });
         };
 
+        const ensureAnnotatorHandle = async (): Promise<AnnotatorHandle | null> => {
+            if (annotatorHandle) {return annotatorHandle;}
+            try {
+                const {startAnnotator} = await loadAnnotator();
+                annotatorHandle = startAnnotator(
+                    {
+                        onExit: () => {
+                            annotatorHandle?.setHighlightOnly(false);
+                            annotatorHandle?.exit();
+                            annotatorHandle?.hide();
+                            setAnnotatorLauncherVisible(true);
+                        },
+                        onUndo: () => undefined,
+                        onRedo: () => undefined,
+                        onCheck: () => undefined,
+                        onSave: () => undefined,
+                        dispatch: (type, payload) => dispatchAnnotator(type, payload),
+                        onDebugState: (detail) => uiHandle?.setAnnotatorDebugState(detail),
+                    },
+                    document,
+                );
+                return annotatorHandle;
+            } catch (error) {
+                console.error('[rpa] annotator mount failed:', error);
+                return null;
+            }
+        };
+
+        const previewCheckpointEntityRule = async (selection: {
+            profileName: string;
+            businessTag: string;
+            entityKind: 'form' | 'table' | 'dialog' | 'list' | 'panel' | 'toolbar' | 'kv';
+        } | null): Promise<void> => {
+            if (!selection) {
+                annotatorHandle?.setHighlightOnly(false);
+                annotatorHandle?.exit();
+                annotatorHandle?.hide();
+                return;
+            }
+            await ensureToken();
+            const handle = await ensureAnnotatorHandle();
+            if (!handle) {return;}
+            handle.setHighlightOnly(true);
+            handle.show();
+            const openReply = await dispatchAnnotator('entity_rules.annotator.open', {
+                url: location.href,
+                profileName: selection.profileName,
+            }) as ActionShape;
+            if (openReply.type.endsWith('.failed') || !isRecord(openReply.payload)) {
+                console.error('[rpa] checkpoint entity highlight failed:', openReply.payload);
+                handle.exit();
+                handle.hide();
+                return;
+            }
+            handle.open(openReply.payload);
+        };
+
         uiHandle = mountFloatingUI({
             tabName,
             workspaceName,
@@ -367,46 +430,24 @@ const loadAnnotator = (() => {
             onEnterAnnotation: () => {
                 void (async () => {
                     await ensureToken();
-                    if (!annotatorHandle) {
-                        try {
-                            const { startAnnotator } = await loadAnnotator();
-                            annotatorHandle = startAnnotator(
-                                {
-                                    onExit: () => {
-                                        annotatorHandle?.exit();
-                                        annotatorHandle?.hide();
-                                        setAnnotatorLauncherVisible(true);
-                                    },
-                                    onUndo: () => undefined,
-                                    onRedo: () => undefined,
-                                    onCheck: () => undefined,
-                                    onSave: () => undefined,
-                                    dispatch: (type, payload) => dispatchAnnotator(type, payload),
-                                    onDebugState: (detail) => uiHandle?.setAnnotatorDebugState(detail),
-                                },
-                                document,
-                            );
-                        } catch (error) {
-                            console.error('[rpa] annotator mount failed:', error);
-                            return;
-                        }
-                    }
+                    const handle = await ensureAnnotatorHandle();
+                    if (!handle) {return;}
+                    handle.setHighlightOnly(false);
                     setAnnotatorLauncherVisible(false);
-                    annotatorHandle.show();
+                    handle.show();
                     const openReply = await dispatchAnnotator('entity_rules.annotator.open', {
                         url: location.href,
                     }) as ActionShape;
                     if (openReply.type.endsWith('.failed')) {
                         console.error('[rpa] annotator open failed:', openReply.payload);
-                        annotatorHandle.exit();
+                        handle.exit();
                         setAnnotatorLauncherVisible(true);
                         return;
                     }
-                    if (isRecord(openReply.payload)) {
-                        annotatorHandle.open(openReply.payload);
-                    }
+                    if (isRecord(openReply.payload)) {handle.open(openReply.payload);}
                 })();
             },
+            onCheckpointEntityRulePreview: (selection) => previewCheckpointEntityRule(selection),
         });
         chrome.runtime.onMessage.addListener((message: unknown) => {
             if (!isRecord(message) || message.type !== MSG.ACTION_EVENT || !('action' in message)) {return;}

@@ -100,6 +100,13 @@ export type RecorderEvent = {
     scopeHint?: ScopeHint;
     targetHint?: string;
     targetAttrs?: Record<string, string>;
+    semanticHint?: {
+        profileName: string;
+        businessTag: string;
+        entityKind: 'form' | 'table' | 'dialog' | 'list' | 'panel' | 'toolbar' | 'kv';
+        fieldKey?: string;
+        actionIntent?: string;
+    };
     targetState?: {
         checked?: boolean;
         focused?: boolean;

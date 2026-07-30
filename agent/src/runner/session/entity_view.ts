@@ -39,6 +39,8 @@ export type BusinessQueryName =
     | 'form.actions';
 
 export type BusinessTarget =
+    | {kind: 'entity.field'; fieldKey: string}
+    | {kind: 'entity.action'; actionIntent: string}
     | {kind: 'form.field'; fieldKey: string}
     | {kind: 'form.action'; actionIntent: string}
     | {kind: 'table.filter'; fieldKey: string}
@@ -97,14 +99,16 @@ export const buildPageSessionEntityView = (
         }));
     }
     for (const generic of structuralGenericEntities(entry)) {
+        const componentBindings = compactBindings(
+            preferredGenericBinding(bindings, generic.nodeId, generic.kind),
+            preferredNodeDecorationBinding(bindings, generic.nodeId),
+        );
         entities.push(componentEntity(entry, {
             id: `node:${generic.kind}:${generic.nodeId}`,
             nodeId: generic.nodeId,
             kind: generic.kind,
-            bindings: compactBindings(
-                preferredGenericBinding(bindings, generic.nodeId, generic.kind),
-                preferredNodeDecorationBinding(bindings, generic.nodeId),
-            ),
+            bindings: componentBindings,
+            memberBindings: genericMemberBindings(entry, bindings, generic.nodeId, componentBindings),
             itemNodeIds: generic.itemNodeIds,
             keySlot: generic.keySlot,
         }));
@@ -116,11 +120,15 @@ export const buildPageSessionEntityView = (
         const entityKind = readEntityKind(binding.annotation.entityKind ?? binding.annotation.kind);
         const nodeId = binding.target.nodeIds[0];
         if (!entityKind || !nodeId) {continue;}
+        const componentBindings = compactBindings(binding, preferredNodeDecorationBinding(bindings, nodeId));
         entities.push(componentEntity(entry, {
             id: `binding:${binding.id}`,
             nodeId,
             kind: entityKind,
-            bindings: compactBindings(binding, preferredNodeDecorationBinding(bindings, nodeId)),
+            bindings: componentBindings,
+            memberBindings: entityKind === 'form' || entityKind === 'table'
+                ? undefined
+                : genericMemberBindings(entry, bindings, nodeId, componentBindings),
         }));
     }
 
@@ -279,6 +287,22 @@ export const resolvePageSessionBusinessTarget = (
         targetKind: target.kind,
     };
 
+    if (target.kind === 'entity.field' || target.kind === 'entity.action') {
+        const records = target.kind === 'entity.field'
+            ? entity.annotation?.entityFields
+            : entity.annotation?.entityActions;
+        const key = target.kind === 'entity.field' ? 'fieldKey' : 'actionIntent';
+        const expected = target.kind === 'entity.field' ? target.fieldKey : target.actionIntent;
+        const nodeIds = arrayRecords(records)
+            .filter((record) => record[key] === expected)
+            .map((record) => readString(record.controlNodeId) ?? readString(record.nodeId))
+            .filter((nodeId): nodeId is string => Boolean(nodeId));
+        const targetMeta = target.kind === 'entity.field'
+            ? {...meta, ...selectOptionControlMeta(entry, nodeIds)}
+            : meta;
+        return uniqueNodeTarget(nodeIds, targetMeta, `${target.kind} ${expected}`);
+    }
+
     if (target.kind === 'form.field' || target.kind === 'form.action') {
         if (entity.kind !== 'form') {return badArgs(`Business entity ${businessTag} is not a form.`);}
         const records = target.kind === 'form.field'
@@ -400,7 +424,8 @@ const componentEntity = (
         {},
     );
     if (input.kind === 'form') {enrichFormAnnotation(annotation, input.memberBindings ?? []);}
-    if (input.kind === 'table') {enrichTableAnnotation(annotation, input.memberBindings ?? []);}
+    else if (input.kind === 'table') {enrichTableAnnotation(annotation, input.memberBindings ?? []);}
+    else {enrichGenericAnnotation(annotation, input.memberBindings ?? []);}
     const preferred = bindings.at(-1);
     return {
         id: input.id,
@@ -501,6 +526,50 @@ const isActiveObservationNode = (entry: PageSnapshotSessionEntry, nodeId: Observ
 };
 
 
+
+const genericMemberBindings = (
+    entry: PageSnapshotSessionEntry,
+    bindings: readonly SemanticBusinessBinding[],
+    rootNodeId: ObservationNodeId,
+    componentBindings: readonly SemanticBusinessBinding[],
+): SemanticBusinessBinding[] => {
+    const profiles = new Set(componentBindings.map((binding) => binding.profileName));
+    if (profiles.size === 0) {return [];}
+    const memberNodes = new Set(descendants(entry, rootNodeId));
+    return bindings.filter((binding) =>
+        profiles.has(binding.profileName)
+        && !componentBindings.some((component) => component.id === binding.id)
+        && binding.target.nodeIds.some((nodeId) => memberNodes.has(nodeId)));
+};
+
+const enrichGenericAnnotation = (
+    annotation: Record<string, unknown>,
+    bindings: readonly SemanticBusinessBinding[],
+): void => {
+    const fields = bindings.flatMap((binding) => {
+        const fieldKey = readString(binding.annotation.fieldKey);
+        const nodeId = binding.target.nodeIds[0];
+        if (!fieldKey || !nodeId) {return [];}
+        return [{
+            fieldKey,
+            name: readString(binding.annotation.fieldName) ?? readString(binding.annotation.name),
+            kind: readString(binding.annotation.controlKind) ?? readString(binding.annotation.kind),
+            controlNodeId: nodeId,
+        }];
+    });
+    const actions = bindings.flatMap((binding) => {
+        const actionIntent = readString(binding.annotation.actionIntent);
+        const nodeId = binding.target.nodeIds[0];
+        if (!actionIntent || !nodeId) {return [];}
+        return [{
+            actionIntent,
+            text: readString(binding.annotation.actionText) ?? readString(binding.annotation.text),
+            nodeId,
+        }];
+    });
+    if (fields.length > 0) {annotation.entityFields = fields;}
+    if (actions.length > 0) {annotation.entityActions = actions;}
+};
 
 const tableMemberBindings = (
     bindings: readonly SemanticBusinessBinding[],

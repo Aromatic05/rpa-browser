@@ -206,6 +206,14 @@ export const browserQueryInputSchema = z.union([
         businessTag: z.string(),
         target: z.discriminatedUnion('kind', [
             z.object({
+                kind: z.literal('entity.field'),
+                fieldKey: z.string(),
+            }),
+            z.object({
+                kind: z.literal('entity.action'),
+                actionIntent: z.string(),
+            }),
+            z.object({
                 kind: z.literal('form.field'),
                 fieldKey: z.string(),
             }),
@@ -735,6 +743,24 @@ export const toolInputJsonSchemas = {
                     businessTag: { type: 'string' },
                     target: {
                         oneOf: [
+                            {
+                                type: 'object',
+                                required: ['kind', 'fieldKey'],
+                                properties: {
+                                    kind: { type: 'string', enum: ['entity.field'] },
+                                    fieldKey: { type: 'string' },
+                                },
+                                additionalProperties: false,
+                            },
+                            {
+                                type: 'object',
+                                required: ['kind', 'actionIntent'],
+                                properties: {
+                                    kind: { type: 'string', enum: ['entity.action'] },
+                                    actionIntent: { type: 'string' },
+                                },
+                                additionalProperties: false,
+                            },
                             {
                                 type: 'object',
                                 required: ['kind', 'fieldKey'],

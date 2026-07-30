@@ -46,6 +46,10 @@ export type CheckpointRecordingSession = {
     previousToken: string;
     status: 'recording' | 'review';
     startedAt: number;
+    kind: 'procedure' | 'recovery';
+    profileName?: string;
+    businessTag?: string;
+    entityKind?: 'form' | 'table' | 'dialog' | 'list' | 'panel' | 'toolbar' | 'kv';
 };
 
 export type RecordingState = {
@@ -152,6 +156,10 @@ export const startCheckpointRecording = (
         activeTabRef?: string;
         entryUrl?: string;
         initialTabs?: RecordingManifest['initialTabs'];
+        kind?: 'procedure' | 'recovery';
+        profileName?: string;
+        businessTag?: string;
+        entityKind?: 'form' | 'table' | 'dialog' | 'list' | 'panel' | 'toolbar' | 'kv';
     },
 ): CheckpointRecordingSession => {
     if (state.checkpointRecordings.has(workspaceName)) {
@@ -166,6 +174,10 @@ export const startCheckpointRecording = (
         previousToken,
         status: 'recording',
         startedAt: Date.now(),
+        kind: seed?.kind ?? 'procedure',
+        profileName: seed?.profileName,
+        businessTag: seed?.businessTag,
+        entityKind: seed?.entityKind,
     };
     state.checkpointRecordings.set(workspaceName, session);
     return session;

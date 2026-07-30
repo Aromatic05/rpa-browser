@@ -7,6 +7,7 @@ import {
     executeEntityRules,
     type PageSnapshotSessionEntry,
 } from '../../snapshot';
+import type {StepEntityRulesControl} from '../../snapshot/rules/model';
 
 export type FreshPageSessionContext = {
     entry: PageSnapshotSessionEntry;
@@ -17,7 +18,7 @@ export const ensurePageSessionForPage = async (
     deps: RunStepsDeps,
     workspaceName: string,
     page: Page,
-    options: {explicit?: boolean} = {},
+    options: {explicit?: boolean; entityRules?: StepEntityRulesControl} = {},
 ): Promise<PageSnapshotSessionEntry> => await deps.pageSession.ensureFresh({
     pageKey: page,
     pageUrl: safePageUrl(page),
@@ -34,6 +35,7 @@ export const ensurePageSessionForPage = async (
             form: components.form,
             table: components.table,
             entityRules: executeEntityRules({
+                control: options.entityRules,
                 config: deps.config.entityRules,
                 provider: deps.resolveEntityRulesProvider?.(workspaceName) || undefined,
                 pageUrl: safePageUrl(page),
@@ -46,7 +48,7 @@ export const ensurePageSessionForPage = async (
 export const ensureFreshPageSession = async (
     deps: RunStepsDeps,
     workspaceName: string,
-    options: {explicit?: boolean; tabName?: string} = {},
+    options: {explicit?: boolean; tabName?: string; entityRules?: StepEntityRulesControl} = {},
 ): Promise<FreshPageSessionContext> => {
     const binding = await awaitPageBoundBinding(deps, workspaceName, options.tabName);
     const entry = await ensurePageSessionForPage(deps, workspaceName, binding.page, options);

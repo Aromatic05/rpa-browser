@@ -2,6 +2,7 @@ import type { DebugTargetFn, EmitFn } from './emitter';
 import {
     buildA11yHint,
     buildCandidates,
+    buildRecordedSemanticHint,
     buildTargetAttrs,
     buildTargetState,
     findCheckboxInput,
@@ -54,6 +55,7 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn): void 
                 targetAttrs: buildTargetAttrs(interactive),
                 targetState: buildTargetState(interactive),
                 scopeHint: getScopeHint(interactive),
+                semanticHint: buildRecordedSemanticHint(interactive),
             });
             return;
         }
@@ -65,6 +67,7 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn): void 
                 a11yHint: hintOnly,
                 locatorCandidates: buildCandidates(element),
                 scopeHint: getScopeHint(element),
+                semanticHint: buildRecordedSemanticHint(element),
             });
             return;
         }
@@ -95,6 +98,7 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn): void 
                 targetAttrs: buildTargetAttrs(element),
                 targetState: buildTargetState(element),
                 scopeHint: getScopeHint(element),
+                semanticHint: buildRecordedSemanticHint(element),
             });
         },
         true,
@@ -124,6 +128,7 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn): void 
                         targetAttrs: buildTargetAttrs(element),
                         targetState: buildTargetState(element),
                         scopeHint: getScopeHint(element),
+                semanticHint: buildRecordedSemanticHint(element),
                     });
                     return;
                 }
@@ -137,6 +142,7 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn): void 
                         targetAttrs: buildTargetAttrs(element),
                         targetState: buildTargetState(element),
                         scopeHint: getScopeHint(element),
+                semanticHint: buildRecordedSemanticHint(element),
                     });
                     return;
                 }
@@ -153,6 +159,7 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn): void 
                     targetAttrs: buildTargetAttrs(element),
                     targetState: buildTargetState(element),
                     scopeHint: getScopeHint(element),
+                semanticHint: buildRecordedSemanticHint(element),
                 });
                 return;
             }
@@ -165,6 +172,7 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn): void 
                 targetAttrs: buildTargetAttrs(element),
                 targetState: buildTargetState(element),
                 scopeHint: getScopeHint(element),
+                semanticHint: buildRecordedSemanticHint(element),
             });
         },
         true,
@@ -187,6 +195,7 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn): void 
                 targetAttrs: element instanceof Element ? buildTargetAttrs(element) : undefined,
                 targetState: element instanceof Element ? buildTargetState(element) : undefined,
                 scopeHint: element instanceof Element ? getScopeHint(element) : undefined,
+                semanticHint: element instanceof Element ? buildRecordedSemanticHint(element) : undefined,
             });
         },
         true,
@@ -213,6 +222,7 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn): void 
                 targetAttrs: buildTargetAttrs(element),
                 targetState: buildTargetState(element),
                 scopeHint: getScopeHint(element),
+                semanticHint: buildRecordedSemanticHint(element),
             });
         },
         true,
@@ -235,6 +245,7 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn): void 
                 targetAttrs: buildTargetAttrs(element),
                 targetState: buildTargetState(element),
                 scopeHint: getScopeHint(element),
+                semanticHint: buildRecordedSemanticHint(element),
             });
         },
         true,

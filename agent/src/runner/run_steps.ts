@@ -421,6 +421,33 @@ export const setRunStepsDeps = (deps: RunStepsDeps): void => {
     defaultDeps = deps;
 };
 
+const resolveRunCheckpoints = (
+    req: RunStepsRequest,
+    deps: RunStepsDeps,
+): {checkpoints: RunnerCheckpoint[]; stepResolves: Record<string, Record<string, StepResolve>>} => {
+    if (req.checkpoints !== undefined) {
+        return {
+            checkpoints: req.checkpoints,
+            stepResolves: req.checkpointStepResolves ?? {},
+        };
+    }
+    try {
+        const workspace = deps.resolveWorkspace(req.workspaceName);
+        const provider = workspace.checkpoint.getProvider(workspace.workflow);
+        const checkpoints = (provider.listCheckpoints?.() ?? [])
+            .filter((checkpoint) => checkpoint.kind === undefined || checkpoint.kind === 'recovery');
+        return {
+            checkpoints,
+            stepResolves: Object.fromEntries(checkpoints.map((checkpoint) => [
+                checkpoint.id,
+                provider.getCheckpointResolves?.(checkpoint.id) ?? {},
+            ])),
+        };
+    } catch {
+        return {checkpoints: [], stepResolves: {}};
+    }
+};
+
 export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promise<Checkpoint> => {
     const resolvedDeps = deps || defaultDeps;
     if (!resolvedDeps) {
@@ -433,7 +460,8 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
     const checkpointAttempts = new Map<string, number>();
     const runLocalStepResults: RunLocalStepResults = {};
     let status: RunStatus = 'running';
-    setCheckpoints(req.checkpoints || []);
+    const checkpointRuntime = resolveRunCheckpoints(req, resolvedDeps);
+    setCheckpoints(checkpointRuntime.checkpoints);
 
     while (true) {
         while (req.signalChannel.cursor < req.signalChannel.items.length) {
@@ -507,8 +535,15 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
                     checkpointMaxAttempts,
                     inCheckpointFlow: false,
                     deps: resolvedDeps,
-                    executeStep: (nestedStep) => executeOne(nestedStep, req.workspaceName, runLocalStepResults, resolvedDeps, req.stepResolves),
-                    checkpoints: req.checkpoints,
+                    executeStep: (nestedStep, stepResolves) => executeOne(
+                        nestedStep,
+                        req.workspaceName,
+                        runLocalStepResults,
+                        resolvedDeps,
+                        stepResolves ?? req.stepResolves,
+                    ),
+                    checkpoints: checkpointRuntime.checkpoints,
+                    checkpointStepResolves: checkpointRuntime.stepResolves,
                 });
                 const checkpointOutput = await runCheckpoint(failedCtx);
                 finalResult = checkpointOutput.finalResult;

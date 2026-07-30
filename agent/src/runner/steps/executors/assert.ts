@@ -4,6 +4,7 @@ import {
     ensureFreshPageSession,
     filterPageSessionEntities,
 } from '../../session';
+import {visibleTextEvaluation} from '../../page/visible_text';
 import {awaitPageBoundBinding} from '../helpers/runtime_binding';
 import type {Step, StepResult} from '../types';
 
@@ -58,23 +59,7 @@ export const executeBrowserAssert = async (
     }
 
     if (textVisible) {
-        const evalResult = await binding.traceTools['trace.page.evaluate']({
-            expression: `({ needle }) => {
-                const text = String(needle || '').trim();
-                if (!text) return false;
-                const isVisible = (el) => {
-                    if (!(el instanceof Element)) return false;
-                    const style = window.getComputedStyle(el);
-                    if (!style) return false;
-                    if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity || '1') <= 0) return false;
-                    const rect = el.getBoundingClientRect();
-                    return rect.width > 0 && rect.height > 0;
-                };
-                const elements = Array.from(document.querySelectorAll('body *'));
-                return elements.some((el) => isVisible(el) && (el.textContent || '').includes(text));
-            }`,
-            arg: {needle: textVisible},
-        });
+        const evalResult = await binding.traceTools['trace.page.evaluate'](visibleTextEvaluation(textVisible));
         if (!evalResult.ok) {
             return {
                 stepId: step.id,
@@ -92,7 +77,11 @@ export const executeBrowserAssert = async (
     }
 
     if (entityExists) {
-        const {entry} = await ensureFreshPageSession(deps, workspaceName);
+        const {entry} = await ensureFreshPageSession(
+            deps,
+            workspaceName,
+            {explicit: true, entityRules: step.entityRules},
+        );
         const entities = filterPageSessionEntities(
             buildPageSessionEntityView(entry).entities,
             entityExists,

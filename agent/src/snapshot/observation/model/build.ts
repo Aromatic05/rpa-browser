@@ -17,7 +17,17 @@ import type {
 import { deepFreeze } from './freeze';
 
 const OBSERVATION_MARKER_ATTRIBUTE = 'data-rpa-observation-id';
-const INTERNAL_CAPTURE_ATTRIBUTES = new Set([RUNTIME_STATE_ATTRIBUTE, OBSERVATION_MARKER_ATTRIBUTE]);
+const INTERNAL_CAPTURE_ATTRIBUTES = new Set([
+    RUNTIME_STATE_ATTRIBUTE,
+    OBSERVATION_MARKER_ATTRIBUTE,
+    'data-rpa-record-semantic',
+    'data-rpa-annotation-id',
+    'data-rpa-annotation-kind',
+    'data-rpa-annotation-state',
+    'data-rpa-column-position',
+    'data-rpa-column-group',
+    'data-rpa-primary-key',
+]);
 const IDENTITY_TRANSFORM: RectTransform = {
     scaleX: 1,
     scaleY: 1,

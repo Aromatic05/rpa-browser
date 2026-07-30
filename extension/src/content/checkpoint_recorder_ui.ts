@@ -1,9 +1,35 @@
 import type {Action} from '../shared/types.js';
 
-type RecordedStepSummary = {index: number; label: string};
-type RecorderPhase = 'idle' | 'recording' | 'review' | 'saving' | 'success';
-type TriggerKind = 'not_found' | 'text_visible' | 'url_includes';
+type RecorderPhase = 'idle' | 'setup' | 'recording' | 'review' | 'saving' | 'success';
+type CheckpointKind = 'procedure' | 'recovery';
 type OperationKind = 'any' | 'click' | 'fill' | 'select' | 'assert';
+type OutputKind = 'none' | 'table.currentRows' | 'table.rowCount';
+
+type RecordedStepSummary = {
+    index: number;
+    stepId: string;
+    stepName: string;
+    label: string;
+    recordedValue?: unknown;
+    profileName?: string;
+    businessTag?: string;
+    fieldKey?: string;
+    fieldHint?: string;
+    actionHint?: string;
+};
+
+type EntityRuleField = {fieldKey: string; label: string; targetKind: 'entity.field' | 'form.field' | 'table.filter'};
+type EntityRuleAction = {actionIntent: string; label: string; targetKind: 'entity.action' | 'form.action' | 'table.module_action'};
+type EntityRuleOutput = {kind: OutputKind; label: string};
+type EntityRuleOption = {
+    profileName: string;
+    businessTag: string;
+    entityKind: 'form' | 'table' | 'dialog' | 'list' | 'panel' | 'toolbar' | 'kv';
+    label: string;
+    fields: EntityRuleField[];
+    actions: EntityRuleAction[];
+    outputs: EntityRuleOutput[];
+};
 
 export type CheckpointRecorderUIOptions = {
     launchers: HTMLElement;
@@ -11,6 +37,11 @@ export type CheckpointRecorderUIOptions = {
     before?: Node | null;
     sendAction: (type: string, payload?: Record<string, unknown>) => Promise<Action>;
     onActiveChange?: (active: boolean) => void;
+    onEntityRulePreview?: (selection: {
+        profileName: string;
+        businessTag: string;
+        entityKind: 'form' | 'table' | 'dialog' | 'list' | 'panel' | 'toolbar' | 'kv';
+    } | null) => void | Promise<void>;
     recordingAutoHideMs?: number;
 };
 
@@ -33,8 +64,64 @@ const readSteps = (action: Action): RecordedStepSummary[] => {
     const payload = isRecord(action.payload) ? action.payload : {};
     if (!Array.isArray(payload.steps)) {return [];}
     return payload.steps.flatMap((item) => {
-        if (!isRecord(item) || typeof item.index !== 'number' || typeof item.label !== 'string') {return [];}
-        return [{index: item.index, label: item.label}];
+        if (!isRecord(item)
+            || typeof item.index !== 'number'
+            || typeof item.stepId !== 'string'
+            || typeof item.stepName !== 'string'
+            || typeof item.label !== 'string') {return [];}
+        return [{
+            index: item.index,
+            stepId: item.stepId,
+            stepName: item.stepName,
+            label: item.label,
+            ...('recordedValue' in item ? {recordedValue: structuredClone(item.recordedValue)} : {}),
+            ...(typeof item.profileName === 'string' ? {profileName: item.profileName} : {}),
+            ...(typeof item.businessTag === 'string' ? {businessTag: item.businessTag} : {}),
+            ...(typeof item.fieldKey === 'string' ? {fieldKey: item.fieldKey} : {}),
+            ...(typeof item.fieldHint === 'string' ? {fieldHint: item.fieldHint} : {}),
+            ...(typeof item.actionHint === 'string' ? {actionHint: item.actionHint} : {}),
+        }];
+    });
+};
+
+const readEntityRules = (action: Action): EntityRuleOption[] => {
+    const payload = isRecord(action.payload) ? action.payload : {};
+    if (!Array.isArray(payload.entityRules)) {return [];}
+    return payload.entityRules.flatMap((item) => {
+        if (!isRecord(item)
+            || typeof item.profileName !== 'string'
+            || typeof item.businessTag !== 'string'
+            || !['form', 'table', 'dialog', 'list', 'panel', 'toolbar', 'kv'].includes(String(item.entityKind))
+            || typeof item.label !== 'string') {return [];}
+        const fields: EntityRuleField[] = Array.isArray(item.fields) ? item.fields.flatMap((field) => {
+            if (!isRecord(field)
+                || typeof field.fieldKey !== 'string'
+                || typeof field.label !== 'string'
+                || !['entity.field', 'form.field', 'table.filter'].includes(String(field.targetKind))) {return [];}
+            return [{fieldKey: field.fieldKey, label: field.label, targetKind: field.targetKind as EntityRuleField['targetKind']}];
+        }) : [];
+        const actions: EntityRuleAction[] = Array.isArray(item.actions) ? item.actions.flatMap((action) => {
+            if (!isRecord(action)
+                || typeof action.actionIntent !== 'string'
+                || typeof action.label !== 'string'
+                || !['entity.action', 'form.action', 'table.module_action'].includes(String(action.targetKind))) {return [];}
+            return [{actionIntent: action.actionIntent, label: action.label, targetKind: action.targetKind as EntityRuleAction['targetKind']}];
+        }) : [];
+        const outputs: EntityRuleOutput[] = Array.isArray(item.outputs) ? item.outputs.flatMap((output) => {
+            if (!isRecord(output)
+                || !['none', 'table.currentRows', 'table.rowCount'].includes(String(output.kind))
+                || typeof output.label !== 'string') {return [];}
+            return [{kind: output.kind as OutputKind, label: output.label}];
+        }) : [];
+        return [{
+            profileName: item.profileName,
+            businessTag: item.businessTag,
+            entityKind: item.entityKind as EntityRuleOption['entityKind'],
+            label: item.label,
+            fields,
+            actions,
+            outputs: outputs.length ? outputs : [{kind: 'none' as const, label: '无'}],
+        }];
     });
 };
 
@@ -53,25 +140,45 @@ const createOption = (value: string, label: string): HTMLOptionElement => {
     return option;
 };
 
+const entityOptionKey = (option: EntityRuleOption): string =>
+    `${option.profileName}\u0000${option.businessTag}`;
+
+const isInputStep = (step: RecordedStepSummary): boolean =>
+    step.stepName === 'browser.fill' || step.stepName === 'browser.type' || step.stepName === 'browser.select_option';
+
+const isActionStep = (step: RecordedStepSummary): boolean => step.stepName === 'browser.click';
+
+const compactValue = (value: unknown): string => {
+    if (Array.isArray(value)) {return value.map((item) => compactValue(item)).join('、');}
+    if (value === undefined || value === null || value === '') {return ''}
+    const text = typeof value === 'string'
+        ? value
+        : typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint'
+            ? String(value)
+            : JSON.stringify(value);
+    return text.length > 32 ? `${text.slice(0, 29)}…` : text;
+};
+
 export const mountCheckpointRecorderUI = (options: CheckpointRecorderUIOptions): CheckpointRecorderUIHandle => {
     const style = document.createElement('style');
     style.textContent = `
       .checkpoint-launch { height:38px; padding:0 13px; border:none; border-radius:999px; background:#fff7ed; color:#9a3412; font-size:12px; font-weight:750; cursor:pointer; box-shadow:0 8px 20px rgba(154,52,18,.16); }
       .checkpoint-launch:hover { background:#ffedd5; }
       .checkpoint-launch.active { background:#c2410c; color:#fff; }
-      .checkpoint-recorder { position:fixed; left:50%; bottom:14px; z-index:2147483647; width:min(560px,calc(100vw - 24px)); transform:translateX(-50%); border:1px solid rgba(148,163,184,.42); border-radius:14px; background:rgba(255,255,255,.98); color:#0f172a; box-shadow:0 18px 50px rgba(15,23,42,.28); pointer-events:auto; }
+      .checkpoint-recorder { position:fixed; left:50%; bottom:14px; z-index:2147483647; width:min(640px,calc(100vw - 24px)); max-height:min(620px,calc(100vh - 28px)); overflow:auto; transform:translateX(-50%); border:1px solid rgba(148,163,184,.42); border-radius:14px; background:rgba(255,255,255,.98); color:#0f172a; box-shadow:0 18px 50px rgba(15,23,42,.28); pointer-events:auto; }
       .checkpoint-recorder[hidden] { display:none; }
+      .checkpoint-recorder.setup { left:auto; right:16px; top:68px; bottom:auto; width:min(360px,calc(100vw - 24px)); max-height:calc(100vh - 84px); transform:none; }
       .checkpoint-recorder.dragged { transform:none; }
       .checkpoint-recorder header { min-height:38px; display:flex; align-items:center; gap:8px; padding:7px 8px 7px 12px; border-bottom:1px solid #e2e8f0; cursor:move; user-select:none; touch-action:none; }
       .checkpoint-recorder header strong { flex:1; min-width:0; overflow:hidden; font-size:12px; text-overflow:ellipsis; white-space:nowrap; }
       .checkpoint-recorder header small { color:#64748b; font-size:10px; }
       .checkpoint-recorder header button { width:28px; height:28px; padding:0; border:0; border-radius:8px; background:transparent; color:#64748b; font-size:16px; }
       .checkpoint-recorder header button:hover { background:#f1f5f9; }
-      .checkpoint-recorder .checkpoint-body { display:grid; gap:9px; padding:11px 12px 12px; }
-      .checkpoint-recorder .checkpoint-status { display:flex; align-items:center; gap:9px; }
-      .checkpoint-recorder .record-dot { width:9px; height:9px; border-radius:50%; background:#dc2626; box-shadow:0 0 0 4px #fee2e2; animation:checkpoint-pulse 1.4s infinite; }
-      .checkpoint-recorder .checkpoint-copy { flex:1; min-width:0; color:#334155; font-size:11px; line-height:1.4; }
-      .checkpoint-recorder .checkpoint-actions { display:flex; justify-content:flex-end; gap:7px; }
+      .checkpoint-body { display:grid; gap:10px; padding:11px 12px 12px; }
+      .checkpoint-status { display:flex; align-items:center; gap:9px; }
+      .record-dot { width:9px; height:9px; border-radius:50%; background:#dc2626; box-shadow:0 0 0 4px #fee2e2; animation:checkpoint-pulse 1.4s infinite; }
+      .checkpoint-copy { flex:1; min-width:0; color:#334155; font-size:11px; line-height:1.45; }
+      .checkpoint-actions { display:flex; justify-content:flex-end; gap:7px; }
       .checkpoint-recorder button { min-height:32px; border:1px solid #cbd5e1; border-radius:9px; padding:0 10px; background:#fff; color:#334155; font-size:11px; font-weight:700; cursor:pointer; }
       .checkpoint-recorder button:hover:not(:disabled) { background:#f8fafc; }
       .checkpoint-recorder button.primary { border-color:#c2410c; background:#c2410c; color:#fff; }
@@ -80,18 +187,25 @@ export const mountCheckpointRecorderUI = (options: CheckpointRecorderUIOptions):
       .checkpoint-recorder label { display:grid; gap:4px; color:#475569; font-size:10px; font-weight:700; }
       .checkpoint-recorder input[type="text"], .checkpoint-recorder select { width:100%; height:34px; box-sizing:border-box; border:1px solid #cbd5e1; border-radius:9px; padding:0 9px; background:#fff; color:#0f172a; font-size:11px; }
       .checkpoint-recorder input:focus-visible, .checkpoint-recorder select:focus-visible, .checkpoint-recorder button:focus-visible, .checkpoint-launch:focus-visible { outline:2px solid #2563eb; outline-offset:2px; }
-      .checkpoint-recorder .checkpoint-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
-      .checkpoint-recorder .checkpoint-check { display:flex; grid-column:1/-1; align-items:center; gap:7px; font-size:11px; font-weight:600; }
-      .checkpoint-recorder .checkpoint-check input { width:15px; height:15px; margin:0; }
-      .checkpoint-recorder .checkpoint-error { margin:0; color:#b91c1c; font-size:11px; }
-      .checkpoint-recorder .checkpoint-success { color:#047857; font-size:11px; font-weight:700; }
+      .checkpoint-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+      .checkpoint-section { display:grid; gap:7px; padding-top:2px; }
+      .checkpoint-section > strong { font-size:11px; }
+      .checkpoint-map-list { display:grid; gap:6px; }
+      .checkpoint-map-row { display:grid; grid-template-columns:minmax(130px,1fr) minmax(180px,1.25fr); align-items:center; gap:8px; }
+      .checkpoint-map-copy { min-width:0; color:#334155; font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+      .checkpoint-map-copy small { color:#64748b; }
+      .checkpoint-check { display:flex; grid-column:1/-1; align-items:center; gap:7px; font-size:11px; font-weight:600; }
+      .checkpoint-check input { width:15px; height:15px; margin:0; }
+      .checkpoint-note { margin:0; padding:8px 9px; border-radius:9px; background:#f8fafc; color:#475569; font-size:11px; line-height:1.45; }
+      .checkpoint-error { margin:0; color:#b91c1c; font-size:11px; }
+      .checkpoint-success { color:#047857; font-size:11px; font-weight:700; }
       @keyframes checkpoint-pulse { 0%,100% { opacity:1; } 50% { opacity:.45; } }
-      @media (max-width:620px) { .checkpoint-recorder .checkpoint-grid { grid-template-columns:1fr; } .checkpoint-recorder .checkpoint-check { grid-column:auto; } }
+      @media (max-width:620px) { .checkpoint-grid, .checkpoint-map-row { grid-template-columns:1fr; } .checkpoint-check { grid-column:auto; } }
     `;
     options.surface.getRootNode().appendChild(style);
 
-    const launcher = createButton('录制恢复', 'checkpoint-launch');
-    launcher.setAttribute('aria-label', '录制页面失败后的恢复步骤');
+    const launcher = createButton('录制检查点', 'checkpoint-launch');
+    launcher.setAttribute('aria-label', '录制业务检查点或错误恢复');
     launcher.setAttribute('data-rpa-checkpoint-action', 'launch');
     options.launchers.insertBefore(launcher, options.before ?? null);
 
@@ -99,12 +213,12 @@ export const mountCheckpointRecorderUI = (options: CheckpointRecorderUIOptions):
     dock.className = 'checkpoint-recorder';
     dock.hidden = true;
     dock.setAttribute('role', 'dialog');
-    dock.setAttribute('aria-label', '录制恢复步骤');
+    dock.setAttribute('aria-label', '检查点录制与标注');
     const header = document.createElement('header');
     const title = document.createElement('strong');
     const subtitle = document.createElement('small');
     const hideButton = createButton('×');
-    hideButton.setAttribute('aria-label', '收起恢复步骤面板');
+    hideButton.setAttribute('aria-label', '收起检查点面板');
     header.append(title, subtitle, hideButton);
     const body = document.createElement('div');
     body.className = 'checkpoint-body';
@@ -116,17 +230,32 @@ export const mountCheckpointRecorderUI = (options: CheckpointRecorderUIOptions):
     let busy = false;
     let dockVisible = false;
     let steps: RecordedStepSummary[] = [];
+    let entityRules: EntityRuleOption[] = [];
     let error = '';
     const form = {
+        kind: 'procedure' as CheckpointKind,
         name: '',
-        triggerKind: 'not_found' as TriggerKind,
-        triggerValue: '',
+        entityKey: '',
+        mappings: {} as Record<string, string>,
+        outputKind: 'none' as OutputKind,
         operation: 'any' as OperationKind,
         retryOriginal: true,
     };
     let successTimer: ReturnType<typeof setTimeout> | null = null;
     let recordingHideTimer: ReturnType<typeof setTimeout> | null = null;
     let drag: {pointerId: number; x: number; y: number; left: number; top: number} | null = null;
+
+    const selectedEntity = (): EntityRuleOption | undefined =>
+        entityRules.find((item) => entityOptionKey(item) === form.entityKey);
+
+    const previewSelectedEntity = async (): Promise<void> => {
+        const entity = selectedEntity();
+        await options.onEntityRulePreview?.(entity ? {
+            profileName: entity.profileName,
+            businessTag: entity.businessTag,
+            entityKind: entity.entityKind,
+        } : null);
+    };
 
     const setDockVisible = (visible: boolean): void => {
         dockVisible = visible;
@@ -145,18 +274,71 @@ export const mountCheckpointRecorderUI = (options: CheckpointRecorderUIOptions):
         phase = 'idle';
         busy = false;
         steps = [];
+        entityRules = [];
         error = '';
+        form.kind = 'procedure';
         form.name = '';
-        form.triggerKind = 'not_found';
-        form.triggerValue = '';
+        form.entityKey = '';
+        form.mappings = {};
+        form.outputKind = 'none';
         form.operation = 'any';
         form.retryOriginal = true;
         options.onActiveChange?.(false);
+        void options.onEntityRulePreview?.(null);
         if (recordingHideTimer) {clearTimeout(recordingHideTimer); recordingHideTimer = null;}
-        launcher.textContent = '录制恢复';
+        launcher.textContent = '录制检查点';
         launcher.classList.remove('active');
         setDockVisible(false);
         render();
+    };
+
+    const initializeMappings = (): void => {
+        const entity = selectedEntity();
+        if (!entity) {form.mappings = {}; return;}
+        const next: Record<string, string> = {};
+        for (const step of steps) {
+            if (isInputStep(step)) {
+                const exactFieldKey = step.profileName === entity.profileName
+                    && step.businessTag === entity.businessTag
+                    ? step.fieldKey
+                    : undefined;
+                const normalizedHint = step.fieldHint?.trim().toLowerCase();
+                const matches = entity.fields.filter((field) =>
+                    field.fieldKey === exactFieldKey
+                    || field.label.trim().toLowerCase() === normalizedHint
+                    || field.fieldKey.trim().toLowerCase() === normalizedHint);
+                const chosen = matches.at(0) ?? (entity.fields.length === 1 ? entity.fields.at(0) : undefined);
+                next[step.stepId] = chosen ? `input:${chosen.fieldKey}` : 'recorded';
+            } else if (isActionStep(step)) {
+                const exactActionIntent = step.profileName === entity.profileName
+                    && step.businessTag === entity.businessTag
+                    ? step.actionHint
+                    : undefined;
+                const normalizedHint = step.actionHint?.trim().toLowerCase();
+                const matches = entity.actions.filter((action) =>
+                    action.actionIntent === exactActionIntent
+                    || action.actionIntent.trim().toLowerCase() === normalizedHint
+                    || action.label.trim().toLowerCase() === normalizedHint
+                    || step.label.toLowerCase().includes(action.label.trim().toLowerCase()));
+                const chosen = matches.at(0) ?? (entity.actions.length === 1 ? entity.actions.at(0) : undefined);
+                next[step.stepId] = chosen ? `action:${chosen.actionIntent}` : 'recorded';
+            }
+        }
+        form.mappings = next;
+        if (!entity.outputs.some((output) => output.kind === form.outputKind)) {form.outputKind = 'none';}
+    };
+
+    const applyEntityRuleOptions = (action: Action): void => {
+        entityRules = readEntityRules(action);
+        if (!form.entityKey || !entityRules.some((item) => entityOptionKey(item) === form.entityKey)) {
+            form.entityKey = entityRules[0] ? entityOptionKey(entityRules[0]) : '';
+        }
+    };
+
+    const applyReview = (action: Action): void => {
+        steps = readSteps(action);
+        applyEntityRuleOptions(action);
+        initializeMappings();
     };
 
     const run = async (type: string, payload?: Record<string, unknown>): Promise<Action | null> => {
@@ -165,12 +347,9 @@ export const mountCheckpointRecorderUI = (options: CheckpointRecorderUIOptions):
         error = '';
         render();
         try {
-            const reply = await options.sendAction(type, payload);
-            if (reply.type.endsWith('.failed')) {
-                error = readFailure(reply);
-                return null;
-            }
-            return reply;
+            const action = await options.sendAction(type, payload);
+            if (action.type.endsWith('.failed')) {error = readFailure(action); return null;}
+            return action;
         } catch (caught) {
             error = caught instanceof Error ? caught.message : String(caught);
             return null;
@@ -180,12 +359,35 @@ export const mountCheckpointRecorderUI = (options: CheckpointRecorderUIOptions):
         }
     };
 
+    const openSetup = async (): Promise<void> => {
+        const action = await run('checkpoint.record.get', {});
+        if (!action) {setDockVisible(true); return;}
+        applyEntityRuleOptions(action);
+        phase = 'setup';
+        options.onActiveChange?.(true);
+        setDockVisible(true);
+        render();
+        await previewSelectedEntity();
+    };
+
     const start = async (): Promise<void> => {
-        const reply = await run('checkpoint.record.start', {});
-        if (!reply) {setDockVisible(true); return;}
+        const entity = selectedEntity();
+        if (!entity) {
+            error = form.kind === 'recovery'
+                ? '请先选择一个已标注的错误状态'
+                : '请先选择一个已标注的业务区域';
+            render();
+            return;
+        }
+        const action = await run('checkpoint.record.start', {
+            kind: form.kind,
+            profileName: entity.profileName,
+            businessTag: entity.businessTag,
+            entityKind: entity.entityKind,
+        });
+        if (!action) {setDockVisible(true); return;}
         phase = 'recording';
         steps = [];
-        options.onActiveChange?.(true);
         launcher.textContent = '录制中';
         launcher.classList.add('active');
         setDockVisible(true);
@@ -195,18 +397,20 @@ export const mountCheckpointRecorderUI = (options: CheckpointRecorderUIOptions):
 
     const stop = async (): Promise<void> => {
         if (recordingHideTimer) {clearTimeout(recordingHideTimer); recordingHideTimer = null;}
-        const reply = await run('checkpoint.record.stop', {});
-        if (!reply) {return;}
+        const action = await run('checkpoint.record.stop', {});
+        if (!action) {return;}
         phase = 'review';
-        steps = readSteps(reply);
-        launcher.textContent = '保存恢复步骤';
+        applyReview(action);
+        await options.onEntityRulePreview?.(null);
+        launcher.textContent = '保存检查点';
         launcher.classList.remove('active');
+        setDockVisible(true);
         render();
     };
 
     const cancel = async (): Promise<void> => {
-        const reply = await run('checkpoint.record.cancel', {});
-        if (!reply) {return;}
+        const action = await run('checkpoint.record.cancel', {});
+        if (!action) {return;}
         reset();
     };
 
@@ -214,52 +418,199 @@ export const mountCheckpointRecorderUI = (options: CheckpointRecorderUIOptions):
         if (recordingHideTimer) {clearTimeout(recordingHideTimer); recordingHideTimer = null;}
         const canceled = await run('checkpoint.record.cancel', {});
         if (!canceled) {return;}
-        phase = 'idle';
-        await start();
+        phase = 'setup';
+        setDockVisible(true);
+        render();
+        await previewSelectedEntity();
     };
 
-    const save = async (): Promise<void> => {
-        if (!form.name.trim()) {error = '请填写恢复步骤名称'; render(); return;}
-        if (form.triggerKind !== 'not_found' && !form.triggerValue.trim()) {
-            error = form.triggerKind === 'text_visible' ? '请填写页面文字' : '请填写地址内容';
-            render();
-            return;
+    const procedurePayload = (): Record<string, unknown> | null => {
+        const entity = selectedEntity();
+        if (!entity) {error = '请先完成当前页面的业务标注，再选择成立条件'; return null;}
+        const mappings: Array<
+            | {stepId: string; kind: 'input'; fieldKey: string}
+            | {stepId: string; kind: 'action'; actionIntent: string}
+        > = [];
+        for (const [stepId, value] of Object.entries(form.mappings)) {
+            if (value.startsWith('input:')) {
+                mappings.push({stepId, kind: 'input', fieldKey: value.slice('input:'.length)});
+            } else if (value.startsWith('action:')) {
+                mappings.push({stepId, kind: 'action', actionIntent: value.slice('action:'.length)});
+            }
         }
-        phase = 'saving';
-        const reply = await run('checkpoint.record.save', {
+        return {
+            kind: 'procedure',
             name: form.name.trim(),
-            triggerKind: form.triggerKind,
-            triggerValue: form.triggerValue.trim(),
-            operation: form.operation,
-            retryOriginal: form.retryOriginal,
-        });
-        if (!reply) {phase = 'review'; render(); return;}
+            mappings,
+            outputKind: form.outputKind,
+        };
+    };
+
+    const recoveryPayload = (): Record<string, unknown> => ({
+        kind: 'recovery',
+        name: form.name.trim(),
+        operation: form.operation,
+        retryOriginal: form.retryOriginal,
+    });
+
+    const save = async (): Promise<void> => {
+        if (!form.name.trim()) {error = '请填写检查点名称'; render(); return;}
+        const payload = form.kind === 'procedure' ? procedurePayload() : recoveryPayload();
+        if (!payload) {render(); return;}
+        phase = 'saving';
+        const action = await run('checkpoint.record.save', payload);
+        if (!action) {phase = 'review'; render(); return;}
         phase = 'success';
         options.onActiveChange?.(false);
-        launcher.textContent = '已保存恢复步骤';
+        launcher.textContent = '检查点已保存';
         launcher.classList.remove('active');
         render();
         if (successTimer) {clearTimeout(successTimer);}
         successTimer = setTimeout(reset, 3500);
     };
 
+    const appendError = (): void => {
+        if (!error) {return;}
+        const errorText = document.createElement('p');
+        errorText.className = 'checkpoint-error';
+        errorText.textContent = error;
+        body.appendChild(errorText);
+    };
+
+    const renderProcedure = (grid: HTMLElement): void => {
+        const entityLabel = document.createElement('label');
+        entityLabel.textContent = '成立条件';
+        const entitySelect = document.createElement('select');
+        entitySelect.setAttribute('data-rpa-checkpoint-field', 'entity');
+        if (!entityRules.length) {
+            entitySelect.append(createOption('', '当前页面没有可用的业务标注'));
+            entitySelect.disabled = true;
+        } else {
+            for (const entity of entityRules) {
+                entitySelect.append(createOption(entityOptionKey(entity), `${entity.label} 可识别时`));
+            }
+            entitySelect.value = form.entityKey;
+        }
+        entitySelect.disabled = true;
+        entityLabel.appendChild(entitySelect);
+
+        const outputLabel = document.createElement('label');
+        outputLabel.textContent = '输出';
+        const outputSelect = document.createElement('select');
+        outputSelect.setAttribute('data-rpa-checkpoint-field', 'output');
+        const entity = selectedEntity();
+        for (const output of entity?.outputs ?? [{kind: 'none' as const, label: '无'}]) {
+            outputSelect.append(createOption(output.kind, output.label));
+        }
+        outputSelect.value = form.outputKind;
+        outputSelect.addEventListener('change', () => {form.outputKind = outputSelect.value as OutputKind;});
+        outputLabel.appendChild(outputSelect);
+        grid.append(entityLabel, outputLabel);
+
+        const section = document.createElement('section');
+        section.className = 'checkpoint-section';
+        const heading = document.createElement('strong');
+        heading.textContent = '输入与操作';
+        section.appendChild(heading);
+        if (!entity) {
+            const note = document.createElement('p');
+            note.className = 'checkpoint-note';
+            note.textContent = '请先标注页面中的业务区域、字段和操作，再创建业务检查点。';
+            section.appendChild(note);
+            body.appendChild(section);
+            return;
+        }
+        const list = document.createElement('div');
+        list.className = 'checkpoint-map-list';
+        for (const step of steps) {
+            if (!isInputStep(step) && !isActionStep(step)) {continue;}
+            const row = document.createElement('label');
+            row.className = 'checkpoint-map-row';
+            const copy = document.createElement('span');
+            copy.className = 'checkpoint-map-copy';
+            const recorded = compactValue(step.recordedValue);
+            copy.textContent = step.label;
+            if (recorded) {
+                const sample = document.createElement('small');
+                sample.textContent = `（录制值：${recorded}）`;
+                copy.appendChild(sample);
+            }
+            const select = document.createElement('select');
+            select.setAttribute('data-rpa-checkpoint-map', step.stepId);
+            select.append(createOption('recorded', isInputStep(step) ? '保持录制值' : '保持录制定位'));
+            if (isInputStep(step)) {
+                for (const field of entity.fields) {select.append(createOption(`input:${field.fieldKey}`, `输入：${field.label}`));}
+            } else {
+                for (const action of entity.actions) {select.append(createOption(`action:${action.actionIntent}`, `业务操作：${action.label}`));}
+            }
+            select.value = form.mappings[step.stepId] ?? 'recorded';
+            select.addEventListener('change', () => {form.mappings[step.stepId] = select.value;});
+            row.append(copy, select);
+            list.appendChild(row);
+        }
+        if (!list.childElementCount) {
+            const note = document.createElement('p');
+            note.className = 'checkpoint-note';
+            note.textContent = '本次录制没有需要参数化的填写或点击操作。';
+            list.appendChild(note);
+        }
+        section.appendChild(list);
+        body.appendChild(section);
+    };
+
+    const renderRecovery = (grid: HTMLElement): void => {
+        const entity = selectedEntity();
+        const entityLabel = document.createElement('label');
+        entityLabel.textContent = '错误状态';
+        const entitySelect = document.createElement('select');
+        entitySelect.setAttribute('data-rpa-checkpoint-field', 'entity');
+        entitySelect.disabled = true;
+        entitySelect.append(createOption(form.entityKey, entity?.label ?? '未选择错误状态'));
+        entityLabel.appendChild(entitySelect);
+
+        const operationLabel = document.createElement('label');
+        operationLabel.textContent = '原操作类型';
+        const operationSelect = document.createElement('select');
+        operationSelect.append(
+            createOption('any', '任何操作'),
+            createOption('click', '点击'),
+            createOption('fill', '填写'),
+            createOption('select', '选择'),
+            createOption('assert', '检查'),
+        );
+        operationSelect.value = form.operation;
+        operationSelect.addEventListener('change', () => {form.operation = operationSelect.value as OperationKind;});
+        operationLabel.appendChild(operationSelect);
+        grid.append(entityLabel, operationLabel);
+
+        const retryLabel = document.createElement('label');
+        retryLabel.className = 'checkpoint-check';
+        const retryInput = document.createElement('input');
+        retryInput.type = 'checkbox';
+        retryInput.checked = form.retryOriginal;
+        retryInput.addEventListener('change', () => {form.retryOriginal = retryInput.checked;});
+        retryLabel.append(retryInput, document.createTextNode('恢复完成后重试原操作'));
+        grid.appendChild(retryLabel);
+    };
+
     const render = (): void => {
         body.replaceChildren();
-        title.textContent = phase === 'recording'
-            ? '正在录制恢复步骤'
+        dock.classList.toggle('setup', phase === 'setup');
+        title.textContent = phase === 'setup'
+            ? (form.kind === 'recovery' ? '选择错误状态' : '选择业务区域')
+            : phase === 'recording'
+                ? '正在录制检查点'
             : phase === 'review' || phase === 'saving'
-                ? '标注恢复步骤'
+                ? '标注检查点'
                 : phase === 'success'
-                    ? '恢复步骤已保存'
-                    : '录制恢复步骤';
+                    ? '检查点已保存'
+                    : '录制检查点';
         subtitle.textContent = phase === 'review' || phase === 'saving' ? `${String(steps.length)} 个操作` : '';
         hideButton.hidden = phase === 'idle';
         launcher.disabled = busy;
 
         if (phase === 'idle' && error) {
-            const errorText = document.createElement('p');
-            errorText.className = 'checkpoint-error';
-            errorText.textContent = error;
+            appendError();
             const actions = document.createElement('div');
             actions.className = 'checkpoint-actions';
             const closeButton = createButton('关闭');
@@ -267,15 +618,80 @@ export const mountCheckpointRecorderUI = (options: CheckpointRecorderUIOptions):
             closeButton.addEventListener('click', () => {error = ''; setDockVisible(false); render();});
             retryButton.addEventListener('click', () => {void start();});
             actions.append(closeButton, retryButton);
-            body.append(errorText, actions);
-        } else if (phase === 'recording') {
+            body.appendChild(actions);
+            return;
+        }
+        if (phase === 'setup') {
+            const grid = document.createElement('div');
+            grid.className = 'checkpoint-grid';
+            const kindLabel = document.createElement('label');
+            kindLabel.textContent = '用途';
+            const kindSelect = document.createElement('select');
+            kindSelect.setAttribute('data-rpa-checkpoint-field', 'kind');
+            kindSelect.append(
+                createOption('procedure', '业务过程'),
+                createOption('recovery', '错误恢复'),
+            );
+            kindSelect.value = form.kind;
+            kindSelect.addEventListener('change', () => {
+                form.kind = kindSelect.value as CheckpointKind;
+                render();
+                void previewSelectedEntity();
+            });
+            kindLabel.appendChild(kindSelect);
+            grid.appendChild(kindLabel);
+            const entityLabel = document.createElement('label');
+            entityLabel.textContent = form.kind === 'recovery' ? '错误状态' : '业务区域';
+            const entitySelect = document.createElement('select');
+            entitySelect.setAttribute('data-rpa-checkpoint-field', 'entity');
+            if (!entityRules.length) {
+                entitySelect.append(createOption('', '当前页面没有可用的业务标注'));
+                entitySelect.disabled = true;
+            } else {
+                for (const entity of entityRules) {
+                    entitySelect.append(createOption(entityOptionKey(entity), entity.label));
+                }
+                entitySelect.value = form.entityKey;
+            }
+            entitySelect.addEventListener('change', () => {
+                form.entityKey = entitySelect.value;
+                render();
+                void previewSelectedEntity();
+            });
+            entityLabel.appendChild(entitySelect);
+            grid.appendChild(entityLabel);
+            body.appendChild(grid);
+            const note = document.createElement('p');
+            note.className = 'checkpoint-note';
+            note.textContent = form.kind === 'procedure'
+                ? '选中的业务区域会保持高亮。录制时可以直接点击和填写页面，高亮不会拦截操作。'
+                : '选中的错误状态会保持高亮。录制恢复动作时可以直接操作页面，高亮不会拦截操作。';
+            body.appendChild(note);
+            appendError();
+            const actions = document.createElement('div');
+            actions.className = 'checkpoint-actions';
+            const cancelButton = createButton('取消');
+            const startButton = createButton(busy ? '处理中…' : '开始录制', 'primary');
+            cancelButton.setAttribute('data-rpa-checkpoint-action', 'setup-cancel');
+            startButton.setAttribute('data-rpa-checkpoint-action', 'start');
+            cancelButton.disabled = busy;
+            startButton.disabled = busy || !selectedEntity();
+            cancelButton.addEventListener('click', () => {reset();});
+            startButton.addEventListener('click', () => {void start();});
+            actions.append(cancelButton, startButton);
+            body.appendChild(actions);
+            return;
+        }
+        if (phase === 'recording') {
             const status = document.createElement('div');
             status.className = 'checkpoint-status';
             const dot = document.createElement('span');
             dot.className = 'record-dot';
             const copy = document.createElement('span');
             copy.className = 'checkpoint-copy';
-            copy.textContent = '请在页面上完成处理异常所需的操作。';
+            copy.textContent = form.kind === 'recovery'
+                ? '请在错误状态下完成恢复操作。系统会记录命中的业务字段和操作。'
+                : '请在页面上完成这个业务过程，完成后回来确认输入、输出和成立条件。';
             status.append(dot, copy);
             const actions = document.createElement('div');
             actions.className = 'checkpoint-actions';
@@ -289,131 +705,111 @@ export const mountCheckpointRecorderUI = (options: CheckpointRecorderUIOptions):
             stopButton.addEventListener('click', () => {void stop();});
             actions.append(cancelButton, stopButton);
             body.append(status, actions);
-        } else if (phase === 'review' || phase === 'saving') {
+            appendError();
+            return;
+        }
+        if (phase === 'review' || phase === 'saving') {
             const summary = document.createElement('div');
             summary.className = 'checkpoint-copy';
             summary.textContent = steps.length
                 ? `已录制：${steps.slice(0, 5).map((step) => step.label).join('、')}${steps.length > 5 ? '…' : ''}`
                 : '没有录制到页面操作，请重新录制。';
+            body.appendChild(summary);
+            const commonGrid = document.createElement('div');
+            commonGrid.className = 'checkpoint-grid';
             const nameLabel = document.createElement('label');
             nameLabel.textContent = '名称';
             const nameInput = document.createElement('input');
             nameInput.type = 'text';
-            nameInput.placeholder = '例如：关闭登录失效提示';
+            nameInput.placeholder = '例如：查询订单';
             nameInput.maxLength = 80;
             nameInput.value = form.name;
+            nameInput.setAttribute('data-rpa-checkpoint-field', 'name');
             nameInput.addEventListener('input', () => {form.name = nameInput.value;});
             nameLabel.appendChild(nameInput);
-            const grid = document.createElement('div');
-            grid.className = 'checkpoint-grid';
-            const triggerLabel = document.createElement('label');
-            triggerLabel.textContent = '操作失败时，如果';
-            const triggerSelect = document.createElement('select');
-            triggerSelect.append(
-                createOption('not_found', '找不到要操作的内容'),
-                createOption('text_visible', '页面出现指定文字'),
-                createOption('url_includes', '页面地址包含指定内容'),
+            const kindLabel = document.createElement('label');
+            kindLabel.textContent = '用途';
+            const kindSelect = document.createElement('select');
+            kindSelect.setAttribute('data-rpa-checkpoint-field', 'kind');
+            kindSelect.append(
+                createOption('procedure', '业务过程'),
+                createOption('recovery', '错误恢复'),
             );
-            triggerSelect.value = form.triggerKind;
-            triggerSelect.addEventListener('change', () => {form.triggerKind = triggerSelect.value as TriggerKind;});
-            triggerLabel.appendChild(triggerSelect);
-            const operationLabel = document.createElement('label');
-            operationLabel.textContent = '失败的操作';
-            const operationSelect = document.createElement('select');
-            operationSelect.append(
-                createOption('any', '任何操作'),
-                createOption('click', '点击'),
-                createOption('fill', '填写'),
-                createOption('select', '选择'),
-                createOption('assert', '检查'),
-            );
-            operationSelect.value = form.operation;
-            operationSelect.addEventListener('change', () => {form.operation = operationSelect.value as OperationKind;});
-            operationLabel.appendChild(operationSelect);
-            const triggerValueLabel = document.createElement('label');
-            triggerValueLabel.hidden = true;
-            const triggerValueCaption = document.createElement('span');
-            const triggerValueInput = document.createElement('input');
-            triggerValueInput.type = 'text';
-            triggerValueInput.maxLength = 160;
-            triggerValueInput.value = form.triggerValue;
-            triggerValueInput.addEventListener('input', () => {form.triggerValue = triggerValueInput.value;});
-            triggerValueLabel.append(triggerValueCaption, triggerValueInput);
-            const updateTriggerInput = (): void => {
-                const kind = triggerSelect.value as TriggerKind;
-                triggerValueLabel.hidden = kind === 'not_found';
-                triggerValueCaption.textContent = kind === 'text_visible' ? '页面文字' : '地址包含';
-                triggerValueInput.placeholder = kind === 'text_visible' ? '例如：登录已失效' : '例如：/login';
-            };
-            triggerSelect.addEventListener('change', updateTriggerInput);
-            updateTriggerInput();
-            const retryLabel = document.createElement('label');
-            retryLabel.className = 'checkpoint-check';
-            const retryInput = document.createElement('input');
-            retryInput.type = 'checkbox';
-            retryInput.checked = form.retryOriginal;
-            retryInput.addEventListener('change', () => {form.retryOriginal = retryInput.checked;});
-            retryLabel.append(retryInput, document.createTextNode('处理完成后重试原操作'));
-            grid.append(triggerLabel, operationLabel, triggerValueLabel, retryLabel);
+            kindSelect.value = form.kind;
+            kindSelect.disabled = true;
+            kindLabel.appendChild(kindSelect);
+            commonGrid.append(nameLabel, kindLabel);
+            body.appendChild(commonGrid);
+
+            const specificGrid = document.createElement('div');
+            specificGrid.className = 'checkpoint-grid';
+            if (form.kind === 'procedure') {renderProcedure(specificGrid);}
+            else {renderRecovery(specificGrid);}
+            body.appendChild(specificGrid);
+            appendError();
+
             const actions = document.createElement('div');
             actions.className = 'checkpoint-actions';
             const discardButton = createButton('放弃', 'danger');
             const restartButton = createButton('重新录制');
-            const saveButton = createButton(phase === 'saving' || busy ? '保存中…' : '保存恢复步骤', 'primary');
+            const saveButton = createButton(phase === 'saving' || busy ? '保存中…' : '保存检查点', 'primary');
             discardButton.setAttribute('data-rpa-checkpoint-action', 'discard');
             restartButton.setAttribute('data-rpa-checkpoint-action', 'restart');
             saveButton.setAttribute('data-rpa-checkpoint-action', 'save');
             discardButton.disabled = busy;
             restartButton.disabled = busy;
-            saveButton.disabled = busy || steps.length === 0;
+            saveButton.disabled = busy || steps.length === 0 || !selectedEntity();
             discardButton.addEventListener('click', () => {void cancel();});
             restartButton.addEventListener('click', () => {void restart();});
             saveButton.addEventListener('click', () => {void save();});
             actions.append(discardButton, restartButton, saveButton);
-            body.append(summary, nameLabel, grid);
-            if (error) {
-                const errorText = document.createElement('p');
-                errorText.className = 'checkpoint-error';
-                errorText.textContent = error;
-                body.appendChild(errorText);
-            }
             body.appendChild(actions);
-        } else if (phase === 'success') {
+            return;
+        }
+        if (phase === 'success') {
             const message = document.createElement('span');
             message.className = 'checkpoint-success';
-            message.textContent = '以后遇到相同情况时可以自动执行。';
+            message.textContent = form.kind === 'procedure'
+                ? '以后可以用新的输入重复执行这个业务过程。'
+                : '以后遇到相同错误时可以自动执行。';
             body.appendChild(message);
-        }
-        if (error && phase === 'recording') {
-            const errorText = document.createElement('p');
-            errorText.className = 'checkpoint-error';
-            errorText.textContent = error;
-            body.prepend(errorText);
         }
     };
 
     const restore = async (): Promise<void> => {
         try {
-            const reply = await options.sendAction('checkpoint.record.get', {});
-            if (reply.type.endsWith('.failed')) {return;}
-            const payload = isRecord(reply.payload) ? reply.payload : {};
+            const action = await options.sendAction('checkpoint.record.get', {});
+            if (action.type.endsWith('.failed')) {return;}
+            const payload = isRecord(action.payload) ? action.payload : {};
             const status = payload.status;
+            applyEntityRuleOptions(action);
             if (status !== 'recording' && status !== 'review') {return;}
-            steps = readSteps(reply);
             phase = status;
+            if (payload.kind === 'recovery') {form.kind = 'recovery';}
+            const entityRule = isRecord(payload.entityRule) ? payload.entityRule : null;
+            const selected = entityRule
+                ? entityRules.find((entity) =>
+                    entity.profileName === entityRule.profileName
+                    && entity.businessTag === entityRule.businessTag)
+                : undefined;
+            if (selected) {form.entityKey = entityOptionKey(selected);}
+            if (status === 'review') {applyReview(action);} else {steps = readSteps(action);}
             options.onActiveChange?.(true);
-            launcher.textContent = status === 'recording' ? '录制中' : '保存恢复步骤';
+            launcher.textContent = status === 'recording' ? '录制中' : '保存检查点';
             launcher.classList.toggle('active', status === 'recording');
             setDockVisible(true);
             render();
-            if (status === 'recording') {scheduleRecordingAutoHide();}
+            if (status === 'recording') {
+                await previewSelectedEntity();
+                scheduleRecordingAutoHide();
+            }
         } catch {
-            // Recovery is opportunistic. The explicit launcher remains available.
+            // Explicit launcher remains available when state recovery is unavailable.
         }
     };
 
     launcher.addEventListener('click', () => {
-        if (phase === 'idle') {void start(); return;}
+        if (phase === 'idle') {void openSetup(); return;}
         setDockVisible(!dockVisible);
     });
     hideButton.addEventListener('click', (event) => {
