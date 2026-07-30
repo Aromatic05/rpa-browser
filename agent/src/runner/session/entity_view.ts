@@ -41,6 +41,8 @@ export type BusinessQueryName =
 export type BusinessTarget =
     | {kind: 'form.field'; fieldKey: string}
     | {kind: 'form.action'; actionIntent: string}
+    | {kind: 'table.filter'; fieldKey: string}
+    | {kind: 'table.module_action'; actionIntent: string}
     | {kind: 'table.row'; primaryKey: {fieldKey: string; value: string}}
     | {
         kind: 'table.row_action';
@@ -297,6 +299,21 @@ export const resolvePageSessionBusinessTarget = (
     if (entity.kind !== 'table' || !entity.componentId) {
         return badArgs(`Business entity ${businessTag} is not a table.`);
     }
+    if (target.kind === 'table.filter' || target.kind === 'table.module_action') {
+        const records = target.kind === 'table.filter'
+            ? entity.annotation?.filterFields
+            : entity.annotation?.moduleActions;
+        const key = target.kind === 'table.filter' ? 'fieldKey' : 'actionIntent';
+        const expected = target.kind === 'table.filter' ? target.fieldKey : target.actionIntent;
+        const nodeIds = arrayRecords(records)
+            .filter((record) => record[key] === expected)
+            .map((record) => readString(record.controlNodeId) ?? readString(record.nodeId))
+            .filter((nodeId): nodeId is string => Boolean(nodeId));
+        const targetMeta = target.kind === 'table.filter'
+            ? {...meta, ...selectOptionControlMeta(entry, nodeIds)}
+            : meta;
+        return uniqueNodeTarget(nodeIds, targetMeta, `${target.kind} ${expected}`);
+    }
     const row = resolveTableRow(entry, entity, target.primaryKey);
     if (!row.ok) {return row;}
     if (target.kind === 'table.row') {
@@ -497,6 +514,32 @@ const enrichTableAnnotation = (
     annotation: Record<string, unknown>,
     bindings: readonly SemanticBusinessBinding[],
 ): void => {
+    const filterFields = bindings.flatMap((binding) => {
+        if (binding.annotation.fieldRole !== 'filter') {return [];}
+        const fieldKey = readString(binding.annotation.fieldKey);
+        const nodeId = binding.target.nodeIds[0];
+        if (!fieldKey || !nodeId) {return [];}
+        return [{
+            fieldKey,
+            name: readString(binding.annotation.fieldName) ?? readString(binding.annotation.name),
+            kind: readString(binding.annotation.controlKind) ?? readString(binding.annotation.kind),
+            controlNodeId: nodeId,
+        }];
+    });
+    const moduleActions = bindings.flatMap((binding) => {
+        if (binding.annotation.actionRole !== 'module') {return [];}
+        const actionIntent = readString(binding.annotation.actionIntent);
+        const nodeId = binding.target.nodeIds[0];
+        if (!actionIntent || !nodeId) {return [];}
+        return [{
+            actionIntent,
+            text: readString(binding.annotation.actionText) ?? readString(binding.annotation.text),
+            nodeId,
+        }];
+    });
+    if (filterFields.length > 0) {annotation.filterFields = filterFields;}
+    if (moduleActions.length > 0) {annotation.moduleActions = moduleActions;}
+
     const next = bindings.find((binding) => binding.annotation.paginationRole === 'next'
         && binding.target.nodeIds.length === 1);
     const disabled = bindings.find((binding) => binding.annotation.paginationRole === 'next-disabled'

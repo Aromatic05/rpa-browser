@@ -60,11 +60,11 @@ const formSnapshot = () => buildFormSnapshot(buildBase(capture('query-plan-form'
     node('body', 'body', 'html', ['form-a', 'form-b']),
     node('form-a', 'form', 'body', ['label-a', 'input-a', 'save-a'], { id: 'FormA', 'aria-label': 'Order form' }),
     node('label-a', 'label', 'form-a', [], { for: 'Buyer' }, 'Buyer'),
-    node('input-a', 'input', 'form-a', [], { id: 'Buyer', name: 'BuyerCode', type: 'text' }),
+    node('input-a', 'input', 'form-a', [], { id: 'Buyer', name: 'BuyerCode', type: 'text', placeholder: '订单编号' }),
     node('save-a', 'button', 'form-a', [], { type: 'submit' }, 'Save'),
     node('form-b', 'form', 'body', ['label-b', 'input-b'], { id: 'FormB', 'aria-label': 'Order form' }),
     node('label-b', 'label', 'form-b', [], { for: 'Seller' }, 'Seller'),
-    node('input-b', 'input', 'form-b', [], { id: 'Seller', type: 'text' }),
+    node('input-b', 'input', 'form-b', [], { id: 'Seller', type: 'text', placeholder: '商品名称' }),
 ])));
 
 const tableSnapshot = () => buildTableSnapshot(buildBase(capture('query-plan-table', [
@@ -82,6 +82,29 @@ const tableSnapshot = () => buildTableSnapshot(buildBase(capture('query-plan-tab
     node('cell-b', 'td', 'row-b', [], {}, 'Bob'),
     node('pager', 'nav', 'card', ['next'], { class: 'ant-pagination', 'aria-label': 'pagination' }),
     node('next', 'button', 'pager', [], { class: 'ant-pagination-next' }, 'Next'),
+])));
+
+const tableModuleSnapshot = () => buildTableSnapshot(buildBase(capture('query-plan-table-module', [
+    node('html', 'html', undefined, ['body']),
+    node('body', 'body', 'html', ['card-a', 'card-b']),
+    node('card-a', 'section', 'body', ['filter-a', 'table-a'], {class: 'ant-card-body'}),
+    node('filter-a', 'input', 'card-a', [], {placeholder: '订单编号'}),
+    node('table-a', 'table', 'card-a', ['thead-a', 'tbody-a'], {id: 'Orders'}),
+    node('thead-a', 'thead', 'table-a', ['header-row-a']),
+    node('header-row-a', 'tr', 'thead-a', ['header-a']),
+    node('header-a', 'th', 'header-row-a', [], {}, '订单编号'),
+    node('tbody-a', 'tbody', 'table-a', ['row-a']),
+    node('row-a', 'tr', 'tbody-a', ['cell-a']),
+    node('cell-a', 'td', 'row-a', [], {}, 'SO-001'),
+    node('card-b', 'section', 'body', ['filter-b', 'table-b'], {class: 'ant-card-body'}),
+    node('filter-b', 'input', 'card-b', [], {placeholder: '订单编号'}),
+    node('table-b', 'table', 'card-b', ['thead-b', 'tbody-b'], {id: 'ArchivedOrders'}),
+    node('thead-b', 'thead', 'table-b', ['header-row-b']),
+    node('header-row-b', 'tr', 'thead-b', ['header-b']),
+    node('header-b', 'th', 'header-row-b', [], {}, '订单编号'),
+    node('tbody-b', 'tbody', 'table-b', ['row-b']),
+    node('row-b', 'tr', 'tbody-b', ['cell-b']),
+    node('cell-b', 'td', 'row-b', [], {}, 'OLD-001'),
 ])));
 
 const compile = (profileName: string, rules: EntityRuleMatchRecord[]) => {
@@ -109,6 +132,63 @@ test('one compiled form QueryPlan preserves forward dependencies across check sa
     assert.equal(runtime.byRuleId.form.matchedComponentIds.length, 1);
     assert.equal(runtime.byRuleId.form.matchedFieldIds.length, 1);
     assert.deepEqual(runtime.byRuleId.buyer.matchedNodeIds, [snapshot.observation.captureIdToNodeId['input-a']]);
+});
+
+test('QueryPlan matches exact placeholders without falling back to shared classes or labels', () => {
+    const plan = compile('orders-filter', [
+        {ruleId: 'form', source: 'region', expect: 'unique', match: {kind: 'form', idEquals: 'FormA'}},
+        {
+            ruleId: 'order-no',
+            source: 'node',
+            expect: 'unique',
+            within: 'form',
+            match: {placeholderEquals: '订单编号'},
+        },
+    ]);
+    const snapshot = formSnapshot();
+    const result = executeEntityRuleQueryPlan(plan, {form: snapshot}, {purpose: 'runtime'});
+
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.byRuleId['order-no'].matchedNodeIds, [
+        snapshot.observation.captureIdToNodeId['input-a'],
+    ]);
+});
+
+test('QueryPlan scopes a business module by the structural table it contains', () => {
+    const plan = compile('orders-module', [
+        {
+            ruleId: 'filter',
+            source: 'node',
+            expect: 'unique',
+            within: 'scope',
+            match: {placeholderEquals: '订单编号'},
+        },
+        {
+            ruleId: 'scope',
+            source: 'node',
+            expect: 'unique',
+            contains: 'table',
+            match: {classContains: 'ant-card-body'},
+        },
+        {
+            ruleId: 'table',
+            source: 'region',
+            expect: 'unique',
+            match: {kind: 'table', idEquals: 'Orders'},
+        },
+    ]);
+    assert.deepEqual(plan.steps.map((step) => step.ruleId), ['table', 'scope', 'filter']);
+
+    const snapshot = tableModuleSnapshot();
+    const result = executeEntityRuleQueryPlan(plan, {table: snapshot}, {purpose: 'runtime'});
+
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.byRuleId.scope.matchedNodeIds, [
+        snapshot.observation.captureIdToNodeId['card-a'],
+    ]);
+    assert.deepEqual(result.byRuleId.filter.matchedNodeIds, [
+        snapshot.observation.captureIdToNodeId['filter-a'],
+    ]);
 });
 
 test('QueryPlan table execution returns canonical table targets and typed pagination nodes', () => {

@@ -97,6 +97,10 @@ export const matchCommonNodeAttributes = (
         && normalizeLower(resolveSemanticRole(observation, nodeId).value) !== normalizeLower(step.match.roleEquals)) {
         return false;
     }
+    if (step.match.placeholderEquals
+        && normalizeCompactLower(attributes.placeholder) !== normalizeCompactLower(step.match.placeholderEquals)) {
+        return false;
+    }
     if (step.match.classContains
         && !normalizeLower(attributes.class).includes(normalizeLower(step.match.classContains))) {
         return false;
@@ -166,6 +170,21 @@ export const descendants = (
     }
     return output;
 };
+
+export const nodeContainsAll = (
+    observation: PageObservation,
+    candidateNodeId: ObservationNodeId,
+    containedNodeIds: readonly ObservationNodeId[],
+): boolean => containedNodeIds.length > 0 && containedNodeIds.every((nodeId) => {
+    let current: ObservationNodeId | undefined = nodeId;
+    const visited = new Set<ObservationNodeId>();
+    while (current && !visited.has(current)) {
+        if (current === candidateNodeId) {return true;}
+        visited.add(current);
+        current = observation.parents[current];
+    }
+    return false;
+});
 
 export const isActiveNode = (observation: PageObservation, nodeId: ObservationNodeId): boolean => {
     const activity = observation.activity[nodeId];

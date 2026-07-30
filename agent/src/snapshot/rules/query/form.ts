@@ -15,6 +15,7 @@ import {
     nodeSearchText,
     normalize,
     normalizeLower,
+    nodeContainsAll,
     orderedNodeIds,
     structureDiagnostic,
     unique,
@@ -29,6 +30,8 @@ export const executeFormQueryPlan = (
     for (const step of plan.steps) {
         const within = step.withinRuleId ? byRuleId[step.withinRuleId] : undefined;
         const allowedNodeIds = step.withinRuleId ? buildWithinNodeSet(snapshot, within) : undefined;
+        const contained = step.containsRuleId ? byRuleId[step.containsRuleId] : undefined;
+        const containedNodeIds = step.containsRuleId && contained?.ok ? contained.matchedNodeIds : [];
         const matchedComponentIds: string[] = [];
         const matchedNodeIds: ObservationNodeId[] = [];
         const structuralDiagnostics: QueryPlanDiagnostic[] = [];
@@ -36,6 +39,7 @@ export const executeFormQueryPlan = (
             for (const nodeId of orderedNodeIds(snapshot.observation)) {
                 if (!isActiveNode(snapshot.observation, nodeId)) {continue;}
                 if (allowedNodeIds && !allowedNodeIds.has(nodeId)) {continue;}
+                if (step.containsRuleId && !nodeContainsAll(snapshot.observation, nodeId, containedNodeIds)) {continue;}
                 if (!step.match.kind && matchCommonNodeAttributes(snapshot.observation, nodeId, step, true)) {
                     matchedNodeIds.push(nodeId);
                 }
@@ -45,6 +49,7 @@ export const executeFormQueryPlan = (
                 const rootNodeId = form.location.structuralRootNodeId;
                 if (!isActiveNode(snapshot.observation, rootNodeId)) {continue;}
                 if (allowedNodeIds && !allowedNodeIds.has(rootNodeId)) {continue;}
+                if (step.containsRuleId && !nodeContainsAll(snapshot.observation, rootNodeId, containedNodeIds)) {continue;}
                 if (!matchesForm(snapshot, form, step)) {continue;}
                 matchedComponentIds.push(form.id);
                 matchedNodeIds.push(rootNodeId);

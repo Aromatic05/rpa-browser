@@ -19,6 +19,7 @@ const COMMON_MATCH_KEYS = new Set([
     'idEquals',
     'nameEquals',
     'roleEquals',
+    'placeholderEquals',
     'classContains',
     'textContains',
     'ariaContains',
@@ -29,6 +30,7 @@ const STRING_MATCH_KEYS = [
     'idEquals',
     'nameEquals',
     'roleEquals',
+    'placeholderEquals',
     'classContains',
     'textContains',
     'ariaContains',
@@ -73,14 +75,26 @@ export const compileEntityRuleQueryPlan = (
                 rule,
             ));
         }
+        if (rule.contains && !byRuleId.has(rule.contains)) {
+            diagnostics.push(compileDiagnostic(
+                profileName,
+                'query-plan.contains.missing',
+                `query plan contains target does not exist: ${rule.ruleId} -> ${rule.contains}`,
+                rule,
+            ));
+        }
     }
-    const cycle = findWithinCycle(byRuleId);
+    const cycle = findDependencyCycle(byRuleId);
     if (cycle.length > 0) {
         const rule = byRuleId.get(cycle[0]);
+        const containsCycle = cycle.some((ruleId, index) => {
+            const next = cycle[index + 1];
+            return Boolean(next && byRuleId.get(ruleId)?.contains === next);
+        });
         diagnostics.push(compileDiagnostic(
             profileName,
-            'query-plan.within.cycle',
-            `query plan within cycle: ${cycle.join(' -> ')}`,
+            containsCycle ? 'query-plan.dependency.cycle' : 'query-plan.within.cycle',
+            `query plan dependency cycle: ${cycle.join(' -> ')}`,
             rule,
         ));
     }
@@ -145,6 +159,8 @@ export const compileEntityRuleQueryPlan = (
             expect: rule.expect,
             withinRuleId: rule.within,
             withinPlanStepId: rule.within ? stepId(profileName, rule.within) : undefined,
+            containsRuleId: rule.contains,
+            containsPlanStepId: rule.contains ? stepId(profileName, rule.contains) : undefined,
             match: structuredClone(rule.match),
         })),
     };
@@ -241,15 +257,18 @@ const validKeyHint = (value: unknown): boolean => {
     });
 };
 
+const dependencyIds = (rule: EntityRuleQueryInputRule): string[] =>
+    [...new Set([rule.within, rule.contains].filter((value): value is string => Boolean(value)))];
+
 const orderRules = (rules: readonly EntityRuleQueryInputRule[]): EntityRuleQueryInputRule[] => {
     const byId = new Map(rules.map((rule) => [rule.ruleId, rule]));
     const ordered: EntityRuleQueryInputRule[] = [];
     const visited = new Set<string>();
     const visit = (rule: EntityRuleQueryInputRule): void => {
         if (visited.has(rule.ruleId)) {return;}
-        if (rule.within) {
-            const parent = byId.get(rule.within);
-            if (parent) {visit(parent);}
+        for (const dependencyId of dependencyIds(rule)) {
+            const dependency = byId.get(dependencyId);
+            if (dependency) {visit(dependency);}
         }
         visited.add(rule.ruleId);
         ordered.push(rule);
@@ -258,7 +277,7 @@ const orderRules = (rules: readonly EntityRuleQueryInputRule[]): EntityRuleQuery
     return ordered;
 };
 
-const findWithinCycle = (byId: ReadonlyMap<string, EntityRuleQueryInputRule>): string[] => {
+const findDependencyCycle = (byId: ReadonlyMap<string, EntityRuleQueryInputRule>): string[] => {
     const visited = new Set<string>();
     const visiting = new Set<string>();
     const path: string[] = [];
@@ -270,12 +289,15 @@ const findWithinCycle = (byId: ReadonlyMap<string, EntityRuleQueryInputRule>): s
         if (visited.has(ruleId)) {return [];}
         visiting.add(ruleId);
         path.push(ruleId);
-        const parent = byId.get(ruleId)?.within;
-        const cycle = parent && byId.has(parent) ? visit(parent) : [];
+        for (const dependencyId of dependencyIds(byId.get(ruleId)!)) {
+            if (!byId.has(dependencyId)) {continue;}
+            const cycle = visit(dependencyId);
+            if (cycle.length > 0) {return cycle;}
+        }
         path.pop();
         visiting.delete(ruleId);
         visited.add(ruleId);
-        return cycle;
+        return [];
     };
     for (const ruleId of byId.keys()) {
         const cycle = visit(ruleId);

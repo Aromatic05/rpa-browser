@@ -15,6 +15,7 @@ export type EntityRuleQueryInputRule = {
     source: EntityRuleQuerySource;
     expect: EntityRuleQueryExpect;
     within?: string;
+    contains?: string;
     match: Readonly<Record<string, unknown>>;
 };
 export type EntityRuleQueryPurpose = 'check' | 'save' | 'runtime';
@@ -31,6 +32,7 @@ export type EntityRuleQueryMatch = {
     idEquals?: string;
     nameEquals?: string;
     roleEquals?: string;
+    placeholderEquals?: string;
     classContains?: string;
     textContains?: string;
     ariaContains?: string;
@@ -47,6 +49,8 @@ export type EntityRuleQueryPlanStep = {
     expect: EntityRuleQueryExpect;
     withinRuleId?: string;
     withinPlanStepId?: string;
+    containsRuleId?: string;
+    containsPlanStepId?: string;
     match: EntityRuleQueryMatch;
 };
 

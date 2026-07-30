@@ -40,8 +40,8 @@ const node = (
 const profileResult = (
     profileName: string,
     domain: 'form' | 'table',
-    binding: EntityRuleQueryBinding,
-    annotation: SemanticAnnotationRecord,
+    bindings: readonly EntityRuleQueryBinding[],
+    annotations: readonly SemanticAnnotationRecord[],
     capture: Pick<PageSnapshotCapture, 'form' | 'table'>,
 ): EntityRuleProfileMatchResult => {
     const execution: EntityRuleQueryExecutionResult = {
@@ -49,13 +49,13 @@ const profileResult = (
         profileName,
         domain,
         purpose: 'runtime',
-        byRuleId: {[binding.ruleId]: binding},
+        byRuleId: Object.fromEntries(bindings.map((binding) => [binding.ruleId, binding])),
         diagnostics: [],
         ok: true,
     };
     const semantics = buildSemanticLayer({
         execution,
-        annotations: [annotation],
+        annotations,
         snapshots: domain === 'form' ? {form: capture.form} : {table: capture.table},
     });
     return {
@@ -159,6 +159,25 @@ export const createV2BusinessPage = (options: {rowCount?: number; withGeometry?:
         ok: true,
     };
 
+    const tableFilterBinding: EntityRuleQueryBinding = {
+        ...tableBinding,
+        planStepId: 'orders-table:filter-order-no',
+        ruleId: 'filter-order-no',
+        source: 'node',
+        targetKind: 'node',
+        matchedComponentIds: [],
+        matchedNodeIds: [observation.captureIdToNodeId.buyer],
+    };
+    const tableSearchBinding: EntityRuleQueryBinding = {
+        ...tableBinding,
+        planStepId: 'orders-table:module-search',
+        ruleId: 'module-search',
+        source: 'node',
+        targetKind: 'node',
+        matchedComponentIds: [],
+        matchedNodeIds: [observation.captureIdToNodeId.submit],
+    };
+
     const baseCapture = {control, form, table};
     const entityRules: EntityRulesExecutionResult = {
         status: 'ready',
@@ -166,23 +185,43 @@ export const createV2BusinessPage = (options: {rowCount?: number; withGeometry?:
         selectedProfiles: ['orders-table', 'orders-form'],
         strict: true,
         profiles: {
-            'orders-table': profileResult('orders-table', 'table', tableBinding, {
-                ruleId: 'root',
-                origin: 'confirmed',
-                businessTag: 'order.table.main',
-                primaryKey: {fieldKey: 'orderNo', columns: ['订单编号'], source: 'annotation'},
-                columns: [
-                    {fieldKey: 'orderNo', name: '订单编号', kind: 'text'},
-                    {fieldKey: 'operation', name: '操作', kind: 'action_column', actions: [{actionIntent: 'approve', text: '审核'}]},
-                ],
-            }, baseCapture),
-            'orders-form': profileResult('orders-form', 'form', formBinding, {
+            'orders-table': profileResult('orders-table', 'table', [
+                tableBinding,
+                tableFilterBinding,
+                tableSearchBinding,
+            ], [
+                {
+                    ruleId: 'root',
+                    origin: 'confirmed',
+                    businessTag: 'order.table.main',
+                    primaryKey: {fieldKey: 'orderNo', columns: ['订单编号'], source: 'annotation'},
+                    columns: [
+                        {fieldKey: 'orderNo', name: '订单编号', kind: 'text'},
+                        {fieldKey: 'operation', name: '操作', kind: 'action_column', actions: [{actionIntent: 'approve', text: '审核'}]},
+                    ],
+                },
+                {
+                    ruleId: 'filter-order-no',
+                    origin: 'confirmed',
+                    fieldKey: 'orderNo',
+                    fieldName: '订单编号',
+                    fieldRole: 'filter',
+                },
+                {
+                    ruleId: 'module-search',
+                    origin: 'confirmed',
+                    actionIntent: 'search',
+                    actionText: '查询',
+                    actionRole: 'module',
+                },
+            ], baseCapture),
+            'orders-form': profileResult('orders-form', 'form', [formBinding], [{
                 ruleId: 'root',
                 origin: 'confirmed',
                 businessTag: 'order.form.main',
                 formFields: [{fieldKey: 'orderNo', kind: 'input', controlNodeId: observation.captureIdToNodeId.buyer}],
                 formActions: [{actionIntent: 'submit', nodeId: observation.captureIdToNodeId.submit}],
-            }, baseCapture),
+            }], baseCapture),
         },
         diagnostics: [],
         ok: true,

@@ -200,6 +200,7 @@ test('form QueryPlan validates rule graph before matching', () => {
         { ruleId: 'missing-parent', source: 'node', expect: 'unique', within: 'unknown', match: { idEquals: 'Buyer' } },
         { ruleId: 'cycle-a', source: 'node', expect: 'unique', within: 'cycle-b', match: { idEquals: 'Buyer' } },
         { ruleId: 'cycle-b', source: 'node', expect: 'unique', within: 'cycle-a', match: { idEquals: 'Seller' } },
+        { ruleId: 'missing-contained', source: 'node', expect: 'unique', contains: 'unknown-contained', match: { idEquals: 'FormA' } },
         { ruleId: 'empty', source: 'node', expect: 'unique', match: {} },
         { ruleId: 'root', source: 'region', expect: 'unique', match: { kind: 'form' } },
     ] });
@@ -209,7 +210,20 @@ test('form QueryPlan validates rule graph before matching', () => {
     assert.equal(codes.has('query-plan.rule.duplicate'), true);
     assert.equal(codes.has('query-plan.within.missing'), true);
     assert.equal(codes.has('query-plan.within.cycle'), true);
+    assert.equal(codes.has('query-plan.contains.missing'), true);
     assert.equal(codes.has('query-plan.match.empty'), true);
+});
+
+test('form QueryPlan rejects cycles that combine contains and within dependencies', () => {
+    const result = compileEntityRuleQueryPlan({profileName: 'mixed-dependency-cycle', rules: [
+        {ruleId: 'scope', source: 'node', expect: 'unique', contains: 'field', match: {idEquals: 'FormA'}},
+        {ruleId: 'field', source: 'node', expect: 'unique', within: 'scope', match: {idEquals: 'Buyer'}},
+        {ruleId: 'root', source: 'region', expect: 'unique', match: {kind: 'form'}},
+    ]});
+
+    assert.equal(result.ok, false);
+    if (result.ok) {throw new Error('cyclic query plan unexpectedly compiled');}
+    assert.equal(result.diagnostics.some((item) => item.code === 'query-plan.dependency.cycle'), true);
 });
 
 test('form QueryPlan resolves forward within dependencies in graph order', () => {

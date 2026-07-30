@@ -21,6 +21,7 @@ export type EntityRuleMatchRecord = {
     source: 'region' | 'group' | 'node';
     expect: 'unique' | 'one_or_more';
     within?: string;
+    contains?: string;
     match: Readonly<Record<string, unknown>>;
 };
 
@@ -245,8 +246,11 @@ const validateMatchArtifact = (value: unknown): EntityRuleMatchArtifact => {
         if (rule.within && !ruleIds.has(rule.within)) {
             throw invalidArtifact(`within target not found: ${rule.ruleId} -> ${rule.within}`);
         }
+        if (rule.contains && !ruleIds.has(rule.contains)) {
+            throw invalidArtifact(`contains target not found: ${rule.ruleId} -> ${rule.contains}`);
+        }
     }
-    assertAcyclicWithin(rules);
+    assertAcyclicDependencies(rules);
     return { version: 2, rules };
 };
 
@@ -267,11 +271,15 @@ const validateMatchRule = (value: unknown, index: number): EntityRuleMatchRecord
     const within = value.within === undefined
         ? undefined
         : requireNonEmptyString(value.within, `match.rules[${index}].within`);
+    const contains = value.contains === undefined
+        ? undefined
+        : requireNonEmptyString(value.contains, `match.rules[${index}].contains`);
     return {
         ruleId,
         source: value.source,
         expect: value.expect,
-        within,
+        ...(within ? {within} : {}),
+        ...(contains ? {contains} : {}),
         match: structuredClone(value.match),
     };
 };
@@ -347,19 +355,23 @@ const assertLegacyPageKindPreserved = (
     }
 };
 
-const assertAcyclicWithin = (rules: readonly EntityRuleMatchRecord[]): void => {
-    const parentByRuleId = new Map(rules.filter((rule) => rule.within).map((rule) => [rule.ruleId, rule.within!]));
+const assertAcyclicDependencies = (rules: readonly EntityRuleMatchRecord[]): void => {
+    const dependenciesByRuleId = new Map(rules.map((rule) => [
+        rule.ruleId,
+        [rule.within, rule.contains].filter((value): value is string => Boolean(value)),
+    ]));
     const visited = new Set<string>();
     const visiting = new Set<string>();
     const visit = (ruleId: string, path: string[]): void => {
         if (visiting.has(ruleId)) {
             const start = path.indexOf(ruleId);
-            throw invalidArtifact(`within cycle detected: ${[...path.slice(Math.max(0, start)), ruleId].join(' -> ')}`);
+            throw invalidArtifact(`rule dependency cycle detected: ${[...path.slice(Math.max(0, start)), ruleId].join(' -> ')}`);
         }
         if (visited.has(ruleId)) {return;}
         visiting.add(ruleId);
-        const parent = parentByRuleId.get(ruleId);
-        if (parent) {visit(parent, [...path, ruleId]);}
+        for (const dependency of dependenciesByRuleId.get(ruleId) ?? []) {
+            visit(dependency, [...path, ruleId]);
+        }
         visiting.delete(ruleId);
         visited.add(ruleId);
     };

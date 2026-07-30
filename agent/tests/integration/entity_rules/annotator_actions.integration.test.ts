@@ -725,3 +725,132 @@ test('legacy canvas annotator protocol is adapted to the V2 PageSession and Quer
         await browser.close();
     }
 });
+
+test('table module annotation keeps filter controls in the shared business scope', async () => {
+    const browser = await chromium.launch({headless: true});
+    try {
+        const page = await browser.newPage({viewport: {width: 1200, height: 800}});
+        await page.setContent(`
+          <section class="ant-card-body">
+            <form class="ant-form ant-form-horizontal">
+              <div class="ant-form-item">
+                <label title="订单编号">订单编号</label>
+                <input class="ant-input" placeholder="订单编号">
+              </div>
+              <div class="ant-form-item">
+                <label title="商品名称">商品名称</label>
+                <input class="ant-input" placeholder="商品名称">
+              </div>
+              <button type="button" class="ant-btn ant-btn-primary">查询</button>
+              <button type="button" class="ant-btn">下 载</button>
+            </form>
+            <div class="ant-table-wrapper">
+              <table>
+                <thead><tr><th>订单编号</th><th>商品名称</th><th>操作</th></tr></thead>
+                <tbody>
+                  <tr><td>SO-001</td><td><a href="#product-1">测试商品</a></td><td><a href="#ship-1">确认发货</a></td></tr>
+                  <tr><td>SO-002</td><td><a href="#product-2">另一商品</a></td><td><a href="#ship-2">确认发货</a></td></tr>
+                </tbody>
+              </table>
+              <ul class="ant-pagination"><li title="下一页">下一页</li></ul>
+            </div>
+          </section>
+        `);
+        const deps = completeRunStepsDeps({pluginHost: {} as never}, {workspaceName: 'ws-1', page});
+        const runtime = createEntityRulesRuntime({
+            annotator: createRunnerAnnotatorController({runStepsDeps: deps}),
+        });
+        const memory = createMemoryWorkflow();
+        const header = await page.getByRole('columnheader', {name: '订单编号'}).boundingBox();
+        assert.ok(header);
+
+        const picked = await invoke(runtime, 'entity_rules.annotator.pick', {
+            purpose: 'entity',
+            fingerprint: {
+                point: {x: header.x + header.width / 2, y: header.y + header.height / 2},
+                selectorCandidates: ['th'],
+                tagName: 'th',
+                classTokens: [],
+                rect: header,
+                ancestors: [],
+            },
+        }, memory.workflow);
+        const candidates = (picked.reply.payload as {candidateChain: Array<{
+            entityRef?: {kind?: string};
+            proposedTargets?: Array<Record<string, unknown>>;
+            text?: string;
+        }>}).candidateChain;
+        const tableCandidate = candidates.find((candidate) => candidate.entityRef?.kind === 'table');
+        assert.ok(tableCandidate?.proposedTargets?.[0]);
+
+        const scopedDraft = {
+            version: 1,
+            profileName: 'orders-module',
+            page: {kind: 'table'},
+            entities: [{
+                id: 'e0',
+                source: 'region',
+                kind: 'table',
+                name: tableCandidate.text || '订单列表',
+                businessTag: 'orders.table',
+                target: tableCandidate.proposedTargets[0],
+                expect: 'unique',
+                annotations: [],
+                columns: [],
+                origin: 'manual',
+            }],
+            preserved: {},
+        };
+        const recognized = await invoke(runtime, 'entity_rules.annotator.recognize', {
+            canvasDraft: scopedDraft,
+        }, memory.workflow);
+        const canvasDraft = (recognized.reply.payload as {canvasDraft: {
+            entities: Array<{
+                annotations: Array<{type: string; name?: string; businessKey: string; target: Record<string, unknown>}>;
+                columns: Array<{name?: string; kind?: string; actions: Array<{text?: string; actionIntent: string}>}>;
+            }>;
+        }}).canvasDraft;
+        const entity = canvasDraft.entities[0];
+        assert.deepEqual(entity.annotations.map((item) => [item.type, item.name]), [
+            ['field', '订单编号'],
+            ['field', '商品名称'],
+            ['action', '查询'],
+            ['action', '下载'],
+        ]);
+        assert.deepEqual(entity.columns.map((column) => column.name), ['订单编号', '商品名称', '操作']);
+        assert.equal(entity.columns[1].kind, 'text');
+        assert.equal(entity.columns[2].kind, 'action_column');
+        assert.deepEqual(entity.columns[2].actions.map((action) => [action.text, action.actionIntent]), [
+            ['确认发货', 'confirmShipment'],
+        ]);
+        assert.equal(entity.annotations[0].target.placeholderEquals, '订单编号');
+        assert.equal(entity.annotations[0].target.classContains, undefined);
+
+        const checked = await invoke(runtime, 'entity_rules.annotator.check', {canvasDraft}, memory.workflow);
+        const checkPayload = checked.reply.payload as {
+            stale: boolean;
+            results: Array<{canvasAnnotationId: string; status: string}>;
+        };
+        assert.equal(checkPayload.stale, false);
+        assert.equal(checkPayload.results.every((result) => result.status === 'unique'), true);
+
+        const saved = await invoke(runtime, 'entity_rules.annotator.save', {
+            canvasDraft,
+            profileName: 'orders-module',
+            expectedRevision: null,
+        }, memory.workflow);
+        assert.equal((saved.reply.payload as {saved: boolean}).saved, true);
+        const profile = memory.profiles.get('orders-module');
+        assert.ok(profile);
+        const orderFieldRule = profile.match.rules.find((rule) => rule.match.placeholderEquals === '订单编号');
+        assert.ok(orderFieldRule?.within?.endsWith('-scope'));
+        assert.equal(profile.annotation.bindings.some((binding) =>
+            binding.fieldKey === '订单编号' && binding.fieldRole === 'filter'), true);
+        assert.equal(profile.annotation.bindings.some((binding) =>
+            binding.actionIntent === 'search' && binding.actionRole === 'module'), true);
+        assert.equal(profile.annotation.bindings.some((binding) =>
+            binding.actionIntent === 'download' && binding.actionRole === 'module'), true);
+    } finally {
+        await browser.close();
+    }
+});

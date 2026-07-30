@@ -369,6 +369,14 @@ export type StepArgsMap = {
                         actionIntent: string;
                     }
                   | {
+                        kind: 'table.filter';
+                        fieldKey: string;
+                    }
+                  | {
+                        kind: 'table.module_action';
+                        actionIntent: string;
+                    }
+                  | {
                         kind: 'table.row';
                         primaryKey: {
                             fieldKey: string;

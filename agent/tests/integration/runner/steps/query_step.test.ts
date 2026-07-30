@@ -87,6 +87,30 @@ test('browser.query executes business query and target through V2 EntityView', a
     }, deps, 'ws-1');
     assert.equal(target.ok, true);
     if (target.ok) {assert.equal((target.data as any).nodeId, nodeIds.approve);}
+
+    const filter = await executeBrowserQuery({
+        id: 'q-table-filter',
+        name: 'browser.query',
+        args: {
+            op: 'entity.target',
+            businessTag: 'order.table.main',
+            target: {kind: 'table.filter', fieldKey: 'orderNo'},
+        },
+    }, deps, 'ws-1');
+    assert.equal(filter.ok, true);
+    if (filter.ok) {assert.equal((filter.data as any).nodeId, nodeIds.buyer);}
+
+    const moduleAction = await executeBrowserQuery({
+        id: 'q-table-module-action',
+        name: 'browser.query',
+        args: {
+            op: 'entity.target',
+            businessTag: 'order.table.main',
+            target: {kind: 'table.module_action', actionIntent: 'search'},
+        },
+    }, deps, 'ws-1');
+    assert.equal(moduleAction.ok, true);
+    if (moduleAction.ok) {assert.equal((moduleAction.data as any).nodeId, nodeIds.submit);}
 });
 
 test('browser.query returns ERR_BAD_ARGS on invalid relation or unsupported from', async () => {

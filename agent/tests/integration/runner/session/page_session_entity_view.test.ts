@@ -93,3 +93,25 @@ test('V2 form target exposes canonical select-option control kind for DSL action
     if (!resolved.ok) {return;}
     assert.equal(resolved.data.meta.controlKind, 'custom_select');
 });
+
+
+test('V2 table entity resolves associated filter fields and module actions', async () => {
+    const {entry, fixture} = await createEntry();
+    const filter = resolvePageSessionBusinessTarget(entry, 'order.table.main', {
+        kind: 'table.filter',
+        fieldKey: 'orderNo',
+    });
+    assert.equal(filter.ok, true);
+    if (!filter.ok) {return;}
+    assert.equal(filter.data.nodeId, fixture.nodeIds.buyer);
+    assert.equal(filter.data.meta.targetKind, 'table.filter');
+
+    const search = resolvePageSessionBusinessTarget(entry, 'order.table.main', {
+        kind: 'table.module_action',
+        actionIntent: 'search',
+    });
+    assert.equal(search.ok, true);
+    if (!search.ok) {return;}
+    assert.equal(search.data.nodeId, fixture.nodeIds.submit);
+    assert.equal(search.data.meta.targetKind, 'table.module_action');
+});

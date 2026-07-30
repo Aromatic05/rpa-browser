@@ -95,6 +95,45 @@ test('legacy importer rejects a root rule that contradicts or loses page kind', 
     }), /cannot preserve table page kind/);
 });
 
+test('V2 publication validation preserves structural contains dependencies', () => {
+    const validated = validateWorkflowEntityRules({
+        kind: 'entity_rules',
+        name: 'orders-module',
+        page: {kind: 'table'},
+        match: {
+            version: 2,
+            rules: [
+                {ruleId: 'table', source: 'region', expect: 'unique', match: {kind: 'table', idEquals: 'Orders'}},
+                {ruleId: 'scope', source: 'node', expect: 'unique', contains: 'table', match: {classContains: 'ant-card-body'}},
+                {ruleId: 'filter', source: 'node', expect: 'unique', within: 'scope', match: {placeholderEquals: '订单编号'}},
+            ],
+        },
+        annotation: {version: 2, bindings: [{ruleId: 'table', businessTag: 'orders.table'}]},
+    });
+
+    assert.equal(validated.match.rules.find((rule) => rule.ruleId === 'scope')?.contains, 'table');
+    assert.throws(() => validateWorkflowEntityRules({
+        ...validated,
+        match: {
+            version: 2,
+            rules: validated.match.rules.map((rule) => rule.ruleId === 'scope'
+                ? {...rule, contains: 'missing'}
+                : rule),
+        },
+    }), /contains target not found/);
+    assert.throws(() => validateWorkflowEntityRules({
+        ...validated,
+        match: {
+            version: 2,
+            rules: [
+                {ruleId: 'scope', source: 'node', expect: 'unique', contains: 'filter', match: {classContains: 'ant-card-body'}},
+                {ruleId: 'filter', source: 'node', expect: 'unique', within: 'scope', match: {placeholderEquals: '订单编号'}},
+                {ruleId: 'table', source: 'region', expect: 'unique', match: {kind: 'table'}},
+            ],
+        },
+    }), /dependency cycle/);
+});
+
 test('V2 publication validation remains strict and does not accept legacy artifacts directly', () => {
     assert.throws(() => validateWorkflowEntityRules({
         kind: 'entity_rules',

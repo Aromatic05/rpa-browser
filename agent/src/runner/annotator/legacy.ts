@@ -26,6 +26,7 @@ type LegacyTarget = {
     idEquals?: string;
     nameEquals?: string;
     roleEquals?: string;
+    placeholderEquals?: string;
     classContains?: string;
     textContains?: string;
     ariaContains?: string;
@@ -377,38 +378,49 @@ const recognizeCanvas = (
         pagination: undefined,
     };
     if (component.domain === 'form') {
-        const form = entry.capture.form.forms.forms[component.id];
-        entity.annotations = form.fields.map((field, index) => {
-            const target = projection.targets.find((candidate) => candidate.kind === 'field'
-                && candidate.componentId === form.id && candidate.memberId === field.id);
-            const control = field.controlIds
-                .map((id) => entry.capture.control.controls.controls[id])
-                .find(Boolean);
-            const nodeId = control?.controlNodeId ?? control?.rootNodeId ?? field.anchorNodeId;
-            const name = target?.label ?? nodeLabel(entry.capture.control.observation, nodeId) ?? `字段 ${String(index + 1)}`;
-            return {
-                id: `auto_${entity.id}_field_${String(index)}`,
-                type: 'field',
-                name,
-                businessKey: fieldKey(entry.capture.control.observation, nodeId, name, index),
-                target: persistentTarget(entry, nodeId, undefined, target?.id),
-                expect: 'unique',
-                origin: 'inferred',
-                disposition: 'active',
-            } satisfies LegacyAnnotation;
-        });
+        addFormMembers(entry, projection, entry.capture.form.forms.forms[component.id], entity);
     } else if (component.domain === 'table') {
         const table = entry.capture.table.tables.tables[component.id];
-        const actionColumnIds = new Set(table.controlSlots.map((slot) => slot.columnId));
+        const operationColumnIds = new Set(table.columns
+            .filter((column) => isOperationColumnName(column.name))
+            .map((column) => column.id));
         entity.columns = table.columns.map((column, index) => {
             const target = projection.targets.find((candidate) => candidate.kind === 'column'
                 && candidate.componentId === table.id && candidate.memberId === column.id);
-            const actions: LegacyColumnAction[] = [];
+            const actionSlots = operationColumnIds.has(column.id)
+                ? table.controlSlots.filter((slot) => slot.columnId === column.id)
+                : [];
+            const seenActionIntents = new Set<string>();
+            const actions = actionSlots.flatMap((slot, slotIndex): LegacyColumnAction[] => {
+                const exemplarNodeId = slot.exemplarNodeIds.find((nodeId) => Boolean(
+                    nodeLabel(entry.capture.control.observation, nodeId),
+                ));
+                if (!exemplarNodeId) {return [];}
+                const name = normalizeActionLabel(
+                    nodeLabel(entry.capture.control.observation, exemplarNodeId) ?? '',
+                );
+                const actionIntent = inferActionIntent(name);
+                if (!name || !actionIntent || seenActionIntents.has(actionIntent)) {return [];}
+                seenActionIntents.add(actionIntent);
+                const actionTarget = projection.targets.find((candidate) =>
+                    candidate.kind === 'action'
+                    && candidate.componentId === table.id
+                    && candidate.memberId === slot.id
+                    && candidate.nodeIds.includes(exemplarNodeId));
+                return [{
+                    id: `auto_${entity.id}_column_${String(index)}_action_${String(slotIndex)}`,
+                    actionIntent,
+                    text: name,
+                    target: persistentTarget(entry, exemplarNodeId, undefined, actionTarget?.id),
+                    origin: 'inferred',
+                    disposition: 'active',
+                }];
+            });
             return {
                 id: `auto_${entity.id}_column_${String(index)}`,
                 fieldKey: slug(column.name) || `column_${String(index)}`,
                 name: column.name,
-                kind: actionColumnIds.has(column.id) ? 'action_column' : 'text',
+                kind: operationColumnIds.has(column.id) ? 'action_column' : 'text',
                 actions,
                 origin: 'inferred',
                 disposition: 'active',
@@ -422,10 +434,13 @@ const recognizeCanvas = (
                 entity.primaryKey = {fieldKey: slug(selected.name) || selected.id, columns: [selected.name]};
             }
         }
-        const businessScopeNodeId = businessScopeAncestor(
+        const businessScopeNodeId = sharedBusinessScopeNodeId(
+            entry,
+            table.location.structuralRootNodeId,
+        ) ?? table.location.selectionScopeNodeId ?? businessScopeAncestor(
             entry.capture.control.observation,
             table.location.structuralRootNodeId,
-        ) ?? table.location.selectionScopeNodeId;
+        );
         const nextPageNodeId = findDescendantByLabel(
             entry.capture.control.observation,
             businessScopeNodeId,
@@ -441,7 +456,7 @@ const recognizeCanvas = (
                 ...(paginationNodeId ? {itemTarget: persistentTarget(entry, paginationNodeId)} : {}),
             };
         }
-        addEnclosedFormFields(entry, projection, businessScopeNodeId, entity);
+        addEnclosedFormMembers(entry, projection, businessScopeNodeId, entity);
     }
     return {
         ...structuredClone(source),
@@ -450,37 +465,66 @@ const recognizeCanvas = (
     };
 };
 
-const addEnclosedFormFields = (
+const addFormMembers = (
+    entry: PageSnapshotSessionEntry,
+    projection: AnnotatorProjection,
+    form: PageSnapshotSessionEntry['capture']['form']['forms']['forms'][string],
+    entity: LegacyEntity,
+): void => {
+    const observation = entry.capture.control.observation;
+    let fieldIndex = entity.annotations.filter((annotation) => annotation.type === 'field').length;
+    for (const field of form.fields) {
+        const target = projection.targets.find((candidate) => candidate.kind === 'field'
+            && candidate.componentId === form.id && candidate.memberId === field.id);
+        const control = field.controlIds
+            .map((id) => entry.capture.control.controls.controls[id])
+            .find(Boolean);
+        const nodeId = control?.controlNodeId ?? control?.rootNodeId ?? field.anchorNodeId;
+        const name = target?.label ?? nodeLabel(observation, nodeId) ?? `字段 ${String(fieldIndex + 1)}`;
+        entity.annotations.push({
+            id: `auto_${entity.id}_field_${String(fieldIndex)}`,
+            type: 'field',
+            name,
+            businessKey: fieldKey(observation, nodeId, name, fieldIndex),
+            target: persistentTarget(entry, nodeId, undefined, target?.id),
+            expect: 'unique',
+            origin: 'inferred',
+            disposition: 'active',
+        });
+        fieldIndex += 1;
+    }
+
+    let actionIndex = entity.annotations.filter((annotation) => annotation.type === 'action').length;
+    for (const action of form.actions) {
+        const target = projection.targets.find((candidate) => candidate.kind === 'action'
+            && candidate.componentId === form.id && candidate.memberId === action.id);
+        const rawName = target?.label ?? nodeLabel(observation, action.nodeId) ?? `操作 ${String(actionIndex + 1)}`;
+        const name = normalizeActionLabel(rawName);
+        entity.annotations.push({
+            id: `auto_${entity.id}_action_${String(actionIndex)}`,
+            type: 'action',
+            name,
+            businessKey: inferActionIntent(name) ?? `action_${String(actionIndex)}`,
+            target: persistentTarget(entry, action.nodeId, undefined, target?.id),
+            expect: 'unique',
+            origin: 'inferred',
+            disposition: 'active',
+        });
+        actionIndex += 1;
+    }
+};
+
+const addEnclosedFormMembers = (
     entry: PageSnapshotSessionEntry,
     projection: AnnotatorProjection,
     scopeNodeId: ObservationNodeId | undefined,
     entity: LegacyEntity,
 ): void => {
     if (!scopeNodeId) {return;}
-    const observation = entry.capture.control.observation;
-    let index = entity.annotations.length;
+    const parents = entry.capture.control.observation.parents;
     for (const form of Object.values(entry.capture.form.forms.forms)) {
-        if (!isDescendant(form.location.structuralRootNodeId, scopeNodeId, observation.parents)) {continue;}
-        for (const field of form.fields) {
-            const target = projection.targets.find((candidate) => candidate.kind === 'field'
-                && candidate.componentId === form.id && candidate.memberId === field.id);
-            const control = field.controlIds
-                .map((id) => entry.capture.control.controls.controls[id])
-                .find(Boolean);
-            const nodeId = control?.controlNodeId ?? control?.rootNodeId ?? field.anchorNodeId;
-            const name = target?.label ?? nodeLabel(observation, nodeId) ?? `字段 ${String(index + 1)}`;
-            entity.annotations.push({
-                id: `auto_${entity.id}_field_${String(index)}`,
-                type: 'field',
-                name,
-                businessKey: fieldKey(observation, nodeId, name, index),
-                target: persistentTarget(entry, nodeId, undefined, target?.id),
-                expect: 'unique',
-                origin: 'inferred',
-                disposition: 'active',
-            });
-            index += 1;
-        }
+        if (!isDescendant(form.location.structuralRootNodeId, scopeNodeId, parents)) {continue;}
+        addFormMembers(entry, projection, form, entity);
     }
 };
 
@@ -641,6 +685,25 @@ const pickCandidates = (
     });
 };
 
+const persistentNodeIdForTarget = (
+    entry: PageSnapshotSessionEntry,
+    target: AnnotatorTarget,
+): ObservationNodeId | undefined => {
+    if (target.kind === 'field' && target.componentId && target.memberId) {
+        const form = entry.capture.form.forms.forms[target.componentId];
+        const field = form?.fields.find((candidate) => candidate.id === target.memberId);
+        const control = field?.controlIds
+            .map((controlId) => entry.capture.control.controls.controls[controlId])
+            .find(Boolean);
+        return control?.controlNodeId ?? control?.rootNodeId ?? field?.anchorNodeId;
+    }
+    if (target.kind === 'action' && target.domain === 'form' && target.componentId && target.memberId) {
+        return entry.capture.form.forms.forms[target.componentId]?.actions
+            .find((candidate) => candidate.id === target.memberId)?.nodeId;
+    }
+    return target.nodeIds[0];
+};
+
 const refreshPersistentTarget = (
     entry: PageSnapshotSessionEntry,
     projection: AnnotatorProjection,
@@ -649,7 +712,7 @@ const refreshPersistentTarget = (
 ): LegacyTarget => {
     if (!target.v2TargetId) {return target;}
     const canonical = projection.targets.find((candidate) => candidate.id === target.v2TargetId);
-    const nodeId = canonical?.nodeIds[0];
+    const nodeId = canonical ? persistentNodeIdForTarget(entry, canonical) : undefined;
     if (!nodeId) {return target;}
     return {
         ...persistentTarget(entry, nodeId, kind ?? target.kind, target.v2TargetId),
@@ -671,6 +734,53 @@ const compileLegacyCanvas = (
     canvas.entities.forEach((entity, entityIndex) => {
         const rootRuleId = `entity-${slug(canvas.profileName)}-${String(entityIndex)}`;
         ruleIdByCanvasId.set(entity.id, rootRuleId);
+        const rootProjectionTarget = findProjectionTarget(
+            entry,
+            projection,
+            entity.target,
+            'structural-root',
+            entity.kind,
+        );
+        const rootNodeId = rootProjectionTarget?.nodeIds[0];
+        const projectedScopeNodeId = rootProjectionTarget?.componentId
+            ? projection.targets.find((target) => target.kind === 'selection-scope'
+                && target.componentId === rootProjectionTarget.componentId)?.nodeIds[0]
+            : undefined;
+        const scopeNodeId = entity.kind === 'table' && rootNodeId
+            ? sharedBusinessScopeNodeId(entry, rootNodeId) ?? projectedScopeNodeId
+            : projectedScopeNodeId;
+        let scopeRuleId: string | undefined;
+        const ensureScopeRule = (): string | undefined => {
+            if (!scopeNodeId || scopeNodeId === rootNodeId) {return rootNodeId ? rootRuleId : undefined;}
+            if (scopeRuleId) {return scopeRuleId;}
+            scopeRuleId = `${rootRuleId}-scope`;
+            rules.push({
+                ruleId: scopeRuleId,
+                source: 'node',
+                expect: 'unique',
+                contains: rootRuleId,
+                match: cleanTarget(persistentTarget(entry, scopeNodeId)),
+            });
+            return scopeRuleId;
+        };
+        const withinRuleForTarget = (
+            target: LegacyTarget,
+            preferredKind?: AnnotatorTarget['kind'],
+        ): string | undefined => {
+            const canonical = findProjectionTarget(entry, projection, target, preferredKind);
+            const nodeIds = canonical?.nodeIds.length
+                ? canonical.nodeIds
+                : matchTargetNodes(entry.capture.control.observation, target);
+            if (rootNodeId && nodeIds.length > 0 && nodeIds.every((nodeId) =>
+                isDescendant(nodeId, rootNodeId, entry.capture.control.observation.parents))) {
+                return rootRuleId;
+            }
+            if (scopeNodeId && nodeIds.length > 0 && nodeIds.every((nodeId) =>
+                isDescendant(nodeId, scopeNodeId, entry.capture.control.observation.parents))) {
+                return ensureScopeRule();
+            }
+            return undefined;
+        };
         const rootMatch = cleanTarget(
             refreshPersistentTarget(entry, projection, entity.target, entity.kind),
             entity.kind,
@@ -715,20 +825,26 @@ const compileLegacyCanvas = (
             .forEach((annotation, annotationIndex) => {
                 const ruleId = `${rootRuleId}-annotation-${String(annotationIndex)}`;
                 ruleIdByCanvasId.set(annotation.id, ruleId);
+                const within = withinRuleForTarget(
+                    annotation.target,
+                    annotation.type === 'action' ? 'action' : 'field',
+                );
                 rules.push({
                     ruleId,
                     source: 'node',
                     expect: annotation.expect ?? (annotation.type === 'action' ? 'one_or_more' : 'unique'),
-                    within: rootRuleId,
+                    ...(within ? {within} : {}),
                     match: cleanTarget(refreshPersistentTarget(entry, projection, annotation.target)),
                 });
                 bindings.push({
                     ruleId,
                     ...(annotation.type === 'field' ? {
                         fieldKey: annotation.businessKey,
+                        fieldRole: entity.kind === 'table' ? 'filter' : 'field',
                         ...(annotation.name ? {fieldName: annotation.name} : {}),
                     } : {
                         actionIntent: annotation.businessKey,
+                        actionRole: entity.kind === 'table' ? 'module' : 'form',
                         ...(annotation.name ? {actionText: annotation.name} : {}),
                     }),
                 });
@@ -739,11 +855,12 @@ const compileLegacyCanvas = (
                 .forEach((action, actionIndex) => {
                     const ruleId = `${rootRuleId}-column-${String(columnIndex)}-action-${String(actionIndex)}`;
                     ruleIdByCanvasId.set(action.id, ruleId);
+                    const within = withinRuleForTarget(action.target, 'action');
                     rules.push({
                         ruleId,
                         source: 'node',
                         expect: 'one_or_more',
-                        within: rootRuleId,
+                        ...(within ? {within} : {}),
                         match: cleanTarget(refreshPersistentTarget(entry, projection, action.target)),
                     });
                     bindings.push({
@@ -756,11 +873,12 @@ const compileLegacyCanvas = (
         if (entity.pagination && hasTarget(entity.pagination.pageTarget)) {
             const ruleId = `${rootRuleId}-pagination-next`;
             ruleIdByCanvasId.set(`pagination:${entity.id}:page`, ruleId);
+            const within = withinRuleForTarget(entity.pagination.pageTarget);
             rules.push({
                 ruleId,
                 source: 'node',
                 expect: 'unique',
-                within: rootRuleId,
+                ...(within ? {within} : {}),
                 match: cleanTarget(refreshPersistentTarget(entry, projection, entity.pagination.pageTarget)),
             });
             bindings.push({ruleId, actionIntent: entity.pagination.actionIntent, paginationRole: 'next'});
@@ -961,13 +1079,15 @@ const persistentTarget = (
         ...(attributes.id ? {idEquals: attributes.id} : {}),
         ...(!attributes.id && attributes.name ? {nameEquals: attributes.name} : {}),
         ...(!attributes.id && !attributes.name && attributes['aria-label'] ? {ariaContains: attributes['aria-label']} : {}),
-        ...(!attributes.id && !attributes.name && !attributes['aria-label'] && role && label
+        ...(!attributes.id && !attributes.name && !attributes['aria-label'] && attributes.placeholder
+            ? {...(role ? {roleEquals: role} : {}), placeholderEquals: attributes.placeholder} : {}),
+        ...(!attributes.id && !attributes.name && !attributes['aria-label'] && !attributes.placeholder && role && label
             ? {roleEquals: role, textContains: label.slice(0, 80)} : {}),
-        ...(!attributes.id && !attributes.name && !attributes['aria-label'] && !(role && label) && classToken
+        ...(!attributes.id && !attributes.name && !attributes['aria-label'] && !attributes.placeholder && !(role && label) && classToken
             ? {classContains: classToken} : {}),
-        ...(!attributes.id && !attributes.name && !attributes['aria-label'] && !(role && label) && !classToken && role
+        ...(!attributes.id && !attributes.name && !attributes['aria-label'] && !attributes.placeholder && !(role && label) && !classToken && role
             ? {roleEquals: role} : {}),
-        ...(!attributes.id && !attributes.name && !attributes['aria-label'] && !(role && label) && !classToken && !role && label
+        ...(!attributes.id && !attributes.name && !attributes['aria-label'] && !attributes.placeholder && !(role && label) && !classToken && !role && label
             ? {textContains: label.slice(0, 80)} : {}),
         ...(v2TargetId ? {v2TargetId} : {}),
     };
@@ -984,6 +1104,7 @@ const legacyTargetFromRule = (
         ...(typeof record.idEquals === 'string' ? {idEquals: record.idEquals} : {}),
         ...(typeof record.nameEquals === 'string' ? {nameEquals: record.nameEquals} : {}),
         ...(typeof record.roleEquals === 'string' ? {roleEquals: record.roleEquals} : {}),
+        ...(typeof record.placeholderEquals === 'string' ? {placeholderEquals: record.placeholderEquals} : {}),
         ...(typeof record.classContains === 'string' ? {classContains: record.classContains} : {}),
         ...(typeof record.textContains === 'string' ? {textContains: record.textContains} : {}),
         ...(typeof record.ariaContains === 'string' ? {ariaContains: record.ariaContains} : {}),
@@ -999,7 +1120,7 @@ const cleanTarget = (target: LegacyTarget, kind?: LegacyEntityKind): Record<stri
     const effectiveKind = kind ?? target.kind;
     if (effectiveKind) {match.kind = effectiveKind;}
     for (const key of [
-        'nameContains', 'idEquals', 'nameEquals', 'roleEquals',
+        'nameContains', 'idEquals', 'nameEquals', 'roleEquals', 'placeholderEquals',
         'classContains', 'textContains', 'ariaContains', 'relation',
     ] as const) {
         const value = target[key];
@@ -1019,6 +1140,7 @@ const matchTargetNodes = (observation: PageObservation, target: LegacyTarget): O
         if (target.idEquals && attrs.id !== target.idEquals) {return false;}
         if (target.nameEquals && attrs.name !== target.nameEquals) {return false;}
         if (target.roleEquals && role !== target.roleEquals) {return false;}
+        if (target.placeholderEquals && attrs.placeholder !== target.placeholderEquals) {return false;}
         if (target.classContains && !attrs.class?.split(/\s+/u).includes(target.classContains)) {return false;}
         if (target.textContains && !label.includes(target.textContains)) {return false;}
         if (target.nameContains && !label.includes(target.nameContains)) {return false;}
@@ -1028,7 +1150,7 @@ const matchTargetNodes = (observation: PageObservation, target: LegacyTarget): O
 
 const hasTarget = (target: LegacyTarget): boolean => Boolean(
     target.kind || target.nameContains || target.idEquals || target.nameEquals || target.roleEquals
-    || target.classContains || target.textContains || target.ariaContains || target.relation,
+    || target.placeholderEquals || target.classContains || target.textContains || target.ariaContains || target.relation,
 );
 
 const findProfile = (
@@ -1128,11 +1250,21 @@ const fieldKey = (
     ?? slug(label)
     ?? `field_${String(index)}`;
 
+const isOperationColumnName = (value: string): boolean =>
+    /操作|动作|管理|operations?|actions?/iu.test(value.replace(/\s+/gu, ''));
+
+const normalizeActionLabel = (value: string): string => value
+    .replace(/([\p{Script=Han}])\s+(?=[\p{Script=Han}])/gu, '$1')
+    .replace(/\s+/gu, ' ')
+    .trim();
+
 const inferActionIntent = (value: string | undefined): string | undefined => {
     const normalized = value?.toLowerCase().replace(/\s+/gu, '') ?? '';
     if (!normalized) {return undefined;}
     if (/查询|搜索|search/u.test(normalized)) {return 'search';}
     if (/重置|清空|reset/u.test(normalized)) {return 'reset';}
+    if (/下载|导出|download|export/u.test(normalized)) {return 'download';}
+    if (/确认发货|发货|ship|dispatch/u.test(normalized)) {return 'confirmShipment';}
     if (/提交|submit/u.test(normalized)) {return 'submit';}
     if (/保存|save/u.test(normalized)) {return 'save';}
     if (/新增|创建|add|create/u.test(normalized)) {return 'create';}
@@ -1200,6 +1332,28 @@ const findDescendantByLabel = (
         .filter((nodeId) => isDescendant(nodeId, scopeNodeId, observation.parents))
         .sort((left, right) => (observation.documentOrder[left] ?? 0) - (observation.documentOrder[right] ?? 0))
         .find((nodeId) => pattern.test(nodeLabel(observation, nodeId) ?? ''));
+};
+
+const sharedBusinessScopeNodeId = (
+    entry: PageSnapshotSessionEntry,
+    tableRootNodeId: ObservationNodeId,
+): ObservationNodeId | undefined => {
+    const observation = entry.capture.control.observation;
+    const formRoots = Object.values(entry.capture.form.forms.forms)
+        .map((form) => form.location.structuralRootNodeId);
+    if (formRoots.length === 0) {return undefined;}
+    let current = observation.parents[tableRootNodeId];
+    const visited = new Set<ObservationNodeId>();
+    while (current && !visited.has(current)) {
+        visited.add(current);
+        const tag = observation.nodes[current]?.tag.toLowerCase();
+        if (tag === 'main' || tag === 'body' || tag === 'html') {return undefined;}
+        if (formRoots.some((formRoot) => isDescendant(formRoot, current!, observation.parents))) {
+            return current;
+        }
+        current = observation.parents[current];
+    }
+    return undefined;
 };
 
 const businessScopeAncestor = (

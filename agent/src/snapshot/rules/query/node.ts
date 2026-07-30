@@ -12,6 +12,7 @@ import {
     isActiveNode,
     matchCommonNodeAttributes,
     normalizeLower,
+    nodeContainsAll,
     orderedNodeIds,
     unique,
 } from './shared';
@@ -26,9 +27,12 @@ export const executeNodeQueryPlan = (
     for (const step of plan.steps) {
         const parent = step.withinRuleId ? byRuleId[step.withinRuleId] : undefined;
         const allowed = step.withinRuleId ? withinNodes(snapshot, parent) : undefined;
+        const contained = step.containsRuleId ? byRuleId[step.containsRuleId] : undefined;
+        const containedNodeIds = step.containsRuleId && contained?.ok ? contained.matchedNodeIds : [];
         const matchedNodeIds = orderedNodeIds(snapshot.observation).filter((nodeId) =>
             isActiveNode(snapshot.observation, nodeId)
             && (!allowed || allowed.has(nodeId))
+            && (!step.containsRuleId || nodeContainsAll(snapshot.observation, nodeId, containedNodeIds))
             && matchesNode(snapshot, nodeId, step));
         const binding: EntityRuleQueryBinding = {
             planStepId: step.planStepId,

@@ -293,6 +293,9 @@ const stableNodeMatch = (
     if (text(attrs['aria-label'])) {
         return {...(role ? {roleEquals: role} : {}), ariaContains: text(attrs['aria-label'])};
     }
+    if (text(attrs.placeholder)) {
+        return {...(role ? {roleEquals: role} : {}), placeholderEquals: text(attrs.placeholder)};
+    }
     const accessibleName = text(observation.accessibility[nodeId]?.name);
     if (accessibleName) {
         return component
