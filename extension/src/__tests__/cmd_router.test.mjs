@@ -428,6 +428,29 @@ await log('tabs.onCreated emits tab.opened binding action', async () => {
     assert.equal(sent.some((action) => action.type === ACTION_TYPES.TAB_OPENED), true);
 });
 
+await log('runtime bootstrap tab is never published as a workspace tab', async () => {
+    globalThis.chrome = createChromeMock();
+    const sent = [];
+    const router = createCmdRouter({
+        sessionWorkspaceName: 'ws-bound',
+        wsClient: withActionReplies(async (action) => {
+            sent.push(action);
+            return {ok: true, data: {}};
+        }),
+        onRefresh: () => undefined,
+    });
+
+    router.onCreated({
+        id: 23,
+        windowId: 7,
+        url: 'http://127.0.0.1:17600/rpa-start?rpaRuntimeBootstrap=1',
+        title: 'RPA bootstrap',
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    assert.equal(sent.some((action) => action.type === ACTION_TYPES.TAB_OPENED), false);
+});
+
 await log('tabs.onCreated emits tab.opened once for pre-bound URL mapping', async () => {
     globalThis.chrome = createChromeMock();
     const sent = [];
@@ -671,10 +694,20 @@ await log('router snapshot restores tab identity without reopening existing tabs
     assert.equal(secondSent.some((action) => action.type === ACTION_TYPES.TAB_OPENED), false);
 });
 
-await log('source guard: content/start_extension do not directly issue tab.init/tab.opened', async () => {
+await log('source guard: content avoids legacy tab.init while start_extension owns new-tab binding', async () => {
     const contentSrc = fs.readFileSync(new URL('../content/token_bridge.ts', import.meta.url), 'utf8');
+    const contentEntrySrc = fs.readFileSync(new URL('../entry/content.ts', import.meta.url), 'utf8');
     const startSrc = fs.readFileSync(new URL('../../../start_extension/src/entry/newtab.ts', import.meta.url), 'utf8');
+    const startManifest = JSON.parse(
+        fs.readFileSync(new URL('../../../start_extension/manifest.json', import.meta.url), 'utf8'),
+    );
     assert.equal(contentSrc.includes("type: 'tab.init'"), false);
+    assert.equal(contentEntrySrc.includes("searchParams.get('rpaRuntimeBootstrap') === '1'"), true);
+    assert.equal(contentEntrySrc.includes("type: 'RPA_RUNTIME_BOOTSTRAP_WAKE'"), true);
     assert.equal(startSrc.includes("'tab.init'"), false);
-    assert.equal(startSrc.includes("'tab.opened'"), false);
+    assert.equal(startSrc.includes("sendAction<BoundTokenData>('tab.opened'"), false);
+    assert.equal(startSrc.includes("sendAction<RuntimeTabListData>('tab.list'"), true);
+    assert.equal(startSrc.includes('chrome.runtime.sendMessage'), false);
+    assert.equal(startManifest.content_security_policy.extension_pages.includes('ws://127.0.0.1:*'), true);
+    assert.equal(startManifest.content_security_policy.extension_pages.includes(':17333'), false);
 });

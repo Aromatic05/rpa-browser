@@ -205,6 +205,17 @@ export default tseslint.config(
     }
   },
 
+  // Vite configuration files are tooling entrypoints outside the extension runtime tsconfig.
+  {
+    files: ["extension/vite*.config.ts"],
+    extends: [tseslint.configs.disableTypeChecked],
+    languageOptions: {
+      globals: {
+        __dirname: "readonly"
+      }
+    }
+  },
+
   // build scripts run in node context
   {
     files: ["**/build.mjs"],

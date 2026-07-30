@@ -50,6 +50,15 @@ export type LifecycleRuntime = {
 const readChromeTabNoFromActiveInfo = (info: chrome.tabs.TabActiveInfo): number =>
     Number(Reflect.get(info as unknown as Record<string, unknown>, 'tab' + 'Id'));
 
+export const isRuntimeBootstrapUrl = (url: string | undefined): boolean => {
+    if (!url) {return false;}
+    try {
+        return new URL(url).searchParams.get('rpaRuntimeBootstrap') === '1';
+    } catch {
+        return false;
+    }
+};
+
 export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRuntime => {
     const WINDOW_NONE = chrome.windows.WINDOW_ID_NONE;
     const inflightByChromeTab = new Map<number, Promise<BoundTabRef | null>>();
@@ -275,6 +284,7 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
     };
 
     const onUpdated = (chromeTabNo: number, changeInfo: chrome.tabs.TabChangeInfo, tab?: chrome.tabs.Tab) => {
+        if (isRuntimeBootstrapUrl(changeInfo.url ?? tab?.url)) {return;}
         if (!changeInfo.url && typeof tab?.windowId !== 'number') {return;}
         const existing = options.state.getTabState(chromeTabNo);
         if (!existing?.bindingName) {
@@ -290,6 +300,7 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
     };
 
     const onCreated = (tab: chrome.tabs.Tab) => {
+        if (isRuntimeBootstrapUrl(tab.url)) {return;}
         const chromeTabNo = typeof tab.id === 'number' ? tab.id : null;
         const windowId = typeof tab.windowId === 'number' ? tab.windowId : null;
         if (chromeTabNo === null || windowId === null) {return;}
@@ -349,6 +360,7 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
             let tab: chrome.tabs.Tab;
             try { tab = await chrome.tabs.get(chromeTabNo); } catch { return null; }
             if (typeof tab.windowId !== 'number') { return null; }
+            if (isRuntimeBootstrapUrl(tab.url)) {return null;}
             const actualWindowId = tab.windowId;
 
             const workspaceName = options.sessionWorkspaceName;
@@ -433,7 +445,9 @@ export const createLifecycleRuntime = (options: LifecycleOptions): LifecycleRunt
     const bindExistingTabs = async () => {
         const tabs = await chrome.tabs.query({});
         for (const tab of tabs) {
-            if (typeof tab.id === 'number' && typeof tab.windowId === 'number') {
+            if (!isRuntimeBootstrapUrl(tab.url)
+                && typeof tab.id === 'number'
+                && typeof tab.windowId === 'number') {
                 void ensureOpenedAndBound(tab.id, tab.windowId);
             }
         }

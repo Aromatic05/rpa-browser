@@ -42,15 +42,25 @@ export type CreateWorkspaceBrowserSessionOptions = {
     wsTap?: ActionWsTap;
 };
 
-type ExtensionChromeApi = {
-    storage: {
-        local: {
-            set: (values: Record<string, unknown>) => Promise<void>;
-        };
-    };
+type ExtensionRuntimeReady = {
+    buildId: string;
+    manifestVersion: string;
+    workspaceName: string;
+    wsPort: number;
+    sessionKey: string;
+    acceptsAnnotatorOpen: boolean;
+    readyAt: number;
 };
 
-const buildBootstrapStartUrl = (workspaceName: string, wsPort: number): string => {
+type ExtensionRuntimeState = {
+    workerUrl: string;
+    manifestName: string;
+    buildId: string;
+    manifestVersion: string;
+    ready: ExtensionRuntimeReady | null;
+};
+
+export const buildStartExtensionUrl = (workspaceName: string, wsPort: number): string => {
     const params = new URLSearchParams({
         rpaWorkspaceName: workspaceName,
         rpaWsPort: String(wsPort),
@@ -58,63 +68,175 @@ const buildBootstrapStartUrl = (workspaceName: string, wsPort: number): string =
     return `chrome://newtab/?${params.toString()}`;
 };
 
-
-export const resolveInteractiveStartUrl = (wsPort: number): string => {
+export const resolveInteractiveStartUrl = (workspaceName: string, wsPort: number): string => {
     const configured = process.env.RPA_START_URL?.trim();
     if (configured) {
-        if (!configured.startsWith('http://') && !configured.startsWith('https://')) {
-            throw new Error(`RPA_START_URL must be an http(s) URL so the extension can inject: ${configured}`);
-        }
         return configured;
     }
-    return `http://127.0.0.1:${String(wsPort)}/rpa-start`;
+    return buildStartExtensionUrl(workspaceName, wsPort);
 };
 
-const waitForFloatingPanel = async (context: BrowserContext, wsPort: number): Promise<Page> => {
-    const startUrl = resolveInteractiveStartUrl(wsPort);
-    const page = context.pages()[0] ?? await context.newPage();
-    await page.goto(startUrl, {waitUntil: 'domcontentloaded', timeout: 15_000});
-    await page.waitForFunction(
-        () => Boolean(document.getElementById('rpa-floating-panel')?.shadowRoot),
-        undefined,
-        {timeout: 15_000},
-    );
-    await page.bringToFront();
-    return page;
-};
+const RUNTIME_READY_KEY = 'rpa.runtime.ready';
 
-const configureExtensionSession = async (context: BrowserContext, workspaceName: string, wsPort: number) => {
-    const worker = await resolveExtensionServiceWorker(context);
-    await worker.evaluate(
-        async (config: { workspaceName: string; wsPort: number }) => {
-            const runtimeGlobal = globalThis as typeof globalThis & {
-                chrome: ExtensionChromeApi;
-                __rpaSessionRuntime?: {
-                    configure: (value: {workspaceName: string; wsPort: number}) => Promise<void>;
-                };
+const readExtensionRuntimeState = async (worker: Worker): Promise<ExtensionRuntimeState> =>
+    await worker.evaluate(async (readyKey: string) => {
+        const runtimeGlobal = globalThis as typeof globalThis & {
+            chrome: {
+                runtime: {getManifest: () => {name: string; version: string; version_name?: string}};
+                storage: {local: {get: (key: string) => Promise<Record<string, unknown>>}};
             };
-            if (runtimeGlobal.__rpaSessionRuntime) {
-                await runtimeGlobal.__rpaSessionRuntime.configure(config);
-                return;
-            }
-            await runtimeGlobal.chrome.storage.local.set({
-                rpaWorkspaceName: config.workspaceName,
-                rpaWsPort: config.wsPort,
-            });
-        },
-        { workspaceName, wsPort },
-    );
-};
+            location: {href: string};
+        };
+        const manifest = runtimeGlobal.chrome.runtime.getManifest();
+        const stored = await runtimeGlobal.chrome.storage.local.get(readyKey);
+        return {
+            workerUrl: runtimeGlobal.location.href,
+            manifestName: manifest.name,
+            buildId: manifest.version_name ?? manifest.version,
+            manifestVersion: manifest.version,
+            ready: (stored[readyKey] ?? null) as ExtensionRuntimeReady | null,
+        };
+    }, RUNTIME_READY_KEY);
 
 const resolveExtensionServiceWorker = async (context: BrowserContext): Promise<Worker> => {
-    const pick = () => context.serviceWorkers().find((worker) => worker.url().includes('/entry/sw.js')) || null;
-    const existing = pick();
-    if (existing) {return existing;}
-    const worker = await context.waitForEvent('serviceworker', { timeout: 10_000 });
-    if (worker.url().includes('/entry/sw.js')) {return worker;}
-    const matched = pick();
-    if (matched) {return matched;}
-    throw new Error('extension service worker not found');
+    const observed: Array<{url: string; name?: string; error?: string}> = [];
+    const deadline = Date.now() + 10_000;
+    while (Date.now() < deadline) {
+        for (const worker of context.serviceWorkers()) {
+            try {
+                const state = await readExtensionRuntimeState(worker);
+                if (state.manifestName === 'RPA Browser Demo') {return worker;}
+                if (!observed.some((item) => item.url === state.workerUrl && item.name === state.manifestName)) {
+                    observed.push({url: state.workerUrl, name: state.manifestName});
+                }
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                if (!observed.some((item) => item.url === worker.url() && item.error === message)) {
+                    observed.push({url: worker.url(), error: message});
+                }
+            }
+        }
+        await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    throw new Error(`main extension service worker not found: ${JSON.stringify(observed)}`);
+};
+
+const configureExtensionSession = async (
+    context: BrowserContext,
+    workspaceName: string,
+    wsPort: number,
+): Promise<ExtensionRuntimeReady> => {
+    const bootstrapPage = await context.newPage();
+    await bootstrapPage.goto(`http://127.0.0.1:${String(wsPort)}/rpa-start?rpaRuntimeBootstrap=1`, {
+        waitUntil: 'domcontentloaded',
+        timeout: 10_000,
+    });
+    let worker = await resolveExtensionServiceWorker(context);
+    const state = await readExtensionRuntimeState(worker);
+
+    await worker.evaluate(async (input: {workspaceName: string; wsPort: number; readyKey: string}) => {
+        const runtimeGlobal = globalThis as typeof globalThis & {
+            chrome: {storage: {local: {
+                set: (values: Record<string, unknown>) => Promise<void>;
+                remove: (key: string) => Promise<void>;
+            }}};
+        };
+        await runtimeGlobal.chrome.storage.local.remove(input.readyKey);
+        await runtimeGlobal.chrome.storage.local.set({
+            rpaWorkspaceName: input.workspaceName,
+            rpaWsPort: input.wsPort,
+        });
+    }, {workspaceName, wsPort, readyKey: RUNTIME_READY_KEY});
+
+    const deadline = Date.now() + 12_000;
+    let lastState = state;
+    while (Date.now() < deadline) {
+        try {
+            worker = await resolveExtensionServiceWorker(context);
+            lastState = await readExtensionRuntimeState(worker);
+            const ready = lastState.ready;
+            if (ready?.buildId === lastState.buildId
+                && ready.manifestVersion === lastState.manifestVersion
+                && ready.workspaceName === workspaceName
+                && ready.wsPort === wsPort
+                && ready.sessionKey === `${workspaceName}:${String(wsPort)}`
+                && ready.acceptsAnnotatorOpen) {
+                if (!bootstrapPage.isClosed()) {
+                    await bootstrapPage.close();
+                }
+                const startPage = context.pages().find((page) => page.url().includes('/newtab.html'));
+                await startPage?.bringToFront();
+                return ready;
+            }
+        } catch {
+            // Extension reload can briefly invalidate the previous worker target.
+        }
+        await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    if (!bootstrapPage.isClosed()) {
+        await bootstrapPage.close().catch(() => undefined);
+    }
+    throw new Error(`main extension runtime readiness timeout: ${JSON.stringify(lastState)}`);
+};
+
+const awaitStartExtensionBinding = async (input: {
+    context: BrowserContext;
+    pageRegistry: PageRegistry;
+    workspaceRegistry: WorkspaceRegistry;
+    workspaceName: string;
+    tabNameKey: string;
+}): Promise<string> => {
+    const deadline = Date.now() + 10_000;
+    let lastState: Record<string, unknown> = {};
+    while (Date.now() < deadline) {
+        const page = input.context.pages().find((candidate) => candidate.url().includes('/newtab.html'));
+        const pageState = page
+            ? await page.evaluate((key: string) => {
+                const runtimeWindow = window as Window & {
+                    __rpa_tab_name?: string;
+                    __rpa_start_error?: string;
+                };
+                return {
+                    tabName: sessionStorage.getItem(key) ?? runtimeWindow.__rpa_tab_name ?? '',
+                    wsStatus: document.querySelector('#wsStatus')?.textContent.trim() ?? '',
+                    tokenText: document.querySelector('#tabToken')?.textContent.trim() ?? '',
+                    startError: runtimeWindow.__rpa_start_error ?? '',
+                    readyState: document.readyState,
+                };
+            }, input.tabNameKey).catch(() => ({
+                tabName: '',
+                wsStatus: 'page-evaluate-failed',
+                tokenText: '',
+                startError: '',
+                readyState: '',
+            }))
+            : {tabName: '', wsStatus: 'page-missing', tokenText: '', startError: '', readyState: ''};
+        const tabName = pageState.tabName;
+        const workspace = input.workspaceRegistry.getWorkspace(input.workspaceName);
+        const hasRuntimeTab = Boolean(tabName && workspace?.tabs.hasTab(tabName));
+        let boundPage: Page | null = null;
+        if (page && tabName) {
+            await input.pageRegistry.bindPage(page, tabName);
+            boundPage = await input.pageRegistry.awaitPageBinding(tabName, {timeoutMs: 250})
+                .catch(() => null);
+        }
+        lastState = {
+            pageUrl: page?.url() ?? null,
+            tabName,
+            wsStatus: pageState.wsStatus,
+            tokenText: pageState.tokenText,
+            startError: pageState.startError,
+            readyState: pageState.readyState,
+            hasRuntimeTab,
+            bound: boundPage === page,
+        };
+        if (page && tabName && hasRuntimeTab && boundPage === page) {
+            await page.bringToFront();
+            return tabName;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    throw new Error(`start extension binding timeout: ${JSON.stringify(lastState)}`);
 };
 
 const browserMode = () => (process.env.RPA_BROWSER_MODE || 'extension').trim().toLowerCase();
@@ -122,6 +244,7 @@ const extensionAutoReloadEnabled = () =>
     ['1', 'true', 'yes', 'on'].includes((process.env.RPA_EXTENSION_AUTO_RELOAD || '').trim().toLowerCase());
 
 export const createWorkspaceBrowserSession = (options: CreateWorkspaceBrowserSessionOptions): WorkspaceBrowserSession => {
+    const actionLog = getLogger('action');
     const userDataDir = path.join(options.userDataRoot, 'workspaces', options.workspaceName);
     const configuredCdpEndpoint = process.env.RPA_CDP_ENDPOINT?.trim() || '';
     const managedCdpProcess = browserMode() === 'cdp' && !configuredCdpEndpoint;
@@ -156,7 +279,7 @@ export const createWorkspaceBrowserSession = (options: CreateWorkspaceBrowserSes
             if (sessionRef?.status === 'stopping') {
                 throw new Error(`workspace browser session is stopping: ${options.workspaceName}`);
             }
-            if (sessionRef && sessionRef.status !== 'running') {
+            if (sessionRef?.status === 'stopped') {
                 await sessionRef.start();
             }
             return await contextManager.getContext();
@@ -200,7 +323,10 @@ export const createWorkspaceBrowserSession = (options: CreateWorkspaceBrowserSes
                     cdpPort = await options.portAllocator.allocate(options.workspaceName, 'browser-cdp');
                 }
 
-                contextManager = createSessionContextManager(cdpPort, buildBootstrapStartUrl(options.workspaceName, wsPort));
+                contextManager = createSessionContextManager(
+                    cdpPort,
+                    resolveInteractiveStartUrl(options.workspaceName, wsPort),
+                );
                 wsClient = startActionWsClient({
                     port: wsPort,
                     host: '127.0.0.1',
@@ -212,14 +338,40 @@ export const createWorkspaceBrowserSession = (options: CreateWorkspaceBrowserSes
                 });
 
                 await wsClient.waitForListening(5000);
-                const context = await contextManager.getContext();
-                await configureExtensionSession(context, options.workspaceName, wsPort);
-                await wsClient.waitForClient(10_000);
-                const interactivePage = await waitForFloatingPanel(context, wsPort);
-                getLogger('action').info('[RPA:agent]', 'workspace browser ready', {
+                actionLog.info('[RPA:agent]', 'browser startup stage', {
                     workspaceName: options.workspaceName,
-                    pageUrl: interactivePage.url(),
-                    floatingPanel: true,
+                    stage: 'context.start',
+                });
+                const context = await contextManager.getContext();
+                actionLog.info('[RPA:agent]', 'browser startup stage', {
+                    workspaceName: options.workspaceName,
+                    stage: 'context.ready',
+                    pages: context.pages().map((page) => page.url()),
+                });
+                const extensionRuntime = await configureExtensionSession(
+                    context,
+                    options.workspaceName,
+                    wsPort,
+                );
+                actionLog.info('[RPA:agent]', 'browser startup stage', {
+                    workspaceName: options.workspaceName,
+                    stage: 'extension.configured',
+                    activeSessionKey: extensionRuntime.sessionKey,
+                    buildId: extensionRuntime.buildId,
+                    manifestVersion: extensionRuntime.manifestVersion,
+                });
+                await wsClient.waitForClient(10_000);
+                const startTabName = await awaitStartExtensionBinding({
+                    context,
+                    pageRegistry,
+                    workspaceRegistry: options.workspaceRegistry,
+                    workspaceName: options.workspaceName,
+                    tabNameKey: options.tabNameKey,
+                });
+                actionLog.info('[RPA:agent]', 'browser startup stage', {
+                    workspaceName: options.workspaceName,
+                    stage: 'extension.connected',
+                    startTabName,
                 });
                 if (extensionAutoReloadEnabled()) {
                     extensionDevReloader = startExtensionDevReloader({
@@ -233,7 +385,7 @@ export const createWorkspaceBrowserSession = (options: CreateWorkspaceBrowserSes
                         },
                         startUrl: () => {
                             if (wsPort === null) {return 'chrome://newtab/';}
-                            return resolveInteractiveStartUrl(wsPort);
+                            return resolveInteractiveStartUrl(options.workspaceName, wsPort);
                         },
                         onError: options.onError,
                     });

@@ -75,6 +75,13 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
     typeof value === 'object' && value !== null;
 const isOrdinaryPageUrl = (url: string): boolean =>
     url.startsWith('http://') || url.startsWith('https://');
+const isRuntimeBootstrapPage = (): boolean => {
+    try {
+        return new URL(location.href).searchParams.get('rpaRuntimeBootstrap') === '1';
+    } catch {
+        return false;
+    }
+};
 const UUIDorUnsafe = (): string => {
     if (typeof globalThis.crypto.randomUUID === 'function') {
         return globalThis.crypto.randomUUID();
@@ -144,6 +151,12 @@ const loadAnnotator = (() => {
 (() => {
     // 幂等保护：避免重复注入 UI 与监听器
     if (window.top !== window) {return;}
+    if (isRuntimeBootstrapPage()) {
+        chrome.runtime.sendMessage({type: 'RPA_RUNTIME_BOOTSTRAP_WAKE'}, () => {
+            void chrome.runtime.lastError;
+        });
+        return;
+    }
     if (window.__rpaTokenInjected) {return;}
     window.__rpaTokenInjected = true;
 

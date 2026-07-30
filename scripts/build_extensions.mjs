@@ -1,6 +1,6 @@
 import {spawn} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
-import {mkdir, rename, writeFile} from 'node:fs/promises';
+import {cp, mkdir, readdir, rename, rm, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 
@@ -28,15 +28,36 @@ await run(['--filter', './extension', 'build']);
 await run(['--filter', './start_extension', 'build']);
 
 const stampDir = path.join(root, '.dev');
+const versionsDir = path.join(stampDir, 'extensions');
+const versionDir = path.join(versionsDir, buildId);
+const mainExtensionPath = path.join(versionDir, 'main');
+const startExtensionPath = path.join(versionDir, 'start');
 const stampPath = path.join(stampDir, 'extension-build.json');
 const tempPath = `${stampPath}.${process.pid}.tmp`;
+
+await rm(versionDir, {recursive: true, force: true});
+await mkdir(versionDir, {recursive: true});
+await cp(path.join(root, 'extension', 'dist'), mainExtensionPath, {recursive: true});
+await cp(path.join(root, 'start_extension', 'dist'), startExtensionPath, {recursive: true});
+
 const buildInfo = {
     buildId,
     builtAt: new Date().toISOString(),
-    mainExtensionPath: path.join(root, 'extension', 'dist'),
-    startExtensionPath: path.join(root, 'start_extension', 'dist'),
+    mainExtensionPath,
+    startExtensionPath,
 };
 await mkdir(stampDir, {recursive: true});
 await writeFile(tempPath, `${JSON.stringify(buildInfo, null, 2)}\n`, 'utf8');
 await rename(tempPath, stampPath);
+
+const retained = 3;
+const versions = (await readdir(versionsDir, {withFileTypes: true}))
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort()
+    .reverse();
+await Promise.all(versions.slice(retained).map(async (name) => {
+    await rm(path.join(versionsDir, name), {recursive: true, force: true});
+}));
+
 console.log(`[rpa-extension] built ${buildId}`);

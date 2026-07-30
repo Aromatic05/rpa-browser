@@ -104,6 +104,10 @@ const rebuild = async () => {
         do {
             rebuildQueued = false;
             await runCommand(['build:extension']);
+            if (agent && !stopping) {
+                console.info('[rpa-dev] extension build changed; restarting agent');
+                await restartAgent();
+            }
         } while (rebuildQueued && !stopping);
     } catch (error) {
         if (!stopping) {console.error('[rpa-dev] extension rebuild failed', error);}
@@ -121,16 +125,38 @@ const scheduleRebuild = () => {
     }, 180);
 };
 
-const monitorChild = (child, label) => {
+const monitorChild = (child, label, isCurrent = () => true) => {
     child.once('error', (error) => {
+        if (stopping || !isCurrent()) {return;}
         console.error(`[rpa-dev] ${label} failed to start`, error);
         void shutdown('SIGTERM', 1);
     });
     child.once('exit', (code, signal) => {
-        if (stopping) {return;}
+        if (stopping || !isCurrent()) {return;}
         console.error(`[rpa-dev] ${label} exited`, {code, signal});
         void shutdown('SIGTERM', signal ? 1 : (code ?? 1));
     });
+};
+
+const startAgent = () => {
+    const agentScript = mode === 'cdp' ? 'dev:cdp' : 'dev';
+    const child = spawnManagedProcess(pnpmCommand, ['--filter', './agent', agentScript], {
+        cwd: root,
+        env: {...process.env, RPA_EXTENSION_AUTO_RELOAD: 'false'},
+        stdio: 'inherit',
+        detached: false,
+    });
+    agent = child;
+    monitorChild(child, 'agent', () => agent === child);
+};
+
+const restartAgent = async () => {
+    const previous = agent;
+    agent = null;
+    if (previous) {
+        await terminateProcessTree(previous, {signal: 'SIGTERM', killAfterMs: 3000});
+    }
+    if (!stopping) {startAgent();}
 };
 
 const main = async () => {
@@ -146,14 +172,7 @@ const main = async () => {
         });
         monitorChild(runnerWatch, 'runner bundle watcher');
 
-        const agentScript = mode === 'cdp' ? 'dev:cdp' : 'dev';
-        agent = spawnManagedProcess(pnpmCommand, ['--filter', './agent', agentScript], {
-            cwd: root,
-            env: {...process.env, RPA_EXTENSION_AUTO_RELOAD: 'true'},
-            stdio: 'inherit',
-            detached: false,
-        });
-        monitorChild(agent, 'agent');
+        startAgent();
 
         for (const target of watchedPaths) {
             watchers.push(watch(target, {recursive: true}, scheduleRebuild));
