@@ -2,9 +2,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import YAML from 'yaml';
 
-const DEFAULT_ARTIFACTS_ROOT = path.resolve(process.cwd(), '.artifacts');
+const defaultWorkflowsRootDir = (): string => path.resolve(process.cwd(), '.artifacts', 'workflows');
 
-export const workflowsRootDir = (): string => path.join(DEFAULT_ARTIFACTS_ROOT, 'workflows');
+export const workflowsRootDir = (): string => {
+    const configuredRoot = process.env.RPA_WORKFLOW_ROOT?.trim();
+    return configuredRoot ? path.resolve(configuredRoot) : defaultWorkflowsRootDir();
+};
 export const workflowRootDir = (workflowName: string): string => path.join(workflowsRootDir(), workflowName);
 export const workflowManifestPath = (workflowName: string): string => path.join(workflowRootDir(workflowName), 'workflow.yaml');
 
