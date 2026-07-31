@@ -278,7 +278,7 @@ implements PageSnapshotSessionPort<Key> {
         const capture = await input.capture();
         const manualBindings = remapManualBindings(state, capture.control.observation);
         state.manualBindings = manualBindings;
-        const semantics = composeSemantics(state.entry, capture, manualBindings);
+        const semantics = composeSemantics(state.entry, capture, manualBindings, refreshReason);
         const entry: PageSnapshotSessionEntry = Object.freeze({
             pageUrl: input.pageUrl,
             identity: {...capture.control.observation.identity},
@@ -314,6 +314,7 @@ const composeSemantics = (
     previous: PageSnapshotSessionEntry | undefined,
     capture: PageSnapshotCapture,
     manualBindings: SemanticBindings,
+    refreshReason: PageSessionRefreshReason,
 ): {
     bindings: Record<string, SemanticBindings>;
     suggestions: Record<string, SemanticSuggestions>;
@@ -328,7 +329,9 @@ const composeSemantics = (
 
     for (const [profileName, profile] of Object.entries(capture.entityRules?.profiles || {})) {
         const previousBindings = previousBindingsByProfile.get(profileName);
-        bindings[profileName] = previousBindings
+        bindings[profileName] = refreshReason === 'explicit'
+            ? profile.semanticBindings
+            : previousBindings
             ? mergeSemanticBindings(previousBindings, profile.semanticBindings).bindings
             : profile.semanticBindings;
         suggestions[profileName] = profile.semanticSuggestions;

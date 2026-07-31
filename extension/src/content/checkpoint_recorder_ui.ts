@@ -16,10 +16,14 @@ type RecordedStepSummary = {
     fieldKey?: string;
     fieldHint?: string;
     actionHint?: string;
+    actionRole?: 'row';
+    rowPrimaryKey?: {fieldKey: string; value: string};
 };
 
 type EntityRuleField = {fieldKey: string; label: string; targetKind: 'entity.field' | 'form.field' | 'table.filter'};
 type EntityRuleAction = {actionIntent: string; label: string; targetKind: 'entity.action' | 'form.action' | 'table.module_action'};
+type EntityRuleRowAction = {actionIntent: string; label: string; targetKind: 'table.row_action'};
+type EntityRulePrimaryKey = {fieldKey: string; label: string};
 type EntityRuleOutput = {kind: OutputKind; label: string};
 type EntityRuleOption = {
     profileName: string;
@@ -28,6 +32,8 @@ type EntityRuleOption = {
     label: string;
     fields: EntityRuleField[];
     actions: EntityRuleAction[];
+    rowActions: EntityRuleRowAction[];
+    primaryKey?: EntityRulePrimaryKey;
     outputs: EntityRuleOutput[];
 };
 
@@ -47,6 +53,7 @@ export type CheckpointRecorderUIOptions = {
 
 export type CheckpointRecorderUIHandle = {
     setVisible: (visible: boolean) => void;
+    onPageChanged: () => void;
     unmount: () => void;
 };
 
@@ -80,6 +87,12 @@ const readSteps = (action: Action): RecordedStepSummary[] => {
             ...(typeof item.fieldKey === 'string' ? {fieldKey: item.fieldKey} : {}),
             ...(typeof item.fieldHint === 'string' ? {fieldHint: item.fieldHint} : {}),
             ...(typeof item.actionHint === 'string' ? {actionHint: item.actionHint} : {}),
+            ...(item.actionRole === 'row' ? {actionRole: 'row' as const} : {}),
+            ...(isRecord(item.rowPrimaryKey)
+                && typeof item.rowPrimaryKey.fieldKey === 'string'
+                && typeof item.rowPrimaryKey.value === 'string'
+                ? {rowPrimaryKey: {fieldKey: item.rowPrimaryKey.fieldKey, value: item.rowPrimaryKey.value}}
+                : {}),
         }];
     });
 };
@@ -107,6 +120,18 @@ const readEntityRules = (action: Action): EntityRuleOption[] => {
                 || !['entity.action', 'form.action', 'table.module_action'].includes(String(action.targetKind))) {return [];}
             return [{actionIntent: action.actionIntent, label: action.label, targetKind: action.targetKind as EntityRuleAction['targetKind']}];
         }) : [];
+        const rowActions: EntityRuleRowAction[] = Array.isArray(item.rowActions) ? item.rowActions.flatMap((action) => {
+            if (!isRecord(action)
+                || typeof action.actionIntent !== 'string'
+                || typeof action.label !== 'string'
+                || action.targetKind !== 'table.row_action') {return [];}
+            return [{actionIntent: action.actionIntent, label: action.label, targetKind: 'table.row_action' as const}];
+        }) : [];
+        const primaryKey = isRecord(item.primaryKey)
+            && typeof item.primaryKey.fieldKey === 'string'
+            && typeof item.primaryKey.label === 'string'
+            ? {fieldKey: item.primaryKey.fieldKey, label: item.primaryKey.label}
+            : undefined;
         const outputs: EntityRuleOutput[] = Array.isArray(item.outputs) ? item.outputs.flatMap((output) => {
             if (!isRecord(output)
                 || !['none', 'table.currentRows', 'table.rowCount'].includes(String(output.kind))
@@ -120,6 +145,8 @@ const readEntityRules = (action: Action): EntityRuleOption[] => {
             label: item.label,
             fields,
             actions,
+            rowActions,
+            ...(primaryKey ? {primaryKey} : {}),
             outputs: outputs.length ? outputs : [{kind: 'none' as const, label: '无'}],
         }];
     });
@@ -243,18 +270,26 @@ export const mountCheckpointRecorderUI = (options: CheckpointRecorderUIOptions):
     };
     let successTimer: ReturnType<typeof setTimeout> | null = null;
     let recordingHideTimer: ReturnType<typeof setTimeout> | null = null;
+    let previewGeneration = 0;
     let drag: {pointerId: number; x: number; y: number; left: number; top: number} | null = null;
 
     const selectedEntity = (): EntityRuleOption | undefined =>
         entityRules.find((item) => entityOptionKey(item) === form.entityKey);
 
     const previewSelectedEntity = async (): Promise<void> => {
+        const generation = ++previewGeneration;
         const entity = selectedEntity();
         await options.onEntityRulePreview?.(entity ? {
             profileName: entity.profileName,
             businessTag: entity.businessTag,
             entityKind: entity.entityKind,
         } : null);
+        if (generation !== previewGeneration) {return;}
+    };
+
+    const clearEntityPreview = async (): Promise<void> => {
+        previewGeneration += 1;
+        await options.onEntityRulePreview?.(null);
     };
 
     const setDockVisible = (visible: boolean): void => {
@@ -284,7 +319,7 @@ export const mountCheckpointRecorderUI = (options: CheckpointRecorderUIOptions):
         form.operation = 'any';
         form.retryOriginal = true;
         options.onActiveChange?.(false);
-        void options.onEntityRulePreview?.(null);
+        void clearEntityPreview();
         if (recordingHideTimer) {clearTimeout(recordingHideTimer); recordingHideTimer = null;}
         launcher.textContent = '录制检查点';
         launcher.classList.remove('active');
@@ -315,6 +350,18 @@ export const mountCheckpointRecorderUI = (options: CheckpointRecorderUIOptions):
                     ? step.actionHint
                     : undefined;
                 const normalizedHint = step.actionHint?.trim().toLowerCase();
+                if (step.actionRole === 'row'
+                    && step.rowPrimaryKey
+                    && entity.primaryKey?.fieldKey === step.rowPrimaryKey.fieldKey) {
+                    const rowAction = entity.rowActions.find((action) =>
+                        action.actionIntent === exactActionIntent
+                        || action.actionIntent.trim().toLowerCase() === normalizedHint
+                        || action.label.trim().toLowerCase() === normalizedHint);
+                    if (rowAction) {
+                        next[step.stepId] = `row_action:${rowAction.actionIntent}`;
+                        continue;
+                    }
+                }
                 const matches = entity.actions.filter((action) =>
                     action.actionIntent === exactActionIntent
                     || action.actionIntent.trim().toLowerCase() === normalizedHint
@@ -390,9 +437,8 @@ export const mountCheckpointRecorderUI = (options: CheckpointRecorderUIOptions):
         steps = [];
         launcher.textContent = '录制中';
         launcher.classList.add('active');
-        setDockVisible(true);
+        setDockVisible(false);
         render();
-        scheduleRecordingAutoHide();
     };
 
     const stop = async (): Promise<void> => {
@@ -401,7 +447,7 @@ export const mountCheckpointRecorderUI = (options: CheckpointRecorderUIOptions):
         if (!action) {return;}
         phase = 'review';
         applyReview(action);
-        await options.onEntityRulePreview?.(null);
+        await clearEntityPreview();
         launcher.textContent = '保存检查点';
         launcher.classList.remove('active');
         setDockVisible(true);
@@ -430,12 +476,21 @@ export const mountCheckpointRecorderUI = (options: CheckpointRecorderUIOptions):
         const mappings: Array<
             | {stepId: string; kind: 'input'; fieldKey: string}
             | {stepId: string; kind: 'action'; actionIntent: string}
+            | {stepId: string; kind: 'row_action'; actionIntent: string; primaryKeyFieldKey: string; inputKey: string}
         > = [];
         for (const [stepId, value] of Object.entries(form.mappings)) {
             if (value.startsWith('input:')) {
                 mappings.push({stepId, kind: 'input', fieldKey: value.slice('input:'.length)});
             } else if (value.startsWith('action:')) {
                 mappings.push({stepId, kind: 'action', actionIntent: value.slice('action:'.length)});
+            } else if (value.startsWith('row_action:') && entity.primaryKey) {
+                mappings.push({
+                    stepId,
+                    kind: 'row_action',
+                    actionIntent: value.slice('row_action:'.length),
+                    primaryKeyFieldKey: entity.primaryKey.fieldKey,
+                    inputKey: entity.primaryKey.fieldKey,
+                });
             }
         }
         return {
@@ -535,6 +590,14 @@ export const mountCheckpointRecorderUI = (options: CheckpointRecorderUIOptions):
                 sample.textContent = `（录制值：${recorded}）`;
                 copy.appendChild(sample);
             }
+            if (step.actionRole === 'row' && step.rowPrimaryKey) {
+                const rowSample = document.createElement('small');
+                const keyLabel = entity.primaryKey?.fieldKey === step.rowPrimaryKey.fieldKey
+                    ? entity.primaryKey.label
+                    : step.rowPrimaryKey.fieldKey;
+                rowSample.textContent = `（目标行：${keyLabel} = ${step.rowPrimaryKey.value}）`;
+                copy.appendChild(rowSample);
+            }
             const select = document.createElement('select');
             select.setAttribute('data-rpa-checkpoint-map', step.stepId);
             select.append(createOption('recorded', isInputStep(step) ? '保持录制值' : '保持录制定位'));
@@ -542,6 +605,14 @@ export const mountCheckpointRecorderUI = (options: CheckpointRecorderUIOptions):
                 for (const field of entity.fields) {select.append(createOption(`input:${field.fieldKey}`, `输入：${field.label}`));}
             } else {
                 for (const action of entity.actions) {select.append(createOption(`action:${action.actionIntent}`, `业务操作：${action.label}`));}
+                if (entity.primaryKey) {
+                    for (const action of entity.rowActions) {
+                        select.append(createOption(
+                            `row_action:${action.actionIntent}`,
+                            `行操作：${action.label}（按${entity.primaryKey.label}定位）`,
+                        ));
+                    }
+                }
             }
             select.value = form.mappings[step.stepId] ?? 'recorded';
             select.addEventListener('change', () => {form.mappings[step.stepId] = select.value;});
@@ -814,8 +885,25 @@ export const mountCheckpointRecorderUI = (options: CheckpointRecorderUIOptions):
     });
     hideButton.addEventListener('click', (event) => {
         event.stopPropagation();
+        if (phase === 'setup') {
+            reset();
+            return;
+        }
         setDockVisible(false);
     });
+    const onDocumentKeyDown = (event: KeyboardEvent): void => {
+        if (event.key !== 'Escape') {return;}
+        if (phase === 'idle' || phase === 'saving' || phase === 'success') {return;}
+        if ((phase === 'recording' || phase === 'review') && !dockVisible) {return;}
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        if (phase === 'setup') {
+            reset();
+            return;
+        }
+        setDockVisible(false);
+    };
+    dock.ownerDocument.addEventListener('keydown', onDocumentKeyDown, true);
     header.addEventListener('pointerdown', (event) => {
         if (event.button !== 0 || event.target === hideButton) {return;}
         const rect = dock.getBoundingClientRect();
@@ -852,8 +940,18 @@ export const mountCheckpointRecorderUI = (options: CheckpointRecorderUIOptions):
             if (!visible) {dock.hidden = true;}
             else if (dockVisible) {dock.hidden = false;}
         },
+        onPageChanged: () => {
+            if (phase === 'setup') {
+                reset();
+            } else {
+                void clearEntityPreview();
+            }
+        },
         unmount: () => {
+            previewGeneration += 1;
             options.onActiveChange?.(false);
+            void options.onEntityRulePreview?.(null);
+            dock.ownerDocument.removeEventListener('keydown', onDocumentKeyDown, true);
             if (successTimer) {clearTimeout(successTimer);}
             if (recordingHideTimer) {clearTimeout(recordingHideTimer);}
             launcher.remove();

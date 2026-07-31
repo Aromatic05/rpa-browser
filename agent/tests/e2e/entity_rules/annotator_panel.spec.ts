@@ -182,18 +182,29 @@ const pageElementPoint = async (
 };
 
 const openAnnotator = async (agent: AgentHandle, workspaceName: string): Promise<void> => {
-    let point: Point | null = null;
+    let launchPoint: Point | null = null;
     await expect.poll(async () => {
-        point = await evaluate<Point | null>(agent, workspaceName, `
+        launchPoint = await evaluate<Point | null>(agent, workspaceName, `
             const button = document.querySelector('#rpa-floating-panel')?.shadowRoot
-                ?.querySelector('.annotate-launch');
-            if (!(button instanceof HTMLButtonElement)) return null;
+                ?.querySelector('.rules-launch');
+            if (!(button instanceof HTMLButtonElement) || button.hidden) return null;
             const rect = button.getBoundingClientRect();
+            if (rect.width <= 0 || rect.height <= 0) return null;
             return {x: rect.left + rect.width / 2, y: rect.top + rect.height / 2};
         `);
-        return point;
+        return launchPoint;
     }, {timeout: 20_000}).not.toBeNull();
-    await click(agent, workspaceName, point!);
+    await click(agent, workspaceName, launchPoint!);
+    await expect.poll(async () => await evaluate<boolean>(agent, workspaceName, `
+        const root = document.querySelector('#rpa-floating-panel')?.shadowRoot;
+        const panel = root?.querySelector('.rules-browser');
+        return panel instanceof HTMLElement && !panel.hidden;
+    `), {timeout: 20_000}).toBe(true);
+    await click(agent, workspaceName, await floatingPanelButtonPoint(
+        agent,
+        workspaceName,
+        '[data-rpa-rules-action="create"]',
+    ));
 };
 
 const closeEditCard = async (agent: AgentHandle, workspaceName: string): Promise<void> => {
@@ -312,32 +323,34 @@ test('selects an entity, recognizes presets automatically, and edits the page di
                 labels: root?.querySelectorAll('.annotator-label').length || 0,
             };
         `), {timeout: 30_000}).toEqual({
-            stage: 'review',
+            stage: 'edit',
             draft: 'present',
-            hostPointer: 'none',
+            hostPointer: 'auto',
             dimmed: true,
             entityFocused: true,
             recognizeButton: false,
-            dockText: expect.stringContaining('识别完成'),
-            guideInDock: true,
+            dockText: expect.stringContaining('保存并退出'),
+            guideInDock: false,
             separateGuide: false,
-            markers: {field: 2, column: 5, action: 4, pagination: 2},
+            markers: {field: 2, column: 5, action: 6, pagination: 2},
             labels: 0,
         });
         expect(await entityRuleSnapshot(agent, workspaceName)).toBe(initialRules);
 
-        await click(agent, workspaceName, await shadowButtonPoint(
+        await evaluate(agent, workspaceName, `
+            window.__rpaBlockedPageClicks = 0;
+            document.querySelector('#searchOrders')?.addEventListener('click', () => {
+                window.__rpaBlockedPageClicks += 1;
+            });
+        `);
+        await click(agent, workspaceName, await pageElementPoint(
             agent,
             workspaceName,
-            '.dock-guide button',
+            '#searchOrders',
         ));
-        await expect.poll(async () => await evaluate(agent, workspaceName, `
-            const root = document.querySelector('#rpa-entity-annotator-host')?.shadowRoot;
-            return {
-                guide: Boolean(root?.querySelector('.dock-guide')),
-                stage: root?.querySelector('.annotator-shell')?.getAttribute('data-product-stage') || '',
-            };
-        `), {timeout: 10_000}).toEqual({guide: false, stage: 'edit'});
+        expect(await evaluate<number>(agent, workspaceName, `
+            return Number(window.__rpaBlockedPageClicks || 0);
+        `)).toBe(0);
 
         const entityAlignment = async (): Promise<number | null> => await evaluate(agent, workspaceName, `
             const root = document.querySelector('#rpa-entity-annotator-host')?.shadowRoot;
@@ -366,7 +379,7 @@ test('selects an entity, recognizes presets automatically, and edits the page di
             const hit = document.elementFromPoint(point.x, point.y);
             return {tag: hit?.tagName || '', host: hit?.id || ''};
         `);
-        expect(headerHit).toEqual({tag: 'TH', host: ''});
+        expect(headerHit).toEqual({tag: 'DIV', host: 'rpa-entity-annotator-host'});
         await click(agent, workspaceName, headerPoint);
         await expect.poll(async () => await evaluate(agent, workspaceName, `
             return document.querySelector('#rpa-entity-annotator-host')?.shadowRoot
@@ -945,7 +958,7 @@ test('selects an entity, recognizes presets automatically, and edits the page di
             draft: 'present',
             stage: 'edit',
             count: objectCountBeforeAdd + 1,
-            saveText: '保存规则',
+            saveText: '保存并退出',
         });
         expect(await entityRuleSnapshot(agent, workspaceName)).toBe(initialRules);
 
@@ -993,20 +1006,140 @@ test('selects an entity, recognizes presets automatically, and edits the page di
             '.annotator-save-action',
         ));
         await expect.poll(async () => await evaluate(agent, workspaceName, `
-            const root = document.querySelector('#rpa-entity-annotator-host')?.shadowRoot;
+            const host = document.querySelector('#rpa-entity-annotator-host');
+            const root = host?.shadowRoot;
             return {
-                saveText: root?.querySelector('.annotator-save-action')?.textContent
-                    ?.replace(/\\s+/g, ' ').trim() || '',
+                hidden: host instanceof HTMLElement && host.style.display === 'none',
                 error: root?.querySelector('.annotator-error-banner p')?.textContent?.trim() || '',
             };
-        `), {timeout: 30_000}).toEqual({saveText: '✓ 已保存', error: ''});
+        `), {timeout: 30_000}).toEqual({hidden: true, error: ''});
         expect(await entityRuleSnapshot(agent, workspaceName)).not.toBe(initialRules);
 
         const listedRules = await dispatch(agent.endpoint, action('entity_rules.list', workspaceName));
         expect(listedRules.type).toBe('entity_rules.list.result');
-        expect(((listedRules.payload as {profiles?: Array<{name?: string}>})?.profiles || [])
-            .some((rule) => Boolean(rule.name))).toBe(true);
+        const listedPayload = listedRules.payload as {
+            profiles?: Array<{name?: string}>;
+            rules?: Array<{label?: string; entityCount?: number}>;
+        };
+        expect((listedPayload.profiles || []).some((rule) => Boolean(rule.name))).toBe(true);
+        expect((listedPayload.rules || []).some((rule) => Boolean(rule.label) && rule.entityCount === 1)).toBe(true);
 
+        await click(agent, workspaceName, await floatingPanelButtonPoint(
+            agent,
+            workspaceName,
+            '.rules-launch',
+        ));
+        await expect.poll(async () => await evaluate(agent, workspaceName, `
+            const root = document.querySelector('#rpa-floating-panel')?.shadowRoot;
+            return root?.querySelector('.rules-browser')?.textContent?.includes('订单查询列表') || false;
+        `), {timeout: 20_000}).toBe(true);
+        await click(agent, workspaceName, await floatingPanelButtonPoint(
+            agent,
+            workspaceName,
+            '[data-rpa-rules-action="open"]',
+        ));
+        await expect.poll(async () => await evaluate(agent, workspaceName, `
+            const root = document.querySelector('#rpa-floating-panel')?.shadowRoot;
+            const text = root?.querySelector('.rules-browser')?.textContent || '';
+            return {
+                field: text.includes('字段：订单编号'),
+                action: text.includes('操作：查询'),
+                column: text.includes('列：订单编号（主键）'),
+                internal: /businessTag|profileName/.test(text),
+            };
+        `), {timeout: 20_000}).toEqual({field: true, action: true, column: true, internal: false});
+        await click(agent, workspaceName, await floatingPanelButtonPoint(
+            agent,
+            workspaceName,
+            '[data-rpa-rules-action="preview"]',
+        ));
+        await expect.poll(async () => await evaluate(agent, workspaceName, `
+            const host = document.querySelector('#rpa-entity-annotator-host');
+            const root = host?.shadowRoot;
+            const dock = root?.querySelector('.floating-dock');
+            return {
+                visible: host instanceof HTMLElement && host.style.display === 'block',
+                interaction: host?.getAttribute('data-rpa-interaction-mode') || '',
+                pointer: host ? getComputedStyle(host).pointerEvents : '',
+                highlightOnly: host?.hasAttribute('data-rpa-highlight-only') || false,
+                controlsHidden: !dock || getComputedStyle(dock).display === 'none',
+                editAnchors: root?.querySelectorAll('.annotator-edit-anchor,.pending-edit-anchor').length || 0,
+            };
+        `), {timeout: 20_000}).toEqual({
+            visible: true,
+            interaction: 'inspect',
+            pointer: 'auto',
+            highlightOnly: true,
+            controlsHidden: true,
+            editAnchors: 0,
+        });
+        await evaluate(agent, workspaceName, `
+            history.pushState({}, '', '/orders?after-rule-preview=1');
+        `);
+        await expect.poll(async () => await evaluate(agent, workspaceName, `
+            const host = document.querySelector('#rpa-entity-annotator-host');
+            const panel = document.querySelector('#rpa-floating-panel')?.shadowRoot
+                ?.querySelector('.rules-browser');
+            return {
+                hostHidden: host instanceof HTMLElement && host.style.display === 'none',
+                panelHidden: panel instanceof HTMLElement && panel.hidden,
+                markers: document.querySelectorAll('[data-rpa-annotation-id]').length,
+            };
+        `), {timeout: 10_000}).toEqual({hostHidden: true, panelHidden: true, markers: 0});
+
+        await evaluate(agent, workspaceName, `
+            history.replaceState({}, '', '/orders');
+        `);
+        await expect.poll(async () => await evaluate(agent, workspaceName, `
+            return location.pathname + location.search;
+        `), {timeout: 10_000}).toBe('/orders');
+
+        const savedRules = await entityRuleSnapshot(agent, workspaceName);
+        const listedAfterSave = await dispatch(agent.endpoint, action('entity_rules.list', workspaceName));
+        const existingProfileName = (
+            (listedAfterSave.payload as {rules?: Array<{profileName?: string}>})?.rules || []
+        )[0]?.profileName || '';
+        expect(existingProfileName).not.toBe('');
+
+        await click(agent, workspaceName, await floatingPanelButtonPoint(
+            agent,
+            workspaceName,
+            '.rules-launch',
+        ));
+        await expect.poll(async () => await evaluate(agent, workspaceName, `
+            const root = document.querySelector('#rpa-floating-panel')?.shadowRoot;
+            return Boolean(root?.querySelector('[data-rpa-rules-action="open"]'));
+        `), {timeout: 20_000}).toBe(true);
+        await click(agent, workspaceName, await floatingPanelButtonPoint(
+            agent,
+            workspaceName,
+            '[data-rpa-rules-action="open"]',
+        ));
+        await click(agent, workspaceName, await floatingPanelButtonPoint(
+            agent,
+            workspaceName,
+            '[data-rpa-rules-action="edit"]',
+        ));
+        await expect.poll(async () => await evaluate(agent, workspaceName, `
+            const root = document.querySelector('#rpa-entity-annotator-host')?.shadowRoot;
+            const shell = root?.querySelector('.annotator-shell');
+            return {
+                draft: shell?.getAttribute('data-annotator-draft') || '',
+                stage: shell?.getAttribute('data-product-stage') || '',
+                entryChoice: shell?.getAttribute('data-entry-choice') || '',
+                profileName: shell?.getAttribute('data-annotator-profile') || '',
+                error: root?.querySelector('.annotator-error-banner p')?.textContent?.trim() || '',
+                columns: document.querySelectorAll('[data-rpa-annotation-kind="column"]').length,
+            };
+        `), {timeout: 20_000}).toEqual({
+            draft: 'present',
+            stage: 'edit',
+            entryChoice: 'inactive',
+            profileName: existingProfileName,
+            error: '',
+            columns: 5,
+        });
+        expect(await entityRuleSnapshot(agent, workspaceName)).toBe(savedRules);
         await click(agent, workspaceName, await shadowButtonPoint(
             agent,
             workspaceName,
@@ -1017,42 +1150,7 @@ test('selects an entity, recognizes presets automatically, and edits the page di
             return host instanceof HTMLElement && host.style.display === 'none';
         `), {timeout: 10_000}).toBe(true);
 
-        const savedRules = await entityRuleSnapshot(agent, workspaceName);
         await openAnnotator(agent, workspaceName);
-        await expect.poll(async () => await evaluate(agent, workspaceName, `
-            const root = document.querySelector('#rpa-entity-annotator-host')?.shadowRoot;
-            const shell = root?.querySelector('.annotator-shell');
-            return {
-                draft: shell?.getAttribute('data-annotator-draft') || '',
-                stage: shell?.getAttribute('data-product-stage') || '',
-                pickMode: shell?.getAttribute('data-pick-mode') || '',
-                entryChoice: shell?.getAttribute('data-entry-choice') || '',
-                editExisting: Boolean(root?.querySelector('[data-annotator-action="edit-existing"]')),
-                saveText: root?.querySelector('.annotator-save-action')?.textContent
-                    ?.replace(/\\s+/g, ' ').trim() || '',
-                columns: document.querySelectorAll('[data-rpa-annotation-kind="column"]').length,
-            };
-        `), {timeout: 20_000}).toEqual({
-            draft: 'empty',
-            stage: 'scope',
-            pickMode: 'inactive',
-            entryChoice: 'active',
-            editExisting: true,
-            saveText: '',
-            columns: 0,
-        });
-        expect(await entityRuleSnapshot(agent, workspaceName)).toBe(savedRules);
-        const existingProfileName = await evaluate<string>(agent, workspaceName, `
-            const select = document.querySelector('#rpa-entity-annotator-host')?.shadowRoot
-                ?.querySelector('.entry-choice-dock select');
-            return select instanceof HTMLSelectElement ? select.value : '';
-        `);
-        expect(existingProfileName).not.toBe('');
-        await click(agent, workspaceName, await shadowButtonPoint(
-            agent,
-            workspaceName,
-            '[data-annotator-action="start-fresh"]',
-        ));
         await expect.poll(async () => await evaluate(agent, workspaceName, `
             const root = document.querySelector('#rpa-entity-annotator-host')?.shadowRoot;
             const shell = root?.querySelector('.annotator-shell');
@@ -1066,13 +1164,8 @@ test('selects an entity, recognizes presets automatically, and edits the page di
             draft: 'empty',
             pickMode: 'active',
             entryChoice: 'inactive',
-            profileName: expect.stringMatching(/.+/),
+            profileName: '',
         });
-        const freshProfileName = await evaluate<string>(agent, workspaceName, `
-            return document.querySelector('#rpa-entity-annotator-host')?.shadowRoot
-                ?.querySelector('.annotator-shell')?.getAttribute('data-annotator-profile') || '';
-        `);
-        expect(freshProfileName).not.toBe(existingProfileName);
         expect(await entityRuleSnapshot(agent, workspaceName)).toBe(savedRules);
         await click(agent, workspaceName, await shadowButtonPoint(
             agent,
@@ -1083,41 +1176,6 @@ test('selects an entity, recognizes presets automatically, and edits the page di
             const host = document.querySelector('#rpa-entity-annotator-host');
             return host instanceof HTMLElement && host.style.display === 'none';
         `), {timeout: 10_000}).toBe(true);
-        expect(await entityRuleSnapshot(agent, workspaceName)).toBe(savedRules);
-
-        await openAnnotator(agent, workspaceName);
-        await expect.poll(async () => await evaluate(agent, workspaceName, `
-            const root = document.querySelector('#rpa-entity-annotator-host')?.shadowRoot;
-            return Boolean(root?.querySelector('[data-annotator-action="edit-existing"]'));
-        `), {timeout: 20_000}).toBe(true);
-        await click(agent, workspaceName, await shadowButtonPoint(
-            agent,
-            workspaceName,
-            '[data-annotator-action="edit-existing"]',
-        ));
-        await expect.poll(async () => await evaluate(agent, workspaceName, `
-            const root = document.querySelector('#rpa-entity-annotator-host')?.shadowRoot;
-            const shell = root?.querySelector('.annotator-shell');
-            const select = root?.querySelector('.entry-choice-dock select');
-            return {
-                draft: shell?.getAttribute('data-annotator-draft') || '',
-                stage: shell?.getAttribute('data-product-stage') || '',
-                entryChoice: shell?.getAttribute('data-entry-choice') || '',
-                selectedProfile: select instanceof HTMLSelectElement ? select.value : '',
-                error: root?.querySelector('.annotator-error-banner p')?.textContent?.trim() || '',
-                saveText: root?.querySelector('.annotator-save-action')?.textContent
-                    ?.replace(/\\s+/g, ' ').trim() || '',
-                columns: document.querySelectorAll('[data-rpa-annotation-kind="column"]').length,
-            };
-        `), {timeout: 20_000}).toEqual({
-            draft: 'present',
-            stage: 'edit',
-            entryChoice: 'inactive',
-            selectedProfile: '',
-            error: '',
-            saveText: '✓ 已保存',
-            columns: 5,
-        });
         expect(await entityRuleSnapshot(agent, workspaceName)).toBe(savedRules);
     } finally {
         await agent.close();

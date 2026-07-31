@@ -5,17 +5,21 @@
   <title>Checkpoint Recorder Fixture</title>
   <style>
     body { font-family: system-ui, sans-serif; margin: 0; padding: 72px; background: #f8fafc; }
-    main { max-width: 760px; margin: auto; padding: 32px; border-radius: 16px; background: white; box-shadow: 0 12px 40px rgba(15,23,42,.12); }
+    main { max-width: 860px; margin: auto; padding: 32px; border-radius: 16px; background: white; box-shadow: 0 12px 40px rgba(15,23,42,.12); }
     form { display:grid; grid-template-columns:1fr 1fr auto; align-items:end; gap:14px; margin-top:24px; padding:20px; border:1px solid #cbd5e1; border-radius:12px; }
     label { display:grid; gap:6px; font-size:13px; font-weight:650; }
     input { height:36px; box-sizing:border-box; border:1px solid #94a3b8; border-radius:8px; padding:0 10px; }
     button { min-height: 38px; padding: 0 16px; }
     #query-result { display:block; margin-top:18px; min-height:24px; }
+    table { width:100%; margin-top:18px; border-collapse:collapse; }
+    th, td { padding:10px 12px; border:1px solid #cbd5e1; text-align:left; }
+    td:last-child { display:flex; gap:8px; }
+    .shipped { color:#047857; font-weight:700; }
     #session-alert { display: flex; align-items: center; justify-content: space-between; gap: 24px; margin-top: 48px; padding: 18px; border: 1px solid #fca5a5; border-radius: 12px; background: #fef2f2; }
   </style>
 </head>
 <body>
-  <main>
+  <main id="order-workbench">
     <h1>订单工作台</h1>
     <button id="ordinary-action" type="button">普通操作</button>
     <output id="ordinary-count">0</output>
@@ -30,6 +34,14 @@
       <strong>登录已失效</strong>
       <button id="dismiss-session" type="button">关闭提示</button>
     </section>
+    <table id="orders-table" aria-label="订单列表">
+      <thead><tr><th>订单编号</th><th>采购人</th><th>状态</th><th>操作</th></tr></thead>
+      <tbody>
+        <tr data-order-no="SO-001"><td>SO-001</td><td>张三</td><td class="order-status">待发货</td><td><button type="button" class="edit-order">编辑</button><button type="button" class="confirm-shipment">确认发货</button></td></tr>
+        <tr data-order-no="SO-002"><td>SO-002</td><td>王小虎</td><td class="order-status">待发货</td><td><button type="button" class="edit-order">编辑</button><button type="button" class="confirm-shipment">确认发货</button></td></tr>
+        <tr data-order-no="SO-003"><td>SO-003</td><td>李雷</td><td class="order-status">待发货</td><td><button type="button" class="edit-order">编辑</button><button type="button" class="confirm-shipment">确认发货</button></td></tr>
+      </tbody>
+    </table>
   </main>
   <script>
     const loadCount = Number(sessionStorage.getItem('checkpoint-fixture-load-count') || '0') + 1;
@@ -50,7 +62,20 @@
       const buyer = document.querySelector('#buyer').value;
       document.body.dataset.queryCount = String(Number(document.body.dataset.queryCount || '0') + 1);
       document.querySelector('#query-result').textContent = `${orderNo}|${buyer}`;
+      for (const row of document.querySelectorAll('#orders-table tbody tr')) {
+        const matchesOrder = !orderNo || row.dataset.orderNo === orderNo;
+        const matchesBuyer = !buyer || row.children[1].textContent.includes(buyer);
+        row.style.display = matchesOrder && matchesBuyer ? '' : 'none';
+      }
     });
+    for (const button of document.querySelectorAll('.confirm-shipment')) {
+      button.addEventListener('click', () => {
+        const row = button.closest('tr');
+        row.querySelector('.order-status').textContent = '已发货';
+        row.querySelector('.order-status').classList.add('shipped');
+        document.body.dataset.shippedOrder = row.dataset.orderNo;
+      });
+    }
     document.querySelector('#dismiss-session').addEventListener('click', () => {
       document.querySelector('#session-alert').style.display = 'none';
       document.querySelector('#protected-message').style.display = 'block';

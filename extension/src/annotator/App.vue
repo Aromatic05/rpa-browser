@@ -87,6 +87,7 @@ import {
 import {enrichInferredFieldNamesFromDom} from './state/dom_labels.js';
 import {enrichVisualBindingsFromDom} from './state/dom_geometry.js';
 import {annotationIdFromDomTarget, applyDomMarkers, clearDomMarkers} from './state/dom_markers.js';
+import {annotationIdBelowInteractionShield} from './state/dom_marker_hit_test.js';
 
 const props = defineProps<{
     state: AnnotatorState;
@@ -833,6 +834,9 @@ const runCheckAndSave = async (): Promise<void> => {
         applyState({...checked, mode: 'saving', error: null});
         const saved = await runSaveLoop(checked, props.client, props.sessionStore);
         applyState(saved);
+        if (!saved.error && !saved.dirty && saved.artifactRevision) {
+            emit('exit');
+        }
     } finally {
         operation.value = null;
     }
@@ -1450,7 +1454,11 @@ const syncDomMarkers = (): void => {
 
 const onDomMarkerClick = (event: MouseEvent): void => {
     if (isHighlightOnlyMode() || pickMode.value || props.state.mode !== 'editing') {return;}
-    const annotationId = annotationIdFromDomTarget(event.target);
+    const host = document.getElementById('rpa-entity-annotator-host');
+    const annotationId = annotationIdFromDomTarget(event.target)
+        ?? (host instanceof HTMLElement
+            ? annotationIdBelowInteractionShield(event, host, document)
+            : null);
     if (!annotationId) {return;}
     event.preventDefault();
     event.stopImmediatePropagation();
@@ -1867,14 +1875,14 @@ watch(
                     data-annotator-action="save-rules"
                     :class="{saved: !state.dirty && Boolean(state.artifactRevision)}"
                     :disabled="isBusy || !state.profileName || (!state.dirty && !hasLocalPendingChanges)"
-                    :title="hasLocalPendingChanges ? '请先应用或取消当前修改' : '保存规则'"
+                    :title="hasLocalPendingChanges ? '请先应用或取消当前修改' : '保存规则并退出'"
                     @click="requestSave"
                 >
                     <span v-if="operation === 'check'">检查中…</span>
                     <span v-else-if="operation === 'save'">保存中…</span>
                     <span v-else-if="hasLocalPendingChanges">先应用当前修改</span>
                     <span v-else-if="!state.dirty && state.artifactRevision">✓ 已保存</span>
-                    <span v-else>保存规则</span>
+                    <span v-else>保存并退出</span>
                 </button>
                 <button
                     type="button"

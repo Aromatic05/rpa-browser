@@ -151,7 +151,7 @@ const assembleTable = (
         resolvedColumns,
     );
     const featureCover = buildFeatureCover(canonicalRows.rows, canonicalRows.cells, controls);
-    const controlModel = buildControlSlots(tableId, canonicalRows.rows, canonicalRows.cells, controls);
+    const controlModel = buildControlSlots(tableId, canonicalRows.rows, canonicalRows.cells, controls, observation);
     const hierarchy = buildRowHierarchy(observation, canonicalRows.rows);
     const paginationNodes = findPaginationNodes(observation, root, logicalRoots);
     const localDiagnostics = [

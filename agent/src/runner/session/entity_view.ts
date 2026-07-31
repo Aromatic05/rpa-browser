@@ -344,17 +344,35 @@ export const resolvePageSessionBusinessTarget = (
         return {ok: true, data: {kind: 'nodeId', nodeId: row.data.nodeId, meta}};
     }
 
+    const rowNodes = new Set([row.data.nodeId, ...descendants(entry, row.data.nodeId)]);
+    const template = arrayRecords(entity.annotation?.rowActions)
+        .find((action) => action.actionIntent === target.actionIntent);
+    const templateNodeIds = Array.isArray(template?.nodeIds)
+        ? template.nodeIds.map(readString).filter((nodeId): nodeId is string => Boolean(nodeId))
+        : [];
+    const candidates = templateNodeIds.filter((nodeId) => rowNodes.has(nodeId));
+    if (candidates.length > 0) {
+        return uniqueNodeTarget(candidates, meta, `table row action ${target.actionIntent}`);
+    }
+    if (template) {
+        return notFound(
+            `Action intent ${target.actionIntent} has no instance in the row selected by ${target.primaryKey.fieldKey}.`,
+        );
+    }
+    if (arrayRecords(entity.annotation?.rowActions).length > 0) {
+        return notFound(`Action intent ${target.actionIntent} is not declared for ${businessTag}.`);
+    }
     const actionText = resolveActionText(entity.annotation, target.actionIntent);
     if (!actionText) {
         return notFound(`Action intent ${target.actionIntent} is not declared for ${businessTag}.`);
     }
-    const candidates = descendants(entry, row.data.nodeId)
+    const legacyCandidates = [...rowNodes]
         .filter((nodeId) => {
             const role = resolveSemanticRole(entry.capture.control.observation, nodeId).value;
             return (role === 'button' || role === 'link')
                 && normalizeLower(readNodeSearchText(entry, nodeId)).includes(normalizeLower(actionText));
         });
-    return uniqueNodeTarget(candidates, meta, `table row action ${target.actionIntent}`);
+    return uniqueNodeTarget(legacyCandidates, meta, `table row action ${target.actionIntent}`);
 };
 
 
@@ -606,8 +624,20 @@ const enrichTableAnnotation = (
             nodeId,
         }];
     });
+    const rowActions = bindings.flatMap((binding) => {
+        if (binding.annotation.actionRole !== 'row') {return [];}
+        const actionIntent = readString(binding.annotation.actionIntent);
+        if (!actionIntent || binding.target.nodeIds.length === 0) {return [];}
+        return [{
+            actionIntent,
+            text: readString(binding.annotation.actionText) ?? readString(binding.annotation.text),
+            nodeIds: [...binding.target.nodeIds],
+            columnFieldKey: readString(binding.annotation.columnFieldKey),
+        }];
+    });
     if (filterFields.length > 0) {annotation.filterFields = filterFields;}
     if (moduleActions.length > 0) {annotation.moduleActions = moduleActions;}
+    if (rowActions.length > 0) {annotation.rowActions = rowActions;}
 
     const next = bindings.find((binding) => binding.annotation.paginationRole === 'next'
         && binding.target.nodeIds.length === 1);

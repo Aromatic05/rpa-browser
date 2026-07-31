@@ -55,6 +55,57 @@ test('V2 business target resolves a row action from primary key and action inten
     assert.equal(resolved.data.meta.targetKind, 'table.row_action');
 });
 
+test('V2 row action does not fall back to a same-text control outside the semantic template', async () => {
+    const fixture = createV2BusinessPage({rowCount: 2});
+    const tableProfile = fixture.capture.entityRules?.profiles['orders-table'];
+    assert.ok(tableProfile);
+    const rowBindingEntry = Object.entries(tableProfile.semanticBindings.byId)
+        .find(([, binding]) => binding.annotation.actionRole === 'row');
+    assert.ok(rowBindingEntry);
+    const [rowBindingId, rowBinding] = rowBindingEntry;
+    const capture = {
+        ...fixture.capture,
+        entityRules: {
+            ...fixture.capture.entityRules!,
+            profiles: {
+                ...fixture.capture.entityRules!.profiles,
+                'orders-table': {
+                    ...tableProfile,
+                    semanticBindings: {
+                        ...tableProfile.semanticBindings,
+                        byId: {
+                            ...tableProfile.semanticBindings.byId,
+                            [rowBindingId]: {
+                                ...rowBinding,
+                                target: {
+                                    ...rowBinding.target,
+                                    nodeIds: [fixture.nodeIds['approve-2']],
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    };
+    const store = new PageSnapshotSessionStore<object>();
+    const entry = await store.ensureFresh({
+        pageKey: {},
+        pageUrl: '/orders',
+        capture: async () => capture,
+    });
+
+    const resolved = resolvePageSessionBusinessTarget(entry, 'order.table.main', {
+        kind: 'table.row_action',
+        primaryKey: {fieldKey: 'orderNo', value: 'SO-001'},
+        actionIntent: 'approve',
+    });
+    assert.equal(resolved.ok, false);
+    if (!resolved.ok) {
+        assert.match(resolved.error.message, /has no instance in the row/u);
+    }
+});
+
 test('V2 form target exposes canonical select-option control kind for DSL actions', async () => {
     const fixture = createV2BusinessPage();
     const buyerNodeId = fixture.nodeIds.buyer;

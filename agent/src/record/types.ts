@@ -8,6 +8,8 @@ export type RecordedSemanticHints = {
     fieldKey?: string;
     fieldLabel?: string;
     actionIntent?: string;
+    actionRole?: 'row';
+    rowPrimaryKey?: {fieldKey: string; value: string};
     actionTargetNodeId?: string;
 };
 

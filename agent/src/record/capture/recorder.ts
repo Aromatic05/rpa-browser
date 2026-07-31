@@ -106,6 +106,8 @@ export type RecorderEvent = {
         entityKind: 'form' | 'table' | 'dialog' | 'list' | 'panel' | 'toolbar' | 'kv';
         fieldKey?: string;
         actionIntent?: string;
+        actionRole?: 'row';
+        rowPrimaryKey?: {fieldKey: string; value: string};
     };
     targetState?: {
         checked?: boolean;

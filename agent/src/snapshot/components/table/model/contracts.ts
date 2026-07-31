@@ -98,6 +98,7 @@ export type CellControlSlot = {
     columnId: string;
     structuralPosition: number;
     controlKind: ControlKind;
+    label?: string;
     occurrenceCount: number;
     exemplarNodeIds: ObservationNodeId[];
     controlIds: string[];

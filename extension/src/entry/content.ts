@@ -21,20 +21,25 @@ type ActionShape = {
     payload?: unknown;
 };
 
+type EntityRuleSelection = {
+    profileName: string;
+    businessTag: string;
+    entityKind: 'form' | 'table' | 'dialog' | 'list' | 'panel' | 'toolbar' | 'kv';
+};
+
 type FloatingUIExports = {
     mountFloatingUI: (opts: {
         tabName: string;
         workspaceName: string;
         onAction: (type: string, payload?: unknown, scope?: Record<string, unknown>) => Promise<unknown>;
         onEvent?: (handler: (action: ActionShape) => void) => void;
-        onEnterAnnotation?: () => void;
-        onCheckpointEntityRulePreview?: (selection: {
-            profileName: string;
-            businessTag: string;
-            entityKind: 'form' | 'table' | 'dialog' | 'list' | 'panel' | 'toolbar' | 'kv';
-        } | null) => void | Promise<void>;
+        onEnterAnnotation?: (profileName?: string) => void;
+        onEntityRulePreview?: (selection: EntityRuleSelection | null) => Promise<boolean>;
+        onCheckpointEntityRulePreview?: (selection: EntityRuleSelection | null) => Promise<boolean>;
     }) => {
         scheduleRefresh: () => void;
+        onPageChanged: () => void;
+        setPageWorkspace: (workspaceName: string) => void;
         setAnnotatorDebugState: (detail: string) => void;
     };
 };
@@ -47,7 +52,24 @@ type AnnotatorHandle = {
     getState: () => unknown;
     open: (result: unknown) => void;
     exit: () => void;
-    setHighlightOnly: (enabled: boolean) => void;
+    setInteractionMode: (mode: 'edit' | 'inspect' | 'passthrough') => void;
+};
+
+type AnnotatorSessionController = {
+    openEditor: (profileName?: string) => Promise<boolean>;
+    previewRule: (selection: EntityRuleSelection | null) => Promise<boolean>;
+    previewCheckpoint: (selection: EntityRuleSelection | null) => Promise<boolean>;
+    close: (owner?: 'editor' | 'rule-preview' | 'checkpoint-preview') => void;
+};
+
+type AnnotatorSessionControllerExports = {
+    createAnnotatorSessionController: (options: {
+        ensureHandle: () => Promise<AnnotatorHandle | null>;
+        open: (payload: Record<string, unknown>) => Promise<ActionShape>;
+        pageUrl: () => string;
+        onEditorActiveChange?: (active: boolean) => void;
+        onError?: (owner: string, error: unknown) => void;
+    }) => AnnotatorSessionController;
 };
 
 type AnnotatorExports = {
@@ -158,6 +180,17 @@ const loadAnnotator = (() => {
     };
 })();
 
+const loadAnnotatorSessionController = (() => {
+    let cached: Promise<AnnotatorSessionControllerExports> | null = null;
+    return () => {
+        if (!cached) {
+            const url = chrome.runtime.getURL('content/annotator_session_controller.js');
+            cached = import(url) as Promise<AnnotatorSessionControllerExports>;
+        }
+        return cached;
+    };
+})();
+
 (() => {
     // 幂等保护：避免重复注入 UI 与监听器
     if (window.top !== window) {return;}
@@ -174,6 +207,7 @@ const loadAnnotator = (() => {
     let tokenReady: Promise<{ tabName: string; workspaceName: string }> | null = null;
     let currentBinding: { tabName: string; workspaceName: string } | null = null;
     let lastReportedUrl = '';
+    let onPageContextChanged = (): void => undefined;
     const sendReport = async (workspaceName?: string) => {
         const resolved = workspaceName ? { workspaceName } : await ensureToken();
         const { send } = await loadSend();
@@ -215,20 +249,19 @@ const loadAnnotator = (() => {
     const bindReportOnUrlChange = () => {
         const emit = () => {
             if (!isOrdinaryPageUrl(location.href)) {return;}
+            if (location.href === lastReportedUrl) {return;}
+            onPageContextChanged();
             void sendReportIfUrlChanged();
         };
-        const originalPush = history.pushState.bind(history);
-        const originalReplace = history.replaceState.bind(history);
-        history.pushState = ((...args: Parameters<typeof history.pushState>) => {
-            originalPush(...args);
-            emit();
-            return undefined;
-        }) as History['pushState'];
-        history.replaceState = ((...args: Parameters<typeof history.replaceState>) => {
-            originalReplace(...args);
-            emit();
-            return undefined;
-        }) as History['replaceState'];
+        const bridge = document.createElement('script');
+        bridge.src = chrome.runtime.getURL('content/url_change_bridge.js');
+        bridge.async = false;
+        bridge.setAttribute('data-rpa-snapshot-ignore', 'true');
+        bridge.addEventListener('load', () => {bridge.remove();}, {once: true});
+        bridge.addEventListener('error', () => {bridge.remove();}, {once: true});
+        const bridgeParent = document.querySelector('head') ?? document.documentElement;
+        bridgeParent.appendChild(bridge);
+        window.addEventListener('rpa:url-changed', emit);
         window.addEventListener('popstate', emit);
         window.addEventListener('hashchange', emit);
         window.addEventListener('pageshow', emit);
@@ -263,8 +296,12 @@ const loadAnnotator = (() => {
                     sessionStorage.setItem('__rpa_tab_name_confirmed', '1');
                     window.name = `__RPA_TAB_NAME__:${tabName}`;
                     window.__rpa_tab_name = tabName;
+                    const changed = currentBinding?.tabName !== tabName
+                        || currentBinding.workspaceName !== workspaceName;
                     currentBinding = {tabName, workspaceName};
                     tokenReady = Promise.resolve(currentBinding);
+                    uiHandle?.setPageWorkspace(workspaceName);
+                    if (changed) {onPageContextChanged();}
                     sendResponse({ ok: true, tabName, workspaceName, url: location.href });
                 }
             })().catch((error: unknown) => {
@@ -305,6 +342,8 @@ const loadAnnotator = (() => {
     // UI 注入（浮层模块）
     let uiHandle: {
         scheduleRefresh: () => void;
+        onPageChanged: () => void;
+        setPageWorkspace: (workspaceName: string) => void;
         setAnnotatorDebugState: (detail: string) => void;
     } | null = null;
     let consumeActionEvent: ((action: ActionShape) => void) | null = null;
@@ -335,11 +374,13 @@ const loadAnnotator = (() => {
             const panel = document.getElementById('rpa-floating-panel');
             if (!panel) {return;}
             panel.style.display = '';
-            const launchers = panel.shadowRoot?.querySelectorAll('.annotate-launch, .checkpoint-launch');
+            const launchers = panel.shadowRoot?.querySelectorAll('.rules-launch, .checkpoint-launch');
             launchers?.forEach((launcher) => {
                 if (launcher instanceof HTMLElement) {launcher.hidden = !visible;}
             });
         };
+
+        let annotatorSessions: AnnotatorSessionController | null = null;
 
         const ensureAnnotatorHandle = async (): Promise<AnnotatorHandle | null> => {
             if (annotatorHandle) {return annotatorHandle;}
@@ -348,10 +389,7 @@ const loadAnnotator = (() => {
                 annotatorHandle = startAnnotator(
                     {
                         onExit: () => {
-                            annotatorHandle?.setHighlightOnly(false);
-                            annotatorHandle?.exit();
-                            annotatorHandle?.hide();
-                            setAnnotatorLauncherVisible(true);
+                            annotatorSessions?.close('editor');
                         },
                         onUndo: () => undefined,
                         onRedo: () => undefined,
@@ -368,35 +406,22 @@ const loadAnnotator = (() => {
                 return null;
             }
         };
-
-        const previewCheckpointEntityRule = async (selection: {
-            profileName: string;
-            businessTag: string;
-            entityKind: 'form' | 'table' | 'dialog' | 'list' | 'panel' | 'toolbar' | 'kv';
-        } | null): Promise<void> => {
-            if (!selection) {
-                annotatorHandle?.setHighlightOnly(false);
-                annotatorHandle?.exit();
-                annotatorHandle?.hide();
-                return;
-            }
-            await ensureToken();
-            const handle = await ensureAnnotatorHandle();
-            if (!handle) {return;}
-            handle.setHighlightOnly(true);
-            handle.show();
-            const openReply = await dispatchAnnotator('entity_rules.annotator.open', {
-                url: location.href,
-                profileName: selection.profileName,
-            }) as ActionShape;
-            if (openReply.type.endsWith('.failed') || !isRecord(openReply.payload)) {
-                console.error('[rpa] checkpoint entity highlight failed:', openReply.payload);
-                handle.exit();
-                handle.hide();
-                return;
-            }
-            handle.open(openReply.payload);
-        };
+        const {createAnnotatorSessionController} = await loadAnnotatorSessionController();
+        const annotatorSessionController = createAnnotatorSessionController({
+            ensureHandle: ensureAnnotatorHandle,
+            open: async (payload) => await dispatchAnnotator(
+                'entity_rules.annotator.open',
+                payload,
+            ) as ActionShape,
+            pageUrl: () => location.href,
+            onEditorActiveChange: (active) => {
+                setAnnotatorLauncherVisible(!active);
+            },
+            onError: (owner, error) => {
+                console.error(`[rpa] annotator session failed (${owner}):`, error);
+            },
+        });
+        annotatorSessions = annotatorSessionController;
 
         uiHandle = mountFloatingUI({
             tabName,
@@ -427,28 +452,20 @@ const loadAnnotator = (() => {
             onEvent: (handler) => {
                 consumeActionEvent = handler;
             },
-            onEnterAnnotation: () => {
-                void (async () => {
-                    await ensureToken();
-                    const handle = await ensureAnnotatorHandle();
-                    if (!handle) {return;}
-                    handle.setHighlightOnly(false);
-                    setAnnotatorLauncherVisible(false);
-                    handle.show();
-                    const openReply = await dispatchAnnotator('entity_rules.annotator.open', {
-                        url: location.href,
-                    }) as ActionShape;
-                    if (openReply.type.endsWith('.failed')) {
-                        console.error('[rpa] annotator open failed:', openReply.payload);
-                        handle.exit();
-                        setAnnotatorLauncherVisible(true);
-                        return;
-                    }
-                    if (isRecord(openReply.payload)) {handle.open(openReply.payload);}
-                })();
+            onEnterAnnotation: (profileName) => {
+                void annotatorSessionController.openEditor(profileName);
             },
-            onCheckpointEntityRulePreview: (selection) => previewCheckpointEntityRule(selection),
+            onEntityRulePreview: async (selection) => {
+                return await annotatorSessionController.previewRule(selection);
+            },
+            onCheckpointEntityRulePreview: async (selection) => {
+                return await annotatorSessionController.previewCheckpoint(selection);
+            },
         });
+        onPageContextChanged = () => {
+            annotatorSessionController.close();
+            uiHandle?.onPageChanged();
+        };
         chrome.runtime.onMessage.addListener((message: unknown) => {
             if (!isRecord(message) || message.type !== MSG.ACTION_EVENT || !('action' in message)) {return;}
             consumeActionEvent?.(message.action as ActionShape);

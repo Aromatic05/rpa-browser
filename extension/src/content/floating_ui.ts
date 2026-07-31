@@ -1,6 +1,8 @@
 import type { Action } from '../shared/types.js';
 import { preparePanelAction, pushPanelLog, type PanelLogEntry } from './panel_actions.js';
 import {mountCheckpointRecorderUI} from './checkpoint_recorder_ui.js';
+import {mountEntityRulesBrowserUI} from './entity_rules_browser_ui.js';
+import type {EntityRuleSelection} from '../../../shared/entity-rules-contract/index.js';
 
 export type FloatingUIOptions = {
     tabName: string;
@@ -11,17 +13,16 @@ export type FloatingUIOptions = {
         address?: { workspaceName?: string; tabName?: string },
     ) => Promise<Action>;
     onEvent?: (handler: (action: Action) => void) => void;
-    onEnterAnnotation?: () => void;
-    onCheckpointEntityRulePreview?: (selection: {
-        profileName: string;
-        businessTag: string;
-        entityKind: 'form' | 'table' | 'dialog' | 'list' | 'panel' | 'toolbar' | 'kv';
-    } | null) => void | Promise<void>;
+    onEnterAnnotation?: (profileName?: string) => void;
+    onEntityRulePreview?: (selection: EntityRuleSelection | null) => Promise<boolean>;
+    onCheckpointEntityRulePreview?: (selection: EntityRuleSelection | null) => Promise<boolean>;
 };
 
 export type FloatingUIHandle = {
     unmount: () => void;
     scheduleRefresh: () => void;
+    onPageChanged: () => void;
+    setPageWorkspace: (workspaceName: string) => void;
     setAnnotatorDebugState: (detail: string) => void;
 };
 
@@ -44,6 +45,8 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         return {
             unmount: () => undefined,
             scheduleRefresh: () => undefined,
+            onPageChanged: () => undefined,
+            setPageWorkspace: () => undefined,
             setAnnotatorDebugState: () => undefined,
         };
     }
@@ -69,6 +72,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         checkpointRaw: '{}',
         annotatorDebug: null as unknown,
     };
+    let pageWorkspaceName = opts.workspaceName;
 
     const host = document.createElement('div');
     host.id = ROOT_ID;
@@ -87,8 +91,6 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
       .wrap { pointer-events:none; display:flex; flex-direction:column; align-items:flex-end; gap:8px; font-family: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
       .launchers { pointer-events:auto; display:flex; align-items:center; gap:8px; }
       .ball { width:44px; height:44px; border-radius:999px; border:none; background:#111827; color:#f9fafb; font-size:12px; font-weight:700; cursor:pointer; box-shadow:0 8px 20px rgba(15,23,42,.22); }
-      .annotate-launch { height:38px; padding:0 14px; border:none; border-radius:999px; background:#2563eb; color:#fff; font-size:12px; font-weight:700; cursor:pointer; box-shadow:0 8px 20px rgba(37,99,235,.28); }
-      .annotate-launch:hover { background:#1d4ed8; }
       .panel { pointer-events:auto; width:420px; border-radius:12px; background:#fff; border:1px solid #e2e8f0; box-shadow:0 12px 28px rgba(15,23,42,.24); display:none; overflow:hidden; }
       .panel.open { display:block; }
       .tabs { display:flex; border-bottom:1px solid #e2e8f0; background:#f8fafc; }
@@ -116,10 +118,6 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     wrap.className = 'wrap';
     const launchers = document.createElement('div');
     launchers.className = 'launchers';
-    const annotateLaunch = document.createElement('button');
-    annotateLaunch.className = 'annotate-launch';
-    annotateLaunch.textContent = '标注页面';
-    annotateLaunch.setAttribute('aria-label', '打开页面语义标注器');
     const ball = document.createElement('button');
     ball.className = 'ball';
     ball.textContent = 'RPA';
@@ -135,15 +133,12 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     footer.appendChild(out);
 
     panel.append(tabsBar, body, footer);
-    launchers.append(annotateLaunch, ball);
+    launchers.append(ball);
     wrap.append(launchers, panel);
     shadow.append(style, wrap);
     document.documentElement.appendChild(host);
 
     let isOpen = false;
-    annotateLaunch.addEventListener('click', () => {
-        opts.onEnterAnnotation?.();
-    });
     ball.addEventListener('click', () => {
         isOpen = !isOpen;
         panel.classList.toggle('open', isOpen);
@@ -159,9 +154,14 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     };
 
     let checkpointRecorder: ReturnType<typeof mountCheckpointRecorderUI> | null = null;
+    let entityRulesBrowser: ReturnType<typeof mountEntityRulesBrowserUI> | null = null;
 
-    const sendPanelAction = async (type: string, payload?: Record<string, unknown>): Promise<Action> => {
-        const prepared = preparePanelAction(type, payload, state.activeWorkspaceName || null);
+    const sendPanelActionForWorkspace = async (
+        type: string,
+        payload: Record<string, unknown> | undefined,
+        workspaceName: string | null,
+    ): Promise<Action> => {
+        const prepared = preparePanelAction(type, payload, workspaceName);
         if ('error' in prepared) {
             setOutput(prepared.error);
             logAction('failed', prepared.error);
@@ -184,15 +184,37 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         return reply;
     };
 
+    const sendPanelAction = async (type: string, payload?: Record<string, unknown>): Promise<Action> =>
+        await sendPanelActionForWorkspace(type, payload, state.activeWorkspaceName || null);
+
+    const sendPageWorkspaceAction = async (type: string, payload?: Record<string, unknown>): Promise<Action> =>
+        await sendPanelActionForWorkspace(type, payload, pageWorkspaceName);
+
+    entityRulesBrowser = mountEntityRulesBrowserUI({
+        launchers,
+        surface: wrap,
+        before: ball,
+        pageUrl: () => location.href,
+        sendAction: sendPageWorkspaceAction,
+        onCreate: () => opts.onEnterAnnotation?.(),
+        onEdit: (profileName) => opts.onEnterAnnotation?.(profileName),
+        onPreview: async (selection) => await opts.onEntityRulePreview?.(selection) ?? false,
+        onActiveChange: (active) => {
+            checkpointRecorder?.setVisible(!active);
+        },
+    });
+
     checkpointRecorder = mountCheckpointRecorderUI({
         launchers,
         surface: wrap,
         before: ball,
-        sendAction: async (type, payload) => await sendPanelAction(type, payload),
+        sendAction: sendPageWorkspaceAction,
         onActiveChange: (active) => {
-            annotateLaunch.hidden = active;
+            entityRulesBrowser.setVisible(!active);
         },
-        onEntityRulePreview: (selection) => opts.onCheckpointEntityRulePreview?.(selection),
+        onEntityRulePreview: async (selection) => {
+            await opts.onCheckpointEntityRulePreview?.(selection);
+        },
     });
 
     const refreshWorkspaces = async () => {
@@ -663,15 +685,24 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
             refreshPending = false;
             void refreshWorkspaces();
             void refreshTabs();
+            void entityRulesBrowser.refresh();
         });
     };
 
     return {
         unmount: () => {
+            entityRulesBrowser.unmount();
             checkpointRecorder.unmount();
             host.remove();
         },
         scheduleRefresh,
+        onPageChanged: () => {
+            void entityRulesBrowser.close();
+            checkpointRecorder.onPageChanged();
+        },
+        setPageWorkspace: (workspaceName) => {
+            pageWorkspaceName = workspaceName;
+        },
         setAnnotatorDebugState: (raw: string) => {
             try {
                 state.annotatorDebug = JSON.parse(raw) as unknown;

@@ -177,6 +177,18 @@ export const createV2BusinessPage = (options: {rowCount?: number; withGeometry?:
         matchedComponentIds: [],
         matchedNodeIds: [observation.captureIdToNodeId.submit],
     };
+    const tableRowActionBinding: EntityRuleQueryBinding = {
+        ...tableBinding,
+        planStepId: 'orders-table:row-approve',
+        ruleId: 'row-approve',
+        source: 'node',
+        expect: 'one_or_more',
+        targetKind: 'node',
+        matchedComponentIds: [],
+        matchedNodeIds: rowCaptureIds.map((_, index) =>
+            observation.captureIdToNodeId[index === 0 ? 'approve' : `approve-${index + 1}`]),
+        cardinality: {expected: 'one_or_more', actual: rowCount, status: 'satisfied'},
+    };
 
     const baseCapture = {control, form, table};
     const entityRules: EntityRulesExecutionResult = {
@@ -189,6 +201,7 @@ export const createV2BusinessPage = (options: {rowCount?: number; withGeometry?:
                 tableBinding,
                 tableFilterBinding,
                 tableSearchBinding,
+                tableRowActionBinding,
             ], [
                 {
                     ruleId: 'root',
@@ -213,6 +226,14 @@ export const createV2BusinessPage = (options: {rowCount?: number; withGeometry?:
                     actionIntent: 'search',
                     actionText: '查询',
                     actionRole: 'module',
+                },
+                {
+                    ruleId: 'row-approve',
+                    origin: 'confirmed',
+                    actionIntent: 'approve',
+                    actionText: '审核',
+                    actionRole: 'row',
+                    columnFieldKey: 'operation',
                 },
             ], baseCapture),
             'orders-form': profileResult('orders-form', 'form', [formBinding], [{

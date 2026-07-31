@@ -84,6 +84,8 @@ type MarkerTarget = {
         entityKind: EntityKind;
         fieldKey?: string;
         actionIntent?: string;
+        actionRole?: 'row';
+        rowPrimaryKey?: {fieldKey: string; value: string};
     };
 };
 
@@ -182,18 +184,23 @@ const collectMarkerTargets = (
             for (const action of column.actions) {
                 const elements = resolveTargetElements(action.target, entityElement);
                 if (elements.length === 0) {continue;}
-                targets.push({
-                    annotationId: action.id,
-                    kind: 'action',
-                    state: markerState(action.origin, action.id, selectedAnnotationId, checks),
-                    elements: elements.slice(0, 1),
-                    recordSemantic: {
-                        profileName: draft.profileName,
-                        businessTag: entity.businessTag,
-                        entityKind: entity.kind,
-                        actionIntent: action.actionIntent,
-                    },
-                });
+                for (const element of elements) {
+                    const rowPrimaryKey = resolveRowPrimaryKey(element, entityElement, entity);
+                    targets.push({
+                        annotationId: action.id,
+                        kind: 'action',
+                        state: markerState(action.origin, action.id, selectedAnnotationId, checks),
+                        elements: [element],
+                        recordSemantic: {
+                            profileName: draft.profileName,
+                            businessTag: entity.businessTag,
+                            entityKind: entity.kind,
+                            actionIntent: action.actionIntent,
+                            actionRole: 'row',
+                            ...(rowPrimaryKey ? {rowPrimaryKey} : {}),
+                        },
+                    });
+                }
             }
         }
         if (entity.pagination) {
@@ -218,6 +225,29 @@ const collectMarkerTargets = (
         }
     }
     return targets;
+};
+
+const resolveRowPrimaryKey = (
+    actionElement: Element,
+    entityElement: Element,
+    entity: CanvasDraft['entities'][number],
+): {fieldKey: string; value: string} | undefined => {
+    const fieldKey = entity.primaryKey?.fieldKey;
+    if (!fieldKey) {return undefined;}
+    const column = entity.columns.find((candidate) => candidate.fieldKey === fieldKey);
+    if (!column) {return undefined;}
+    const header = resolveColumnHeader(entityElement, column.name, column.fieldKey);
+    const headerRow = header?.closest('tr, [role="row"]');
+    const row = actionElement.closest('tr, [role="row"]');
+    if (!header || !headerRow || !row) {return undefined;}
+    const headerCells = Array.from(headerRow.children)
+        .filter((element) => element.matches('th, td, [role="columnheader"], [role="cell"], [role="gridcell"]'));
+    const columnIndex = headerCells.indexOf(header);
+    if (columnIndex < 0) {return undefined;}
+    const cells = Array.from(row.children)
+        .filter((element) => element.matches('th, td, [role="cell"], [role="gridcell"]'));
+    const value = cells[columnIndex]?.textContent?.replace(/\s+/gu, ' ').trim();
+    return value ? {fieldKey, value} : undefined;
 };
 
 export const clearDomMarkers = (documentRef: Document): void => {

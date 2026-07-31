@@ -368,6 +368,8 @@ export type RecordedSemanticHint = {
     entityKind: 'form' | 'table' | 'dialog' | 'list' | 'panel' | 'toolbar' | 'kv';
     fieldKey?: string;
     actionIntent?: string;
+    actionRole?: 'row';
+    rowPrimaryKey?: {fieldKey: string; value: string};
 };
 
 const RECORD_SEMANTIC_ATTRIBUTE = 'data-rpa-record-semantic';
@@ -391,14 +393,28 @@ export const buildRecordedSemanticHint = (element: Element): RecordedSemanticHin
         const actionIntent = typeof parsed.actionIntent === 'string' && parsed.actionIntent.trim()
             ? parsed.actionIntent.trim()
             : undefined;
+        const actionRole = parsed.actionRole === 'row' ? 'row' : undefined;
+        const rowPrimaryKey = isRecord(parsed.rowPrimaryKey)
+            && typeof parsed.rowPrimaryKey.fieldKey === 'string'
+            && typeof parsed.rowPrimaryKey.value === 'string'
+            ? {
+                fieldKey: parsed.rowPrimaryKey.fieldKey.trim(),
+                value: parsed.rowPrimaryKey.value.trim(),
+            }
+            : undefined;
         return {
             profileName,
             businessTag,
             entityKind,
             ...(fieldKey ? {fieldKey} : {}),
             ...(actionIntent ? {actionIntent} : {}),
+            ...(actionRole ? {actionRole} : {}),
+            ...(rowPrimaryKey?.fieldKey && rowPrimaryKey.value ? {rowPrimaryKey} : {}),
         };
     } catch {
         return undefined;
     }
 };
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === 'object' && value !== null && !Array.isArray(value);

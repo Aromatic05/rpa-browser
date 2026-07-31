@@ -126,7 +126,7 @@ export const buildAnnotatorProjection = (
                 memberId: slot.id,
                 nodeIds: [...slot.exemplarNodeIds],
                 status: slot.occurrenceCount > 0 ? 'complete' : 'partial',
-                label: readNodeLabel(entry, slot.exemplarNodeIds[0]),
+                label: slot.label ?? readNodeLabel(entry, slot.exemplarNodeIds[0]),
             });
         }
     }

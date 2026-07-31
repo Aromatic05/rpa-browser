@@ -225,21 +225,28 @@ await log('annotator panel drives the session without DOM target recovery', asyn
     assert.deepEqual(state.draft.page, {kind: 'form', urlPattern: '/orders'});
 });
 
-await log('floating UI restores the original standalone annotator launcher', async () => {
+await log('floating UI exposes a rule browser instead of a detached annotator launcher', async () => {
     const source = fs.readFileSync(new URL('../content/floating_ui.ts', import.meta.url), 'utf8');
+    const rulesSource = fs.readFileSync(new URL('../content/entity_rules_browser_ui.ts', import.meta.url), 'utf8');
     const contentSource = fs.readFileSync(new URL('../entry/content.ts', import.meta.url), 'utf8');
     const manifest = JSON.parse(fs.readFileSync(new URL('../../manifest.json', import.meta.url), 'utf8'));
     const resources = manifest.web_accessible_resources.flatMap((entry) => entry.resources || []);
-    assert.equal(source.includes('.annotate-launch'), true);
-    assert.equal(source.includes("annotateLaunch.textContent = '标注页面'"), true);
-    assert.equal(source.includes("'Rules'"), false);
+    assert.equal(source.includes('mountEntityRulesBrowserUI'), true);
+    assert.equal(rulesSource.includes('.rules-launch'), true);
+    assert.equal(rulesSource.includes("launcher.textContent = '规则'"), true);
+    assert.equal(rulesSource.includes('在页面查看'), true);
+    assert.equal(rulesSource.includes('编辑规则'), true);
     assert.equal(source.includes("'ER'"), true);
     assert.equal(source.includes('setAnnotatorDebugState'), true);
     assert.equal(contentSource.includes("annotator/annotator.js"), true);
+    assert.equal(contentSource.includes('annotator_session_controller.js'), true);
     assert.equal(contentSource.includes('startAnnotator'), true);
     assert.equal(contentSource.includes("panel.style.display = 'none'"), false);
-    assert.equal(contentSource.includes('launcher.hidden = !visible'), true);
+    assert.equal(contentSource.includes("document.querySelector('head') ?? document.documentElement"), true);
+    assert.equal(contentSource.includes('document.head.appendChild(bridge)'), false);
+    assert.equal(rulesSource.includes('launcher.hidden = !visible'), true);
     assert.equal(resources.includes('annotator/*.js'), true);
+    assert.equal(resources.includes('content/*.js'), true);
 });
 
 await log('annotator live geometry refresh coalesces viewport events through visualize only', async () => {

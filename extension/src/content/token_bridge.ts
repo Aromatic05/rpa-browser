@@ -99,25 +99,14 @@ export const bindHello = (_tabName: string, onHello?: () => void): () => void =>
         onHello?.();
     };
 
-    // 监听历史与哈希变化，保证页面切换后也能通知 SW
-    const originalPush = history.pushState.bind(history);
-    const originalReplace = history.replaceState.bind(history);
-    const wrap = (method: typeof originalPush) =>
-        (...args: Parameters<typeof history.pushState>) => {
-            method(...args);
-            sendHello();
-            return undefined;
-        };
-    history.pushState = wrap(originalPush) as History['pushState'];
-    history.replaceState = wrap(originalReplace) as History['replaceState'];
-
+    // History mutations happen in the page's main world and are forwarded by url_change_bridge.
+    window.addEventListener('rpa:url-changed', sendHello);
     window.addEventListener('popstate', sendHello);
     window.addEventListener('hashchange', sendHello);
     sendHello();
 
     return () => {
-        history.pushState = originalPush;
-        history.replaceState = originalReplace;
+        window.removeEventListener('rpa:url-changed', sendHello);
         window.removeEventListener('popstate', sendHello);
         window.removeEventListener('hashchange', sendHello);
     };

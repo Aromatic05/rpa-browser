@@ -99,18 +99,23 @@ test('mountAnnotator appends host to documentElement and returns a handle that c
     assert.equal(host.style.display, 'none');
     handle.show();
     assert.equal(host.style.display, 'block');
-    assert.equal(host.style.pointerEvents, 'none', 'the full-screen host must never intercept page clicks');
+    assert.equal(host.style.pointerEvents, 'auto', 'edit mode must shield the page from accidental actions');
+    assert.equal(host.getAttribute('data-rpa-interaction-mode'), 'edit');
     mountedHandlers?.onPickModeChange?.(true);
     assert.equal(host.style.pointerEvents, 'none', 'pick mode must let pointer input reach the page');
     mountedHandlers?.onPickModeChange?.(false);
-    assert.equal(host.style.pointerEvents, 'none', 'leaving pick mode must not turn the host into a click shield');
-    handle.setHighlightOnly(true);
+    assert.equal(host.style.pointerEvents, 'auto', 'leaving pick mode must restore the edit shield');
+    handle.setInteractionMode('inspect');
     assert.equal(host.hasAttribute('data-rpa-highlight-only'), true);
-    assert.equal(host.style.pointerEvents, 'none', 'highlight-only mode must keep the page clickable');
-    handle.setHighlightOnly(false);
+    assert.equal(host.style.pointerEvents, 'auto', 'inspection mode is read-only and must still shield the page');
+    handle.setInteractionMode('passthrough');
+    assert.equal(host.style.pointerEvents, 'none', 'checkpoint recording preview must keep the page clickable');
+    handle.setInteractionMode('edit');
     assert.equal(host.hasAttribute('data-rpa-highlight-only'), false);
+    assert.equal(host.style.pointerEvents, 'auto');
     handle.hide();
     assert.equal(host.style.display, 'none');
+    assert.equal(host.style.pointerEvents, 'none');
     handle.unmount();
     assert.equal(doc.getElementById(ANNOTATOR_HOST_ID), null);
 });
@@ -187,4 +192,71 @@ test('annotator host shadow root is distinct from debug host shadow root', () =>
     assert.notEqual(shadow, debugShadow);
     assert.equal(debugShadow.textContent, 'debug');
     assert.equal(host.shadowRoot, shadow);
+});
+
+test('blocking modes stop page keyboard handlers while passthrough does not retain focus', () => {
+    const dom = new JSDOM('<!doctype html><html><body><input id="page-input"></body></html>', {pretendToBeVisual: true});
+    let mountedHandlers: AnnotatorHandlers | null = null;
+    const handle = mountAnnotator({
+        document: dom.window.document,
+        handlers: {onExit: () => undefined},
+        mountApp: (_root, handlers) => {
+            mountedHandlers = handlers;
+            return {unmount: () => undefined};
+        },
+    });
+    try {
+        const host = dom.window.document.getElementById(ANNOTATOR_HOST_ID) as HTMLElement;
+        let pageKeydowns = 0;
+        dom.window.document.addEventListener('keydown', () => {pageKeydowns += 1;});
+
+        handle.show();
+        host.dispatchEvent(new dom.window.KeyboardEvent('keydown', {key: 'x', bubbles: true, composed: true}));
+        assert.equal(pageKeydowns, 0);
+
+        handle.setInteractionMode('inspect');
+        host.dispatchEvent(new dom.window.KeyboardEvent('keydown', {key: 'x', bubbles: true, composed: true}));
+        assert.equal(pageKeydowns, 0);
+
+        handle.setInteractionMode('passthrough');
+        assert.notEqual(dom.window.document.activeElement, host);
+        const pageInput = dom.window.document.getElementById('page-input') as HTMLInputElement;
+        pageInput.dispatchEvent(new dom.window.KeyboardEvent('keydown', {key: 'x', bubbles: true, composed: true}));
+        assert.equal(pageKeydowns, 1);
+        mountedHandlers?.onPickModeChange?.(false);
+    } finally {
+        handle.unmount();
+        dom.window.close();
+    }
+});
+
+test('annotator controls keep their default keyboard behavior while events stay inside the host', () => {
+    const dom = new JSDOM('<!doctype html><html><body></body></html>', {pretendToBeVisual: true});
+    let input: HTMLInputElement | null = null;
+    const handle = mountAnnotator({
+        document: dom.window.document,
+        handlers: {onExit: () => undefined},
+        mountApp: (root) => {
+            input = dom.window.document.createElement('input');
+            root.appendChild(input);
+            return {unmount: () => undefined};
+        },
+    });
+    try {
+        let pageKeydowns = 0;
+        dom.window.document.addEventListener('keydown', () => {pageKeydowns += 1;});
+        handle.show();
+        input?.focus();
+        const allowed = input?.dispatchEvent(new dom.window.KeyboardEvent('keydown', {
+            key: 'a',
+            bubbles: true,
+            composed: true,
+            cancelable: true,
+        }));
+        assert.equal(allowed, true, 'internal input keydown must not be prevented by the page shield');
+        assert.equal(pageKeydowns, 0, 'internal input keydown must not leak to page listeners');
+    } finally {
+        handle.unmount();
+        dom.window.close();
+    }
 });

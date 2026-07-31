@@ -19,6 +19,7 @@ const entityRule: WorkflowEntityRules = {
             {ruleId: 'order-no', source: 'node', expect: 'unique', within: 'root', match: {nameEquals: 'orderNo'}},
             {ruleId: 'buyer', source: 'node', expect: 'unique', within: 'root', match: {nameEquals: 'buyer'}},
             {ruleId: 'query', source: 'node', expect: 'unique', within: 'root', match: {idEquals: 'Query'}},
+            {ruleId: 'confirm-shipment', source: 'node', expect: 'one_or_more', within: 'root', match: {textContains: '确认发货'}},
         ],
     },
     annotation: {
@@ -39,12 +40,31 @@ const entityRule: WorkflowEntityRules = {
                         name: '订单查询',
                         businessTag: 'orders.query',
                         target: {idEquals: 'Orders'},
+                        primaryKey: {fieldKey: 'orderNo', columns: ['订单编号']},
                         annotations: [
                             {id: 'f1', type: 'field', name: '订单编号', businessKey: 'orderNo', target: {}, origin: 'confirmed', disposition: 'active'},
                             {id: 'f2', type: 'field', name: '采购人', businessKey: 'buyer', target: {}, origin: 'confirmed', disposition: 'active'},
                             {id: 'a1', type: 'action', name: '查询', businessKey: 'query', target: {}, origin: 'confirmed', disposition: 'active'},
                         ],
-                        columns: [{id: 'c1', fieldKey: 'orderNo', name: '订单编号', actions: [], origin: 'confirmed', disposition: 'active'}],
+                        columns: [
+                            {id: 'c1', fieldKey: 'orderNo', name: '订单编号', actions: [], origin: 'confirmed', disposition: 'active'},
+                            {
+                                id: 'c2',
+                                fieldKey: 'actions',
+                                name: '操作',
+                                kind: 'action_column',
+                                actions: [{
+                                    id: 'a2',
+                                    actionIntent: 'confirmShipment',
+                                    text: '确认发货',
+                                    target: {},
+                                    origin: 'confirmed',
+                                    disposition: 'active',
+                                }],
+                                origin: 'confirmed',
+                                disposition: 'active',
+                            },
+                        ],
                         origin: 'confirmed',
                     }],
                     preserved: {},
@@ -53,6 +73,7 @@ const entityRule: WorkflowEntityRules = {
             {ruleId: 'order-no', fieldKey: 'orderNo', fieldRole: 'filter', fieldName: '订单编号'},
             {ruleId: 'buyer', fieldKey: 'buyer', fieldRole: 'filter', fieldName: '采购人'},
             {ruleId: 'query', actionIntent: 'query', actionRole: 'module', actionText: '查询'},
+            {ruleId: 'confirm-shipment', actionIntent: 'confirmShipment', actionRole: 'row', actionText: '确认发货', columnFieldKey: 'actions'},
         ],
     },
 };
@@ -201,6 +222,54 @@ const recordedEnhancements = {
     },
 };
 
+const rowActionSteps: StepUnion[] = [
+    {id: 'fill-target-order', name: 'browser.fill', args: {selector: '#orderNo', value: 'SO-002'}} as StepUnion,
+    {id: 'click-query-orders', name: 'browser.click', args: {selector: '#query'}} as StepUnion,
+    {id: 'click-confirm-shipment', name: 'browser.click', args: {selector: '#ship-so-002'}} as StepUnion,
+];
+
+const rowActionEnhancements = {
+    'fill-target-order': {
+        version: 1 as const,
+        target: {
+            nodeId: 'order-no',
+            semanticHints: {
+                profileName: 'order-query-rule',
+                businessTag: 'orders.query',
+                entityKind: 'table',
+                fieldKey: 'orderNo',
+                fieldLabel: '订单编号',
+            },
+        },
+    },
+    'click-query-orders': {
+        version: 1 as const,
+        target: {
+            nodeId: 'query',
+            semanticHints: {
+                profileName: 'order-query-rule',
+                businessTag: 'orders.query',
+                entityKind: 'table',
+                actionIntent: 'query',
+            },
+        },
+    },
+    'click-confirm-shipment': {
+        version: 1 as const,
+        target: {
+            nodeId: 'ship-so-002',
+            semanticHints: {
+                profileName: 'order-query-rule',
+                businessTag: 'orders.query',
+                entityKind: 'table',
+                actionIntent: 'confirmShipment',
+                actionRole: 'row' as const,
+                rowPrimaryKey: {fieldKey: 'orderNo', value: 'SO-002'},
+            },
+        },
+    },
+};
+
 test('entity-rule options expose business fields and actions without internal rule ids', () => {
     const options = checkpointEntityRuleOptions(workspace, 'https://example.test/orders?page=1');
     assert.deepEqual(options, [{
@@ -213,6 +282,8 @@ test('entity-rule options expose business fields and actions without internal ru
             {fieldKey: 'buyer', label: '采购人', targetKind: 'table.filter'},
         ],
         actions: [{actionIntent: 'query', label: '查询', targetKind: 'table.module_action'}],
+        rowActions: [{actionIntent: 'confirmShipment', label: '确认发货', targetKind: 'table.row_action'}],
+        primaryKey: {fieldKey: 'orderNo', label: '订单编号'},
         outputs: [
             {kind: 'none', label: '无'},
             {kind: 'table.currentRows', label: '当前列表数据'},
@@ -292,6 +363,49 @@ test('procedure recording can collect table output through the same entity rule'
         entityRules: {selection: 'explicit', profiles: ['order-query-rule'], strict: true},
         saveAs: 'checkpointOutput',
     });
+});
+
+test('procedure recording turns a repeated row control into a primary-key row action', async () => {
+    const artifact = buildRecordedCheckpoint(workspace, rowActionSteps, rowActionEnhancements, {
+        ...savePayload,
+        name: '查询并确认发货',
+    });
+    assert.deepEqual(artifact.checkpoint.input, {orderNo: 'SO-002'});
+    const serialized = JSON.stringify(artifact.checkpoint.content);
+    assert.equal(serialized.includes('#ship-so-002'), false);
+    assert.equal(serialized.includes('table.row_action'), true);
+    assert.equal(serialized.includes('confirmShipment'), true);
+
+    const executed: StepUnion[] = [];
+    const result = await runCheckpointProcedure({
+        checkpoint: artifact.checkpoint,
+        input: {orderNo: 'SO-003'},
+        stepIdPrefix: 'row-action-procedure',
+        executeStep: async (step): Promise<StepResult> => {
+            executed.push(structuredClone(step));
+            if (step.name === 'browser.assert') {return {stepId: step.id, ok: true, data: {}};}
+            if (step.name === 'browser.query') {
+                const target = (step.args as {
+                    target?: {
+                        kind?: string;
+                        primaryKey?: {fieldKey?: string; value?: string};
+                        actionIntent?: string;
+                    };
+                }).target;
+                const nodeId = target?.kind === 'table.row_action'
+                    ? `${target.primaryKey?.value}:${target.actionIntent}`
+                    : target?.actionIntent ?? target?.primaryKey?.fieldKey ?? 'query';
+                return {stepId: step.id, ok: true, data: {nodeId}};
+            }
+            return {stepId: step.id, ok: true, data: {}};
+        },
+    });
+    assert.equal(result.ok, true);
+    const clicks = executed.filter((step) => step.name === 'browser.click');
+    assert.deepEqual(clicks.map((step) => step.args), [
+        {nodeId: 'query'},
+        {nodeId: 'SO-003:confirmShipment'},
+    ]);
 });
 
 

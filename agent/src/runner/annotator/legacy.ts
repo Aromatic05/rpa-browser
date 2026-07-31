@@ -152,6 +152,7 @@ const legacyOpen = async (
     const tabName = optionalString(payload.tabName);
     const current = await ensureFreshPageSession(deps, input.workspace.name, {tabName});
     const requestedProfileName = optionalString(payload.profileName);
+    const requestedBusinessTag = optionalString(payload.businessTag);
     const availableProfiles = findMatchingProfiles(input.workspace.workflow, current.entry.pageUrl);
     const profile = requestedProfileName
         ? findProfileByName(input.workspace.workflow, requestedProfileName)
@@ -164,7 +165,10 @@ const legacyOpen = async (
         projectionEntry,
         deps.pageSession.readSelection(current.binding.page),
     );
-    const canvasDraft = profile ? legacyCanvasFromProfile(profile, projection, current.entry) : null;
+    const fullCanvasDraft = profile ? legacyCanvasFromProfile(profile, projection, current.entry) : null;
+    const canvasDraft = fullCanvasDraft && requestedBusinessTag
+        ? selectLegacyCanvasEntity(fullCanvasDraft, requestedBusinessTag)
+        : fullCanvasDraft;
     return {
         reply: replyAction(input.action, {
             workspaceName: input.workspace.name,
@@ -183,6 +187,21 @@ const legacyOpen = async (
         }),
         events: [],
     };
+};
+
+const selectLegacyCanvasEntity = (
+    draft: LegacyCanvasDraft,
+    businessTag: string,
+): LegacyCanvasDraft => {
+    const entity = draft.entities.find((candidate) => candidate.businessTag === businessTag);
+    if (!entity) {
+        throw new ActionError(
+            ERROR_CODES.ERR_NOT_FOUND,
+            `annotator business entity not found: ${businessTag}`,
+            {businessTag, profileName: draft.profileName},
+        );
+    }
+    return {...draft, entities: [entity]};
 };
 
 const legacyPick = async (
@@ -409,7 +428,7 @@ const recognizeCanvas = (
                 ));
                 if (!exemplarNodeId) {return [];}
                 const name = normalizeActionLabel(
-                    nodeLabel(entry.capture.control.observation, exemplarNodeId) ?? '',
+                    slot.label ?? nodeLabel(entry.capture.control.observation, exemplarNodeId) ?? '',
                 );
                 const actionIntent = inferActionIntent(name);
                 if (!name || !actionIntent || seenActionIntents.has(actionIntent)) {return [];}
@@ -423,7 +442,7 @@ const recognizeCanvas = (
                     id: `auto_${entity.id}_column_${String(index)}_action_${String(slotIndex)}`,
                     actionIntent,
                     text: name,
-                    target: persistentTarget(entry, exemplarNodeId, undefined, actionTarget?.id),
+                    target: repeatedControlTarget(entry, exemplarNodeId, name, actionTarget?.id),
                     origin: 'inferred',
                     disposition: 'active',
                 }];
@@ -878,6 +897,8 @@ const compileLegacyCanvas = (
                     bindings.push({
                         ruleId,
                         actionIntent: action.actionIntent,
+                        actionRole: 'row',
+                        columnFieldKey: column.fieldKey,
                         ...(action.text ? {actionText: action.text} : {}),
                     });
                 });
@@ -1115,6 +1136,23 @@ const persistentTarget = (
             ? {textContains: label.slice(0, 80)} : {}),
         ...(v2TargetId ? {v2TargetId} : {}),
     };
+};
+
+const repeatedControlTarget = (
+    entry: PageSnapshotSessionEntry,
+    exemplarNodeId: ObservationNodeId,
+    label: string,
+    v2TargetId?: string,
+): LegacyTarget => {
+    const role = nodeRole(entry.capture.control.observation, exemplarNodeId);
+    if (label) {
+        return {
+            ...(role ? {roleEquals: role} : {}),
+            textContains: label.slice(0, 80),
+            ...(v2TargetId ? {v2TargetId} : {}),
+        };
+    }
+    return persistentTarget(entry, exemplarNodeId, undefined, v2TargetId);
 };
 
 const legacyTargetFromRule = (

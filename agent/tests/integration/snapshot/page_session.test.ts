@@ -377,6 +377,56 @@ test('page session protects confirmed semantic targets and refreshes inferred ta
     assert.deepEqual(bindings.byId['lifecycle:inferred'].target.nodeIds, [inferredNew]);
 });
 
+test('explicit page-session refresh replaces stale confirmed targets with the selected rule result', async () => {
+    const store = new PageSnapshotSessionStore<object>();
+    const pageKey = {};
+    const firstBundle = snapshotBundle({pageEpoch: 'epoch-explicit', captureRevision: 1}, [
+        {captureId: 'orders-old', backendNodeId: 'orders'},
+    ]);
+    const secondBundle = snapshotBundle({pageEpoch: 'epoch-explicit', captureRevision: 2}, [
+        {captureId: 'prefix', backendNodeId: 'prefix'},
+        {captureId: 'orders-new', backendNodeId: 'orders'},
+    ]);
+    const oldNodeId = firstBundle.control.observation.captureIdToNodeId['orders-old'];
+    const newNodeId = secondBundle.control.observation.captureIdToNodeId['orders-new'];
+    assert.notEqual(oldNodeId, newNodeId);
+    const annotations: SemanticAnnotationRecord[] = [
+        {ruleId: 'orders', origin: 'confirmed', businessTag: 'orders.table'},
+    ];
+    const captures = [
+        {
+            ...firstBundle,
+            entityRules: entityRulesResult('orders-profile', [{
+                ruleId: 'orders',
+                nodeId: oldNodeId,
+                annotation: annotations[0],
+            }]),
+        },
+        {
+            ...secondBundle,
+            entityRules: entityRulesResult('orders-profile', [{
+                ruleId: 'orders',
+                nodeId: newNodeId,
+                annotation: annotations[0],
+            }]),
+        },
+    ];
+    let captureIndex = 0;
+    const capture = async () => captures[captureIndex++];
+
+    await store.ensureFresh({pageKey, pageUrl: '/orders', capture});
+    const refreshed = await store.ensureFresh({
+        pageKey,
+        pageUrl: '/orders',
+        reason: 'explicit',
+        capture,
+    });
+    const binding = refreshed.semanticBindingsByProfile['orders-profile'].byId['orders-profile:orders'];
+    assert.equal(binding.status, 'active');
+    assert.deepEqual(binding.target.nodeIds, [newNodeId]);
+    assert.equal(binding.annotation.businessTag, 'orders.table');
+});
+
 test('page session preserves a confirmed selection anchor across revisions and reports it stale after navigation', async () => {
     const store = new PageSnapshotSessionStore<object>();
     const pageKey = {};

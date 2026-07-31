@@ -840,7 +840,7 @@ test('table module annotation keeps filter controls in the shared business scope
         const canvasDraft = (recognized.reply.payload as {canvasDraft: {
             entities: Array<{
                 annotations: Array<{id: string; type: string; name?: string; businessKey: string; target: Record<string, unknown>}>;
-                columns: Array<{id: string; name?: string; kind?: string; actions: Array<{id: string; text?: string; actionIntent: string}>}>;
+                columns: Array<{id: string; name?: string; kind?: string; actions: Array<{id: string; text?: string; actionIntent: string; target: Record<string, unknown>}>}>;
             }>;
         }}).canvasDraft;
         const entity = canvasDraft.entities[0];
@@ -856,6 +856,9 @@ test('table module annotation keeps filter controls in the shared business scope
         assert.deepEqual(entity.columns[2].actions.map((action) => [action.text, action.actionIntent]), [
             ['确认发货', 'confirmShipment'],
         ]);
+        assert.equal(entity.columns[2].actions[0].target.idEquals, undefined);
+        assert.equal(entity.columns[2].actions[0].target.roleEquals, 'link');
+        assert.equal(entity.columns[2].actions[0].target.textContains, '确认发货');
         assert.equal(entity.annotations[0].target.placeholderEquals, '订单编号');
         assert.equal(entity.annotations[0].target.classContains, undefined);
 
@@ -887,6 +890,14 @@ test('table module annotation keeps filter controls in the shared business scope
             binding.actionIntent === 'search' && binding.actionRole === 'module'), true);
         assert.equal(profile.annotation.bindings.some((binding) =>
             binding.actionIntent === 'download' && binding.actionRole === 'module'), true);
+        assert.equal(profile.annotation.bindings.some((binding) =>
+            binding.actionIntent === 'confirmShipment'
+            && binding.actionRole === 'row'
+            && binding.columnFieldKey === '操作'), true);
+        const rowActionRule = profile.match.rules.find((rule) =>
+            rule.match.textContains === '确认发货');
+        assert.equal(rowActionRule?.expect, 'one_or_more');
+        assert.equal(rowActionRule?.match.idEquals, undefined);
     } finally {
         await browser.close();
     }

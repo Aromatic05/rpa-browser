@@ -70,6 +70,14 @@ const clickPoint = async (agent: AgentHandle, workspaceName: string, point: Poin
     )).ok).toBe(true);
 };
 
+const pressKey = async (agent: AgentHandle, workspaceName: string, key: string): Promise<void> => {
+    expect((await runStep(
+        agent.endpoint,
+        workspaceName,
+        step(`key-${crypto.randomUUID()}`, 'browser.press_key', {key}),
+    )).ok).toBe(true);
+};
+
 const pagePoint = async (agent: AgentHandle, workspaceName: string, selector: string): Promise<Point> => {
     const point = await evaluate<Point | null>(agent, workspaceName, `
         const element = document.querySelector(${JSON.stringify(selector)});
@@ -142,6 +150,92 @@ const saveOrderQueryEntityRule = async (agent: AgentHandle, workspaceName: strin
                 {ruleId: 'order-no', fieldKey: 'orderNo', fieldRole: 'field', fieldName: '订单编号'},
                 {ruleId: 'buyer', fieldKey: 'buyer', fieldRole: 'field', fieldName: '采购人'},
                 {ruleId: 'query', actionIntent: 'query', actionRole: 'form', actionText: '查询'},
+            ],
+        },
+    }));
+    expect(saved.type).toBe('entity_rules.save.result');
+};
+
+const saveOrderFulfillmentEntityRule = async (agent: AgentHandle, workspaceName: string): Promise<void> => {
+    const canvas = {
+        version: 1,
+        profileName: 'order-fulfillment-rule',
+        page: {kind: 'table', urlPattern: 'checkpoint_recorder\\.html'},
+        entities: [{
+            id: 'orders',
+            source: 'region',
+            kind: 'table',
+            name: '订单列表',
+            businessTag: 'orders.table',
+            target: {
+                kind: 'table',
+                idEquals: 'order-workbench',
+                v2Match: {kind: 'table', idEquals: 'orders-table'},
+            },
+            expect: 'unique',
+            annotations: [
+                {id: 'filter-order', type: 'field', name: '订单编号', businessKey: 'orderNo', target: {idEquals: 'order-no'}, expect: 'unique', origin: 'confirmed', disposition: 'active'},
+                {id: 'query-orders', type: 'action', name: '查询', businessKey: 'query', target: {idEquals: 'query-orders'}, expect: 'unique', origin: 'confirmed', disposition: 'active'},
+            ],
+            primaryKey: {fieldKey: 'orderNo', columns: ['订单编号']},
+            columns: [
+                {id: 'order-no-column', fieldKey: 'orderNo', name: '订单编号', actions: [], origin: 'confirmed', disposition: 'active'},
+                {id: 'buyer-column', fieldKey: 'buyer', name: '采购人', actions: [], origin: 'confirmed', disposition: 'active'},
+                {id: 'status-column', fieldKey: 'status', name: '状态', actions: [], origin: 'confirmed', disposition: 'active'},
+                {
+                    id: 'actions-column',
+                    fieldKey: 'actions',
+                    name: '操作',
+                    kind: 'action_column',
+                    actions: [{
+                        id: 'confirm-shipment',
+                        actionIntent: 'confirmShipment',
+                        text: '确认发货',
+                        target: {classContains: 'confirm-shipment'},
+                        origin: 'confirmed',
+                        disposition: 'active',
+                    }],
+                    origin: 'confirmed',
+                    disposition: 'active',
+                },
+            ],
+            origin: 'confirmed',
+        }],
+        preserved: {},
+    };
+    const saved = await dispatch(agent.endpoint, action('entity_rules.save', workspaceName, {
+        profileName: 'order-fulfillment-rule',
+        page: {kind: 'table', urlPattern: 'checkpoint_recorder\\.html'},
+        match: {
+            version: 2,
+            rules: [
+                {ruleId: 'table-root', source: 'region', expect: 'unique', match: {kind: 'table', idEquals: 'orders-table'}},
+                {ruleId: 'workbench', source: 'node', expect: 'unique', contains: 'table-root', match: {idEquals: 'order-workbench'}},
+                {ruleId: 'order-no', source: 'node', expect: 'unique', within: 'workbench', match: {idEquals: 'order-no'}},
+                {ruleId: 'query', source: 'node', expect: 'unique', within: 'workbench', match: {idEquals: 'query-orders'}},
+                {ruleId: 'confirm-shipment', source: 'node', expect: 'one_or_more', within: 'table-root', match: {classContains: 'confirm-shipment'}},
+            ],
+        },
+        annotation: {
+            version: 2,
+            bindings: [
+                {
+                    ruleId: 'table-root',
+                    businessTag: 'orders.table',
+                    entityKind: 'table',
+                    displayName: '订单列表',
+                    primaryKey: {fieldKey: 'orderNo', columns: ['订单编号'], source: 'annotation'},
+                    columns: [
+                        {fieldKey: 'orderNo', name: '订单编号', source: 'annotation'},
+                        {fieldKey: 'buyer', name: '采购人', source: 'annotation'},
+                        {fieldKey: 'status', name: '状态', source: 'annotation'},
+                        {fieldKey: 'actions', name: '操作', kind: 'action_column', source: 'annotation', actions: [{actionIntent: 'confirmShipment', text: '确认发货'}]},
+                    ],
+                    legacyCanvas: canvas,
+                },
+                {ruleId: 'order-no', fieldKey: 'orderNo', fieldRole: 'filter', fieldName: '订单编号'},
+                {ruleId: 'query', actionIntent: 'query', actionRole: 'module', actionText: '查询'},
+                {ruleId: 'confirm-shipment', actionIntent: 'confirmShipment', actionRole: 'row', actionText: '确认发货', columnFieldKey: 'actions'},
             ],
         },
     }));
@@ -228,6 +322,8 @@ test('records a business checkpoint through entity-rule highlights without block
                 title: panelRoot?.querySelector('.checkpoint-recorder header strong')?.textContent || '',
                 selected: panelRoot?.querySelector('[data-rpa-checkpoint-field="entity"]')?.selectedOptions?.[0]?.textContent || '',
                 highlightOnly: annotator?.hasAttribute('data-rpa-highlight-only') || false,
+                interaction: annotator?.getAttribute('data-rpa-interaction-mode') || '',
+                pointer: annotator ? getComputedStyle(annotator).pointerEvents : '',
                 visible: annotator instanceof HTMLElement && annotator.style.display !== 'none',
                 boxes: root?.querySelectorAll('.annotator-box').length || 0,
                 labels: [...(root?.querySelectorAll('.annotator-label') || [])].map((item) => item.textContent?.replace(/\s+/g, ' ').trim()),
@@ -242,6 +338,8 @@ test('records a business checkpoint through entity-rule highlights without block
             title: '选择业务区域',
             selected: '订单查询',
             highlightOnly: true,
+            interaction: 'passthrough',
+            pointer: 'none',
             visible: true,
             boxes: 1,
             labels: [],
@@ -254,6 +352,34 @@ test('records a business checkpoint through entity-rule highlights without block
             hitId: 'query-orders',
         });
 
+        await pressKey(agent, workspaceName, 'Escape');
+        await expect.poll(async () => await evaluate(agent, workspaceName, `
+            const panelRoot = document.querySelector('#rpa-floating-panel')?.shadowRoot;
+            const annotator = document.querySelector('#rpa-entity-annotator-host');
+            return {
+                panelHidden: panelRoot?.querySelector('.checkpoint-recorder')?.hasAttribute('hidden') || false,
+                annotatorHidden: annotator instanceof HTMLElement && annotator.style.display === 'none',
+                launchText: panelRoot?.querySelector('.checkpoint-launch')?.textContent || '',
+            };
+        `), {timeout: 10_000}).toEqual({
+            panelHidden: true,
+            annotatorHidden: true,
+            launchText: '录制检查点',
+        });
+        await clickPoint(agent, workspaceName, await floatingPoint(
+            agent,
+            workspaceName,
+            '[data-rpa-checkpoint-action="launch"]',
+        ));
+        await expect.poll(async () => await evaluate(agent, workspaceName, `
+            const panelRoot = document.querySelector('#rpa-floating-panel')?.shadowRoot;
+            const annotator = document.querySelector('#rpa-entity-annotator-host');
+            return {
+                setup: panelRoot?.querySelector('.checkpoint-recorder')?.classList.contains('setup') || false,
+                visible: annotator instanceof HTMLElement && annotator.style.display === 'block',
+            };
+        `), {timeout: 20_000}).toEqual({setup: true, visible: true});
+
         await clickPoint(agent, workspaceName, await floatingPoint(
             agent,
             workspaceName,
@@ -261,8 +387,21 @@ test('records a business checkpoint through entity-rule highlights without block
         ));
         await expect.poll(async () => await evaluate(agent, workspaceName, `
             return document.querySelector('#rpa-floating-panel')?.shadowRoot
-                ?.querySelector('.checkpoint-recorder')?.hasAttribute('hidden') || false;
-        `), {timeout: 10_000}).toBe(true);
+                ?.querySelector('.checkpoint-launch')?.textContent || '';
+        `), {timeout: 10_000}).toBe('录制中');
+        await expect.poll(async () => await evaluate(agent, workspaceName, `
+            const panelRoot = document.querySelector('#rpa-floating-panel')?.shadowRoot;
+            const annotator = document.querySelector('#rpa-entity-annotator-host');
+            return {
+                panelHidden: panelRoot?.querySelector('.checkpoint-recorder')?.hasAttribute('hidden') || false,
+                annotatorHidden: annotator instanceof HTMLElement && annotator.style.display === 'none',
+                launchText: panelRoot?.querySelector('.checkpoint-launch')?.textContent || '',
+            };
+        `), {timeout: 10_000}).toEqual({
+            panelHidden: true,
+            annotatorHidden: false,
+            launchText: '录制中',
+        });
 
         expect((await runStep(agent.endpoint, workspaceName, step('record-fill-order', 'browser.fill', {
             selector: '#order-no',
@@ -395,6 +534,172 @@ test('records a business checkpoint through entity-rule highlights without block
 });
 
 
+test('records a homogeneous row action and replays it against another primary-key row', async ({}, testInfo) => {
+    testInfo.setTimeout(180_000);
+    const fixture = await startFixtureServer();
+    const agent = await startAgent();
+    const workspaceName = `checkpoint-row-action-${Date.now()}`;
+    try {
+        await createWorkspacePage(agent, workspaceName, `${fixture.baseURL}/checkpoint_recorder.html`);
+        await saveOrderFulfillmentEntityRule(agent, workspaceName);
+        await expect.poll(async () => await evaluate(agent, workspaceName, `
+            return Boolean(document.querySelector('#rpa-floating-panel')?.shadowRoot
+                ?.querySelector('[data-rpa-checkpoint-action="launch"]'));
+        `), {timeout: 20_000}).toBe(true);
+
+        await clickPoint(agent, workspaceName, await floatingPoint(
+            agent,
+            workspaceName,
+            '[data-rpa-checkpoint-action="launch"]',
+        ));
+        await expect.poll(async () => await evaluate(agent, workspaceName, `
+            const root = document.querySelector('#rpa-floating-panel')?.shadowRoot;
+            return {
+                selected: root?.querySelector('[data-rpa-checkpoint-field="entity"]')?.selectedOptions?.[0]?.textContent || '',
+                rowMarkers: document.querySelectorAll('.confirm-shipment[data-rpa-record-semantic]').length,
+            };
+        `), {timeout: 25_000}).toEqual({selected: '订单列表', rowMarkers: 3});
+
+        await clickPoint(agent, workspaceName, await floatingPoint(
+            agent,
+            workspaceName,
+            '[data-rpa-checkpoint-action="start"]',
+        ));
+        const fillOrder = await runStep(agent.endpoint, workspaceName, step('row-fill-order', 'browser.fill', {
+            selector: '#order-no',
+            value: 'SO-002',
+        }));
+        expect(fillOrder.ok, JSON.stringify(fillOrder.error || {})).toBe(true);
+        await clickPoint(agent, workspaceName, await pagePoint(agent, workspaceName, '#query-orders'));
+        await expect.poll(async () => await evaluate(agent, workspaceName, `
+            return [...document.querySelectorAll('#orders-table tbody tr')]
+                .filter((row) => getComputedStyle(row).display !== 'none')
+                .map((row) => row.dataset.orderNo);
+        `)).toEqual(['SO-002']);
+        await evaluate(agent, workspaceName, `
+            document.querySelector('tr[data-order-no="SO-002"] .confirm-shipment')
+                ?.scrollIntoView({block: 'center'});
+        `);
+        const rowActionHit = await evaluate(agent, workspaceName, `
+            const target = document.querySelector('tr[data-order-no="SO-002"] .confirm-shipment');
+            const rect = target?.getBoundingClientRect();
+            const hit = rect ? document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2) : null;
+            const annotator = document.querySelector('#rpa-entity-annotator-host');
+            return {
+                rect: rect ? {left: rect.left, top: rect.top, width: rect.width, height: rect.height} : null,
+                viewport: {width: innerWidth, height: innerHeight},
+                hitClass: hit instanceof HTMLElement ? hit.className : '',
+                hitId: hit instanceof HTMLElement ? hit.id : '',
+                targetMarker: target?.getAttribute('data-rpa-annotation-id') || '',
+                targetSemantic: target?.getAttribute('data-rpa-record-semantic') || '',
+                annotatorPointer: annotator ? getComputedStyle(annotator).pointerEvents : '',
+            };
+        `);
+        expect(rowActionHit).toMatchObject({
+            hitClass: expect.stringContaining('confirm-shipment'),
+            targetMarker: 'confirm-shipment',
+            annotatorPointer: 'none',
+        });
+        await clickPoint(agent, workspaceName, await pagePoint(
+            agent,
+            workspaceName,
+            'tr[data-order-no="SO-002"] .confirm-shipment',
+        ));
+        await expect.poll(async () => await evaluate(agent, workspaceName, `
+            return document.body.dataset.shippedOrder || '';
+        `)).toBe('SO-002');
+
+        await clickPoint(agent, workspaceName, await floatingPoint(
+            agent,
+            workspaceName,
+            '[data-rpa-checkpoint-action="launch"]',
+        ));
+        await clickPoint(agent, workspaceName, await floatingPoint(
+            agent,
+            workspaceName,
+            '[data-rpa-checkpoint-action="stop"]',
+        ));
+        await expect.poll(async () => await evaluate(agent, workspaceName, `
+            const root = document.querySelector('#rpa-floating-panel')?.shadowRoot;
+            return {
+                mappings: [...(root?.querySelectorAll('[data-rpa-checkpoint-map]') || [])].map((item) => item.value),
+                targetRow: root?.querySelector('.checkpoint-recorder')?.textContent?.includes('目标行：订单编号 = SO-002') || false,
+            };
+        `), {timeout: 25_000}).toEqual({
+            mappings: ['input:orderNo', 'action:query', 'row_action:confirmShipment'],
+            targetRow: true,
+        });
+
+        await evaluate(agent, workspaceName, `
+            const root = document.querySelector('#rpa-floating-panel')?.shadowRoot;
+            const name = root?.querySelector('[data-rpa-checkpoint-field="name"]');
+            if (name instanceof HTMLInputElement) {
+                name.value = '查询并确认发货';
+                name.dispatchEvent(new Event('input', {bubbles: true}));
+            }
+        `);
+        await clickPoint(agent, workspaceName, await floatingPoint(
+            agent,
+            workspaceName,
+            '[data-rpa-checkpoint-action="save"]',
+        ));
+        await expect.poll(async () => await evaluate(agent, workspaceName, `
+            return document.querySelector('#rpa-floating-panel')?.shadowRoot
+                ?.querySelector('.checkpoint-recorder header strong')?.textContent || '';
+        `), {timeout: 20_000}).toBe('检查点已保存');
+
+        const listed = await dispatch(agent.endpoint, action('checkpoint.list', workspaceName));
+        const checkpoints = (listed.payload as {checkpoints?: Array<{
+            checkpointId: string;
+            checkpoint: {input?: Record<string, unknown>; content?: unknown[]};
+        }>}).checkpoints || [];
+        expect(checkpoints).toHaveLength(1);
+        const checkpoint = checkpoints[0];
+        expect(checkpoint.checkpoint.input).toEqual({orderNo: 'SO-002'});
+        const serialized = JSON.stringify(checkpoint.checkpoint.content);
+        expect(serialized).toContain('table.row_action');
+        expect(serialized).toContain('confirmShipment');
+        expect(serialized).not.toContain('SO-002');
+        expect(serialized).not.toContain('.confirm-shipment');
+
+        await evaluate(agent, workspaceName, `
+            document.querySelector('#order-no').value = '';
+            document.querySelector('#buyer').value = '';
+            document.querySelector('#query-result').textContent = '';
+            delete document.body.dataset.shippedOrder;
+            for (const row of document.querySelectorAll('#orders-table tbody tr')) {
+                row.style.display = '';
+                row.querySelector('.order-status').textContent = '待发货';
+                row.querySelector('.order-status').classList.remove('shipped');
+            }
+        `);
+        const executed = await runStep(
+            agent.endpoint,
+            workspaceName,
+            step('run-row-action-checkpoint', 'browser.checkpoint', {
+                checkpointId: checkpoint.checkpointId,
+                input: {orderNo: 'SO-003'},
+            }),
+        );
+        expect(executed.ok, JSON.stringify(executed.error || {})).toBe(true);
+        await expect.poll(async () => await evaluate(agent, workspaceName, `
+            return {
+                shippedOrder: document.body.dataset.shippedOrder || '',
+                result: document.querySelector('#query-result')?.textContent || '',
+                statuses: Object.fromEntries([...document.querySelectorAll('#orders-table tbody tr')]
+                    .map((row) => [row.dataset.orderNo, row.querySelector('.order-status')?.textContent || ''])),
+            };
+        `), {timeout: 20_000}).toEqual({
+            shippedOrder: 'SO-003',
+            result: 'SO-003|',
+            statuses: {'SO-001': '待发货', 'SO-002': '待发货', 'SO-003': '已发货'},
+        });
+    } finally {
+        await agent.close();
+        await fixture.close();
+    }
+});
+
 test('records an entity-rule driven recovery checkpoint and retries the original operation', async ({}, testInfo) => {
     testInfo.setTimeout(180_000);
     const fixture = await startFixtureServer();
@@ -431,6 +736,8 @@ test('records an entity-rule driven recovery checkpoint and retries the original
                 title: panelRoot?.querySelector('.checkpoint-recorder header strong')?.textContent || '',
                 selected: panelRoot?.querySelector('[data-rpa-checkpoint-field="entity"]')?.selectedOptions?.[0]?.textContent || '',
                 highlightOnly: annotator?.hasAttribute('data-rpa-highlight-only') || false,
+                interaction: annotator?.getAttribute('data-rpa-interaction-mode') || '',
+                pointer: annotator ? getComputedStyle(annotator).pointerEvents : '',
                 marker: document.querySelector('#dismiss-session')?.getAttribute('data-rpa-annotation-kind') || '',
                 hitId: hit instanceof HTMLElement ? hit.id : '',
             };
@@ -438,6 +745,8 @@ test('records an entity-rule driven recovery checkpoint and retries the original
             title: '选择错误状态',
             selected: '登录失效提示',
             highlightOnly: true,
+            interaction: 'passthrough',
+            pointer: 'none',
             marker: 'action',
             hitId: 'dismiss-session',
         });

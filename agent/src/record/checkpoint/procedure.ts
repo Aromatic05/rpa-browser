@@ -94,6 +94,43 @@ export const buildRecordedProcedureCheckpoint = (
             });
             return;
         }
+        if (mapping?.kind === 'row_action') {
+            const action = option.rowActions.find((candidate) => candidate.actionIntent === mapping.actionIntent)!;
+            const localKey = `target${String(index + 1)}`;
+            const semantic = semanticHintsForStep(step.id, enrichments);
+            const recordedPrimaryKey = semantic?.rowPrimaryKey;
+            if (!Object.hasOwn(input, mapping.inputKey)) {
+                input[mapping.inputKey] = recordedPrimaryKey?.fieldKey === mapping.primaryKeyFieldKey
+                    ? recordedPrimaryKey.value
+                    : '';
+            }
+            content.push({
+                type: 'query',
+                args: {
+                    op: 'entity.target',
+                    businessTag: option.businessTag,
+                    target: {
+                        kind: action.targetKind,
+                        primaryKey: {
+                            fieldKey: mapping.primaryKeyFieldKey,
+                            value: {ref: `input.${mapping.inputKey}`},
+                        },
+                        actionIntent: action.actionIntent,
+                    },
+                } as never,
+                entityRules,
+                saveAs: localKey,
+            });
+            content.push({
+                type: 'act',
+                step: {
+                    name: 'browser.click',
+                    args: {nodeId: {ref: `local.${localKey}.nodeId`}} as never,
+                    entityRules,
+                },
+            });
+            return;
+        }
         const persisted = persistRecordedStep(step, index, enrichments, stepResolves);
         content.push({
             type: 'act',
@@ -167,6 +204,21 @@ const inferProcedureMappings = (
         }
         if (step.name === 'browser.click') {
             const actionIntent = normalizeText(semantic?.actionIntent);
+            const rowPrimaryKey = semantic?.rowPrimaryKey;
+            if (semantic?.actionRole === 'row'
+                && actionIntent
+                && rowPrimaryKey
+                && option.primaryKey?.fieldKey === rowPrimaryKey.fieldKey
+                && option.rowActions.some((action) => action.actionIntent === actionIntent)) {
+                result.push({
+                    stepId: step.id,
+                    kind: 'row_action',
+                    actionIntent,
+                    primaryKeyFieldKey: rowPrimaryKey.fieldKey,
+                    inputKey: rowPrimaryKey.fieldKey,
+                });
+                continue;
+            }
             if (actionIntent && option.actions.some((action) => action.actionIntent === actionIntent)) {
                 result.push({stepId: step.id, kind: 'action', actionIntent});
             }
@@ -204,17 +256,41 @@ const validateProcedureMappings = (
             if (!option.fields.some((field) => field.fieldKey === mapping.fieldKey)) {
                 throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, '输入字段不属于所选业务区域');
             }
-        } else {
+        } else if (mapping.kind === 'action') {
             if (step.name !== 'browser.click') {
                 throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, '只有点击操作可以映射为业务操作');
             }
             if (!option.actions.some((action) => action.actionIntent === mapping.actionIntent)) {
                 throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, '业务操作不属于所选业务区域');
             }
+        } else {
+            if (step.name !== 'browser.click') {
+                throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, '只有点击操作可以映射为行操作');
+            }
+            if (option.entityKind !== 'table' || !option.primaryKey) {
+                throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, '行操作需要已标注主键的表格');
+            }
+            if (mapping.primaryKeyFieldKey !== option.primaryKey.fieldKey) {
+                throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, '目标行字段不是当前表格主键');
+            }
+            if (!option.rowActions.some((action) => action.actionIntent === mapping.actionIntent)) {
+                throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, '行操作不属于所选表格');
+            }
+            if (!normalizeText(mapping.inputKey)) {
+                throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, '目标行输入名称不能为空');
+            }
         }
         result.set(mapping.stepId, structuredClone(mapping));
     }
     return result;
+};
+
+const semanticHintsForStep = (
+    stepId: string,
+    enrichments: RecordingEnhancementMap,
+) => {
+    const enhancement = Object.hasOwn(enrichments, stepId) ? enrichments[stepId] : undefined;
+    return enhancement ? enhancement.semanticHints ?? enhancement.target?.semanticHints : undefined;
 };
 
 const parameterizedInputArgs = (

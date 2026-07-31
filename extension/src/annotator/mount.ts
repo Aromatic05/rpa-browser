@@ -7,6 +7,8 @@ import {
 
 export const ANNOTATOR_HOST_ID = 'rpa-entity-annotator-host';
 
+export type AnnotatorInteractionMode = 'edit' | 'inspect' | 'passthrough';
+
 export type AnnotatorDispatch = (
     type: string,
     payload?: Record<string, unknown>,
@@ -83,32 +85,65 @@ export type AnnotatorHandle = {
     getState: () => AnnotatorState;
     open: (result: AnnotatorOpenResult) => void;
     exit: () => void;
-    setHighlightOnly: (enabled: boolean) => void;
+    setInteractionMode: (mode: AnnotatorInteractionMode) => void;
 };
 
 export const mountAnnotator = (opts: AnnotatorMountOptions): AnnotatorHandle => {
     const doc = opts.document ?? document;
     const {host, shadow} = createAnnotatorHost(doc);
+    let interactionMode: AnnotatorInteractionMode = 'edit';
+    let picking = false;
+    let visible = false;
+    const blocksPage = (): boolean => interactionMode !== 'passthrough' && !picking;
+    const applyInteractionPolicy = (): void => {
+        host.style.pointerEvents = visible && blocksPage() ? 'auto' : 'none';
+        host.toggleAttribute('data-rpa-highlight-only', interactionMode !== 'edit');
+        host.setAttribute('data-rpa-interaction-mode', interactionMode);
+        if (visible && blocksPage()) {
+            host.focus({preventScroll: true});
+        } else if (host.ownerDocument.activeElement === host) {
+            host.blur();
+        }
+    };
+    const containBlockedInteraction = (event: Event): void => {
+        if (!visible || !blocksPage()) {return;}
+        if (event.composedPath().at(0) === host) {event.preventDefault();}
+        event.stopPropagation();
+    };
+    host.tabIndex = -1;
+    const containedEvents = [
+        'pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click', 'dblclick', 'auxclick',
+        'contextmenu', 'keydown', 'keyup', 'keypress',
+    ] as const;
+    for (const type of containedEvents) {host.addEventListener(type, containBlockedInteraction);}
+    host.addEventListener('wheel', containBlockedInteraction, {passive: false});
+    host.addEventListener('touchmove', containBlockedInteraction, {passive: false});
     const app = opts.mountApp(shadow, {
         ...opts.handlers,
-        onPickModeChange: (picking) => {
-            host.style.pointerEvents = 'none';
-            opts.handlers.onPickModeChange?.(picking);
+        onPickModeChange: (nextPicking) => {
+            picking = nextPicking;
+            applyInteractionPolicy();
+            opts.handlers.onPickModeChange?.(nextPicking);
         },
     });
     doc.documentElement.appendChild(host);
     return {
         unmount: () => {
+            for (const type of containedEvents) {host.removeEventListener(type, containBlockedInteraction);}
+            host.removeEventListener('wheel', containBlockedInteraction);
+            host.removeEventListener('touchmove', containBlockedInteraction);
             app.unmount();
             host.remove();
         },
         show: () => {
+            visible = true;
             host.style.display = 'block';
-            host.style.pointerEvents = 'none';
+            applyInteractionPolicy();
         },
         hide: () => {
+            visible = false;
             host.style.display = 'none';
-            host.style.pointerEvents = 'none';
+            applyInteractionPolicy();
         },
         setState: (state) => {
             app.setState(state);
@@ -121,8 +156,9 @@ export const mountAnnotator = (opts: AnnotatorMountOptions): AnnotatorHandle => 
         exit: () => {
             app.setState(exitAnnotation(app.getState()));
         },
-        setHighlightOnly: (enabled) => {
-            host.toggleAttribute('data-rpa-highlight-only', enabled);
+        setInteractionMode: (mode) => {
+            interactionMode = mode;
+            applyInteractionPolicy();
         },
     };
 };

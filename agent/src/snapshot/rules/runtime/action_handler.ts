@@ -12,6 +12,10 @@ import type { WorkspaceEntityRulesProvider } from './contracts';
 import { createWorkspaceEntityRulesProvider } from './provider';
 import { executeEntityRules, type ExecuteEntityRulesInput, type EntityRulesExecutionResult } from './matcher';
 import { executeEntityRulesOnPage } from './capture';
+import {
+    projectEntityRuleProfileSummary,
+    projectEntityRuleProfileView,
+} from './presentation';
 
 export type EntityRulesAnnotatorPort = {
     handle: (input: WorkspaceRouterInput) => Promise<ControlPlaneResult>;
@@ -39,12 +43,21 @@ export const createEntityRulesRuntime = (
         const payload = (action.payload ?? {}) as Record<string, unknown>;
         switch (action.type) {
             case 'entity_rules.list':
+                {
+                    const profiles = workspace.workflow.list({ kind: 'entity_rules' });
                 return {
                     reply: replyAction(action, {
-                        profiles: workspace.workflow.list({ kind: 'entity_rules' }),
+                            profiles,
+                            rules: profiles.flatMap((item) => {
+                                const profile = workspace.workflow.get(item.name, {kind: 'entity_rules'});
+                                return profile?.kind === 'entity_rules'
+                                    ? [projectEntityRuleProfileSummary(profile)]
+                                    : [];
+                            }),
                     }),
                     events: [],
                 };
+                }
             case 'entity_rules.get': {
                 const profileName = requireProfileName(payload);
                 const profile = workspace.workflow.get(profileName, { kind: 'entity_rules' });
@@ -52,7 +65,7 @@ export const createEntityRulesRuntime = (
                     throw new ActionError(ERROR_CODES.ERR_NOT_FOUND, `entity_rules profile not found: ${profileName}`);
                 }
                 return {
-                    reply: replyAction(action, { profile }),
+                    reply: replyAction(action, {view: projectEntityRuleProfileView(profile)}),
                     events: [],
                 };
             }

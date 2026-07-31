@@ -36,6 +36,15 @@ export const checkpointStepSummary = (
     const fieldKey = normalizeText(semantic?.fieldKey);
     const fieldHint = normalizeText(semantic?.fieldLabel);
     const actionHint = normalizeText(semantic?.actionIntent);
+    const actionRole = semantic?.actionRole === 'row' ? 'row' : undefined;
+    const rowPrimaryKey = semantic?.rowPrimaryKey
+        && normalizeText(semantic.rowPrimaryKey.fieldKey)
+        && normalizeText(semantic.rowPrimaryKey.value)
+        ? {
+            fieldKey: normalizeText(semantic.rowPrimaryKey.fieldKey)!,
+            value: normalizeText(semantic.rowPrimaryKey.value)!,
+        }
+        : undefined;
     const detail = fieldHint ?? actionHint;
     const value = recordedValue(step);
     return {
@@ -49,5 +58,7 @@ export const checkpointStepSummary = (
         ...(fieldKey ? {fieldKey} : {}),
         ...(fieldHint ? {fieldHint} : {}),
         ...(actionHint ? {actionHint} : {}),
+        ...(actionRole ? {actionRole} : {}),
+        ...(rowPrimaryKey ? {rowPrimaryKey} : {}),
     };
 });

@@ -1,4 +1,5 @@
 import type { ControlIndex } from '../../control/model/contracts';
+import type {PageObservation} from '../../../observation/model/contracts';
 import type {
     CellControlSlot,
     TableCell,
@@ -19,6 +20,7 @@ export const buildControlSlots = (
     rows: readonly TableRow[],
     cells: Readonly<Record<string, TableCell>>,
     controls: ControlIndex,
+    observation: PageObservation,
 ): ControlSlotBuildResult => {
     const occurrences = new Map<string, Array<{
         rowId: string;
@@ -27,6 +29,7 @@ export const buildControlSlots = (
         columnId: string;
         structuralPosition: number;
         kind: NonNullable<typeof controls.controls[string]>['kind'];
+        label?: string;
     }>>();
     for (const row of rows) {
         for (const cellId of row.cellIds) {
@@ -34,15 +37,18 @@ export const buildControlSlots = (
             cell.controlIds.forEach((controlId, structuralPosition) => {
                 if (structuralPosition >= MAX_STRUCTURAL_SLOT_BUCKETS) {return;}
                 const control = controls.controls[controlId];
-                const key = `${cell.columnId}|${structuralPosition}|${control.kind}`;
+                const nodeId = control.controlNodeId ?? control.rootNodeId;
+                const label = controlLabel(observation, nodeId);
+                const key = `${cell.columnId}|${structuralPosition}|${control.kind}|${normalizeLabel(label)}`;
                 const bucket = occurrences.get(key) ?? [];
                 bucket.push({
                     rowId: row.id,
                     controlId,
-                    nodeId: control.controlNodeId ?? control.rootNodeId,
+                    nodeId,
                     columnId: cell.columnId,
                     structuralPosition,
                     kind: control.kind,
+                    ...(label ? {label} : {}),
                 });
                 occurrences.set(key, bucket);
             });
@@ -61,6 +67,7 @@ export const buildControlSlots = (
             columnId: exemplar.columnId,
             structuralPosition: exemplar.structuralPosition,
             controlKind: exemplar.kind,
+            ...(exemplar.label ? {label: exemplar.label} : {}),
             occurrenceCount: bucket.length,
             exemplarNodeIds: unique(bucket.map((item) => item.nodeId)).slice(0, 3),
             controlIds: bucket.map((item) => item.controlId),
@@ -85,3 +92,17 @@ export const buildControlSlots = (
 };
 
 const unique = <T>(values: readonly T[]): T[] => [...new Set(values)];
+
+const controlLabel = (observation: PageObservation, nodeId: string): string | undefined => {
+    const accessibility = observation.accessibility[nodeId];
+    const accessibilityName = accessibility === undefined ? undefined : accessibility.name;
+    const value = accessibilityName
+        || observation.attributes[nodeId]['aria-label']
+        || observation.attributes[nodeId].title
+        || observation.text[nodeId];
+    if (!value) {return undefined;}
+    return value.replace(/\s+/gu, ' ').trim() || undefined;
+};
+
+const normalizeLabel = (value: string | undefined): string =>
+    value?.replace(/\s+/gu, '').toLocaleLowerCase() ?? '';

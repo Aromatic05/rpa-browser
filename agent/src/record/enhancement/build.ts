@@ -342,6 +342,10 @@ const buildRecordedSemanticHints = (
     const action = matched.find((binding) => typeof binding.annotation.actionIntent === 'string');
     const fieldKey = readAnnotationText(field?.annotation.fieldKey);
     const actionIntent = readAnnotationText(action?.annotation.actionIntent);
+    const actionRole = action?.annotation.actionRole === 'row' ? 'row' : undefined;
+    const rowPrimaryKey = actionRole
+        ? resolveRecordedRowPrimaryKey(snapshot, nodeId, bindings, checkpointSession.businessTag)
+        : undefined;
     return {
         ...(structural || {}),
         profileName,
@@ -355,6 +359,8 @@ const buildRecordedSemanticHints = (
             actionIntent,
             actionTargetNodeId: nodeId,
         } : {}),
+        ...(actionRole ? {actionRole} : {}),
+        ...(rowPrimaryKey ? {rowPrimaryKey} : {}),
         ...(capturedSemanticHints || {}),
     };
 };
@@ -374,8 +380,71 @@ const semanticHintsFromEvent = (
         entityKind: checkpointSession.entityKind ?? hint.entityKind,
         ...(hint.fieldKey ? {fieldKey: hint.fieldKey} : {}),
         ...(hint.actionIntent ? {actionIntent: hint.actionIntent} : {}),
+        ...(hint.actionRole === 'row' ? {actionRole: 'row' as const} : {}),
+        ...(hint.rowPrimaryKey ? {rowPrimaryKey: {...hint.rowPrimaryKey}} : {}),
     };
 };
+
+const resolveRecordedRowPrimaryKey = (
+    snapshot: RecordPageSnapshot,
+    nodeId: ObservationNodeId,
+    bindings: readonly {
+        status: string;
+        disposition: string;
+        annotation: Record<string, unknown>;
+        target: {componentIds: readonly string[]};
+    }[],
+    businessTag: string | undefined,
+): {fieldKey: string; value: string} | undefined => {
+    const root = bindings.find((binding) =>
+        binding.status === 'active'
+        && binding.disposition === 'active'
+        && binding.annotation.businessTag === businessTag);
+    const primaryKey = isRecord(root?.annotation.primaryKey) ? root.annotation.primaryKey : undefined;
+    const fieldKey = readAnnotationText(primaryKey?.fieldKey);
+    if (!root || !fieldKey) {return undefined;}
+    const columns = Array.isArray(root.annotation.columns)
+        ? root.annotation.columns.filter(isRecord)
+        : [];
+    const columnName = readAnnotationText(columns.find((column) => column.fieldKey === fieldKey)?.name)
+        ?? (Array.isArray(primaryKey?.columns)
+            ? primaryKey.columns.map(readAnnotationText).find((value): value is string => Boolean(value))
+            : undefined);
+    if (!columnName) {return undefined;}
+    const table = root.target.componentIds
+        .map((componentId) => snapshot.table.tables.tables[componentId])
+        .find(Boolean);
+    if (!table) {return undefined;}
+    const row = table.body.visibleRows.find((candidate) =>
+        isDescendantOrSelf(snapshot, nodeId, candidate.nodeId));
+    if (!row) {return undefined;}
+    const column = table.columns.find((candidate) =>
+        normalizeText(candidate.name).toLocaleLowerCase() === normalizeText(columnName).toLocaleLowerCase());
+    if (!column) {return undefined;}
+    const cell = row.cellIds
+        .map((cellId) => snapshot.table.tables.cells[cellId])
+        .find((candidate) => candidate.columnId === column.id);
+    const value = cell ? normalizeText(cell.text) : '';
+    return value ? {fieldKey, value} : undefined;
+};
+
+const isDescendantOrSelf = (
+    snapshot: RecordPageSnapshot,
+    nodeId: ObservationNodeId,
+    ancestorNodeId: ObservationNodeId,
+): boolean => {
+    let current: ObservationNodeId | undefined = nodeId;
+    const visited = new Set<ObservationNodeId>();
+    while (current && !visited.has(current)) {
+        if (current === ancestorNodeId) {return true;}
+        visited.add(current);
+        current = snapshot.control.observation.parents[current];
+    }
+    return false;
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === 'object' && value !== null && !Array.isArray(value);
 
 const readAnnotationText = (value: unknown): string | undefined =>
     typeof value === 'string' && value.trim() ? value.trim() : undefined;

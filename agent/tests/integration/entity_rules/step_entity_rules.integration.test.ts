@@ -187,11 +187,32 @@ test('workspace entity_rules actions persist and expose profiles through the run
             (listed.reply.payload as { profiles: Array<{ name: string }> }).profiles.map((item) => item.name),
             ['orders'],
         );
+        assert.deepEqual(
+            (listed.reply.payload as {rules: unknown[]}).rules,
+            [{
+                profileName: 'orders',
+                label: 'orders',
+                pageKind: 'table',
+                urlPattern: '/orders',
+                entityCount: 0,
+            }],
+        );
 
         const loaded = await invoke('entity_rules.get', {
             profileName: 'orders',
         });
-        assert.equal((loaded.reply.payload as { profile: WorkflowEntityRules }).profile.name, 'orders');
+        assert.equal(Object.hasOwn(loaded.reply.payload as object, 'profile'), false);
+        assert.deepEqual(
+            (loaded.reply.payload as {view: unknown}).view,
+            {
+                profileName: 'orders',
+                label: 'orders',
+                pageKind: 'table',
+                urlPattern: '/orders',
+                entityCount: 0,
+                entities: [],
+            },
+        );
 
         const deleted = await invoke('entity_rules.delete', {
             profileName: 'orders',

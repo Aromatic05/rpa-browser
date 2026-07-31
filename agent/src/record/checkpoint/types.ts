@@ -5,7 +5,14 @@ export type CheckpointProcedureOutputKind = 'none' | 'table.currentRows' | 'tabl
 
 export type CheckpointProcedureMapping =
     | {stepId: string; kind: 'input'; fieldKey: string}
-    | {stepId: string; kind: 'action'; actionIntent: string};
+    | {stepId: string; kind: 'action'; actionIntent: string}
+    | {
+        stepId: string;
+        kind: 'row_action';
+        actionIntent: string;
+        primaryKeyFieldKey: string;
+        inputKey: string;
+    };
 
 export type CheckpointRecordSavePayload = {
     kind?: CheckpointRecordKind;
@@ -33,6 +40,17 @@ export type CheckpointEntityRuleAction = {
     targetKind: 'entity.action' | 'form.action' | 'table.module_action';
 };
 
+export type CheckpointEntityRuleRowAction = {
+    actionIntent: string;
+    label: string;
+    targetKind: 'table.row_action';
+};
+
+export type CheckpointEntityRulePrimaryKey = {
+    fieldKey: string;
+    label: string;
+};
+
 export type CheckpointEntityRuleOutput = {
     kind: CheckpointProcedureOutputKind;
     label: string;
@@ -45,6 +63,8 @@ export type CheckpointEntityRuleOption = {
     label: string;
     fields: CheckpointEntityRuleField[];
     actions: CheckpointEntityRuleAction[];
+    rowActions: CheckpointEntityRuleRowAction[];
+    primaryKey?: CheckpointEntityRulePrimaryKey;
     outputs: CheckpointEntityRuleOutput[];
 };
 
@@ -59,4 +79,6 @@ export type CheckpointRecordedStepSummary = {
     fieldKey?: string;
     fieldHint?: string;
     actionHint?: string;
+    actionRole?: 'row';
+    rowPrimaryKey?: {fieldKey: string; value: string};
 };

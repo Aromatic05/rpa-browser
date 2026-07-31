@@ -201,3 +201,68 @@ test('DOM markers resolve an outer business scope even when its entity kind is t
     assert.equal(documentRef.getElementById('orderNo')?.getAttribute('data-rpa-annotation-kind'), 'field');
     assert.equal(documentRef.querySelector('th')?.getAttribute('data-rpa-annotation-kind'), 'column');
 });
+
+test('repeated row actions mark every instance and carry the row primary key', () => {
+    const dom = new JSDOM(`
+        <section class="orders-module">
+            <table>
+                <thead><tr><th>订单编号</th><th>操作</th></tr></thead>
+                <tbody>
+                    <tr><td>SO-001</td><td><a id="ship-1">确认发货</a></td></tr>
+                    <tr><td>SO-002</td><td><a id="ship-2">确认发货</a></td></tr>
+                </tbody>
+            </table>
+        </section>
+    `);
+    const draft = makeDraft();
+    draft.profileName = 'orders-rule';
+    draft.entities[0].annotations = [];
+    draft.entities[0].columns = [
+        {id: 'order-column', fieldKey: 'orderNo', name: '订单编号', actions: [], origin: 'confirmed', disposition: 'active'},
+        {
+            id: 'action-column',
+            fieldKey: 'actions',
+            name: '操作',
+            kind: 'action_column',
+            actions: [{
+                id: 'confirm-shipment',
+                actionIntent: 'confirmShipment',
+                text: '确认发货',
+                target: {textContains: '确认发货'},
+                origin: 'confirmed',
+                disposition: 'active',
+            }],
+            origin: 'confirmed',
+            disposition: 'active',
+        },
+    ];
+    draft.entities[0].primaryKey = {fieldKey: 'orderNo'};
+    draft.entities[0].pagination = undefined;
+
+    const documentRef = dom.window.document;
+    applyDomMarkers(draft, documentRef, null, null);
+
+    const semantics = ['ship-1', 'ship-2'].map((id) => {
+        const element = documentRef.getElementById(id);
+        assert.equal(element?.getAttribute('data-rpa-annotation-id'), 'confirm-shipment');
+        return JSON.parse(element?.getAttribute('data-rpa-record-semantic') || '{}') as Record<string, unknown>;
+    });
+    assert.deepEqual(semantics, [
+        {
+            profileName: 'orders-rule',
+            businessTag: 'orders.main',
+            entityKind: 'table',
+            actionIntent: 'confirmShipment',
+            actionRole: 'row',
+            rowPrimaryKey: {fieldKey: 'orderNo', value: 'SO-001'},
+        },
+        {
+            profileName: 'orders-rule',
+            businessTag: 'orders.main',
+            entityKind: 'table',
+            actionIntent: 'confirmShipment',
+            actionRole: 'row',
+            rowPrimaryKey: {fieldKey: 'orderNo', value: 'SO-002'},
+        },
+    ]);
+});

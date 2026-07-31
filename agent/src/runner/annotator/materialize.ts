@@ -218,10 +218,27 @@ const applyTableAction = (
     const rootRuleId = ensureComponentRoot(entry, draft, 'table', table.id, table.location.structuralRootNodeId);
     const actionIntent = requireText(semantic.actionIntent, 'actionIntent');
     const actionText = text(semantic.displayName) ?? target.label;
+    const columnFieldKey = slug(column.name) || column.id;
+    const actionRuleId = `row-action-${slug(actionIntent)}-${slug(columnFieldKey)}`;
+    const exemplarNodeId = slot.exemplarNodeIds[0];
+    if (!exemplarNodeId) {return {ok: false, message: `table action has no exemplar node: ${target.id}`};}
+    upsertRule(draft, {
+        ruleId: actionRuleId,
+        source: 'node',
+        expect: 'one_or_more',
+        within: rootRuleId,
+        match: repeatedActionMatch(entry, exemplarNodeId, actionText),
+    });
+    upsertBinding(draft, actionRuleId, {
+        actionIntent,
+        actionRole: 'row',
+        columnFieldKey,
+        ...(actionText ? {actionText} : {}),
+    });
     updateRootBinding(draft, rootRuleId, (binding) => ({
         ...binding,
         columns: upsertColumn(binding.columns, {
-            fieldKey: slug(column.name) || column.id,
+            fieldKey: columnFieldKey,
             name: column.name,
             kind: 'action_column',
             source: 'annotation',
@@ -229,6 +246,20 @@ const applyTableAction = (
         }),
     }));
     return {ok: true, draft};
+};
+
+const repeatedActionMatch = (
+    entry: PageSnapshotSessionEntry,
+    nodeId: ObservationNodeId,
+    actionText: string | undefined,
+): Record<string, unknown> => {
+    const role = resolveSemanticRole(entry.capture.control.observation, nodeId).value;
+    if (actionText) {
+        return {...(role ? {roleEquals: role} : {}), textContains: actionText};
+    }
+    const match = stableNodeMatch(entry, nodeId, false);
+    const {idEquals: _idEquals, ...repeatable} = match;
+    return Object.keys(repeatable).length > 0 ? repeatable : match;
 };
 
 const ensureComponentRoot = (
