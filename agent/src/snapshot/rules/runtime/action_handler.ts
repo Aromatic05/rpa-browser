@@ -48,11 +48,17 @@ export const createEntityRulesRuntime = (
                 return {
                     reply: replyAction(action, {
                             profiles,
-                            rules: profiles.flatMap((item) => {
+                            rules: profiles.map((item) => {
                                 const profile = workspace.workflow.get(item.name, {kind: 'entity_rules'});
                                 return profile?.kind === 'entity_rules'
-                                    ? [projectEntityRuleProfileSummary(profile)]
-                                    : [];
+                                    ? projectEntityRuleProfileSummary(profile)
+                                    : {
+                                        profileName: item.name,
+                                        label: item.title || item.name,
+                                        entityCount: 0,
+                                        status: 'invalid' as const,
+                                        error: '规则文件无效或迁移失败',
+                                    };
                             }),
                     }),
                     events: [],

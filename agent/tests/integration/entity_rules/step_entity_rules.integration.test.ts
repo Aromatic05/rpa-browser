@@ -223,3 +223,35 @@ test('workspace entity_rules actions persist and expose profiles through the run
         deleteWorkflowFromFs(workflowName);
     }
 });
+
+
+test('entity_rules.list exposes catalog entries whose artifacts cannot be loaded', async () => {
+    const runtime = createEntityRulesRuntime();
+    const invalidWorkflow: Workflow = {
+        name: 'invalid-rules',
+        save: (artifact) => artifact,
+        get: () => null,
+        list: (dummy) => dummy.kind === 'entity_rules' ? [{
+            kind: 'entity_rules',
+            name: 'broken-profile',
+            title: 'broken-profile',
+            createdAt: 1,
+            updatedAt: 1,
+            summary: 'entity_rules',
+            enabled: true,
+        }] : [],
+        delete: () => false,
+    };
+    const result = await runtime.handle({
+        action: action('entity_rules.list', invalidWorkflow.name),
+        workspace: {workflow: invalidWorkflow} as any,
+        workspaceRegistry: {} as any,
+    });
+    assert.deepEqual((result.reply.payload as {rules: unknown[]}).rules, [{
+        profileName: 'broken-profile',
+        label: 'broken-profile',
+        entityCount: 0,
+        status: 'invalid',
+        error: '规则文件无效或迁移失败',
+    }]);
+});

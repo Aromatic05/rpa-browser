@@ -59,6 +59,8 @@ export type EntityRuleProfileSummary = {
     pageKind?: EntityRuleEntityKind;
     urlPattern?: string;
     entityCount: number;
+    status?: 'ready' | 'invalid';
+    error?: string;
 };
 
 export type EntityRuleProfileView = EntityRuleProfileSummary & {

@@ -350,8 +350,8 @@ const assertLegacyPageKindPreserved = (
     const explicitDomains = new Set(rules
         .map((rule) => rule.match.kind)
         .filter((kind): kind is EntityRulePageKind => ENTITY_RULE_PAGE_KINDS.has(kind as EntityRulePageKind)));
-    if (explicitDomains.size !== 1 || !explicitDomains.has(pageKind)) {
-        throw invalidArtifact(`legacy import cannot preserve ${pageKind} page kind without a matching V2 root rule`);
+    if (explicitDomains.size > 0 && (explicitDomains.size !== 1 || !explicitDomains.has(pageKind))) {
+        throw invalidArtifact(`legacy import cannot preserve ${pageKind} page kind with contradictory rule domains`);
     }
 };
 

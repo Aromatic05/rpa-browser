@@ -57,6 +57,7 @@ export const mountEntityRulesBrowserUI = (
       .rules-error { background:#fff1f2; color:#9f1239; }
       .rule-card,.entity-card { display:flex; flex-direction:column; gap:6px; padding:10px; border:1px solid #e2e8f0; border-radius:10px; background:#fff; }
       .rule-card.current { border-color:#5eead4; background:#f0fdfa; }
+      .rule-card.invalid { border-color:#fecdd3; background:#fff7f8; }
       .rule-card-head,.entity-card-head { display:flex; align-items:flex-start; gap:8px; }
       .rule-card-head strong,.entity-card-head strong { flex:1; font-size:13px; }
       .rule-meta { display:flex; flex-wrap:wrap; gap:5px; color:#64748b; font-size:11px; }
@@ -303,15 +304,16 @@ export const mountEntityRulesBrowserUI = (
     };
 
     const renderRuleCard = (rule: EntityRuleProfileSummary): HTMLElement => {
-        const current = matchesPage(rule, options.pageUrl());
+        const invalid = rule.status === 'invalid';
+        const current = !invalid && matchesPage(rule, options.pageUrl());
         const card = document.createElement('article');
-        card.className = `rule-card${current ? ' current' : ''}`;
+        card.className = `rule-card${current ? ' current' : ''}${invalid ? ' invalid' : ''}`;
         const head = document.createElement('div');
         head.className = 'rule-card-head';
         const name = document.createElement('strong');
         name.textContent = rule.label;
         const open = button('查看');
-        open.disabled = busy;
+        open.disabled = busy || invalid;
         open.setAttribute('data-rpa-rules-action', 'open');
         open.addEventListener('click', () => {void loadDetail(rule.profileName);});
         head.append(name, open);
@@ -321,8 +323,15 @@ export const mountEntityRulesBrowserUI = (
             badge(KIND_LABELS[rule.pageKind ?? ''] ?? '页面区域'),
             badge(`${String(rule.entityCount)} 个业务区域`),
         );
+        if (invalid) {meta.appendChild(badge('无法读取'));}
         if (current) {meta.appendChild(badge('当前页面', true));}
         card.append(head, meta);
+        if (invalid && rule.error) {
+            const message = document.createElement('div');
+            message.className = 'rules-error';
+            message.textContent = rule.error;
+            card.appendChild(message);
+        }
         return card;
     };
 
@@ -444,6 +453,7 @@ const sameSelection = (
 };
 
 const matchesPage = (rule: EntityRuleProfileSummary, pageUrl: string): boolean => {
+    if (rule.status === 'invalid') {return false;}
     if (!rule.urlPattern) {return true;}
     try {
         return new RegExp(rule.urlPattern).test(pageUrl);
@@ -462,7 +472,9 @@ const isRuleSummary = (value: unknown): value is EntityRuleProfileSummary =>
     isRecord(value)
     && typeof value.profileName === 'string'
     && typeof value.label === 'string'
-    && typeof value.entityCount === 'number';
+    && typeof value.entityCount === 'number'
+    && (value.status === undefined || value.status === 'ready' || value.status === 'invalid')
+    && (value.error === undefined || typeof value.error === 'string');
 
 const isRuleView = (value: unknown): value is EntityRuleProfileView => {
     if (!isRecord(value) || !isRuleSummary(value)) {return false;}

@@ -69,7 +69,7 @@ test('legacy importer rejects page-kind disagreement instead of guessing a domai
     }), /page kind mismatch/);
 });
 
-test('legacy importer rejects a root rule that contradicts or loses page kind', () => {
+test('legacy importer accepts page-scoped rules without an explicit kind and rejects contradictions', () => {
     assert.throws(() => importWorkflowEntityRules({
         kind: 'entity_rules',
         name: 'legacy-root-mismatch',
@@ -82,7 +82,7 @@ test('legacy importer rejects a root rule that contradicts or loses page kind', 
         annotation: legacyAnnotation,
     }), /cannot preserve table page kind/);
 
-    assert.throws(() => importWorkflowEntityRules({
+    const imported = importWorkflowEntityRules({
         kind: 'entity_rules',
         name: 'legacy-root-missing',
         match: {
@@ -92,7 +92,43 @@ test('legacy importer rejects a root rule that contradicts or loses page kind', 
                 : rule),
         },
         annotation: legacyAnnotation,
-    }), /cannot preserve table page kind/);
+    });
+    assert.deepEqual(imported.page, {kind: 'table', urlPattern: '/orders$'});
+    const compiled = compileEntityRuleQueryPlan({
+        profileName: imported.name,
+        domain: imported.page?.kind === 'table' ? 'table' : undefined,
+        rules: imported.match.rules,
+    });
+    assert.equal(compiled.ok, true);
+});
+
+test('legacy generic page kind is preserved even when node rules omit match.kind', () => {
+    const imported = importWorkflowEntityRules({
+        kind: 'entity_rules',
+        name: 'legacy-dialog-without-kind',
+        match: {
+            version: 1,
+            page: {kind: 'dialog', urlPattern: '/confirm'},
+            entities: [{
+                ruleId: 'close-dialog',
+                source: 'node',
+                expect: 'unique',
+                match: {classContains: 'close-button', textContains: '关闭'},
+            }],
+        },
+        annotation: {
+            version: 1,
+            page: {kind: 'dialog'},
+            annotations: [{ruleId: 'close-dialog', businessTag: 'dialog.close'}],
+        },
+    });
+    assert.deepEqual(imported.page, {kind: 'dialog', urlPattern: '/confirm'});
+    const compiled = compileEntityRuleQueryPlan({
+        profileName: imported.name,
+        domain: 'node',
+        rules: imported.match.rules,
+    });
+    assert.equal(compiled.ok, true);
 });
 
 test('V2 publication validation preserves structural contains dependencies', () => {

@@ -321,3 +321,44 @@ test('refreshing the rule list clears an active page preview', async () => {
         fixture.cleanup();
     }
 });
+
+
+test('invalid persisted rules remain visible and cannot be opened as valid details', async () => {
+    const fixture = setupDom();
+    let getCalls = 0;
+    const handle = mountEntityRulesBrowserUI({
+        launchers: fixture.launchers,
+        surface: fixture.surface,
+        pageUrl: () => fixture.dom.window.location.href,
+        sendAction: async (type) => {
+            if (type === 'entity_rules.get') {getCalls += 1;}
+            return reply(type, {
+                rules: [{
+                    profileName: 'broken-profile',
+                    label: 'broken-profile',
+                    entityCount: 0,
+                    status: 'invalid',
+                    error: '规则文件无效或迁移失败',
+                }],
+            });
+        },
+        onCreate: () => undefined,
+        onEdit: () => undefined,
+        onPreview: async () => true,
+    });
+    try {
+        (fixture.shadow.querySelector('[data-rpa-rules-action="launch"]') as HTMLButtonElement).click();
+        await flush();
+        const visible = fixture.shadow.textContent || '';
+        assert.match(visible, /broken-profile/);
+        assert.match(visible, /规则文件无效或迁移失败/);
+        const open = fixture.shadow.querySelector('[data-rpa-rules-action="open"]') as HTMLButtonElement;
+        assert.equal(open.disabled, true);
+        open.click();
+        await flush();
+        assert.equal(getCalls, 0);
+    } finally {
+        handle.unmount();
+        fixture.cleanup();
+    }
+});
