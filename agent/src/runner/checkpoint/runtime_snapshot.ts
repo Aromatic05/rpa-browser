@@ -60,7 +60,8 @@ export const materializeReferencedCheckpointRuntimeSnapshot = (options: {
     const checkpoints = new Map((options.checkpoints || []).map((checkpoint) => [checkpoint.id, checkpoint]));
     const stepResolves = {...(options.checkpointStepResolves || {})};
     const bodies = {...(options.checkpointBodies || {})};
-    const pendingSources = [...options.sources, ...Object.values(bodies)];
+    const pendingSources = [...options.sources];
+    const queuedSources = new Set(pendingSources);
     const visitedSources = new Set<string>();
 
     while (pendingSources.length > 0) {
@@ -75,13 +76,16 @@ export const materializeReferencedCheckpointRuntimeSnapshot = (options: {
             if (stepResolves[id] === undefined) {
                 stepResolves[id] = options.checkpointProvider.getCheckpointResolves?.(id) || {};
             }
-            if (checkpoint.body && bodies[id] === undefined) {
+            if (!checkpoint.body) {continue;}
+            if (bodies[id] === undefined) {
                 const body = options.checkpointProvider.getCheckpointBody?.(id);
-                if (body) {
-                    bodies[id] = body.source;
-                    stepResolves[id] = body.stepResolves;
-                    pendingSources.push(body.source);
-                }
+                if (!body) {continue;}
+                bodies[id] = body.source;
+                stepResolves[id] = body.stepResolves;
+            }
+            if (!queuedSources.has(bodies[id])) {
+                queuedSources.add(bodies[id]);
+                pendingSources.push(bodies[id]);
             }
         }
     }
@@ -89,7 +93,7 @@ export const materializeReferencedCheckpointRuntimeSnapshot = (options: {
     return materializeCheckpointRuntimeSnapshot({
         checkpoints: [...checkpoints.values()], checkpointStepResolves: stepResolves, checkpointBodies: bodies,
         workflow: options.workflow, entityRulesProvider: options.entityRulesProvider,
-        assetSources: [...options.sources, ...Object.values(bodies)],
+        assetSources: [...visitedSources],
     });
 };
 

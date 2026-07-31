@@ -364,14 +364,16 @@ const resolveRunCheckpoints = (
         : req.checkpointStepResolves ?? {};
     const bodies = req.checkpoints === undefined
         ? Object.fromEntries(allCheckpoints
-            .filter((checkpoint) => checkpoint.kind === undefined || checkpoint.kind === 'recovery')
             .flatMap((checkpoint) => {
             const body = sourceProvider?.getCheckpointBody?.(checkpoint.id);
             return body ? [[checkpoint.id, body.source] as const] : [];
         }))
         : req.checkpointBodies ?? {};
+    const recoverySources = allCheckpoints
+        .filter((checkpoint) => checkpoint.kind === undefined || checkpoint.kind === 'recovery')
+        .flatMap((checkpoint) => bodies[checkpoint.id] === undefined ? [] : [bodies[checkpoint.id]]);
     const snapshot = materializeReferencedCheckpointRuntimeSnapshot({
-        sources: Object.values(bodies), checkpointProvider: sourceProvider || {
+        sources: recoverySources, checkpointProvider: sourceProvider || {
             getCheckpoint: (id) => allCheckpoints.find((checkpoint) => checkpoint.id === id) || null,
             getCheckpointResolves: (id) => stepResolves[id] || null,
             getCheckpointBody: (id) => bodies[id] === undefined ? null : {source: bodies[id], stepResolves: stepResolves[id] || {}},

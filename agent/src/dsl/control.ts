@@ -139,21 +139,23 @@ export const createDslControl = (services: DslControlServices): DslControl => ({
             };
         }
 
-        const checkpointRuntime = materializeReferencedCheckpointRuntimeSnapshot({
-            sources: [dsl.content], checkpointProvider: workspace.checkpoint.getProvider(workflow), workflow,
-            entityRulesProvider: services.runStepsDeps.resolveEntityRulesProvider?.(workspace.name),
+        const runResult = await runWorkspaceExecution(workspace, action.type, async () => {
+            const checkpointRuntime = materializeReferencedCheckpointRuntimeSnapshot({
+                sources: [dsl.content], checkpointProvider: workspace.checkpoint.getProvider(workflow), workflow,
+                entityRulesProvider: services.runStepsDeps.resolveEntityRulesProvider?.(workspace.name),
+            });
+            return await runDslSource(
+                dsl.content,
+                {
+                    workspaceName: workspace.name,
+                    deps: services.runStepsDeps,
+                    input: payload.input || {},
+                    checkpointProvider: checkpointRuntime.provider,
+                    entityRulesResolver: checkpointRuntime.entityRulesResolver || entityRulesResolver,
+                    resolveResolver: checkpointRuntime.resolveResolver || resolveResolver,
+                },
+            );
         });
-        const runResult = await runWorkspaceExecution(workspace, action.type, async () => await runDslSource(
-            dsl.content,
-            {
-                workspaceName: workspace.name,
-                deps: services.runStepsDeps,
-                input: payload.input || {},
-                checkpointProvider: checkpointRuntime.provider,
-                entityRulesResolver: checkpointRuntime.entityRulesResolver || entityRulesResolver,
-                resolveResolver: checkpointRuntime.resolveResolver || resolveResolver,
-            },
-        ));
 
         return {
             reply: replyAction(action, {
