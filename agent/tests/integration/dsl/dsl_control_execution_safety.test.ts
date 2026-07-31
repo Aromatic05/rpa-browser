@@ -6,8 +6,9 @@ import { toFailedAction } from '../../../src/actions/results';
 import { DslValidationError } from '../../../src/dsl/diagnostics';
 import { completeRunStepsDeps } from '../../helpers/run_steps_workspace';
 import type { StepUnion } from '../../../src/runner/steps/types';
+import type { DslEntityRulesResolver } from '../../../src/dsl/link';
 
-const createInput = (content: string, state: { value: 'idle' | 'executing' }) => {
+const createInput = (content: string, state: { value: 'idle' | 'executing' }, entityRulesResolver?: DslEntityRulesResolver) => {
     const workspace = {
         name: 'ws-dsl-control',
         get state() { return state.value; },
@@ -18,6 +19,7 @@ const createInput = (content: string, state: { value: 'idle' | 'executing' }) =>
             entryDslName: () => 'main',
             list: () => [{ kind: 'dsl', name: 'main' }],
             get: () => ({ kind: 'dsl', name: 'main', content }),
+            getDslEntityRulesResolver: () => entityRulesResolver,
         },
         checkpoint: { getProvider: () => ({ getCheckpoint: () => null }) },
     } as any;
@@ -41,7 +43,11 @@ test('dsl.validate and compatibility dsl.test have zero execution side effects',
             }) as any } as any,
         }),
     });
-    const input = createInput('let rows = query table "orders" currentRows', { value: 'idle' });
+    const input = createInput('use entity_rules "orders" as order\nlet rows = query order.orderList.currentRows', { value: 'idle' }, {
+        resolveProfile: (profileName) => profileName === 'orders' ? {
+            profileName, entities: [{entityKey: 'orderList', businessTag: 'orders', kind: 'table', fields: [], actions: [], supportedQueries: ['table.currentRows']}],
+        } : null,
+    });
 
     const validate = await control.handle(input('dsl.validate'));
     const compatibility = await control.handle(input('dsl.test'));
