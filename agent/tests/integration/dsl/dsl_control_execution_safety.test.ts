@@ -152,6 +152,47 @@ test('dsl.run acquires one workspace execution slot and releases it after comple
     assert.equal(state.value, 'idle');
 });
 
+test('dsl.run freezes the referenced procedure graph before executing earlier DSL steps', async () => {
+    let body = 'use resolves "bundle" as target\nclick target.button';
+    let selector = '#frozen';
+    const calls: string[] = [];
+    const checkpoint = {id: 'procedure', kind: 'procedure' as const, body: {language: 'dsl' as const, source: 'body.dsl'}};
+    const workspace = {
+        name: 'ws-dsl-control', state: 'idle' as 'idle' | 'executing', updatedAt: 0,
+        workflow: {
+            name: 'ws-dsl-control', entryDslName: () => 'main',
+            list: () => {throw new Error('workflow.list must not enumerate unrelated DSL artifacts');},
+            get: (name: string) => name === 'main'
+                ? {kind: 'dsl', name, content: 'click input.seed\nuse checkpoint "procedure"', stepResolves: {}}
+                : name === 'bundle' ? {kind: 'dsl', name, content: '', stepResolves: {button: {hint: {raw: {selector}}}}} : null,
+        },
+        checkpoint: {getProvider: () => ({
+            getCheckpoint: (id: string) => id === checkpoint.id ? checkpoint : null,
+            getCheckpointResolves: () => ({}),
+            getCheckpointBody: () => ({source: body, stepResolves: {}}),
+            listCheckpoints: () => [],
+        })},
+    } as any;
+    const deps = completeRunStepsDeps({
+        config: {} as any,
+        resolveWorkspace: () => workspace,
+        pluginHost: {getExecutors: () => ({
+            'browser.click': async (step: StepUnion) => {
+                if (calls.length === 0) {body = 'click input.missing'; selector = '#live';}
+                calls.push(String(step.resolve?.hint?.raw?.selector || (step.args as any).nodeId));
+                return {stepId: step.id, ok: true};
+            },
+        }) as any} as any,
+    }, {workspaceName: workspace.name});
+    const control = createDslControl({runStepsDeps: deps});
+    const result = await control.handle({
+        action: {v: 1, id: 'frozen-procedure', type: 'dsl.run', workspaceName: workspace.name, payload: {input: {seed: {nodeId: 'seed'}}}},
+        workspace, workspaceRegistry: {} as any,
+    });
+    assert.equal(result.reply.type, 'dsl.run.result');
+    assert.deepEqual(calls, ['seed', '#frozen']);
+});
+
 test('formal action failures preserve DSL error codes and diagnostics', () => {
     const failure = toFailedAction(
         {v: 1, id: 'dsl-error', type: 'dsl.run', workspaceName: 'ws-dsl-control'},

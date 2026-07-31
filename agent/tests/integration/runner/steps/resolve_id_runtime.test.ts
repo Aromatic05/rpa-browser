@@ -256,6 +256,47 @@ test('runSteps snapshots live checkpoint and workflow DSL assets before recovery
     assert.equal(observed[0]?.resolve?.hint?.raw?.selector, '#snapshot');
 });
 
+test('runSteps materializes only recovery-body imports and exposes frozen recovery failure data', async () => {
+    let attempts = 0;
+    const seen: unknown[] = [];
+    const deps = createDeps({
+        'browser.click': async (step) => {
+            attempts += 1;
+            if (attempts === 1) {return {stepId: step.id, ok: false, error: {code: 'ERR_NOT_FOUND', message: 'missing'}};}
+            seen.push(step.resolve?.hint?.raw?.selector);
+            return {stepId: step.id, ok: true};
+        },
+    });
+    const workspace = deps.resolveWorkspace('ws-1') as any;
+    const checkpoint: Checkpoint = {
+        id: 'recover', kind: 'recovery', trigger: {matchRules: [{errorCode: 'ERR_NOT_FOUND'}]}, policy: {maxAttempts: 2, retryOriginal: false},
+        body: {language: 'dsl', source: 'body.dsl'},
+    };
+    workspace.workflow = {
+        name: 'ws-1',
+        list: () => {throw new Error('unrelated workflow DSL enumeration must not occur');},
+        get: (name: string) => name === 'bundle' ? {kind: 'dsl', name, content: '', stepResolves: {button: {hint: {raw: {selector: '#frozen'}}}}} : null,
+    };
+    workspace.checkpoint = {getProvider: () => ({
+        listCheckpoints: () => [checkpoint],
+        getCheckpointResolves: () => ({}),
+        getCheckpointBody: () => ({source: 'use resolves "bundle" as target\noutput id = failure.step.id\noutput name = failure.step.name\noutput args = failure.step.args\noutput attempt = failure.attempt\noutput max = failure.maxAttempts\nclick target.button', stepResolves: {}}),
+    })};
+    deps.resolveEntityRulesProvider = () => ({
+        workflowName: 'ws-1', availability: 'ready', listProfiles: () => {throw new Error('profile enumeration must not occur');},
+        getProfile: () => null, resolveExports: () => {throw new Error('unrelated profile must not load');},
+    } as any);
+    const queue = createStepsQueue([{id: 'seed', name: 'browser.click', args: {selector: '#seed'}} as StepUnion]);
+    closeStepsQueue(queue);
+    const pipe = createResultPipe();
+    const completed = await runSteps({runId: 'targeted-snapshot', workspaceName: 'ws-1', stepsQueue: queue, resultPipe: pipe, signalChannel: createSignalChannel(), stopOnError: true, checkpointMaxAttempts: 3}, deps);
+    assert.equal(completed.status, 'completed');
+    assert.deepEqual(seen, ['#frozen']);
+    assert.deepEqual((pipe.items[0]?.data as any).output, {
+        id: 'seed', name: 'browser.click', args: {selector: '#seed'}, attempt: 1, max: 2,
+    });
+});
+
 test('runSteps executes an injected checkpoint DSL body without a checkpoint provider', async () => {
     const observed: StepUnion[] = [];
     let attempts = 0;
