@@ -548,7 +548,7 @@ test('browser.checkpoint reports a stable error when a body procedure is unavail
     const checkpoint: Checkpoint = {
         id: 'missing-body',
         kind: 'procedure',
-        body: {language: 'dsl', source: 'missing.dsl'},
+        body: {language: 'dsl', source: 'body.dsl'},
     };
 
     const result = await executeBrowserCheckpoint({
