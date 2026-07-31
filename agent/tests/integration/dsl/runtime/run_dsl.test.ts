@@ -288,6 +288,7 @@ test('runDsl wraps failed act steps as DslRuntimeError', async () => {
                     error: {
                         code: 'ERR_FILL_FAILED',
                         message: 'fill failed',
+                        details: {profileName: 'order-page', ruleId: 'buyer'},
                     },
                 }),
             }) as any,
@@ -315,6 +316,8 @@ test('runDsl wraps failed act steps as DslRuntimeError', async () => {
         (error: unknown) =>
             error instanceof DslRuntimeError &&
             error.code === 'ERR_FILL_FAILED' &&
-            error.message === 'fill failed',
+            error.message === 'fill failed' &&
+            (error.details as {profileName?: string; ruleId?: string}).profileName === 'order-page' &&
+            (error.details as {profileName?: string; ruleId?: string}).ruleId === 'buyer',
     );
 });

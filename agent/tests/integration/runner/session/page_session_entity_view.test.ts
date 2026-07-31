@@ -31,6 +31,61 @@ test('V2 entity view combines canonical form/table components with active busine
     assert.equal(view.entities.find((entity) => entity.kind === 'table')?.source, 'confirmed');
 });
 
+test('table member bindings cannot replace the component root business binding', async () => {
+    const fixture = createV2BusinessPage();
+    const tableProfile = fixture.capture.entityRules?.profiles['orders-table'];
+    assert.ok(tableProfile);
+    const rootEntry = Object.entries(tableProfile.semanticBindings.byId)
+        .find(([, binding]) => binding.targetKind === 'table-component');
+    assert.ok(rootEntry);
+    const [rootId, root] = rootEntry;
+    const tableId = root.target.componentIds[0];
+    assert.ok(tableId);
+    const competingMember = {
+        ...root,
+        id: 'orders-table:000-member',
+        ruleId: '000-member',
+        planStepId: 'orders-table:000-member',
+        targetKind: 'node' as const,
+        annotation: {ruleId: '000-member', actionIntent: 'query', actionRole: 'module'},
+        target: {
+            ...root.target,
+            componentIds: [tableId],
+            nodeIds: [fixture.nodeIds.submit],
+        },
+    };
+    const capture = {
+        ...fixture.capture,
+        entityRules: {
+            ...fixture.capture.entityRules!,
+            profiles: {
+                ...fixture.capture.entityRules!.profiles,
+                'orders-table': {
+                    ...tableProfile,
+                    semanticBindings: {
+                        ...tableProfile.semanticBindings,
+                        byId: {
+                            ...tableProfile.semanticBindings.byId,
+                            [rootId]: root,
+                            [competingMember.id]: competingMember,
+                        },
+                    },
+                },
+            },
+        },
+    };
+    const store = new PageSnapshotSessionStore<object>();
+    const entry = await store.ensureFresh({
+        pageKey: {},
+        pageUrl: '/orders',
+        capture: async () => capture,
+    });
+
+    const table = buildPageSessionEntityView(entry).entities.find((entity) => entity.kind === 'table');
+    assert.equal(table?.businessTag, 'order.table.main');
+    assert.equal(table?.bindingId, root.id);
+});
+
 test('V2 business query reads canonical table rows and annotation metadata', async () => {
     const {entry} = await createEntry();
     const rowCount = queryPageSessionBusinessEntity(entry, 'order.table.main', 'table.rowCount');

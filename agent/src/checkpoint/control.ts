@@ -88,6 +88,7 @@ export const createCheckpointControl = (): CheckpointControl => ({
                     checkpoint: artifact.checkpoint,
                     stepResolves: artifact.stepResolves,
                     hints: artifact.hints,
+                    ...(artifact.bodyDsl !== undefined ? {bodyDsl: artifact.bodyDsl} : {}),
                 }),
                 events: [],
             };

@@ -387,8 +387,17 @@ const resolveRunCheckpoints = (
     const recoverySources = allCheckpoints
         .filter((checkpoint) => checkpoint.kind === undefined || checkpoint.kind === 'recovery')
         .flatMap((checkpoint) => bodies[checkpoint.id] === undefined ? [] : [bodies[checkpoint.id]]);
+    const queuedProcedureSources = req.stepsQueue.items
+        .slice(req.stepsQueue.cursor)
+        .flatMap((step) => {
+            if (step.name !== 'browser.checkpoint') {return [];}
+            const checkpointId = (step.args as {checkpointId?: unknown}).checkpointId;
+            return typeof checkpointId === 'string' && bodies[checkpointId] !== undefined
+                ? [bodies[checkpointId]]
+                : [];
+        });
     const snapshot = materializeReferencedCheckpointRuntimeSnapshot({
-        sources: recoverySources, checkpointProvider: sourceProvider || {
+        sources: [...recoverySources, ...queuedProcedureSources], checkpointProvider: sourceProvider || {
             getCheckpoint: (id) => allCheckpoints.find((checkpoint) => checkpoint.id === id) || null,
             getCheckpointResolves: (id) => stepResolves[id] || null,
             getCheckpointBody: (id) => bodies[id] === undefined ? null : {source: bodies[id], stepResolves: stepResolves[id] || {}},

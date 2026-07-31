@@ -1,309 +1,122 @@
 import {ActionError, ERROR_CODES} from '../../actions/results';
 import type {WorkspaceRouterInput} from '../../runtime/workspace/router';
 import type {Checkpoint} from '../../runner/checkpoint';
-import type {CheckpointAction} from '../../runner/checkpoint/types';
 import type {StepResolve, StepUnion} from '../../runner/steps/types';
 import type {WorkflowCheckpoint} from '../../workflow';
 import type {RecordingEnhancementMap} from '../types';
-import {
-    entityCondition,
-    entityRuleControl,
-    persistRecordedStep,
-    semanticBelongsToOption,
-    uniqueCheckpointId,
-    validateCheckpointName,
-} from './common';
+import {persistRecordedStep, entityCondition, entityRuleControl, semanticBelongsToOption, uniqueCheckpointId, validateCheckpointName} from './common';
+import {compileRecordedCheckpointDsl, type RecordedDslOperation} from './dsl_compiler';
 import {requireCheckpointEntityRuleOption} from './options';
 import {recordedValue} from './summary';
-import type {
-    CheckpointEntityRuleOption,
-    CheckpointProcedureMapping,
-    CheckpointRecordSavePayload,
-} from './types';
+import type {CheckpointEntityRuleOption, CheckpointProcedureMapping, CheckpointRecordSavePayload} from './types';
 import {normalizeText} from './value';
 
 export const buildRecordedProcedureCheckpoint = (
-    workspace: WorkspaceRouterInput['workspace'],
-    steps: readonly StepUnion[],
-    enrichments: RecordingEnhancementMap,
-    payload: CheckpointRecordSavePayload,
+    workspace: WorkspaceRouterInput['workspace'], steps: readonly StepUnion[], enrichments: RecordingEnhancementMap, payload: CheckpointRecordSavePayload,
 ): WorkflowCheckpoint => {
     const name = validateCheckpointName(workspace, payload);
     const option = requireCheckpointEntityRuleOption(workspace, '', payload);
-    const mappings = validateProcedureMappings(
-        steps,
-        option,
-        mergeProcedureMappings(
-            inferProcedureMappings(steps, enrichments, option),
-            payload.mappings ?? [],
-        ),
-    );
+    const mappings = validateProcedureMappings(steps, option, mergeProcedureMappings(inferProcedureMappings(steps, enrichments, option), payload.mappings ?? []));
     const checkpointId = uniqueCheckpointId(workspace, name, 'procedure');
-    const entityRules = entityRuleControl(option);
     const input: Record<string, unknown> = {};
-    const content: CheckpointAction[] = [];
     const stepResolves: Record<string, StepResolve> = {};
+    const operations: RecordedDslOperation[] = [];
 
     steps.forEach((step, index) => {
         const mapping = mappings.get(step.id);
         if (mapping?.kind === 'input') {
-            const field = option.fields.find((candidate) => candidate.fieldKey === mapping.fieldKey)!;
-            const localKey = `target${String(index + 1)}`;
-            content.push({
-                type: 'query',
-                args: {
-                    op: 'entity.target',
-                    businessTag: option.businessTag,
-                    target: {kind: field.targetKind, fieldKey: field.fieldKey},
-                },
-                entityRules,
-                saveAs: localKey,
-            });
-            const value = recordedValue(step);
-            if (!Object.hasOwn(input, field.fieldKey)) {input[field.fieldKey] = structuredClone(value);}
-            content.push({
-                type: 'act',
-                step: {
-                    name: step.name as 'browser.fill' | 'browser.type' | 'browser.select_option',
-                    args: parameterizedInputArgs(step, localKey, field.fieldKey),
-                    entityRules,
-                },
-            });
+            if (!Object.hasOwn(input, mapping.fieldKey)) {input[mapping.fieldKey] = structuredClone(recordedValue(step));}
+            operations.push({kind: 'entity', action: actionForStep(step), member: mapping.fieldKey, value: `input.${mapping.fieldKey}`});
             return;
         }
         if (mapping?.kind === 'action') {
-            const action = option.actions.find((candidate) => candidate.actionIntent === mapping.actionIntent)!;
-            const localKey = `target${String(index + 1)}`;
-            content.push({
-                type: 'query',
-                args: {
-                    op: 'entity.target',
-                    businessTag: option.businessTag,
-                    target: {kind: action.targetKind, actionIntent: action.actionIntent},
-                },
-                entityRules,
-                saveAs: localKey,
-            });
-            content.push({
-                type: 'act',
-                step: {
-                    name: 'browser.click',
-                    args: {nodeId: {ref: `local.${localKey}.nodeId`}} as never,
-                    entityRules,
-                },
-            });
+            operations.push({kind: 'entity', action: 'click', member: mapping.actionIntent});
             return;
         }
         if (mapping?.kind === 'row_action') {
-            const action = option.rowActions.find((candidate) => candidate.actionIntent === mapping.actionIntent)!;
-            const localKey = `target${String(index + 1)}`;
             const semantic = semanticHintsForStep(step.id, enrichments);
-            const recordedPrimaryKey = semantic?.rowPrimaryKey;
             if (!Object.hasOwn(input, mapping.inputKey)) {
-                input[mapping.inputKey] = recordedPrimaryKey?.fieldKey === mapping.primaryKeyFieldKey
-                    ? recordedPrimaryKey.value
-                    : '';
+                input[mapping.inputKey] = semantic?.rowPrimaryKey?.fieldKey === mapping.primaryKeyFieldKey ? semantic.rowPrimaryKey.value : '';
             }
-            content.push({
-                type: 'query',
-                args: {
-                    op: 'entity.target',
-                    businessTag: option.businessTag,
-                    target: {
-                        kind: action.targetKind,
-                        primaryKey: {
-                            fieldKey: mapping.primaryKeyFieldKey,
-                            value: {ref: `input.${mapping.inputKey}`},
-                        },
-                        actionIntent: action.actionIntent,
-                    },
-                } as never,
-                entityRules,
-                saveAs: localKey,
-            });
-            content.push({
-                type: 'act',
-                step: {
-                    name: 'browser.click',
-                    args: {nodeId: {ref: `local.${localKey}.nodeId`}} as never,
-                    entityRules,
-                },
-            });
+            operations.push({kind: 'row_action', actionIntent: mapping.actionIntent, primaryKey: `input.${mapping.inputKey}`});
             return;
         }
-        const persisted = persistRecordedStep(step, index, enrichments, stepResolves);
-        content.push({
-            type: 'act',
-            step: {
-                name: persisted.name as Exclude<StepUnion['name'], 'browser.checkpoint'>,
-                args: persisted.args,
-                entityRules: persisted.entityRules ?? entityRules,
-            },
-        });
+        if (step.name === 'browser.scroll' && mappings.size > 0) {return;}
+        operations.push(fallbackOperation(step, index, enrichments, stepResolves, input));
     });
 
-    const outputKind = payload.outputKind ?? 'none';
-    let output: Checkpoint['output'];
-    if (outputKind !== 'none') {
-        if (option.entityKind !== 'table') {
-            throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, '当前业务区域不支持该输出');
-        }
-        content.push({
-            type: 'query',
-            args: {op: 'entity', businessTag: option.businessTag, query: outputKind},
-            entityRules,
-            saveAs: 'checkpointOutput',
-        });
-        output = outputKind === 'table.currentRows'
-            ? {rows: {ref: 'local.checkpointOutput.value'}}
-            : {rowCount: {ref: 'local.checkpointOutput.value'}};
-    }
-
-    const condition = entityCondition(option);
+    const output = payload.outputKind === 'none' || payload.outputKind === undefined ? undefined : payload.outputKind;
+    if (output && option.entityKind !== 'table') {throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, '当前业务区域不支持该输出');}
     const checkpoint: Checkpoint = {
-        id: checkpointId,
-        kind: 'procedure',
-        name,
-        input,
-        trigger: {matchRules: [{entityExists: condition}], entityRules},
-        prepare: [{
-            type: 'act',
-            step: {
-                name: 'browser.assert',
-                args: {entityExists: condition},
-                entityRules,
-            },
-        }],
-        content,
-        ...(output ? {output} : {}),
-        policy: {stopOnFailure: true},
-        enabled: true,
-        priority: 0,
+        id: checkpointId, kind: 'procedure', name, input,
+        trigger: {matchRules: [{entityExists: entityCondition(option)}], entityRules: entityRuleControl(option)},
+        body: {language: 'dsl', source: 'body.dsl'}, policy: {stopOnFailure: true}, enabled: true, priority: 0,
     };
-    return {kind: 'checkpoint', name: checkpointId, checkpoint, stepResolves, hints: {}};
+    const bodyDsl = compileRecordedCheckpointDsl({workspace, checkpointId, entity: option, operations, stepResolves, output});
+    return {kind: 'checkpoint', name: checkpointId, checkpoint, stepResolves, hints: {}, bodyDsl};
 };
 
-const inferProcedureMappings = (
-    steps: readonly StepUnion[],
-    enrichments: RecordingEnhancementMap,
-    option: CheckpointEntityRuleOption,
-): CheckpointProcedureMapping[] => {
-    const result: CheckpointProcedureMapping[] = [];
-    for (const step of steps) {
-        const enhancement = Object.hasOwn(enrichments, step.id) ? enrichments[step.id] : undefined;
-        const semantic = enhancement
-            ? enhancement.semanticHints ?? enhancement.target?.semanticHints
-            : undefined;
-        if (!semanticBelongsToOption(semantic, option)) {continue;}
-        if (['browser.fill', 'browser.type', 'browser.select_option'].includes(step.name)) {
-            const fieldKey = normalizeText(semantic?.fieldKey);
-            if (fieldKey && option.fields.some((field) => field.fieldKey === fieldKey)) {
-                result.push({stepId: step.id, kind: 'input', fieldKey});
-            }
-            continue;
-        }
-        if (step.name === 'browser.click') {
-            const actionIntent = normalizeText(semantic?.actionIntent);
-            const rowPrimaryKey = semantic?.rowPrimaryKey;
-            if (semantic?.actionRole === 'row'
-                && actionIntent
-                && rowPrimaryKey
-                && option.primaryKey?.fieldKey === rowPrimaryKey.fieldKey
-                && option.rowActions.some((action) => action.actionIntent === actionIntent)) {
-                result.push({
-                    stepId: step.id,
-                    kind: 'row_action',
-                    actionIntent,
-                    primaryKeyFieldKey: rowPrimaryKey.fieldKey,
-                    inputKey: rowPrimaryKey.fieldKey,
-                });
-                continue;
-            }
-            if (actionIntent && option.actions.some((action) => action.actionIntent === actionIntent)) {
-                result.push({stepId: step.id, kind: 'action', actionIntent});
-            }
-        }
+const actionForStep = (step: StepUnion): 'fill' | 'type' | 'select' => {
+    if (step.name === 'browser.fill') {return 'fill';}
+    if (step.name === 'browser.type') {return 'type';}
+    if (step.name === 'browser.select_option') {return 'select';}
+    throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, '输入步骤类型无效');
+};
+
+const fallbackOperation = (step: StepUnion, index: number, enrichments: RecordingEnhancementMap, resolves: Record<string, StepResolve>, input: Record<string, unknown>): RecordedDslOperation => {
+    if (step.name === 'browser.snapshot') {return {kind: 'snapshot'};}
+    const persisted = persistRecordedStep(step, index, enrichments, resolves);
+    const resolveId = (persisted.args as {resolveId?: unknown}).resolveId;
+    if (typeof resolveId !== 'string') {throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, `不支持将录制步骤 ${step.name} 生成为稳定 DSL；请先标注业务语义或提供元素解析`);}
+    const symbol = `step${String(index + 1)}`;
+    resolves[symbol] = resolves[resolveId];
+    delete resolves[resolveId];
+    if (step.name === 'browser.click') {return {kind: 'resolve', action: 'click', symbol};}
+    if (step.name === 'browser.fill' || step.name === 'browser.type' || step.name === 'browser.select_option') {
+        const key = `recordedValue${String(index + 1)}`;
+        input[key] = structuredClone(recordedValue(step));
+        return {kind: 'resolve', action: actionForStep(step), symbol, value: `input.${key}`};
     }
-    return result;
+    throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, `不支持将录制步骤 ${step.name} 生成为稳定 DSL`);
 };
 
-const mergeProcedureMappings = (
-    inferred: readonly CheckpointProcedureMapping[],
-    overrides: readonly CheckpointProcedureMapping[],
-): CheckpointProcedureMapping[] => {
-    const merged = new Map<string, CheckpointProcedureMapping>();
-    for (const mapping of inferred) {merged.set(mapping.stepId, structuredClone(mapping));}
-    for (const mapping of overrides) {merged.set(mapping.stepId, structuredClone(mapping));}
-    return [...merged.values()];
+const inferProcedureMappings = (steps: readonly StepUnion[], enrichments: RecordingEnhancementMap, option: CheckpointEntityRuleOption): CheckpointProcedureMapping[] => steps.flatMap<CheckpointProcedureMapping>((step) => {
+    const semantic = semanticHintsForStep(step.id, enrichments);
+    if (!semanticBelongsToOption(semantic, option)) {return [];}
+    if (['browser.fill', 'browser.type', 'browser.select_option'].includes(step.name) && normalizeText(semantic?.fieldKey) && option.fields.some((field) => field.fieldKey === semantic!.fieldKey)) {
+        return [{stepId: step.id, kind: 'input' as const, fieldKey: semantic!.fieldKey!}];
+    }
+    if (step.name === 'browser.click' && semantic?.actionRole === 'row' && semantic.actionIntent && semantic.rowPrimaryKey && option.primaryKey?.fieldKey === semantic.rowPrimaryKey.fieldKey && option.rowActions.some((action) => action.actionIntent === semantic.actionIntent)) {
+        return [{stepId: step.id, kind: 'row_action' as const, actionIntent: semantic.actionIntent, primaryKeyFieldKey: semantic.rowPrimaryKey.fieldKey, inputKey: semantic.rowPrimaryKey.fieldKey}];
+    }
+    if (step.name === 'browser.click' && normalizeText(semantic?.actionIntent) && option.actions.some((action) => action.actionIntent === semantic!.actionIntent)) {
+        return [{stepId: step.id, kind: 'action' as const, actionIntent: semantic!.actionIntent!}];
+    }
+    return [];
+});
+
+const mergeProcedureMappings = (inferred: readonly CheckpointProcedureMapping[], overrides: readonly CheckpointProcedureMapping[]): CheckpointProcedureMapping[] => {
+    const result = new Map<string, CheckpointProcedureMapping>();
+    for (const mapping of inferred) {result.set(mapping.stepId, structuredClone(mapping));}
+    for (const mapping of overrides) {result.set(mapping.stepId, structuredClone(mapping));}
+    return [...result.values()];
 };
 
-const validateProcedureMappings = (
-    steps: readonly StepUnion[],
-    option: CheckpointEntityRuleOption,
-    mappings: readonly CheckpointProcedureMapping[],
-): Map<string, CheckpointProcedureMapping> => {
+const validateProcedureMappings = (steps: readonly StepUnion[], option: CheckpointEntityRuleOption, mappings: readonly CheckpointProcedureMapping[]): Map<string, CheckpointProcedureMapping> => {
     const byId = new Map(steps.map((step) => [step.id, step]));
     const result = new Map<string, CheckpointProcedureMapping>();
     for (const mapping of mappings) {
         const step = byId.get(mapping.stepId);
-        if (!step || result.has(mapping.stepId)) {
-            throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, '检查点步骤映射无效');
-        }
-        if (mapping.kind === 'input') {
-            if (!['browser.fill', 'browser.type', 'browser.select_option'].includes(step.name)) {
-                throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, '只有填写和选择操作可以作为输入');
-            }
-            if (!option.fields.some((field) => field.fieldKey === mapping.fieldKey)) {
-                throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, '输入字段不属于所选业务区域');
-            }
-        } else if (mapping.kind === 'action') {
-            if (step.name !== 'browser.click') {
-                throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, '只有点击操作可以映射为业务操作');
-            }
-            if (!option.actions.some((action) => action.actionIntent === mapping.actionIntent)) {
-                throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, '业务操作不属于所选业务区域');
-            }
-        } else {
-            if (step.name !== 'browser.click') {
-                throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, '只有点击操作可以映射为行操作');
-            }
-            if (option.entityKind !== 'table' || !option.primaryKey) {
-                throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, '行操作需要已标注主键的表格');
-            }
-            if (mapping.primaryKeyFieldKey !== option.primaryKey.fieldKey) {
-                throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, '目标行字段不是当前表格主键');
-            }
-            if (!option.rowActions.some((action) => action.actionIntent === mapping.actionIntent)) {
-                throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, '行操作不属于所选表格');
-            }
-            if (!normalizeText(mapping.inputKey)) {
-                throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, '目标行输入名称不能为空');
-            }
-        }
+        if (!step || result.has(mapping.stepId)) {throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, '检查点步骤映射无效');}
+        if (mapping.kind === 'input' && (!['browser.fill', 'browser.type', 'browser.select_option'].includes(step.name) || !option.fields.some((field) => field.fieldKey === mapping.fieldKey))) {throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, '输入字段不属于所选业务区域');}
+        if (mapping.kind === 'action' && (step.name !== 'browser.click' || !option.actions.some((action) => action.actionIntent === mapping.actionIntent))) {throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, '业务操作不属于所选业务区域');}
+        if (mapping.kind === 'row_action' && (step.name !== 'browser.click' || option.entityKind !== 'table' || !option.primaryKey || mapping.primaryKeyFieldKey !== option.primaryKey.fieldKey || !option.rowActions.some((action) => action.actionIntent === mapping.actionIntent) || !normalizeText(mapping.inputKey))) {throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, '行操作映射无效');}
         result.set(mapping.stepId, structuredClone(mapping));
     }
     return result;
 };
 
-const semanticHintsForStep = (
-    stepId: string,
-    enrichments: RecordingEnhancementMap,
-) => {
+const semanticHintsForStep = (stepId: string, enrichments: RecordingEnhancementMap) => {
     const enhancement = Object.hasOwn(enrichments, stepId) ? enrichments[stepId] : undefined;
     return enhancement ? enhancement.semanticHints ?? enhancement.target?.semanticHints : undefined;
-};
-
-const parameterizedInputArgs = (
-    step: StepUnion,
-    localKey: string,
-    inputKey: string,
-): Record<string, unknown> => {
-    const nodeId = {ref: `local.${localKey}.nodeId`};
-    const input = {ref: `input.${inputKey}`};
-    if (step.name === 'browser.fill') {return {nodeId, value: input};}
-    if (step.name === 'browser.type') {return {nodeId, text: input};}
-    if (step.name === 'browser.select_option') {
-        return {nodeId, kind: step.args.kind, values: input};
-    }
-    throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, '输入步骤类型无效');
 };

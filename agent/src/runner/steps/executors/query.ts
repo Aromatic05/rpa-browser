@@ -278,9 +278,36 @@ const businessQueryDiagnosticDetails = (
         ...('query' in args ? {query: args.query} : {target: structuredClone(args.target)}),
         semanticProfiles: Object.keys(entry.semanticBindingsByProfile).sort(),
         availableBusinessTags,
+        ...(entry.capture.entityRules ? {entityRules: summarizeEntityRules(entry.capture.entityRules)} : {}),
         ...(resolutionDetails === undefined ? {} : {resolution: structuredClone(resolutionDetails)}),
     };
 };
+
+const summarizeEntityRules = (
+    execution: NonNullable<Awaited<ReturnType<typeof ensureFreshPageSession>>['entry']['capture']['entityRules']>,
+): Record<string, unknown> => ({
+    status: execution.status,
+    ok: execution.ok,
+    diagnostics: execution.diagnostics.map((diagnostic) => ({
+        code: diagnostic.code,
+        message: diagnostic.message,
+        status: diagnostic.status,
+    })),
+    profiles: Object.fromEntries(Object.entries(execution.profiles).map(([profileName, profile]) => [profileName, {
+        ok: profile.ok,
+        diagnostics: profile.diagnostics.map((diagnostic) => ({
+            code: diagnostic.code,
+            message: diagnostic.message,
+            status: diagnostic.status,
+        })),
+        rules: Object.fromEntries(Object.entries(profile.bindings).map(([ruleId, binding]) => [ruleId, {
+            ok: binding.ok,
+            cardinality: binding.cardinality,
+            matchedComponentIds: binding.matchedComponentIds,
+            matchedNodeIds: binding.matchedNodeIds,
+        }])),
+    }])),
+});
 
 const queryDiagnosticDetails = (
     observation: PageObservation,

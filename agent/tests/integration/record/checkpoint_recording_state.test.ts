@@ -101,6 +101,7 @@ test('checkpoint recording save creates a recovery artifact and leaves the ordin
             bindings: [{
                 ruleId: 'expired-root',
                 businessTag: 'auth.expired',
+                entityKey: 'authExpired',
                 displayName: '登录失效提示',
                 legacyCanvas: {
                     entities: [{
@@ -177,9 +178,10 @@ test('checkpoint recording save creates a recovery artifact and leaves the ordin
         {errorCode: 'ERR_NOT_FOUND'},
         {stepName: 'browser.click'},
     ]);
-    assert.equal(artifact.checkpoint.content?.length, 1);
-    assert.equal(((artifact.checkpoint.content?.[0] as StepUnion).args as {resolveId?: string}).resolveId, 'recorded-1');
-    assert.equal(Boolean(artifact.stepResolves['recorded-1']), true);
+    assert.deepEqual(artifact.checkpoint.body, {language: 'dsl', source: 'body.dsl'});
+    assert.equal(artifact.checkpoint.content, undefined);
+    assert.equal(artifact.bodyDsl, `use entity_rules "expired-session-rule" as entity\nuse resolves "${artifact.name}" as recorded\nclick recorded.step1`);
+    assert.equal(Boolean(artifact.stepResolves.step1), true);
     assert.equal(getCheckpointRecordingSession(state, 'ws-1'), null);
     assert.deepEqual(getWorkspaceUnsavedRecordingBundle(state, 'ws-1').steps.map((step) => step.id), ['ordinary']);
 
@@ -203,6 +205,20 @@ test('checkpoint recording save creates a recovery artifact and leaves the ordin
         }),
         /已有同名检查点/,
     );
+    assert.equal(getCheckpointRecordingSession(state, 'ws-1')?.status, 'review');
+    const brokenRule = structuredClone(errorRule);
+    delete (brokenRule.annotation.bindings[0] as {entityKey?: string}).entityKey;
+    saved.set(errorRule.name, brokenRule);
+    const artifactCountBeforeLinkFailure = saved.size;
+    await assert.rejects(
+        async () => await control.handle({
+            action: checkpointSaveAction({name: '链接失败不得保存', triggerKind: 'not_found'}),
+            workspace: workspace as never,
+            workspaceRegistry: {} as never,
+        }),
+        /不支持将录制步骤/,
+    );
+    assert.equal(saved.size, artifactCountBeforeLinkFailure);
     assert.equal(getCheckpointRecordingSession(state, 'ws-1')?.status, 'review');
     clearCheckpointRecording(state, 'ws-1');
 });

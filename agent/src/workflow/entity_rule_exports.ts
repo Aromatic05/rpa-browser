@@ -179,17 +179,15 @@ const primaryKeyFor = (value: unknown, kind: EntityRulePageKind, columnsValue: u
     if (value === undefined) {return undefined;}
     const fieldKey = isRecord(value) ? text(value.fieldKey) : undefined;
     const rawColumns = isRecord(value) && Array.isArray(value.columns) ? value.columns : undefined;
-    const columns = rawColumns?.filter((key): key is string => typeof key === 'string');
+    const columns = rawColumns?.map((column) => text(column)).filter((column): column is string => Boolean(column));
     const knownColumns = new Set(arrayRecords(columnsValue).map((column) => text(column.fieldKey)).filter(Boolean));
     const invalidColumns = rawColumns !== undefined && (
         rawColumns.length === 0
         || columns!.length !== rawColumns.length
-        || columns!.some((key) => !identifier.test(key))
-        || new Set(columns ?? []).size !== columns!.length
-        || (knownColumns.size > 0 && columns!.some((key) => !knownColumns.has(key)))
+        || new Set(columns).size !== columns!.length
     );
     if (kind !== 'table' || !fieldKey || !identifier.test(fieldKey) || invalidColumns || (knownColumns.size > 0 && !knownColumns.has(fieldKey))) {
-        diagnostics.push(diagnostic('malformed_primary_key', 'primaryKey must name a declared table column with valid identifiers', context));
+        diagnostics.push(diagnostic('malformed_primary_key', 'primaryKey must name a declared table column and use non-empty column labels', context));
         return undefined;
     }
     return {fieldKey, ...(columns ? {columns} : {})};
