@@ -166,3 +166,150 @@ test('V2 table entity resolves associated filter fields and module actions', asy
     assert.equal(search.data.nodeId, fixture.nodeIds.submit);
     assert.equal(search.data.meta.targetKind, 'table.module_action');
 });
+
+
+test('table member bindings remain isolated between components in the same profile', () => {
+    const active = {rendered: true, subtreeActive: true, hiddenByStyle: false, inert: false, ariaExposed: true};
+    const target = (componentIds: string[], nodeIds: string[]) => ({
+        componentIds,
+        nodeIds,
+        fieldIds: [],
+        actionIds: [],
+        rowIds: [],
+        columnIds: [],
+    });
+    const binding = (
+        id: string,
+        ruleId: string,
+        componentIds: string[],
+        nodeIds: string[],
+        annotation: Record<string, unknown>,
+    ) => ({
+        id,
+        profileName: 'shared-tables',
+        ruleId,
+        planStepId: `shared-tables:${ruleId}`,
+        domain: 'table' as const,
+        targetKind: componentIds.length > 0 && annotation.businessTag ? 'table-component' as const : 'node' as const,
+        origin: 'confirmed' as const,
+        disposition: 'active' as const,
+        status: 'active' as const,
+        annotation: {ruleId, ...annotation},
+        target: target(componentIds, nodeIds),
+    });
+    const table = (id: string, nodeId: string) => ({
+        id,
+        status: 'complete',
+        location: {structuralRootNodeId: nodeId},
+        columns: [],
+        body: {visibleRows: []},
+    });
+    const entry = {
+        capture: {
+            control: {
+                observation: {
+                    nodes: {
+                        'orders-root': {tag: 'table'},
+                        'returns-root': {tag: 'table'},
+                        'orders-search': {tag: 'button'},
+                        'returns-search': {tag: 'button'},
+                    },
+                    attributes: {
+                        'orders-root': {id: 'orders'},
+                        'returns-root': {id: 'returns'},
+                        'orders-search': {},
+                        'returns-search': {},
+                    },
+                    accessibility: {},
+                    runtimeState: {},
+                    text: {
+                        'orders-root': 'Orders',
+                        'returns-root': 'Returns',
+                        'orders-search': 'Search orders',
+                        'returns-search': 'Search returns',
+                    },
+                    children: {
+                        'orders-root': [],
+                        'returns-root': [],
+                        'orders-search': [],
+                        'returns-search': [],
+                    },
+                    parents: {},
+                    documentOrder: {
+                        'orders-root': 1,
+                        'orders-search': 2,
+                        'returns-root': 3,
+                        'returns-search': 4,
+                    },
+                    activity: {
+                        'orders-root': active,
+                        'returns-root': active,
+                        'orders-search': active,
+                        'returns-search': active,
+                    },
+                },
+                controls: {byNodeId: {}, controls: {}},
+            },
+            form: {forms: {forms: {}}},
+            table: {
+                tables: {
+                    tables: {
+                        orders: table('orders', 'orders-root'),
+                        returns: table('returns', 'returns-root'),
+                    },
+                    rows: {},
+                    cells: {},
+                    columns: {},
+                },
+            },
+        },
+        semanticBindingsByProfile: {
+            'shared-tables': {
+                byId: {
+                    'shared-tables:orders': binding(
+                        'shared-tables:orders',
+                        'orders',
+                        ['orders'],
+                        ['orders-root'],
+                        {businessTag: 'orders.table', entityKind: 'table'},
+                    ),
+                    'shared-tables:returns': binding(
+                        'shared-tables:returns',
+                        'returns',
+                        ['returns'],
+                        ['returns-root'],
+                        {businessTag: 'returns.table', entityKind: 'table'},
+                    ),
+                    'shared-tables:orders-search': binding(
+                        'shared-tables:orders-search',
+                        'orders-search',
+                        ['orders'],
+                        ['orders-search'],
+                        {actionIntent: 'searchOrders', actionText: 'Search orders', actionRole: 'module'},
+                    ),
+                    'shared-tables:returns-search': binding(
+                        'shared-tables:returns-search',
+                        'returns-search',
+                        ['returns'],
+                        ['returns-search'],
+                        {actionIntent: 'searchReturns', actionText: 'Search returns', actionRole: 'module'},
+                    ),
+                },
+            },
+        },
+    } as any;
+
+    const view = buildPageSessionEntityView(entry);
+    const orders = view.entities.find((entity) => entity.businessTag === 'orders.table');
+    const returns = view.entities.find((entity) => entity.businessTag === 'returns.table');
+    assert.deepEqual(orders?.annotation?.moduleActions, [{
+        actionIntent: 'searchOrders',
+        text: 'Search orders',
+        nodeId: 'orders-search',
+    }]);
+    assert.deepEqual(returns?.annotation?.moduleActions, [{
+        actionIntent: 'searchReturns',
+        text: 'Search returns',
+        nodeId: 'returns-search',
+    }]);
+});

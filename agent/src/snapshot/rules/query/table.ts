@@ -63,6 +63,13 @@ export const executeTableQueryPlan = (
                 }
             }
         }
+        if (step.source === 'node') {
+            matchedComponentIds.push(...unique([
+                ...(within?.matchedComponentIds ?? []),
+                ...(contained?.matchedComponentIds ?? []),
+                ...tableIdsForNodes(snapshot, matchedNodeIds),
+            ]));
+        }
         const matchedRowIds = step.source === 'node'
             ? rowsForNodes(snapshot, matchedNodeIds)
             : unique(matchedComponentIds.flatMap((componentId) =>
@@ -180,6 +187,22 @@ const buildWithinNodeSet = (
     });
     return output;
 };
+
+const tableIdsForNodes = (
+    snapshot: TableSnapshot,
+    nodeIds: readonly ObservationNodeId[],
+): string[] => unique(nodeIds.flatMap((nodeId) =>
+    (snapshot.tables.byNodeId[nodeId] ?? []).flatMap((id) => {
+        if (Object.hasOwn(snapshot.tables.tables, id)) {return [id];}
+        if (Object.hasOwn(snapshot.tables.rows, id)) {return [snapshot.tables.rows[id].tableId];}
+        if (Object.hasOwn(snapshot.tables.cells, id)) {
+            const cell = snapshot.tables.cells[id];
+            return [snapshot.tables.rows[cell.rowId].tableId];
+        }
+        const table = Object.values(snapshot.tables.tables)
+            .find((candidate) => candidate.columns.some((column) => column.id === id));
+        return table ? [table.id] : [];
+    })));
 
 const rowsForNodes = (snapshot: TableSnapshot, nodeIds: readonly ObservationNodeId[]): string[] => {
     const nodeSet = new Set(nodeIds);

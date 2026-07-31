@@ -594,7 +594,25 @@ const tableMemberBindings = (
     componentBindings: readonly SemanticBusinessBinding[],
 ): SemanticBusinessBinding[] => {
     const profileNames = new Set(componentBindings.map((binding) => binding.profileName));
-    return bindings.filter((binding) => binding.domain === 'table' && profileNames.has(binding.profileName));
+    const componentIds = new Set(componentBindings.flatMap((binding) => binding.target.componentIds));
+    const componentsByProfile = new Map<string, Set<string>>();
+    for (const binding of bindings) {
+        if (binding.domain !== 'table' || binding.targetKind !== 'table-component') {continue;}
+        const owned = componentsByProfile.get(binding.profileName) ?? new Set<string>();
+        binding.target.componentIds.forEach((componentId) => owned.add(componentId));
+        componentsByProfile.set(binding.profileName, owned);
+    }
+    return bindings.filter((binding) => {
+        if (binding.domain !== 'table' || !profileNames.has(binding.profileName)) {return false;}
+        if (binding.target.componentIds.length === 1) {
+            return componentIds.has(binding.target.componentIds[0]);
+        }
+        if (binding.target.componentIds.length > 1) {
+            return false;
+        }
+        const profileComponents = componentsByProfile.get(binding.profileName);
+        return profileComponents?.size === 1 && [...profileComponents].some((componentId) => componentIds.has(componentId));
+    });
 };
 
 const enrichTableAnnotation = (

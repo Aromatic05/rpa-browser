@@ -186,9 +186,11 @@ test('QueryPlan scopes a business module by the structural table it contains', (
     assert.deepEqual(result.byRuleId.scope.matchedNodeIds, [
         snapshot.observation.captureIdToNodeId['card-a'],
     ]);
+    assert.deepEqual(result.byRuleId.scope.matchedComponentIds, result.byRuleId.table.matchedComponentIds);
     assert.deepEqual(result.byRuleId.filter.matchedNodeIds, [
         snapshot.observation.captureIdToNodeId['filter-a'],
     ]);
+    assert.deepEqual(result.byRuleId.filter.matchedComponentIds, result.byRuleId.table.matchedComponentIds);
 });
 
 test('QueryPlan table execution returns canonical table targets and typed pagination nodes', () => {
