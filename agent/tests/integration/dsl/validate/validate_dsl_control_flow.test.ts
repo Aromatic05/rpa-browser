@@ -128,3 +128,19 @@ test('validateDsl does not definitely assign loop or branch-only variables', () 
         'ERR_DSL_VAR_NOT_DEFINED',
     ]);
 });
+
+test('validateDsl promotes a variable assigned by both if branches', () => {
+    const diagnostics = validateDsl(normalizeDsl({
+        body: [
+            {
+                kind: 'if',
+                condition: { kind: 'ref', ref: 'input.enabled' },
+                then: [{ kind: 'let', name: 'selected', expr: { kind: 'ref', ref: 'input.primary' } }],
+                else: [{ kind: 'let', name: 'selected', expr: { kind: 'ref', ref: 'input.fallback' } }],
+            },
+            { kind: 'act', action: 'click', target: { kind: 'ref', ref: 'selected' } },
+        ],
+    }));
+
+    assert.deepEqual(diagnostics, []);
+});

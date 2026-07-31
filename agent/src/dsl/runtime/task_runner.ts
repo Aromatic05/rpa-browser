@@ -128,6 +128,11 @@ export const createDslTaskRunner = (options: CreateDslTaskRunnerOptions): DslTas
                 };
             }
 
+            if (pipe.closed) {
+                latestCheckpoint = await runPromise;
+                continue;
+            }
+
             await waitForResultPipe(pipe);
         }
     };

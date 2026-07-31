@@ -1,7 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createDslTaskRunner } from '../../../../src/dsl/runtime';
-import type { RunStepsDeps } from '../../../../src/runner/run_steps';
+import {
+    createResultPipe,
+    createSignalChannel,
+    createStepsQueue,
+    runSteps,
+    type Checkpoint,
+    type RunStepsDeps,
+} from '../../../../src/runner/run_steps';
 import type { StepUnion } from '../../../../src/runner/steps/types';
 import { completeRunStepsDeps } from '../../../helpers/run_steps_workspace';
 
@@ -213,6 +220,37 @@ test('task_runner converts an executor throw into a failed terminal step result'
     assert.equal(result.ok, false);
     assert.equal(result.error?.code, 'ERR_RUNNER_UNEXPECTED');
     assert.match(result.error?.message || '', /executor exploded/);
+});
+
+test('runSteps publishes a failed terminal checkpoint when an executor throws', async () => {
+    const step = {
+        id: 'step-query-terminal',
+        name: 'browser.query',
+        args: { op: 'entity', businessTag: 'order.list', query: 'table.currentRows' },
+    } as StepUnion;
+    const queue = createStepsQueue([step], { closed: true });
+    const pipe = createResultPipe();
+    const checkpoints: Checkpoint[] = [];
+    const checkpoint = await runSteps({
+        runId: 'run-terminal',
+        workspaceName: 'ws-dsl-task',
+        stepsQueue: queue,
+        resultPipe: pipe,
+        signalChannel: createSignalChannel(),
+        onCheckpoint: async (value) => { checkpoints.push(value); },
+    }, completeRunStepsDeps({
+        config: {} as any,
+        pluginHost: {
+            getExecutors: () => ({
+                'browser.query': async () => { throw new Error('executor exploded'); },
+            }) as any,
+        } as any,
+    }));
+
+    assert.equal(checkpoint.status, 'failed');
+    assert.equal(checkpoints.at(-1)?.status, 'failed');
+    assert.equal(pipe.closed, true);
+    assert.equal(pipe.items.at(-1)?.error?.code, 'ERR_RUNNER_UNEXPECTED');
 });
 
 const delay = async (ms: number): Promise<void> =>

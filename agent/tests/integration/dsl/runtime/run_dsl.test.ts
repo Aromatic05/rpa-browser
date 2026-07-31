@@ -89,7 +89,7 @@ test('runDsl executes query then fill through one task stream and writes vars/ou
         ['browser.query', 'browser.fill'],
     );
     assert.deepEqual(result.scope.vars, {
-        buyer: { kind: 'nodeId', nodeId: 'buyer-input' },
+        buyer: { nodeId: 'buyer-input' },
     });
     assert.deepEqual(calls[1].args, {
         nodeId: 'buyer-input',

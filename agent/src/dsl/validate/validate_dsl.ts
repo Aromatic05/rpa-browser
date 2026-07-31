@@ -1,5 +1,6 @@
 import type { ActStmt, CheckpointStmt, DslExpr, DslProgram, DslStmt, RefExpr } from '../ast/types';
 import { createDiagnostic, type DslDiagnostic } from '../diagnostics/diagnostics';
+import { collectDefinitelyAssignedVariables } from '../analysis/definite_assignment';
 
 type ValidateScope = {
     vars: Set<string>;
@@ -67,6 +68,7 @@ const validateStmt = (
             for (let i = 0; i < (stmt.else?.length || 0); i += 1) {
                 validateStmt(stmt.else![i], elseScope, diagnostics, `${path}.else.${i}`);
             }
+            scope.vars = collectDefinitelyAssignedVariables([stmt], scope.vars);
             return;
         case 'for':
             validateExpr(stmt.iterable, scope, diagnostics, `${path}.iterable`);
