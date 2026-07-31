@@ -60,7 +60,7 @@ const createDeps = (calls: StubCall[], opts?: { failFill?: boolean; delayMs?: nu
                     },
                 }) as any,
         } as any,
-    });
+    }, { workspaceName: 'ws-dsl-task' });
 
 test('task_runner runs multiple steps through one runId and preserves queue order', async () => {
     const calls: StubCall[] = [];
@@ -207,7 +207,7 @@ test('task_runner converts an executor throw into a failed terminal step result'
                     'browser.query': async () => { throw new Error('executor exploded'); },
                 }) as any,
             } as any,
-        }),
+        }, { workspaceName: 'ws-dsl-task' }),
     });
 
     const result = await runner.runStep({
@@ -245,7 +245,7 @@ test('runSteps publishes a failed terminal checkpoint when an executor throws', 
                 'browser.query': async () => { throw new Error('executor exploded'); },
             }) as any,
         } as any,
-    }));
+    }, { workspaceName: 'ws-dsl-task' }));
 
     assert.equal(checkpoint.status, 'failed');
     assert.equal(checkpoints.at(-1)?.status, 'failed');

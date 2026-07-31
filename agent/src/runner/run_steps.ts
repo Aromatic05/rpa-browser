@@ -438,21 +438,20 @@ const resolveRunCheckpoints = (
             stepResolves: req.checkpointStepResolves ?? {},
         };
     }
-    try {
-        const workspace = deps.resolveWorkspace(req.workspaceName);
-        const provider = workspace.checkpoint.getProvider(workspace.workflow);
-        const checkpoints = (provider.listCheckpoints?.() ?? [])
-            .filter((checkpoint) => checkpoint.kind === undefined || checkpoint.kind === 'recovery');
-        return {
-            checkpoints,
-            stepResolves: Object.fromEntries(checkpoints.map((checkpoint) => [
-                checkpoint.id,
-                provider.getCheckpointResolves?.(checkpoint.id) ?? {},
-            ])),
-        };
-    } catch {
+    const workspace = deps.resolveWorkspace(req.workspaceName);
+    if (!workspace.checkpoint?.getProvider || !workspace.workflow) {
         return {checkpoints: [], stepResolves: {}};
     }
+    const provider = workspace.checkpoint.getProvider(workspace.workflow);
+    const checkpoints = (provider.listCheckpoints?.() ?? [])
+        .filter((checkpoint) => checkpoint.kind === undefined || checkpoint.kind === 'recovery');
+    return {
+        checkpoints,
+        stepResolves: Object.fromEntries(checkpoints.map((checkpoint) => [
+            checkpoint.id,
+            provider.getCheckpointResolves?.(checkpoint.id) ?? {},
+        ])),
+    };
 };
 
 export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promise<Checkpoint> => {
