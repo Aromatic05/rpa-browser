@@ -5,6 +5,7 @@ import {setRunStepsDeps, type RunStepsDeps, type RunStepsExecutionContext} from 
 import type {StepResolve, StepResult, StepUnion} from '../../../src/runner/steps/types';
 import type {Checkpoint} from '../../../src/runner/checkpoint';
 import type {Action} from '../../../src/actions/action_protocol';
+import {ActionError, ERROR_CODES} from '../../../src/actions/results';
 import {getRunnerConfig} from '../../../src/config';
 import {completeRunStepsDeps} from '../../helpers/run_steps_workspace';
 import {executeBrowserCheckpoint} from '../../../src/runner/steps/executors/checkpoint';
@@ -110,4 +111,46 @@ test('task.run.start preserves V2 checkpoint assets across streamed step pushes'
     assert.deepEqual(receivedCheckpoint, checkpoints[0]);
     assert.deepEqual(nestedResolve, checkpointStepResolve);
     assert.equal(receivedCheckpointBody, checkpointBodies['recover-click']);
+});
+
+
+test('task.run.push rejects checkpoint assets after the run snapshot is frozen', async () => {
+    const baseConfig = getRunnerConfig();
+    const deps = completeRunStepsDeps({}, {workspaceName: 'ws-1'});
+    setRunStepsDeps(deps);
+    const control = createRunnerControl({
+        runnerConfig: {
+            ...baseConfig,
+            checkpointPolicy: {...baseConfig.checkpointPolicy, enabled: false},
+        },
+    });
+    const workspace = deps.resolveWorkspace('ws-1');
+    const workspaceRegistry = {} as never;
+    const runId = 'run-frozen-checkpoint-assets';
+
+    await control.handle({
+        action: action('task.run.start', {runId}),
+        workspace,
+        workspaceRegistry,
+    });
+
+    await assert.rejects(
+        () => control.handle({
+            action: action('task.run.push', {
+                runId,
+                checkpoints: [{id: 'late-procedure', kind: 'procedure', content: []}],
+            }),
+            workspace,
+            workspaceRegistry,
+        }),
+        (error: unknown) => error instanceof ActionError
+            && error.code === ERROR_CODES.ERR_BAD_ARGS
+            && /task\.run\.start or task\.run\.resume/.test(error.message),
+    );
+
+    await control.handle({
+        action: action('task.run.halt', {runId}),
+        workspace,
+        workspaceRegistry,
+    });
 });

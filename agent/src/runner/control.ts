@@ -80,12 +80,6 @@ const readCheckpoints = (value: unknown): RunnerCheckpoint[] =>
             && typeof (item as {id?: unknown}).id === 'string')
         : [];
 
-const mergeCheckpoints = (target: RunnerCheckpoint[], additions: readonly RunnerCheckpoint[]): void => {
-    const byId = new Map(target.map((checkpoint) => [checkpoint.id, checkpoint]));
-    for (const checkpoint of additions) {byId.set(checkpoint.id, checkpoint);}
-    target.splice(0, target.length, ...byId.values());
-};
-
 export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => {
     const runnerConfig = deps?.runnerConfig || getRunnerConfig();
     const runtime = {
@@ -217,13 +211,22 @@ export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => 
                     steps?: StepUnion[];
                     stepResolves?: Record<string, StepResolve>;
                     checkpoints?: RunnerCheckpoint[];
+                    checkpointStepResolves?: Record<string, Record<string, StepResolve>>;
+                    checkpointBodies?: Record<string, string>;
                     close?: boolean;
                 };
                 const run = getRun(requireRunId(payload));
                 if (!run) {throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'run not found');}
+                if (payload.checkpoints !== undefined
+                    || payload.checkpointStepResolves !== undefined
+                    || payload.checkpointBodies !== undefined) {
+                    throw new ActionError(
+                        ERROR_CODES.ERR_BAD_ARGS,
+                        'checkpoint assets must be provided by task.run.start or task.run.resume',
+                    );
+                }
                 const steps = Array.isArray(payload.steps) ? payload.steps : [];
                 Object.assign(run.stepResolves, readStepResolves(payload.stepResolves));
-                mergeCheckpoints(run.checkpoints, readCheckpoints(payload.checkpoints));
                 if (steps.length > 0) {enqueueSteps(run.queue, steps);}
                 if (payload.close === true) {closeStepsQueue(run.queue);}
                 return { reply: replyAction(action, { runId: run.runId, queued: steps.length, cursor: run.queue.cursor }), events: [] };
