@@ -31,20 +31,30 @@ const requireCheckpoint = (payload: Record<string, unknown>): Checkpoint => {
     return checkpoint;
 };
 
-const resolveStepResolves = (payload: Record<string, unknown>): Record<string, StepResolve> => {
+const resolveStepResolves = (payload: Record<string, unknown>): Record<string, StepResolve> | undefined => {
+    if (!Object.prototype.hasOwnProperty.call(payload, 'stepResolves')) {return undefined;}
     const stepResolves = payload.stepResolves;
     if (!stepResolves || typeof stepResolves !== 'object' || Array.isArray(stepResolves)) {
-        return {};
+        throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'stepResolves must be an object');
     }
     return stepResolves as Record<string, StepResolve>;
 };
 
-const resolveHints = (payload: Record<string, unknown>): WorkflowCheckpoint['hints'] => {
+const resolveHints = (payload: Record<string, unknown>): WorkflowCheckpoint['hints'] | undefined => {
+    if (!Object.prototype.hasOwnProperty.call(payload, 'hints')) {return undefined;}
     const hints = payload.hints;
     if (!hints || typeof hints !== 'object' || Array.isArray(hints)) {
-        return {};
+        throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'hints must be an object');
     }
     return hints as WorkflowCheckpoint['hints'];
+};
+
+const resolveBodyDsl = (payload: Record<string, unknown>): string | undefined => {
+    if (!Object.prototype.hasOwnProperty.call(payload, 'bodyDsl')) {return undefined;}
+    if (typeof payload.bodyDsl !== 'string') {
+        throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'bodyDsl must be a string');
+    }
+    return payload.bodyDsl;
 };
 
 export const createCheckpointControl = (): CheckpointControl => ({
@@ -100,7 +110,12 @@ export const createCheckpointControl = (): CheckpointControl => ({
             if (checkpoint.id !== checkpointId) {
                 throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'checkpoint.id must not contain surrounding whitespace');
             }
-            const artifact = runtime.save(checkpoint, resolveStepResolves(payload), resolveHints(payload));
+            const artifact = runtime.save(
+                checkpoint,
+                resolveStepResolves(payload),
+                resolveHints(payload),
+                resolveBodyDsl(payload),
+            );
             return {
                 reply: replyAction(action, {
                     workspaceName: workspace.name,

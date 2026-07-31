@@ -29,6 +29,25 @@ const recording = (name: string, steps: StepUnion[] = [], stepResolves = {}) => 
     stepResolves,
 });
 
+const entityRules = (name: string) => ({
+    kind: 'entity_rules' as const,
+    name,
+    page: {kind: 'form' as const, urlPattern: 'example\\.test'},
+    match: {
+        version: 2 as const,
+        rules: [{
+            ruleId: 'root',
+            source: 'region' as const,
+            expect: 'unique' as const,
+            match: {kind: 'form'},
+        }],
+    },
+    annotation: {
+        version: 2 as const,
+        bindings: [{ruleId: 'root', entityKey: 'exampleForm', businessTag: 'example.form'}],
+    },
+});
+
 test('workflow artifact names reject traversal on read, write, and delete without escaping the workflow root', () => {
     const name = uniqueName('artifact-name');
     const escaped = path.join(workflowsRootDir(), `${name}-escaped.dsl`);
@@ -136,6 +155,120 @@ test('invalid optional recording and checkpoint sidecars fail artifact loading i
         );
         assert.throws(
             () => reloaded.get('checkpoint-1', { kind: 'checkpoint' }),
+            (error: any) => error?.code === 'ERR_WORKFLOW_INVALID_ARTIFACT',
+        );
+    } finally {
+        cleanup(name);
+    }
+});
+
+test('missing required recording and checkpoint files are reported as corrupt artifacts', () => {
+    const name = uniqueName('missing-required-artifact-file');
+    cleanup(name);
+    try {
+        const workflow = createWorkflowOnFs(name);
+        workflow.save(recording('recording-missing-steps'));
+        workflow.save({
+            kind: 'checkpoint',
+            name: 'checkpoint-missing-metadata',
+            checkpoint: {
+                id: 'checkpoint-missing-metadata',
+                kind: 'recovery',
+                trigger: {matchRules: [{errorCode: 'ERR_NOT_FOUND'}]},
+            },
+            stepResolves: {},
+            hints: {},
+        } as any);
+        fs.rmSync(path.join(workflowRootDir(name), 'recordings', 'recording-missing-steps', 'steps.yaml'));
+        fs.rmSync(path.join(workflowRootDir(name), 'checkpoints', 'checkpoint-missing-metadata', 'checkpoint.yaml'));
+
+        const reloaded = loadWorkflowFromFs(name);
+        assert.throws(
+            () => reloaded.get('recording-missing-steps', {kind: 'recording'}),
+            (error: any) => error?.code === 'ERR_WORKFLOW_INVALID_ARTIFACT',
+        );
+        assert.throws(
+            () => reloaded.get('checkpoint-missing-metadata', {kind: 'checkpoint'}),
+            (error: any) => error?.code === 'ERR_WORKFLOW_INVALID_ARTIFACT',
+        );
+        assert.throws(
+            () => reloaded.list({kind: 'recording'}),
+            (error: any) => error?.code === 'ERR_WORKFLOW_INVALID_ARTIFACT',
+        );
+        assert.throws(
+            () => reloaded.list({kind: 'checkpoint'}),
+            (error: any) => error?.code === 'ERR_WORKFLOW_INVALID_ARTIFACT',
+        );
+    } finally {
+        cleanup(name);
+    }
+});
+
+test('recording metadata identity and structure are validated before persistence and on reload', () => {
+    const name = uniqueName('recording-metadata-integrity');
+    cleanup(name);
+    try {
+        const workflow = createWorkflowOnFs(name);
+        const invalidName = 'invalid-recording';
+        assert.throws(() => workflow.save({
+            ...recording(invalidName),
+            recording: {
+                ...recording(invalidName).recording,
+                activeTabRef: 42,
+            },
+        } as any));
+        assert.equal(
+            fs.existsSync(path.join(workflowRootDir(name), 'recordings', invalidName)),
+            false,
+        );
+        assert.equal(workflow.list({kind: 'recording'}).length, 0);
+
+        workflow.save(recording('identity-mismatch'));
+        const metadataPath = path.join(
+            workflowRootDir(name),
+            'recordings',
+            'identity-mismatch',
+            'recording.yaml',
+        );
+        const metadata = YAML.parse(fs.readFileSync(metadataPath, 'utf8'));
+        fs.writeFileSync(metadataPath, YAML.stringify({...metadata, recordingName: 'other-name'}), 'utf8');
+        const reloaded = loadWorkflowFromFs(name);
+        assert.throws(
+            () => reloaded.get('identity-mismatch', {kind: 'recording'}),
+            (error: any) => error?.code === 'ERR_WORKFLOW_INVALID_ARTIFACT',
+        );
+        assert.throws(
+            () => reloaded.list({kind: 'recording'}),
+            (error: any) => error?.code === 'ERR_WORKFLOW_INVALID_ARTIFACT',
+        );
+    } finally {
+        cleanup(name);
+    }
+});
+
+test('corrupt entity-rule files fail loading instead of disappearing from the workflow', () => {
+    const name = uniqueName('entity-rules-corruption');
+    cleanup(name);
+    try {
+        const workflow = createWorkflowOnFs(name);
+        workflow.save(entityRules('invalid-page'));
+        workflow.save(entityRules('missing-match'));
+        fs.writeFileSync(
+            path.join(workflowRootDir(name), 'entity_rules', 'invalid-page', 'page.yaml'),
+            'kind: unsupported\n',
+            'utf8',
+        );
+        fs.rmSync(path.join(workflowRootDir(name), 'entity_rules', 'missing-match', 'match.yaml'));
+
+        const reloaded = loadWorkflowFromFs(name);
+        for (const profileName of ['invalid-page', 'missing-match']) {
+            assert.throws(
+                () => reloaded.get(profileName, {kind: 'entity_rules'}),
+                (error: any) => error?.code === 'ERR_WORKFLOW_INVALID_ARTIFACT',
+            );
+        }
+        assert.throws(
+            () => reloaded.list({kind: 'entity_rules'}),
             (error: any) => error?.code === 'ERR_WORKFLOW_INVALID_ARTIFACT',
         );
     } finally {
@@ -285,6 +418,93 @@ test('checkpoint.get exposes persisted body DSL without bloating checkpoint.list
             payload: {checkpointId: 'procedure-body'},
         } as any, workspace as any, registry as any);
         assert.equal((got.reply.payload as {bodyDsl?: string}).bodyDsl, 'wait 1');
+    } finally {
+        cleanup(name);
+    }
+});
+
+test('checkpoint.save persists DSL bodies and preserves them across metadata-only updates', async () => {
+    const name = uniqueName('checkpoint-save-body');
+    cleanup(name);
+    try {
+        const workflow = createWorkflowOnFs(name);
+        const {registry} = createWorkspaceHarness();
+        const workspace = registry.createWorkspace(name, workflow);
+        const checkpoint = {
+            id: 'saved-body',
+            kind: 'procedure',
+            trigger: {matchRules: []},
+            body: {language: 'dsl', source: 'body.dsl'},
+        };
+        const saved = await workspace.router.handle({
+            v: 1,
+            id: 'save-checkpoint-body',
+            type: 'checkpoint.save',
+            workspaceName: name,
+            payload: {
+                checkpoint,
+                bodyDsl: 'output ready = input.ready',
+                stepResolves: {
+                    savedTarget: {hint: {raw: {selector: '#saved-target'}}},
+                },
+                hints: {
+                    savedHint: {why: 'preserve this hint'},
+                },
+            },
+        } as any, workspace as any, registry as any);
+        assert.equal(saved.reply.type, 'checkpoint.save.result');
+
+        await workspace.router.handle({
+            v: 1,
+            id: 'update-checkpoint-metadata',
+            type: 'checkpoint.save',
+            workspaceName: name,
+            payload: {
+                checkpoint: {...checkpoint, priority: 4},
+            },
+        } as any, workspace as any, registry as any);
+
+        const loaded = await workspace.router.handle({
+            v: 1,
+            id: 'get-checkpoint-body',
+            type: 'checkpoint.get',
+            workspaceName: name,
+            payload: {checkpointId: checkpoint.id},
+        } as any, workspace as any, registry as any);
+        assert.equal((loaded.reply.payload as {bodyDsl?: string}).bodyDsl, 'output ready = input.ready');
+        assert.equal(
+            (loaded.reply.payload as {checkpoint: {priority?: number}}).checkpoint.priority,
+            4,
+        );
+        assert.equal(
+            (loaded.reply.payload as {stepResolves: any}).stepResolves.savedTarget.hint.raw.selector,
+            '#saved-target',
+        );
+        assert.equal(
+            (loaded.reply.payload as {hints: any}).hints.savedHint.why,
+            'preserve this hint',
+        );
+
+        await assert.rejects(() => workspace.router.handle({
+            v: 1,
+            id: 'save-missing-body',
+            type: 'checkpoint.save',
+            workspaceName: name,
+            payload: {
+                checkpoint: {...checkpoint, id: 'missing-body'},
+            },
+        } as any, workspace as any, registry as any));
+        await assert.rejects(() => workspace.router.handle({
+            v: 1,
+            id: 'save-invalid-sidecar-type',
+            type: 'checkpoint.save',
+            workspaceName: name,
+            payload: {
+                checkpoint: {...checkpoint, id: 'invalid-sidecar-type'},
+                bodyDsl: 'wait 1',
+                stepResolves: [],
+            },
+        } as any, workspace as any, registry as any));
     } finally {
         cleanup(name);
     }

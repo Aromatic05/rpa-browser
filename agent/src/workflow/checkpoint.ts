@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import type { Checkpoint } from '../runner/checkpoint';
 import type { StepResolve } from '../runner/steps/types';
@@ -26,6 +27,7 @@ export const createCheckpointCodec = (workflowName: string): WorkflowCodec<Workf
         isRecord(value) && value.kind === 'checkpoint' && typeof value.name === 'string' && isArtifactName(value.name),
     load: (name) => {
         const dir = checkpointDir(workflowName, name);
+        if (!fs.existsSync(dir)) {return null;}
         try {
             const checkpointFile = readValidatedYamlFile<SingleCheckpointFile>(
                 path.join(dir, 'checkpoint.yaml'),
@@ -40,7 +42,6 @@ export const createCheckpointCodec = (workflowName: string): WorkflowCodec<Workf
             const bodyDsl = readCheckpointBody(dir, checkpointFile.checkpoint);
             return { kind: 'checkpoint', name, checkpoint: checkpointFile.checkpoint, stepResolves, hints, ...(bodyDsl !== undefined ? {bodyDsl} : {}) };
         } catch (error) {
-            if (isMissingFile(error)) {return null;}
             throw invalidWorkflowArtifact('checkpoint', name, error);
         }
     },

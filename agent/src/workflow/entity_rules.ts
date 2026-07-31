@@ -1,5 +1,6 @@
+import fs from 'node:fs';
 import path from 'node:path';
-import { WorkflowError } from './errors';
+import { invalidWorkflowArtifact, WorkflowError } from './errors';
 import {
     listDirectories,
     readYamlFile,
@@ -118,13 +119,9 @@ export const createEntityRulesCodec = (workflowName: string): WorkflowCodec<Work
     load: (name) => {
         const profileName = requireProfileName(name);
         const directory = entityRuleDirectory(workflowName, profileName);
+        if (!fs.existsSync(directory)) {return null;}
         try {
-            let page: unknown;
-            try {
-                page = readYamlFile(path.join(directory, 'page.yaml'));
-            } catch {
-                page = undefined;
-            }
+            const page = readOptionalPage(path.join(directory, 'page.yaml'));
             return importWorkflowEntityRules({
                 kind: 'entity_rules',
                 name: profileName,
@@ -132,8 +129,8 @@ export const createEntityRulesCodec = (workflowName: string): WorkflowCodec<Work
                 match: readYamlFile(path.join(directory, 'match.yaml')),
                 annotation: readYamlFile(path.join(directory, 'annotation.yaml')),
             });
-        } catch {
-            return null;
+        } catch (error) {
+            throw invalidWorkflowArtifact('entity_rules', profileName, error);
         }
     },
     list: () => listDirectories(workflowArtifactPath(workflowName, 'entity_rules'))
@@ -164,6 +161,18 @@ export const createEntityRulesCodec = (workflowName: string): WorkflowCodec<Work
         return true;
     },
 });
+
+const readOptionalPage = (filePath: string): unknown => {
+    try {
+        return readYamlFile(filePath);
+    } catch (error) {
+        if (isMissingFile(error)) {return undefined;}
+        throw error;
+    }
+};
+
+const isMissingFile = (error: unknown): boolean =>
+    typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT';
 
 export const toEntityRuleBundle = (value: WorkflowEntityRules): EntityRuleBundle => {
     const validated = validateWorkflowEntityRules(value);
