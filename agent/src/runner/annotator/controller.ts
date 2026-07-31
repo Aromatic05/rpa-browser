@@ -397,13 +397,17 @@ const requireSemantic = (value: unknown): AnnotatorApplyPayload['semantic'] => {
     const displayName = optionalString(semantic.displayName, 'semantic.displayName');
     switch (semantic.kind) {
         case 'entity': {
-            assertAllowedKeys(semantic, ['kind', 'businessTag', 'displayName', 'entityKind']);
+            assertAllowedKeys(semantic, ['kind', 'businessTag', 'entityKey', 'displayName', 'entityKind']);
             const entityKind = semantic.entityKind === undefined
                 ? undefined
                 : requireEntityKind(semantic.entityKind);
+            const entityKey = semantic.entityKey === undefined
+                ? undefined
+                : requireEntityKey(semantic.entityKey);
             return {
                 kind: 'entity',
                 businessTag: requiredString(semantic.businessTag, 'semantic.businessTag'),
+                ...(entityKey ? {entityKey} : {}),
                 ...(displayName ? {displayName} : {}),
                 ...(entityKind ? {entityKind} : {}),
             };
@@ -467,6 +471,14 @@ const requireEntityKind = (value: unknown): NonNullable<Extract<AnnotatorApplyPa
         throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'semantic.entityKind is invalid');
     }
     return value as NonNullable<Extract<AnnotatorApplyPayload['semantic'], {kind: 'entity'}>['entityKind']>;
+};
+
+const requireEntityKey = (value: unknown): string => {
+    const entityKey = requiredString(value, 'semantic.entityKey');
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(entityKey)) {
+        throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'semantic.entityKey must be a valid identifier');
+    }
+    return entityKey;
 };
 
 const requireColumnKind = (value: unknown): NonNullable<Extract<AnnotatorApplyPayload['semantic'], {kind: 'column'}>['columnKind']> => {

@@ -291,6 +291,7 @@ const semanticInput = (
         return {
             kind,
             businessTag: value,
+            entityKey: entityKeyFromBusinessTag(value),
             ...(name ? {displayName: name} : {}),
             entityKind: (target.domain === 'form' || target.domain === 'table'
                 ? target.domain
@@ -302,6 +303,14 @@ const semanticInput = (
     if (kind === 'column') {return {kind, fieldKey: value, ...(name ? {displayName: name} : {})};}
     if (kind === 'primary-key') {return {kind, fieldKey: value};}
     return {kind: 'table-action', actionIntent: value, ...(name ? {displayName: name} : {})};
+};
+
+const entityKeyFromBusinessTag = (businessTag: string): string => {
+    const words = businessTag.trim().split(/[^A-Za-z0-9]+/u).filter(Boolean);
+    const candidate = words.map((word, index) => index === 0
+        ? word.charAt(0).toLowerCase() + word.slice(1)
+        : word.charAt(0).toUpperCase() + word.slice(1)).join('');
+    return /^[A-Za-z_]/u.test(candidate) ? candidate : `entity${candidate}`;
 };
 
 const editorDraft = (
