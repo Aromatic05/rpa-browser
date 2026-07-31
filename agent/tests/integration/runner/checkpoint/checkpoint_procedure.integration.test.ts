@@ -542,3 +542,29 @@ test('browser.checkpoint executes body DSL with frozen imports and overridden in
         output: {value: 'step-value'},
     });
 });
+
+test('browser.checkpoint reports a stable error when a body procedure is unavailable', async () => {
+    const {deps} = await createDeps();
+    const checkpoint: Checkpoint = {
+        id: 'missing-body',
+        kind: 'procedure',
+        body: {language: 'dsl', source: 'missing.dsl'},
+    };
+
+    const result = await executeBrowserCheckpoint({
+        id: 'missing-body-call',
+        name: 'browser.checkpoint',
+        args: {checkpointId: checkpoint.id},
+    }, deps, 'ws-1', {
+        checkpointProvider: {
+            getCheckpoint: (id) => id === checkpoint.id ? checkpoint : null,
+            getCheckpointBody: () => null,
+        },
+    });
+
+    assert.equal(result.ok, false);
+    assert.deepEqual(result.error, {
+        code: 'ERR_CHECKPOINT_BODY_MISSING',
+        message: 'checkpoint body unavailable: missing-body',
+    });
+});
