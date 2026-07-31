@@ -28,7 +28,10 @@ const createDeps = (calls: StubCall[]): RunStepsDeps =>
                         return {
                             stepId: step.id,
                             ok: true,
-                            data: [{ id: 'row-1', enabled: true, name: 'alice' }],
+                            data: {
+                                kind: 'value',
+                                value: [{ id: 'row-1', enabled: true, name: 'alice' }],
+                            },
                         };
                     },
                 }) as any,

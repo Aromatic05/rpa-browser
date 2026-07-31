@@ -20,7 +20,7 @@ import type { WorkspaceBrowserSession } from '../browser/browser_session';
 import { createEntityRulesRuntime, type EntityRulesRuntime } from '../../snapshot/rules';
 import {createRunnerAnnotatorController} from '../../runner/annotator';
 
-export type WorkspaceState = 'idle' | 'recording' | 'playing';
+export type WorkspaceState = 'idle' | 'recording' | 'playing' | 'executing';
 
 export type RuntimeWorkspace = {
     name: string;

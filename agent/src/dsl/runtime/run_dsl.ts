@@ -5,9 +5,17 @@ import { getLogger, type Logger } from '../../logging/logger';
 import { buildClickStep, buildFillStep, buildQueryStep, buildSelectStep, buildSnapshotStep, buildTypeStep } from '../emit/step_builder';
 import { DslRuntimeError } from '../diagnostics/errors';
 import type { DslProgram, DslStmt } from '../ast/types';
+import { collectDefinitelyAssignedVariables } from '../analysis/definite_assignment';
 import { createDslTaskRunner } from './task_runner';
-import { createDslScope, setDslValue, type DslScope } from './scope';
+import {
+    createChildDslScope,
+    createDslScope,
+    promoteDslVariables,
+    setDslValue,
+    type DslScope,
+} from './scope';
 import { resolveDslValue } from './refs';
+import { adaptDslQueryResult } from './value_adapter';
 
 export type RunDslContext = {
     workspaceName: string;
@@ -73,8 +81,9 @@ const executeStmt = async (
             if (stmt.expr.kind === 'query') {
                 const step = buildQueryStep(stmt.expr);
                 const result = await emitStepAndWait(step, taskRunner, logger, stmtIndex);
-                setDslValue(scope, `vars.${stmt.name}`, result);
-                safeLog(logger, 'debug', 'dsl.scope.write', { key: `vars.${stmt.name}`, valuePreview: previewValue(result) });
+                const value = adaptDslQueryResult(result as import('../../runner/steps/types').BrowserQueryResult);
+                setDslValue(scope, `vars.${stmt.name}`, value);
+                safeLog(logger, 'debug', 'dsl.scope.write', { key: `vars.${stmt.name}`, valuePreview: previewValue(value) });
                 return;
             }
             if (stmt.expr.kind === 'querySugar') {
@@ -134,7 +143,11 @@ const executeStmt = async (
         }
         case 'if': {
             const branch = resolveDslValue(stmt.condition, scope) ? stmt.then : stmt.else || [];
-            await executeStatements(branch, scope, ctx, taskRunner, logger);
+            const before = new Set(Object.keys(scope.vars));
+            const child = createChildDslScope(scope);
+            await executeStatements(branch, child, ctx, taskRunner, logger);
+            const after = collectDefinitelyAssignedVariables([stmt], before);
+            promoteDslVariables(scope, child, [...after].filter((name) => !before.has(name)));
             return;
         }
         case 'for': {
@@ -143,9 +156,10 @@ const executeStmt = async (
                 throw new DslRuntimeError('DSL for iterable must resolve to an array', 'ERR_DSL_BAD_ITERABLE');
             }
             for (const item of iterable) {
-                setDslValue(scope, `vars.${stmt.item}`, item);
+                const child = createChildDslScope(scope);
+                setDslValue(child, `vars.${stmt.item}`, item);
                 safeLog(logger, 'debug', 'dsl.scope.write', { key: `vars.${stmt.item}`, valuePreview: previewValue(item) });
-                await executeStatements(stmt.body, scope, ctx, taskRunner, logger);
+                await executeStatements(stmt.body, child, ctx, taskRunner, logger);
             }
             return;
         }

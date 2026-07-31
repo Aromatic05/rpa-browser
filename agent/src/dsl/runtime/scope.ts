@@ -14,6 +14,24 @@ export const createDslScope = (input?: Record<string, unknown>): DslScope => ({
     output: {},
 });
 
+export const createChildDslScope = (parent: DslScope): DslScope => ({
+    input: parent.input,
+    vars: { ...parent.vars },
+    output: parent.output,
+});
+
+export const promoteDslVariables = (
+    parent: DslScope,
+    child: DslScope,
+    names: Iterable<string>,
+): void => {
+    for (const name of names) {
+        if (Object.hasOwn(child.vars, name)) {
+            parent.vars[name] = child.vars[name];
+        }
+    }
+};
+
 export const getDslValue = (scope: DslScope, path: string): unknown => {
     const [root, ...segments] = path.split('.');
     if (!root || !ROOT_KEYS.has(root)) {

@@ -1,5 +1,6 @@
 import type { ActStmt, CheckpointStmt, DslExpr, DslProgram, DslStmt, RefExpr } from '../ast/types';
 import { createDiagnostic, type DslDiagnostic } from '../diagnostics/diagnostics';
+import { collectDefinitelyAssignedVariables } from '../analysis/definite_assignment';
 
 type ValidateScope = {
     vars: Set<string>;
@@ -59,18 +60,22 @@ const validateStmt = (
             return;
         case 'if':
             validateExpr(stmt.condition, scope, diagnostics, `${path}.condition`);
+            const thenScope = { vars: new Set(scope.vars) };
             for (let i = 0; i < stmt.then.length; i += 1) {
-                validateStmt(stmt.then[i], scope, diagnostics, `${path}.then.${i}`);
+                validateStmt(stmt.then[i], thenScope, diagnostics, `${path}.then.${i}`);
             }
+            const elseScope = { vars: new Set(scope.vars) };
             for (let i = 0; i < (stmt.else?.length || 0); i += 1) {
-                validateStmt(stmt.else![i], scope, diagnostics, `${path}.else.${i}`);
+                validateStmt(stmt.else![i], elseScope, diagnostics, `${path}.else.${i}`);
             }
+            scope.vars = collectDefinitelyAssignedVariables([stmt], scope.vars);
             return;
         case 'for':
             validateExpr(stmt.iterable, scope, diagnostics, `${path}.iterable`);
-            scope.vars.add(stmt.item);
+            const loopScope = { vars: new Set(scope.vars) };
+            loopScope.vars.add(stmt.item);
             for (let i = 0; i < stmt.body.length; i += 1) {
-                validateStmt(stmt.body[i], scope, diagnostics, `${path}.body.${i}`);
+                validateStmt(stmt.body[i], loopScope, diagnostics, `${path}.body.${i}`);
             }
             return;
     }
