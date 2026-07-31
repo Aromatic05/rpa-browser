@@ -21,6 +21,9 @@ const normalizeStmt = (stmt: DslStmt): DslStmt[] => {
     if (stmt.kind === 'let') {
         return [{...stmt, expr: normalizeExpr(stmt.expr)}];
     }
+    if (stmt.kind === 'output') {
+        return [{...stmt, expr: normalizeExpr(stmt.expr)}];
+    }
     if (stmt.kind === 'form_act') {
         return [expandFormActStmt(stmt)];
     }
@@ -97,7 +100,7 @@ const normalizePayload = (value: unknown): unknown => {
 };
 
 const normalizeRef = (expr: RefExpr): RefExpr => {
-    if (expr.ref.startsWith('input.') || expr.ref.startsWith('vars.') || expr.ref.startsWith('output.')) {
+    if (expr.ref.startsWith('input.') || expr.ref.startsWith('failure.') || expr.ref.startsWith('vars.') || expr.ref.startsWith('output.')) {
         return expr;
     }
     return {...expr, ref: `vars.${expr.ref}`};

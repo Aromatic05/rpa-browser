@@ -2,20 +2,24 @@ import { DslRuntimeError } from '../diagnostics/errors';
 
 export type DslScope = {
     input: Record<string, unknown>;
+    failure?: Readonly<Record<string, unknown>>;
     vars: Record<string, unknown>;
     output: Record<string, unknown>;
 };
 
-const ROOT_KEYS = new Set(['input', 'vars', 'output']);
+const READABLE_ROOT_KEYS = new Set(['input', 'failure', 'vars', 'output']);
+const WRITABLE_ROOT_KEYS = new Set(['vars', 'output']);
 
-export const createDslScope = (input?: Record<string, unknown>): DslScope => ({
+export const createDslScope = (input?: Record<string, unknown>, failure?: Record<string, unknown>): DslScope => ({
     input: { ...(input || {}) },
+    ...(failure ? {failure: freezeDslValue(failure) as Readonly<Record<string, unknown>>} : {}),
     vars: {},
     output: {},
 });
 
 export const createChildDslScope = (parent: DslScope): DslScope => ({
     input: parent.input,
+    ...(parent.failure ? {failure: parent.failure} : {}),
     vars: { ...parent.vars },
     output: parent.output,
 });
@@ -34,7 +38,7 @@ export const promoteDslVariables = (
 
 export const getDslValue = (scope: DslScope, path: string): unknown => {
     const [root, ...segments] = path.split('.');
-    if (!root || !ROOT_KEYS.has(root)) {
+    if (!root || !READABLE_ROOT_KEYS.has(root)) {
         throw new DslRuntimeError(`invalid DSL ref root: ${path}`);
     }
 
@@ -50,11 +54,11 @@ export const getDslValue = (scope: DslScope, path: string): unknown => {
 
 export const setDslValue = (scope: DslScope, path: string, value: unknown): void => {
     const [root, ...segments] = path.split('.');
-    if (!root || !ROOT_KEYS.has(root)) {
+    if (!root || !WRITABLE_ROOT_KEYS.has(root)) {
         throw new DslRuntimeError(`invalid DSL assignment root: ${path}`);
     }
 
-    let cursor: Record<string, unknown> = scope[root as keyof DslScope];
+    let cursor = scope[root as 'vars' | 'output'];
     if (segments.length === 0) {
         throw new DslRuntimeError(`cannot assign DSL root directly: ${path}`);
     }
@@ -74,4 +78,10 @@ export const setDslValue = (scope: DslScope, path: string, value: unknown): void
     }
 
     cursor[segments[segments.length - 1]] = value;
+};
+
+const freezeDslValue = (value: unknown): unknown => {
+    if (!value || typeof value !== 'object' || Object.isFrozen(value)) {return value;}
+    for (const child of Object.values(value)) {freezeDslValue(child);}
+    return Object.freeze(value);
 };

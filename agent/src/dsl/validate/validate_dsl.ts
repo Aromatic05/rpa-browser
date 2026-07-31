@@ -13,13 +13,14 @@ import { collectDefinitelyAssignedVariables } from '../analysis/definite_assignm
 
 type ValidateScope = {
     vars: Set<string>;
+    allowFailureRoot?: boolean;
 };
 
 const ROOT_REFS = new Set(['input', 'vars', 'output']);
 
-export const validateDsl = (program: DslProgram): DslDiagnostic[] => {
+export const validateDsl = (program: DslProgram, options: {allowFailureRoot?: boolean} = {}): DslDiagnostic[] => {
     const diagnostics: DslDiagnostic[] = [];
-    const scope: ValidateScope = {vars: new Set<string>()};
+    const scope: ValidateScope = {vars: new Set<string>(), allowFailureRoot: options.allowFailureRoot};
 
     for (let index = 0; index < program.body.length; index += 1) {
         validateStmt(program.body[index], scope, diagnostics, `body.${index}`);
@@ -47,6 +48,9 @@ const validateStmt = (
             }
             scope.vars.add(stmt.name);
             return;
+        case 'output':
+            validateExpr(stmt.expr, scope, diagnostics, `${path}.expr`);
+            return;
         case 'act':
             validateAct(stmt, scope, diagnostics, path);
             return;
@@ -67,14 +71,21 @@ const validateStmt = (
             return;
         case 'checkpoint':
             validateCheckpoint(stmt, scope, diagnostics, path);
+            if (stmt.bind) {
+                if (scope.vars.has(stmt.bind)) {
+                    diagnostics.push(createDiagnostic('ERR_DSL_VAR_REDEFINED', `DSL variable already defined: ${stmt.bind}`, `${path}.bind`));
+                } else {
+                    scope.vars.add(stmt.bind);
+                }
+            }
             return;
         case 'if': {
             validateExpr(stmt.condition, scope, diagnostics, `${path}.condition`);
-            const thenScope = {vars: new Set(scope.vars)};
+            const thenScope = {vars: new Set(scope.vars), allowFailureRoot: scope.allowFailureRoot};
             for (let index = 0; index < stmt.then.length; index += 1) {
                 validateStmt(stmt.then[index], thenScope, diagnostics, `${path}.then.${index}`);
             }
-            const elseScope = {vars: new Set(scope.vars)};
+            const elseScope = {vars: new Set(scope.vars), allowFailureRoot: scope.allowFailureRoot};
             for (let index = 0; index < (stmt.else?.length || 0); index += 1) {
                 validateStmt(stmt.else![index], elseScope, diagnostics, `${path}.else.${index}`);
             }
@@ -83,7 +94,7 @@ const validateStmt = (
         }
         case 'for': {
             validateExpr(stmt.iterable, scope, diagnostics, `${path}.iterable`);
-            const loopScope = {vars: new Set(scope.vars)};
+            const loopScope = {vars: new Set(scope.vars), allowFailureRoot: scope.allowFailureRoot};
             loopScope.vars.add(stmt.item);
             for (let index = 0; index < stmt.body.length; index += 1) {
                 validateStmt(stmt.body[index], loopScope, diagnostics, `${path}.body.${index}`);
@@ -303,7 +314,10 @@ const validateRef = (
     path: string,
 ): void => {
     const [root, firstSegment] = expr.ref.split('.');
-    if (!root || !ROOT_REFS.has(root)) {return;}
+    if (!root || (!ROOT_REFS.has(root) && !(root === 'failure' && scope.allowFailureRoot))) {
+        diagnostics.push(createDiagnostic('ERR_DSL_INVALID_REF_ROOT', `invalid DSL ref root: ${expr.ref}`, path));
+        return;
+    }
     if (root === 'vars' && (!firstSegment || !scope.vars.has(firstSegment))) {
         diagnostics.push(createDiagnostic(
             'ERR_DSL_VAR_NOT_DEFINED',

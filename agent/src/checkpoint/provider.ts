@@ -7,6 +7,10 @@ export const createWorkspaceCheckpointProvider = (workflow: Workflow): DslCheckp
     return {
         getCheckpoint: (id) => runtime.get(id)?.checkpoint || null,
         getCheckpointResolves: (id) => runtime.get(id)?.stepResolves || null,
+        getCheckpointBody: (id) => {
+            const item = runtime.get(id);
+            return item?.bodyDsl === undefined ? null : {source: item.bodyDsl, stepResolves: item.stepResolves};
+        },
         listCheckpoints: () => runtime.list().map((item) => item.checkpoint),
     };
 };

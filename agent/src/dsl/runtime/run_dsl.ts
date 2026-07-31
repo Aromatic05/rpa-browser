@@ -18,37 +18,48 @@ import { resolveDslValue } from './refs';
 import { adaptDslQueryResult } from './value_adapter';
 import type { DslEntityRulesResolver } from '../link';
 import type { DslResolveResolver } from '../link';
+import { injectStepResolve } from '../../runner/step_resolve';
 
 export type RunDslContext = {
     workspaceName: string;
     deps: RunStepsDeps;
     input?: Record<string, unknown>;
+    failure?: Record<string, unknown>;
     checkpointProvider?: DslCheckpointProvider;
     logger?: Logger;
     entityRulesResolver?: DslEntityRulesResolver;
     resolveResolver?: DslResolveResolver;
     stepResolves?: Record<string, StepResolve>;
+    stepExecutionPort?: StepExecutionPort;
+    checkpointCallStack?: string[];
 };
+
+export type StepExecutionPort = { execute(step: StepUnion): Promise<ExecutorStepResult> };
 
 export type RunDslResult = {
     scope: DslScope;
 };
 
 export const runDsl = async (program: DslProgram, ctx: RunDslContext): Promise<RunDslResult> => {
-    const scope = createDslScope(ctx.input);
-    const taskRunner = createDslTaskRunner({
-        workspaceName: ctx.workspaceName,
-        deps: ctx.deps,
-        stopOnError: true,
-        stepResolves: ctx.stepResolves,
+    const scope = createDslScope(ctx.input, ctx.failure);
+    const taskRunner = ctx.stepExecutionPort ? undefined : createDslTaskRunner({
+        workspaceName: ctx.workspaceName, deps: ctx.deps, stopOnError: true,
     });
+    const rawPort: StepExecutionPort = ctx.stepExecutionPort || {execute: async (step) => toExecutorStepResult(await taskRunner!.runStep(step))};
+    const port: StepExecutionPort = {
+        execute: async (step) => {
+            const runtimeStep = injectStepResolve(step, ctx.stepResolves);
+            if (!runtimeStep.ok) {return {stepId: step.id, ok: false, error: runtimeStep.error};}
+            return await rawPort.execute(runtimeStep.step);
+        },
+    };
     const logger = ctx.logger || getLogger('dsl');
 
-    await taskRunner.start();
+    await taskRunner?.start();
     try {
-        await executeStatements(program.body, scope, ctx, taskRunner, logger);
+        await executeStatements(program.body, scope, ctx, port, logger);
     } finally {
-        await taskRunner.close();
+        await taskRunner?.close();
     }
 
     return { scope };
@@ -58,14 +69,14 @@ const executeStatements = async (
     body: DslStmt[],
     scope: DslScope,
     ctx: RunDslContext,
-    taskRunner: ReturnType<typeof createDslTaskRunner>,
+    port: StepExecutionPort,
     logger: Logger,
 ): Promise<void> => {
     for (let index = 0; index < body.length; index += 1) {
         const stmt = body[index];
         safeLog(logger, 'debug', 'dsl.stmt.start', { index, kind: stmt.kind });
         try {
-            await executeStmt(stmt, scope, ctx, taskRunner, logger, index);
+            await executeStmt(stmt, scope, ctx, port, logger, index);
             safeLog(logger, 'debug', 'dsl.stmt.end', { index, kind: stmt.kind });
         } catch (error) {
             safeLog(logger, 'error', 'dsl.error', { stmtIndex: index, error: toErrorLog(error) });
@@ -78,7 +89,7 @@ const executeStmt = async (
     stmt: DslStmt,
     scope: DslScope,
     ctx: RunDslContext,
-    taskRunner: ReturnType<typeof createDslTaskRunner>,
+    port: StepExecutionPort,
     logger: Logger,
     stmtIndex: number,
 ): Promise<void> => {
@@ -86,7 +97,7 @@ const executeStmt = async (
         case 'let': {
             if (stmt.expr.kind === 'query') {
                 const step = buildQueryStep(stmt.expr, (ref) => resolveDslValue(ref, scope));
-                const result = await emitStepAndWait(step, taskRunner, logger, stmtIndex);
+                const result = await emitStepAndWait(step, port, logger, stmtIndex);
                 const value = adaptDslQueryResult(result as import('../../runner/steps/types').BrowserQueryResult);
                 setDslValue(scope, `vars.${stmt.name}`, value);
                 safeLog(logger, 'debug', 'dsl.scope.write', { key: `vars.${stmt.name}`, valuePreview: previewValue(value) });
@@ -103,13 +114,18 @@ const executeStmt = async (
             safeLog(logger, 'debug', 'dsl.scope.write', { key: `vars.${stmt.name}`, valuePreview: previewValue(value) });
             return;
         }
+        case 'output': {
+            const value = resolveDslValue(stmt.expr, scope);
+            setDslValue(scope, `output.${stmt.name}`, value);
+            return;
+        }
         case 'act': {
             if (stmt.action === 'wait') {
                 await sleep(stmt.durationMs || 0);
                 return;
             }
             if (stmt.action === 'snapshot') {
-                await emitStepAndWait(buildSnapshotStep(), taskRunner, logger, stmtIndex);
+                await emitStepAndWait(buildSnapshotStep(), port, logger, stmtIndex);
                 return;
             }
             if (!stmt.target) {
@@ -117,7 +133,7 @@ const executeStmt = async (
             }
             const target = resolveDslValue(stmt.target, scope);
             if (stmt.action === 'click') {
-                await emitStepAndWait(buildClickStep(target, stmt.profileName), taskRunner, logger, stmtIndex);
+                await emitStepAndWait(buildClickStep(target, stmt.profileName), port, logger, stmtIndex);
                 return;
             }
             const value = resolveDslValue(stmt.value, scope);
@@ -127,18 +143,18 @@ const executeStmt = async (
                     : stmt.action === 'type'
                       ? buildTypeStep(target, value, stmt.profileName)
                       : buildSelectStep(target, value, stmt.profileName);
-            await emitStepAndWait(step, taskRunner, logger, stmtIndex);
+            await emitStepAndWait(step, port, logger, stmtIndex);
             return;
         }
         case 'linked_entity_act': {
             const queryStep = buildQueryStep(stmt.targetQuery, (ref) => resolveDslValue(ref, scope));
-            const queryResult = await emitStepAndWait(queryStep, taskRunner, logger, stmtIndex);
+            const queryResult = await emitStepAndWait(queryStep, port, logger, stmtIndex);
             const target = adaptDslQueryResult(
                 queryResult as import('../../runner/steps/types').BrowserQueryResult,
             );
             const profileName = stmt.targetQuery.profileName;
             if (stmt.action === 'click') {
-                await emitStepAndWait(buildClickStep(target, profileName), taskRunner, logger, stmtIndex);
+                await emitStepAndWait(buildClickStep(target, profileName), port, logger, stmtIndex);
                 return;
             }
             const value = resolveDslValue(stmt.value, scope);
@@ -147,7 +163,7 @@ const executeStmt = async (
                 : stmt.action === 'type'
                     ? buildTypeStep(target, value, profileName)
                     : buildSelectStep(target, value, profileName);
-            await emitStepAndWait(step, taskRunner, logger, stmtIndex);
+            await emitStepAndWait(step, port, logger, stmtIndex);
             return;
         }
         case 'resolve_act': {
@@ -162,7 +178,7 @@ const executeStmt = async (
                 resolveId: stmt.resolveId,
             });
             if (stmt.action === 'click') {
-                await emitStepAndWait(buildClickStep(target), taskRunner, logger, stmtIndex);
+                await emitStepAndWait(buildClickStep(target), port, logger, stmtIndex);
                 return;
             }
             const value = resolveDslValue(stmt.value, scope);
@@ -171,7 +187,7 @@ const executeStmt = async (
                 : stmt.action === 'type'
                     ? buildTypeStep(target, value)
                     : buildSelectStep(target, value);
-            await emitStepAndWait(step, taskRunner, logger, stmtIndex);
+            await emitStepAndWait(step, port, logger, stmtIndex);
             return;
         }
         case 'form_act':
@@ -186,11 +202,15 @@ const executeStmt = async (
                 stmt,
                 scope,
                 checkpointProvider: ctx.checkpointProvider,
-                executeStep: async (step) => toExecutorStepResult(await taskRunner.runStep(step)),
+                executeStep: (step) => port.execute(step),
+                workspaceName: ctx.workspaceName,
+                deps: ctx.deps,
+                entityRulesResolver: ctx.entityRulesResolver,
+                resolveResolver: ctx.resolveResolver,
+                callStack: ctx.checkpointCallStack,
             });
-            for (const [key, value] of Object.entries(output)) {
-                setDslValue(scope, `output.${key}`, value);
-                safeLog(logger, 'debug', 'dsl.scope.write', { key: `output.${key}`, valuePreview: previewValue(value) });
+            if (stmt.bind) {
+                setDslValue(scope, `vars.${stmt.bind}`, output);
             }
             return;
         }
@@ -198,7 +218,7 @@ const executeStmt = async (
             const branch = resolveDslValue(stmt.condition, scope) ? stmt.then : stmt.else || [];
             const before = new Set(Object.keys(scope.vars));
             const child = createChildDslScope(scope);
-            await executeStatements(branch, child, ctx, taskRunner, logger);
+            await executeStatements(branch, child, ctx, port, logger);
             const after = collectDefinitelyAssignedVariables([stmt], before);
             promoteDslVariables(scope, child, [...after].filter((name) => !before.has(name)));
             return;
@@ -212,7 +232,7 @@ const executeStmt = async (
                 const child = createChildDslScope(scope);
                 setDslValue(child, `vars.${stmt.item}`, item);
                 safeLog(logger, 'debug', 'dsl.scope.write', { key: `vars.${stmt.item}`, valuePreview: previewValue(item) });
-                await executeStatements(stmt.body, child, ctx, taskRunner, logger);
+                await executeStatements(stmt.body, child, ctx, port, logger);
             }
             return;
         }
@@ -221,7 +241,7 @@ const executeStmt = async (
 
 const emitStepAndWait = async (
     step: StepUnion,
-    taskRunner: ReturnType<typeof createDslTaskRunner>,
+    port: StepExecutionPort,
     logger: Logger,
     stmtIndex: number,
 ): Promise<unknown> => {
@@ -230,7 +250,7 @@ const emitStepAndWait = async (
         stepId: step.id,
         stepName: step.name,
     });
-    const result = await taskRunner.runStep(step);
+    const result = await port.execute(step);
     safeLog(logger, 'debug', 'dsl.step.result', {
         stmtIndex,
         stepId: step.id,

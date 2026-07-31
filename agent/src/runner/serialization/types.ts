@@ -144,8 +144,18 @@ export const validateCheckpointFileForSerialization = (file: CheckpointFile): vo
             throw new Error(`checkpoint ${checkpoint.id} must keep trigger at checkpoint root`);
         }
         assertNoCoreHintFields(checkpoint, `checkpoints[${index}]`);
+        assertCheckpointBodyDoesNotMixLegacyProcedureFields(checkpoint);
         assertCheckpointActionsEntityRules(checkpoint.prepare, `checkpoints[${index}].prepare`);
         assertCheckpointContentUsesSerializedStepShape(checkpoint, `checkpoints[${index}]`);
+    }
+};
+
+const assertCheckpointBodyDoesNotMixLegacyProcedureFields = (checkpoint: Checkpoint): void => {
+    if (!checkpoint.body) {return;}
+    for (const field of ['prepare', 'content', 'output'] as const) {
+        if (checkpoint[field] !== undefined) {
+            throw new Error(`checkpoint ${checkpoint.id} body.dsl cannot be combined with legacy ${field}`);
+        }
     }
 };
 

@@ -13,13 +13,15 @@ export type DslImport = {
     alias: string;
 };
 
-export type DslStmt = LetStmt | ActStmt | ResolveActStmt | EntityActStmt | LinkedEntityActStmt | FormActStmt | TableActStmt | CheckpointStmt | IfStmt | ForStmt;
+export type DslStmt = LetStmt | OutputStmt | ActStmt | ResolveActStmt | EntityActStmt | LinkedEntityActStmt | FormActStmt | TableActStmt | CheckpointStmt | IfStmt | ForStmt;
 
 export type LetStmt = {
     kind: 'let';
     name: string;
     expr: DslExpr;
 };
+
+export type OutputStmt = { kind: 'output'; name: string; expr: DslExpr };
 
 export type DslExpr = QueryExpr | EntityQueryExpr | QuerySugarExpr | RefExpr;
 
@@ -137,6 +139,7 @@ export type CheckpointStmt = {
     kind: 'checkpoint';
     id: string;
     input?: Record<string, DslExpr>;
+    bind?: string;
 };
 
 export type IfStmt = {

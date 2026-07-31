@@ -67,7 +67,7 @@ export const maybePickCheckpoint = async (ctx: CheckpointCtx): Promise<Checkpoin
 
     const candidates = listCheckpoints(ctx.failedCtx.checkpoints)
         .filter((item) => item.enabled !== false)
-        .filter((item) => ctx.failedCtx.checkpointAttempt < getEffectiveMaxAttempts(item, ctx.failedCtx.checkpointMaxAttempts))
+        .filter((item) => ctx.failedCtx.checkpointAttempt < getEffectiveCheckpointMaxAttempts(item, ctx.failedCtx.checkpointMaxAttempts))
         .filter((item) => {
             const scopedStepName = firstRuleStepName(item);
             return !scopedStepName || scopedStepName === ctx.failedCtx.step.name;
@@ -165,7 +165,7 @@ export const evalMatchRule = async (
     return false;
 };
 
-const getEffectiveMaxAttempts = (checkpoint: Checkpoint, fallbackMaxAttempts: number): number => {
+export const getEffectiveCheckpointMaxAttempts = (checkpoint: Checkpoint, fallbackMaxAttempts: number): number => {
     const candidateMaxAttempts = checkpoint.policy?.maxAttempts;
     if (typeof candidateMaxAttempts === 'number' && Number.isFinite(candidateMaxAttempts) && candidateMaxAttempts >= 0) {
         return Math.min(candidateMaxAttempts, fallbackMaxAttempts);
