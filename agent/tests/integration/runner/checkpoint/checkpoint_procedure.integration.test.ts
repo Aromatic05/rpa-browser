@@ -481,3 +481,64 @@ test('browser.checkpoint validates nested entity_rules before invoking executors
     assert.equal(result.error?.code, 'ERR_BAD_ARGS');
     assert.equal(executorCalled, false);
 });
+
+test('browser.checkpoint executes body DSL with frozen imports and overridden input', async () => {
+    const {deps} = await createDeps();
+    let resolvedEntityProfile: string | undefined;
+    let resolvedBundle: string | undefined;
+    let receivedResolve: StepUnion['resolve'];
+    const baseExecutors = deps.pluginHost.getExecutors();
+    deps.pluginHost.getExecutors = () => ({
+        ...baseExecutors,
+        'browser.click': async (nestedStep) => {
+            receivedResolve = nestedStep.resolve;
+            return {stepId: nestedStep.id, ok: true, data: {clicked: true}};
+        },
+    });
+    const checkpoint: Checkpoint = {
+        id: 'body-procedure',
+        kind: 'procedure',
+        input: {value: 'checkpoint-default'},
+        body: {language: 'dsl', source: 'body.dsl'},
+    };
+
+    const result = await executeBrowserCheckpoint({
+        id: 'body-call',
+        name: 'browser.checkpoint',
+        args: {checkpointId: checkpoint.id, input: {value: 'step-value'}},
+    }, deps, 'ws-1', {
+        checkpointProvider: {
+            getCheckpoint: (id) => id === checkpoint.id ? checkpoint : null,
+            getCheckpointBody: (id) => id === checkpoint.id ? {
+                source: [
+                    'use entity_rules "orders" as orders',
+                    'use resolves "external" as target',
+                    'click target.button',
+                    'output value = input.value',
+                ].join('\n'),
+                stepResolves: {},
+            } : null,
+        },
+        entityRulesResolver: {
+            resolveProfile: (name) => {
+                resolvedEntityProfile = name;
+                return {profile: {profileName: name, entities: []}, diagnostics: []};
+            },
+        },
+        resolveResolver: {
+            resolveBundle: (name) => {
+                resolvedBundle = name;
+                return {resolves: {button: {hint: {raw: {selector: '#approve'}}}}, diagnostics: []};
+            },
+        },
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(resolvedEntityProfile, 'orders');
+    assert.equal(resolvedBundle, 'external');
+    assert.equal(receivedResolve?.hint?.raw?.selector, '#approve');
+    assert.deepEqual(result.data, {
+        checkpointId: checkpoint.id,
+        output: {value: 'step-value'},
+    });
+});
