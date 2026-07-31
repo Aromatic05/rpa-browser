@@ -13,7 +13,6 @@ export type RecordedDslOperation =
     | {kind: 'row_action'; actionIntent: string; primaryKey: string}
     | {kind: 'resolve'; action: 'fill' | 'type' | 'select'; symbol: string; value: string}
     | {kind: 'resolve'; action: 'click'; symbol: string}
-    | {kind: 'wait'; durationMs: number}
     | {kind: 'snapshot'};
 
 export const compileRecordedCheckpointDsl = (options: {
@@ -66,8 +65,6 @@ const emitOperation = (operation: RecordedDslOperation, entityKey: string): stri
             return operation.action === 'click'
                 ? `click recorded.${identifier(operation.symbol)}`
                 : `${operation.action} recorded.${identifier(operation.symbol)} with ${reference(operation.value)}`;
-        case 'wait':
-            return `wait ${String(operation.durationMs)}`;
         case 'snapshot':
             return 'snapshot';
     }

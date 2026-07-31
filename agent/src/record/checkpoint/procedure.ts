@@ -63,6 +63,7 @@ const actionForStep = (step: StepUnion): 'fill' | 'type' | 'select' => {
 };
 
 const fallbackOperation = (step: StepUnion, index: number, enrichments: RecordingEnhancementMap, resolves: Record<string, StepResolve>, input: Record<string, unknown>): RecordedDslOperation => {
+    if (step.name === 'browser.snapshot') {return {kind: 'snapshot'};}
     const persisted = persistRecordedStep(step, index, enrichments, resolves);
     const resolveId = (persisted.args as {resolveId?: unknown}).resolveId;
     if (typeof resolveId !== 'string') {throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, `不支持将录制步骤 ${step.name} 生成为稳定 DSL；请先标注业务语义或提供元素解析`);}
@@ -75,7 +76,6 @@ const fallbackOperation = (step: StepUnion, index: number, enrichments: Recordin
         input[key] = structuredClone(recordedValue(step));
         return {kind: 'resolve', action: actionForStep(step), symbol, value: `input.${key}`};
     }
-    if (step.name === 'browser.snapshot') {return {kind: 'snapshot'};}
     throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, `不支持将录制步骤 ${step.name} 生成为稳定 DSL`);
 };
 
