@@ -2,35 +2,43 @@
 
 ## 概述
 
-本文档定义本仓库的测试入口与 workflow artifact 验证步骤。
+本文档定义当前仓库的有效测试入口。
 
-## 规范
-
-### 核心命令
+## 核心门禁
 
 ```bash
-pnpm -C agent test
-pnpm test:extension
+pnpm test:repo-contract
+pnpm typecheck
+pnpm lint
 pnpm test
 ```
 
-### workflow artifact 验证
+## 核心子系统
 
-1. 准备 `agent/.artifacts/workflows/<scene>/workflow.yaml`。
-2. 执行 `workflow.open`，确认返回 workspace 与 token。
-3. 执行 `workflow.dsl.test`，检查 output 与 diagnostics。
-4. 执行 `workflow.releaseRun`，确认正式路径可运行。
-5. 可选执行 `record.start/stop + workflow.record.save` 验证 records 落盘。
+```bash
+pnpm test:agent:snapshot
+pnpm test:agent:entity-rules
+pnpm test:extension
+pnpm test:dev-cdp
+pnpm test:agent:headed
+```
 
-### entity rules 验证建议
+测试应验证行为和失败边界，不以字符串、配置文件存在性或模拟成功结果替代真实执行。新增回归先证明测试在修复前失败，再实施代码修复。
 
-- 使用 mock 路由进行 snapshot + entity query。
-- 检查 diagnostics 与业务查询结果是否一致。
+## Snapshot 和 Entity Rules
 
-## 示例
+- 固定采集回放：`agent/tests/fixtures/observation-v2/`。
+- Form/Table corpus：`agent/tests/fixtures/form-v2/`。
+- Agent 集成：`agent/tests/integration/snapshot/`、`agent/tests/integration/entity_rules/`。
+- 真实浏览器：`agent/tests/e2e/entity_rules/` 及相关 Playwright 页面。
 
-- 先 `pnpm mock:dev`，再跑 agent 测试和 UI 手动回归。
+仓库不再依赖独立 mock 站点。
 
-## 限制
+## Workflow artifact
 
-- start_extension 的手工验证不替代自动化测试。
+1. 载入 workflow，确认 catalog 和 artifact 可读取。
+2. 执行 `workflow.dsl.test`。
+3. 验证普通 Step、Checkpoint、task.run 和 DSL 使用同一 runtime contract。
+4. 验证 artifact 保存、重新载入和错误诊断。
+
+手工验证不能替代自动化测试。

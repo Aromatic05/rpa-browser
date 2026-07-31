@@ -82,4 +82,3 @@ const readFailure = (reply: Action): string => {
 };
 
 const clonePoint = (point: AnnotatorPoint): AnnotatorPoint => ({x: point.x, y: point.y});
-

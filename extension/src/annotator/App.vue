@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {computed, nextTick, onMounted, onUnmounted, ref, watch} from 'vue';
+import type {CSSProperties} from 'vue';
 import AnnotatorCanvas from './canvas/AnnotatorCanvas.vue';
 import BusinessObjectPanel from './canvas/BusinessObjectPanel.vue';
 import EditCard from './canvas/EditCard.vue';
@@ -739,7 +740,7 @@ const pickHighlightBox = computed<PickRect | null>(() => {
     return hoverBox.value;
 });
 
-const pendingEditorStyle = computed<Record<string, string>>(() => {
+const pendingEditorStyle = computed<CSSProperties>(() => {
     const pending = pendingAnnotationEdit.value;
     const target = pending?.candidate.bbox ? toOverlayRect(pending.candidate.bbox) : null;
     if (!pending || !target) {return {display: 'none'};}

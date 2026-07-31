@@ -9,9 +9,6 @@
         "build:extension": "node scripts/build_extensions.mjs",
         "dev": "exec node scripts/dev_runtime.mjs --mode=extension",
         "dev:headless": "pnpm build:extension && pnpm --filter ./agent dev:headless",
-        "mock:dev": "pnpm -C mock dev",
-        "mock:dev:ant": "pnpm -C mock dev:ant",
-        "mock:dev:element": "pnpm -C mock dev:element",
         "mcp:demo": "pnpm --filter ./agent mcp:demo",
         "mcp": "pnpm --filter ./agent mcp",
         "mcp:hot": "pnpm --filter ./agent mcp:hot",
@@ -23,10 +20,15 @@
         "test:extension": "pnpm --filter ./extension test",
         "test:dev-cdp": "node --test scripts/__tests__/dev_cdp_runtime.test.mjs scripts/__tests__/dev_runtime_contract.test.mjs",
         "typecheck:agent": "pnpm --filter ./agent typecheck",
-        "typecheck:extension": "pnpm --filter ./extension exec tsc --noEmit",
+        "typecheck:extension": "pnpm --filter ./extension typecheck",
         "typecheck": "pnpm typecheck:agent && pnpm typecheck:extension",
         "lint": "pnpm exec eslint \"agent/**/*.{ts,tsx,js,jsx,mjs,cjs}\" \"extension/**/*.{ts,tsx,js,jsx,mjs,cjs}\" \"start_extension/**/*.{ts,tsx,js,jsx,mjs,cjs}\" --max-warnings=0",
-        "format": "npx prettier --write \"**/*.{ts,tsx,js,jsx,css,md,json,html}\""
+        "format": "npx prettier --write \"**/*.{ts,tsx,js,jsx,css,md,json,html}\"",
+        "control": "pnpm --filter ./agent control",
+        "test:repo-contract": "node --test scripts/__tests__/repository_contract.test.mjs",
+        "test:agent:snapshot": "pnpm --filter ./agent test:snapshot",
+        "test:agent:entity-rules": "pnpm --filter ./agent test:entity-rules",
+        "test": "pnpm test:repo-contract && pnpm typecheck && pnpm lint && pnpm --filter ./agent test:ci && pnpm test:extension && pnpm test:dev-cdp"
     },
     "devDependencies": {
         "@eslint/js": "^10.0.1",

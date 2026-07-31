@@ -33,6 +33,7 @@
 - `Runtime/Dsl.md`
 - `Runtime/Checkpoint.md`
 - `Runtime/Snapshot.md`
+- `Runtime/EntityRules.md`
 - `Runtime/TargetResolve.md`
 - `Runtime/Config.md`
 - `Runtime/Logging.md`
@@ -41,10 +42,9 @@
 
 - `Architecture/Overview.md`
 - `Architecture/WorkflowLifecycle.md`
-- `Architecture/TypicalFlow.md`
+- `Architecture/RuntimeArchitecture.md`
 - `Architecture/Extension.md`
 - `Architecture/StartExtension.md`
-- `Architecture/MockApps.md`
 - `Architecture/MCPIntegration.md`
 
 ### Development
