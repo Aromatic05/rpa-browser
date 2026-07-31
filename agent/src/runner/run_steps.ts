@@ -21,6 +21,7 @@ import type {
 import type { StepResolve } from './steps/types';
 import { isValidStepResolve } from './steps/resolve_utils';
 import { resolveStepEntityRulesExecution } from '../snapshot/rules/runtime';
+import { summarizeStepArgs } from './step_event_summary';
 
 export type {
     Checkpoint,
@@ -438,21 +439,20 @@ const resolveRunCheckpoints = (
             stepResolves: req.checkpointStepResolves ?? {},
         };
     }
-    try {
-        const workspace = deps.resolveWorkspace(req.workspaceName);
-        const provider = workspace.checkpoint.getProvider(workspace.workflow);
-        const checkpoints = (provider.listCheckpoints?.() ?? [])
-            .filter((checkpoint) => checkpoint.kind === undefined || checkpoint.kind === 'recovery');
-        return {
-            checkpoints,
-            stepResolves: Object.fromEntries(checkpoints.map((checkpoint) => [
-                checkpoint.id,
-                provider.getCheckpointResolves?.(checkpoint.id) ?? {},
-            ])),
-        };
-    } catch {
+    const workspace = deps.resolveWorkspace(req.workspaceName);
+    if (!workspace.checkpoint?.getProvider || !workspace.workflow) {
         return {checkpoints: [], stepResolves: {}};
     }
+    const provider = workspace.checkpoint.getProvider(workspace.workflow);
+    const checkpoints = (provider.listCheckpoints?.() ?? [])
+        .filter((checkpoint) => checkpoint.kind === undefined || checkpoint.kind === 'recovery');
+    return {
+        checkpoints,
+        stepResolves: Object.fromEntries(checkpoints.map((checkpoint) => [
+            checkpoint.id,
+            provider.getCheckpointResolves?.(checkpoint.id) ?? {},
+        ])),
+    };
 };
 
 export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promise<Checkpoint> => {
@@ -547,7 +547,7 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
                 workspaceName: req.workspaceName,
                 stepId: step.id,
                 name: step.name,
-                argsSummary: step.args,
+                argsSummary: summarizeStepArgs(step),
             });
 
             const result = await executeOne(step, req.workspaceName, runLocalStepResults, resolvedDeps, req.stepResolves);

@@ -68,6 +68,7 @@ type LegacyEntity = {
     kind: LegacyEntityKind;
     name: string;
     businessTag: string;
+    entityKey?: string;
     target: LegacyTarget;
     expect?: 'unique' | 'one_or_more';
     annotations: LegacyAnnotation[];
@@ -828,6 +829,7 @@ const compileLegacyCanvas = (
         const rootBinding: Record<string, unknown> = {
             ruleId: rootRuleId,
             businessTag: entity.businessTag,
+            ...(entity.entityKey ? {entityKey: entity.entityKey} : {}),
             displayName: entity.name,
             ...(entity.kind === 'form' || entity.kind === 'table' ? {} : {entityKind: entity.kind}),
             legacyCanvas: structuredClone(canvas),
@@ -998,6 +1000,7 @@ const legacyCanvasFromProfile = (
         kind,
         name: readString(rootBinding?.displayName) ?? readString(rootBinding?.businessName) ?? profile.name,
         businessTag: readString(rootBinding?.businessTag) ?? `${kind}.main`,
+        ...(readString(rootBinding?.entityKey) ? {entityKey: readString(rootBinding?.entityKey)} : {}),
         target: rootTarget
             ? persistentTarget(entry, rootTarget.nodeIds[0], kind, rootTarget.id)
             : legacyTargetFromRule(rootRule?.match, kind),

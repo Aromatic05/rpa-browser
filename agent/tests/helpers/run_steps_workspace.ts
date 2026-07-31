@@ -111,6 +111,7 @@ export const completeRunStepsDeps = (
     };
     const workspace = {
         name: workspaceName,
+        workflow: { name: workspaceName },
         browserSession: { pageRegistry },
         tabs: {
             getActiveTab: () => tab,
