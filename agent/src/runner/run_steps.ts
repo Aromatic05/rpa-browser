@@ -433,16 +433,17 @@ export const setRunStepsDeps = (deps: RunStepsDeps): void => {
 const resolveRunCheckpoints = (
     req: RunStepsRequest,
     deps: RunStepsDeps,
-): {checkpoints: RunnerCheckpoint[]; stepResolves: Record<string, Record<string, StepResolve>>} => {
+): {checkpoints: RunnerCheckpoint[]; stepResolves: Record<string, Record<string, StepResolve>>; bodies: Record<string, string>} => {
     if (req.checkpoints !== undefined) {
         return {
             checkpoints: req.checkpoints,
             stepResolves: req.checkpointStepResolves ?? {},
+            bodies: {},
         };
     }
     const workspace = deps.resolveWorkspace(req.workspaceName);
     if (!workspace.checkpoint?.getProvider || !workspace.workflow) {
-        return {checkpoints: [], stepResolves: {}};
+        return {checkpoints: [], stepResolves: {}, bodies: {}};
     }
     const provider = workspace.checkpoint.getProvider(workspace.workflow);
     const checkpoints = (provider.listCheckpoints?.() ?? [])
@@ -453,6 +454,10 @@ const resolveRunCheckpoints = (
             checkpoint.id,
             provider.getCheckpointResolves?.(checkpoint.id) ?? {},
         ])),
+        bodies: Object.fromEntries(checkpoints.flatMap((checkpoint) => {
+            const body = provider.getCheckpointBody?.(checkpoint.id);
+            return body ? [[checkpoint.id, body.source] as const] : [];
+        })),
     };
 };
 
@@ -467,7 +472,7 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
     let activeStep: StepUnion | undefined;
     let activeCursor = req.stepsQueue.cursor;
     let activeResultPublished = false;
-    let checkpointRuntime: ReturnType<typeof resolveRunCheckpoints> = { checkpoints: [], stepResolves: {} };
+    let checkpointRuntime: ReturnType<typeof resolveRunCheckpoints> = { checkpoints: [], stepResolves: {}, bodies: {} };
 
     const finish = async (finalStatus: RunStatus): Promise<Checkpoint> => {
         const checkpoint = checkpointOf(req.runId, req.workspaceName, finalStatus, req.stepsQueue.cursor);
@@ -589,6 +594,7 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
                     ),
                     checkpoints: checkpointRuntime.checkpoints,
                     checkpointStepResolves: checkpointRuntime.stepResolves,
+                    checkpointBodies: checkpointRuntime.bodies,
                 });
                 const checkpointOutput = await runCheckpoint(failedCtx);
                 finalResult = checkpointOutput.finalResult;

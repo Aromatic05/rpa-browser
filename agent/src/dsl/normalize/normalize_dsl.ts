@@ -21,6 +21,9 @@ const normalizeStmt = (stmt: DslStmt): DslStmt[] => {
     if (stmt.kind === 'let') {
         return [{...stmt, expr: normalizeExpr(stmt.expr)}];
     }
+    if (stmt.kind === 'output') {
+        return [{...stmt, expr: normalizeExpr(stmt.expr)}];
+    }
     if (stmt.kind === 'form_act') {
         return [expandFormActStmt(stmt)];
     }

@@ -51,6 +51,7 @@ test('runDsl executes query then fill through one task stream and writes vars/ou
     const calls: StubCall[] = [];
     const checkpoint: Checkpoint = {
         id: 'ensure_logged_in',
+        kind: 'procedure',
         output: {
             loginState: { ref: 'input.username' },
         },
@@ -95,9 +96,7 @@ test('runDsl executes query then fill through one task stream and writes vars/ou
         nodeId: 'buyer-input',
         value: 'alice',
     });
-    assert.deepEqual(result.scope.output, {
-        loginState: 'root',
-    });
+    assert.deepEqual(result.scope.output, {});
 });
 
 test('runDsl checkpoint applies resolve sidecar without retaining resolveId', async () => {
@@ -129,6 +128,27 @@ test('runDsl checkpoint applies resolve sidecar without retaining resolveId', as
     assert.ok(click);
     assert.equal('resolveId' in click.args, false);
     assert.deepEqual(click.resolve, resolve);
+});
+
+test('runDsl executes a procedure DSL body through the current step port and binds its output', async () => {
+    const calls: StubCall[] = [];
+    const checkpoint: Checkpoint = {id: 'ensure', kind: 'procedure', body: {language: 'dsl', source: 'body.dsl'}};
+    const result = await runDsl(normalizeDsl(parseDsl(`
+        let session = use checkpoint "ensure" with {
+          authenticated: input.authenticated
+          target: input.target
+        }
+        fill input.target with session.authenticated
+    `)), {
+        workspaceName: 'ws-dsl', deps: createDeps(calls), input: {authenticated: 'yes', target: {nodeId: 'target'}},
+        checkpointProvider: {
+            getCheckpoint: (id) => id === 'ensure' ? checkpoint : null,
+            getCheckpointBody: () => ({source: 'click input.target\noutput authenticated = input.authenticated', stepResolves: {}}),
+        },
+    });
+    assert.deepEqual(calls.map((call) => call.name), ['browser.click', 'browser.fill']);
+    assert.deepEqual(calls[1].args, {nodeId: 'target', value: 'yes'});
+    assert.deepEqual(result.scope.vars.session, {authenticated: 'yes'});
 });
 
 test('runDsl wraps failed act steps as DslRuntimeError', async () => {

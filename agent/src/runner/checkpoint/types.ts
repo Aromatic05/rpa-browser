@@ -30,6 +30,7 @@ export type Checkpoint = {
     };
     enabled?: boolean;
     priority?: number;
+    body?: { language: 'dsl'; source: 'body.dsl' };
 };
 
 export type CheckpointValue = unknown;

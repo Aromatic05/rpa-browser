@@ -1,6 +1,8 @@
 import { getLogger } from '../../logging/logger';
 import type { Checkpoint, CheckpointCtx } from './types';
 import { runCheckpointProcedure } from './runtime';
+import { runCheckpointDslBody } from './dsl_body';
+import { createDslEntityRulesResolver } from '../../dsl/link';
 
 const log = getLogger('step');
 
@@ -14,6 +16,32 @@ export const maybeRunCheckpoint = async (ctx: CheckpointCtx): Promise<Checkpoint
     const checkpointStepResolves = ctx.failedCtx.checkpointStepResolves?.[ctx.checkpoint.id];
     const executeCheckpointStep = (step: Parameters<typeof ctx.failedCtx.executeStep>[0]) =>
         ctx.failedCtx.executeStep(step, checkpointStepResolves);
+
+    const body = ctx.failedCtx.checkpointBodies?.[ctx.checkpoint.id];
+    if (ctx.checkpoint.body) {
+        if (!body) {
+            return {...ctx, active: false, stopReason: 'checkpoint_step_failed', runResult: {stepId: ctx.failedCtx.step.id, ok: false, error: {code: 'ERR_CHECKPOINT_BODY_MISSING', message: `checkpoint body unavailable: ${ctx.checkpoint.id}`}}};
+        }
+        try {
+            const output = await runCheckpointDslBody({
+                checkpoint: ctx.checkpoint, source: body, stepResolves: checkpointStepResolves || {}, executeStep: executeCheckpointStep,
+                workspaceName: ctx.failedCtx.workspaceName, deps: ctx.failedCtx.deps,
+                entityRulesResolver: (() => {
+                    const provider = ctx.failedCtx.deps.resolveEntityRulesProvider?.(ctx.failedCtx.workspaceName);
+                    return provider ? createDslEntityRulesResolver(provider) : undefined;
+                })(),
+                checkpointProvider: (() => {
+                    const workspace = ctx.failedCtx.deps.resolveWorkspace(ctx.failedCtx.workspaceName);
+                    return workspace.checkpoint && workspace.workflow
+                        ? workspace.checkpoint.getProvider(workspace.workflow) : undefined;
+                })(),
+                input: {failure: {step: {name: ctx.failedCtx.step.name, args: ctx.failedCtx.step.args}, error: {code: ctx.failedCtx.rawResult.error?.code, message: ctx.failedCtx.rawResult.error?.message}, attempt: ctx.failedCtx.checkpointAttempt, maxAttempts: ctx.failedCtx.checkpointMaxAttempts, ...(ctx.failedCtx.currentUrl ? {url: ctx.failedCtx.currentUrl} : {})}},
+            });
+            return {...ctx, runResult: {stepId: ctx.failedCtx.step.id, ok: true, data: {checkpointId: ctx.checkpoint.id, checkpointName: ctx.checkpoint.name, output}}};
+        } catch (error) {
+            return {...ctx, active: false, stopReason: 'checkpoint_step_failed', runResult: {stepId: ctx.failedCtx.step.id, ok: false, error: {code: error instanceof Error && 'code' in error ? String((error as {code: unknown}).code) : 'ERR_CHECKPOINT_BODY_FAILED', message: error instanceof Error ? error.message : String(error)}}};
+        }
+    }
 
     if (ctx.checkpoint.prepare || ctx.checkpoint.output || hasActionContent(ctx.checkpoint.content)) {
         const output = await runCheckpointProcedure({

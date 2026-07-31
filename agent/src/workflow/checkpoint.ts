@@ -3,7 +3,8 @@ import type { Checkpoint } from '../runner/checkpoint';
 import type { StepResolve } from '../runner/steps/types';
 import type { CheckpointHintFile, CheckpointResolveFile, SingleCheckpointFile } from '../runner/serialization/types';
 import { validateCheckpointResolveFileForSerialization, validateSingleCheckpointFileForSerialization } from '../runner/serialization/types';
-import { listDirectories, readValidatedYamlFile, readYamlFile, removePath, requireArtifactName, workflowArtifactPath, workflowRootDir, writeYamlFile } from './fs';
+import { listDirectories, readValidatedYamlFile, readYamlFile, removePath, requireArtifactName, workflowArtifactPath, writeYamlFile } from './fs';
+import fs from 'node:fs';
 import { invalidWorkflowArtifact } from './errors';
 import type { WorkflowCodec } from './store';
 import type { DslCheckpointProvider } from '../dsl/emit';
@@ -14,6 +15,7 @@ export type WorkflowCheckpoint = {
     checkpoint: Checkpoint;
     stepResolves: Record<string, StepResolve>;
     hints: CheckpointHintFile['hints'];
+    bodyDsl?: string;
 };
 
 const checkpointDir = (workflowName: string, checkpointName: string): string =>
@@ -36,7 +38,8 @@ export const createCheckpointCodec = (workflowName: string): WorkflowCodec<Workf
             const resolveFile = readOptionalResolveFile(path.join(dir, 'checkpoint_resolve.yaml'));
             const stepResolves = resolveFile?.resolves ?? {};
             const hints = readOptionalHints(path.join(dir, 'checkpoint_hints.yaml'));
-            return { kind: 'checkpoint', name, checkpoint: checkpointFile.checkpoint, stepResolves, hints };
+            const bodyDsl = readCheckpointBody(dir, checkpointFile.checkpoint);
+            return { kind: 'checkpoint', name, checkpoint: checkpointFile.checkpoint, stepResolves, hints, ...(bodyDsl !== undefined ? {bodyDsl} : {}) };
         } catch (error) {
             if (isMissingFile(error)) {return null;}
             throw invalidWorkflowArtifact('checkpoint', name, error);
@@ -56,9 +59,17 @@ export const createCheckpointCodec = (workflowName: string): WorkflowCodec<Workf
         validateSingleCheckpointFileForSerialization(checkpointFile);
         const resolveFile: CheckpointResolveFile = { version: 1, resolves: value.stepResolves };
         validateCheckpointResolveFileForSerialization(resolveFile);
+        parseCheckpointHints({version: 1, hints: value.hints});
+        validateCheckpointBody(value.checkpoint, value.bodyDsl);
         writeYamlFile(path.join(dir, 'checkpoint.yaml'), checkpointFile);
         writeYamlFile(path.join(dir, 'checkpoint_resolve.yaml'), resolveFile);
         writeYamlFile(path.join(dir, 'checkpoint_hints.yaml'), { version: 1, hints: value.hints });
+        const bodyPath = path.join(dir, 'body.dsl');
+        if (value.bodyDsl !== undefined) {
+            fs.writeFileSync(bodyPath, value.bodyDsl, 'utf8');
+        } else if (fs.existsSync(bodyPath)) {
+            fs.unlinkSync(bodyPath);
+        }
         return value;
     },
     delete: (name) => {
@@ -102,6 +113,10 @@ export const createWorkflowCheckpointProvider = (
 ): DslCheckpointProvider => ({
     getCheckpoint: (id: string) => checkpoints.get(id)?.checkpoint ?? null,
     getCheckpointResolves: (id: string) => checkpoints.get(id)?.stepResolves ?? null,
+    getCheckpointBody: (id: string) => {
+        const item = checkpoints.get(id);
+        return item?.bodyDsl === undefined ? null : {source: item.bodyDsl, stepResolves: item.stepResolves};
+    },
     listCheckpoints: () => [...checkpoints.values()].map((item) => item.checkpoint),
 });
 
@@ -113,4 +128,21 @@ const parseCheckpointHints = (value: unknown): CheckpointHintFile['hints'] => {
         throw new Error('invalid checkpoint hints file');
     }
     return value.hints as CheckpointHintFile['hints'];
+};
+
+const readCheckpointBody = (dir: string, checkpoint: Checkpoint): string | undefined => {
+    const bodyPath = path.join(dir, 'body.dsl');
+    const exists = fs.existsSync(bodyPath);
+    validateCheckpointBody(checkpoint, exists ? fs.readFileSync(bodyPath, 'utf8') : undefined);
+    return exists ? fs.readFileSync(bodyPath, 'utf8') : undefined;
+};
+
+const validateCheckpointBody = (checkpoint: Checkpoint, bodyDsl: string | undefined): void => {
+    const body = checkpoint.body;
+    if (!body) {
+        if (bodyDsl !== undefined) {throw new Error('orphan checkpoint body.dsl without body metadata');}
+        return;
+    }
+    if (body.language !== 'dsl' || body.source !== 'body.dsl') {throw new Error('invalid checkpoint body metadata');}
+    if (bodyDsl === undefined) {throw new Error('checkpoint body.dsl is required by body metadata');}
 };

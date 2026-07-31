@@ -47,6 +47,9 @@ const validateStmt = (
             }
             scope.vars.add(stmt.name);
             return;
+        case 'output':
+            validateExpr(stmt.expr, scope, diagnostics, `${path}.expr`);
+            return;
         case 'act':
             validateAct(stmt, scope, diagnostics, path);
             return;
@@ -67,6 +70,13 @@ const validateStmt = (
             return;
         case 'checkpoint':
             validateCheckpoint(stmt, scope, diagnostics, path);
+            if (stmt.bind) {
+                if (scope.vars.has(stmt.bind)) {
+                    diagnostics.push(createDiagnostic('ERR_DSL_VAR_REDEFINED', `DSL variable already defined: ${stmt.bind}`, `${path}.bind`));
+                } else {
+                    scope.vars.add(stmt.bind);
+                }
+            }
             return;
         case 'if': {
             validateExpr(stmt.condition, scope, diagnostics, `${path}.condition`);

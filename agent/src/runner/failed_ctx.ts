@@ -17,6 +17,7 @@ export type FailedCtx = {
     executeStep: (step: StepUnion, stepResolves?: Record<string, StepResolve>) => Promise<StepResult>;
     checkpoints?: Checkpoint[];
     checkpointStepResolves?: Record<string, Record<string, StepResolve>>;
+    checkpointBodies?: Record<string, string>;
     currentUrl?: string;
 };
 
@@ -35,6 +36,7 @@ export const getFailedCtx = async (input: {
     executeStep: (step: StepUnion, stepResolves?: Record<string, StepResolve>) => Promise<StepResult>;
     checkpoints?: Checkpoint[];
     checkpointStepResolves?: Record<string, Record<string, StepResolve>>;
+    checkpointBodies?: Record<string, string>;
 }): Promise<FailedCtx> => {
     let currentUrl: string | undefined;
     try {
@@ -72,6 +74,7 @@ export const getFailedCtx = async (input: {
         executeStep: input.executeStep,
         checkpoints: input.checkpoints,
         checkpointStepResolves: input.checkpointStepResolves,
+        checkpointBodies: input.checkpointBodies,
         currentUrl,
     };
 };

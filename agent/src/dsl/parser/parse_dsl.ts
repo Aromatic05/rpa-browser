@@ -231,6 +231,15 @@ const parseStatement = (
     entityAliases: ReadonlySet<string>,
     resolveAliases: ReadonlySet<string>,
 ): DslStmt => {
+    if (statement.startsWith('output ')) {
+        const match = statement.match(/^output\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*([A-Za-z0-9_.]+)$/);
+        if (!match) {throw new DslParseError(`invalid output statement: ${statement}`);}
+        return {kind: 'output', name: match[1], expr: toRef(match[2])};
+    }
+    const checkpointLet = statement.match(/^let\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(use\s+checkpoint\s+[\s\S]+)$/);
+    if (checkpointLet) {
+        return {...parseCheckpoint(checkpointLet[2]), bind: checkpointLet[1]};
+    }
     if (statement.startsWith('let ')) {
         return parseLet(statement, entityAliases);
     }

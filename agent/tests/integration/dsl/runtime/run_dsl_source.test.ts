@@ -41,6 +41,7 @@ test('runDslSource executes parse normalize validate and run', async () => {
     const calls: Array<Record<string, unknown>> = [];
     const checkpoint: Checkpoint = {
         id: 'ensure_logged_in',
+        kind: 'procedure',
         output: {
             loginState: { ref: 'input.username' },
         },
@@ -79,7 +80,7 @@ for user in input.users:
     );
 
     assert.deepEqual(result.diagnostics, []);
-    assert.deepEqual(result.scope.output, { loginState: 'root' });
+    assert.deepEqual(result.scope.output, {});
     assert.equal(calls.length, 2);
 });
 
