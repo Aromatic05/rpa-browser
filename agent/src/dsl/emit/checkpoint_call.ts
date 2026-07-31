@@ -8,6 +8,7 @@ import type { StepResult, StepUnion } from '../../runner/steps/types';
 import type { StepResolve } from '../../runner/steps/types';
 import type { CheckpointStmt } from '../ast/types';
 import { DslRuntimeError } from '../diagnostics/errors';
+import { injectStepResolve } from '../../runner/step_resolve';
 import type { DslScope } from '../runtime/scope';
 import { resolveDslValue } from '../runtime/refs';
 
@@ -49,7 +50,7 @@ export const runDslCheckpointCall = async (
     const body = options.checkpointProvider?.getCheckpointBody?.(options.stmt.id);
     if (checkpoint.body) {
         if (!body) {throw new DslRuntimeError(`checkpoint body unavailable: ${options.stmt.id}`, 'ERR_DSL_CHECKPOINT_BODY_MISSING');}
-        if (checkpoint.kind !== 'procedure') {
+        if (checkpoint.kind && checkpoint.kind !== 'procedure') {
             throw new DslRuntimeError(`checkpoint is not callable: ${options.stmt.id}`, 'ERR_DSL_CHECKPOINT_NOT_CALLABLE');
         }
         return await runCheckpointDslBody({
@@ -59,7 +60,7 @@ export const runDslCheckpointCall = async (
             checkpointProvider: options.checkpointProvider,
         });
     }
-    if (checkpoint.kind !== 'procedure') {
+    if (checkpoint.kind && checkpoint.kind !== 'procedure') {
         throw new DslRuntimeError(`checkpoint is not callable: ${options.stmt.id}`, 'ERR_DSL_CHECKPOINT_NOT_CALLABLE');
     }
     const result = await runCheckpointProcedure({
@@ -67,20 +68,9 @@ export const runDslCheckpointCall = async (
         input,
         stepIdPrefix: `dsl:checkpoint:${options.stmt.id}:${crypto.randomUUID()}`,
         executeStep: async (step) => {
-            const resolveId = 'resolveId' in step.args && typeof step.args.resolveId === 'string'
-                ? step.args.resolveId
-                : '';
-            if (!resolveId || !Object.hasOwn(stepResolves, resolveId)) {
-                return await options.executeStep(step);
-            }
-            const runtimeStep = {
-                ...step,
-                args: Object.fromEntries(
-                    Object.entries(step.args).filter(([key]) => key !== 'resolveId'),
-                ),
-                resolve: stepResolves[resolveId],
-            } as StepUnion;
-            return await options.executeStep(runtimeStep);
+            const runtimeStep = injectStepResolve(step, stepResolves);
+            if (!runtimeStep.ok) {return {stepId: step.id, ok: false, error: runtimeStep.error};}
+            return await options.executeStep(runtimeStep.step);
         },
     });
     if (!result.ok) {

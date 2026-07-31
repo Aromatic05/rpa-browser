@@ -19,6 +19,7 @@ export const createDslScope = (input?: Record<string, unknown>, failure?: Record
 
 export const createChildDslScope = (parent: DslScope): DslScope => ({
     input: parent.input,
+    ...(parent.failure ? {failure: parent.failure} : {}),
     vars: { ...parent.vars },
     output: parent.output,
 });

@@ -1,14 +1,8 @@
 import type { RunStepsDeps } from './run_steps_types';
 import type { Checkpoint } from './checkpoint/types';
 import type { StepResolve, StepResult, StepUnion } from './steps/types';
-import type { DslCheckpointProvider } from '../dsl/emit';
-import type { DslEntityRulesResolver, DslResolveResolver } from '../dsl/link';
-
-export type CheckpointRuntimeSnapshot = {
-    provider: DslCheckpointProvider;
-    entityRulesResolver?: DslEntityRulesResolver;
-    resolveResolver?: DslResolveResolver;
-};
+import type { CheckpointRuntimeSnapshot } from './checkpoint/runtime_snapshot';
+export type { CheckpointRuntimeSnapshot } from './checkpoint/runtime_snapshot';
 
 export type FailedCtx = {
     runId: string;

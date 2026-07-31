@@ -19,7 +19,7 @@ export const maybeRunCheckpoint = async (ctx: CheckpointCtx): Promise<Checkpoint
     const body = ctx.failedCtx.checkpointBodies?.[ctx.checkpoint.id];
     if (ctx.checkpoint.body) {
         if (!body) {
-            return {...ctx, active: false, stopReason: 'checkpoint_step_failed', runResult: {stepId: ctx.failedCtx.step.id, ok: false, error: {code: 'ERR_CHECKPOINT_BODY_MISSING', message: `checkpoint body unavailable: ${ctx.checkpoint.id}`}}};
+            return checkpointBodyFailure(ctx, {code: 'ERR_CHECKPOINT_BODY_MISSING', message: `checkpoint body unavailable: ${ctx.checkpoint.id}`});
         }
         try {
             const output = await runCheckpointDslBody({
@@ -32,7 +32,13 @@ export const maybeRunCheckpoint = async (ctx: CheckpointCtx): Promise<Checkpoint
             });
             return {...ctx, runResult: {stepId: ctx.failedCtx.step.id, ok: true, data: {checkpointId: ctx.checkpoint.id, checkpointName: ctx.checkpoint.name, output}}};
         } catch (error) {
-            return {...ctx, active: false, stopReason: 'checkpoint_step_failed', runResult: {stepId: ctx.failedCtx.step.id, ok: false, error: {code: error instanceof Error && 'code' in error ? String((error as {code: unknown}).code) : 'ERR_CHECKPOINT_BODY_FAILED', message: error instanceof Error ? error.message : String(error)}}};
+            return checkpointBodyFailure(ctx, {
+                code: error instanceof Error && 'code' in error ? String((error as {code: unknown}).code) : 'ERR_CHECKPOINT_BODY_FAILED',
+                message: error instanceof Error ? error.message : String(error),
+                ...((error && typeof error === 'object' && 'diagnostics' in error)
+                    ? {details: {diagnostics: (error as {diagnostics: unknown}).diagnostics}}
+                    : {}),
+            });
         }
     }
 
@@ -119,6 +125,18 @@ export const maybeRunCheckpoint = async (ctx: CheckpointCtx): Promise<Checkpoint
     log.info('checkpoint.run', { checkpointId: ctx.checkpoint.id, ok: true });
     return { ...ctx, runResult };
 };
+
+const checkpointBodyFailure = (ctx: CheckpointCtx, error: {code: string; message: string; details?: unknown}): CheckpointCtx => ({
+    ...ctx,
+    active: false as const,
+    stopReason: 'checkpoint_step_failed' as const,
+    runResult: {
+        stepId: ctx.failedCtx.step.id,
+        ok: false,
+        error: {...error, details: {...(error?.details as Record<string, unknown> | undefined), cause: {stepId: ctx.failedCtx.step.id, error: ctx.failedCtx.rawResult.error}}},
+    },
+    meta: {...(ctx.meta || {}), checkpointBodyFailure: true},
+});
 
 const hasActionContent = (content: Checkpoint['content']) => {
     if (!content || content.length === 0) {return false;}

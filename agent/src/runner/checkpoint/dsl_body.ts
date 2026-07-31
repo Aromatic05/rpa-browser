@@ -1,10 +1,9 @@
-import { runDslSource, type StepExecutionPort } from '../../dsl/runtime';
+import { runDslSource } from '../../dsl/runtime';
 import { DslRuntimeError } from '../../dsl/diagnostics/errors';
 import type { DslEntityRulesResolver, DslResolveResolver } from '../../dsl/link';
 import type { StepResolve, StepResult, StepUnion } from '../steps/types';
 import type { Checkpoint } from './types';
 import type { DslCheckpointProvider } from '../../dsl/emit';
-import { injectStepResolve } from '../run_steps';
 
 export const MAX_CHECKPOINT_DSL_DEPTH = 16;
 
@@ -29,13 +28,6 @@ export const runCheckpointDslBody = async (options: {
     if (stack.length >= MAX_CHECKPOINT_DSL_DEPTH) {
         throw new DslRuntimeError('checkpoint call depth exceeded', 'ERR_DSL_CHECKPOINT_DEPTH');
     }
-    const port: StepExecutionPort = {
-        execute: async (step) => {
-            const runtimeStep = injectStepResolve(step, options.stepResolves);
-            if (!runtimeStep.ok) {return {stepId: step.id, ok: false, error: runtimeStep.error};}
-            return await options.executeStep(runtimeStep.step);
-        },
-    };
     const resolveResolver: DslResolveResolver = {
         resolveBundle: (name) => name === options.checkpoint.id
             ? {resolves: options.stepResolves, diagnostics: []}
@@ -46,11 +38,12 @@ export const runCheckpointDslBody = async (options: {
         deps: options.deps,
         input: {...(options.checkpoint.input || {}), ...(options.input || {})},
         failure: options.failure,
-        stepExecutionPort: port,
+        stepExecutionPort: {execute: options.executeStep},
         entityRulesResolver: options.entityRulesResolver,
         resolveResolver,
         checkpointProvider: options.checkpointProvider,
         checkpointCallStack: [...stack, options.checkpoint.id],
+        stepResolves: options.stepResolves,
     });
     return result.scope.output;
 };

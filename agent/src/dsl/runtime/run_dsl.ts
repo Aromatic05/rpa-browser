@@ -18,6 +18,7 @@ import { resolveDslValue } from './refs';
 import { adaptDslQueryResult } from './value_adapter';
 import type { DslEntityRulesResolver } from '../link';
 import type { DslResolveResolver } from '../link';
+import { injectStepResolve } from '../../runner/step_resolve';
 
 export type RunDslContext = {
     workspaceName: string;
@@ -44,7 +45,14 @@ export const runDsl = async (program: DslProgram, ctx: RunDslContext): Promise<R
     const taskRunner = ctx.stepExecutionPort ? undefined : createDslTaskRunner({
         workspaceName: ctx.workspaceName, deps: ctx.deps, stopOnError: true, stepResolves: ctx.stepResolves,
     });
-    const port: StepExecutionPort = ctx.stepExecutionPort || {execute: async (step) => toExecutorStepResult(await taskRunner!.runStep(step))};
+    const rawPort: StepExecutionPort = ctx.stepExecutionPort || {execute: async (step) => toExecutorStepResult(await taskRunner!.runStep(step))};
+    const port: StepExecutionPort = {
+        execute: async (step) => {
+            const runtimeStep = injectStepResolve(step, ctx.stepResolves);
+            if (!runtimeStep.ok) {return {stepId: step.id, ok: false, error: runtimeStep.error};}
+            return await rawPort.execute(runtimeStep.step);
+        },
+    };
     const logger = ctx.logger || getLogger('dsl');
 
     await taskRunner?.start();

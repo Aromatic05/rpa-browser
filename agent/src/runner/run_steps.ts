@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
-import type { StepName, StepResult as ExecStepResult, StepUnion } from './steps/types';
+import type { StepResult as ExecStepResult, StepUnion } from './steps/types';
 import { resolveStepArgsRefs } from './step_refs';
-import { runCheckpoint, setCheckpoints, type Checkpoint as RunnerCheckpoint } from './checkpoint';
+import { runCheckpoint, setCheckpoints, materializeCheckpointRuntimeSnapshot, type Checkpoint as RunnerCheckpoint } from './checkpoint';
 import { getFailedCtx } from './failed_ctx';
 import { getLogger } from '../logging/logger';
 import {shouldMarkPageSessionDirtyByStep} from './session';
@@ -19,11 +19,10 @@ import type {
     StepsQueue,
 } from './run_steps_types';
 import type { StepResolve } from './steps/types';
-import { isValidStepResolve } from './steps/resolve_utils';
+import { injectStepResolve } from './step_resolve';
+import type { DslCheckpointProvider } from '../dsl/emit';
 import { resolveStepEntityRulesExecution } from '../snapshot/rules/runtime';
 import { summarizeStepArgs } from './step_event_summary';
-import { createDslEntityRulesResolver, createDslResolveResolver } from '../dsl/link';
-import type { DslCheckpointProvider } from '../dsl/emit';
 
 export type {
     Checkpoint,
@@ -221,90 +220,6 @@ const markPageSessionDirtyAfterStep = async (
     }
 };
 
-const STEP_RESOLVE_STEP_NAMES: ReadonlySet<StepName> = new Set<StepName>([
-    'browser.take_screenshot',
-    'browser.click',
-    'browser.fill',
-    'browser.type',
-    'browser.select_option',
-    'browser.hover',
-    'browser.scroll',
-    'browser.press_key',
-    'browser.drag_and_drop',
-]);
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-    typeof value === 'object' && value !== null;
-
-export const injectStepResolve = (
-    step: StepUnion,
-    stepResolves?: Record<string, StepResolve>,
-): { ok: true; step: StepUnion } | { ok: false; error: ExecStepResult['error'] } => {
-    const argsRecord: unknown = step.args;
-    const resolveId = isRecord(argsRecord) && typeof argsRecord.resolveId === 'string'
-        ? argsRecord.resolveId
-        : undefined;
-
-    if (!resolveId) {
-        if (step.resolve && !isValidStepResolve(step.resolve)) {
-            return {
-                ok: false,
-                error: {
-                    code: 'ERR_BAD_ARGS',
-                    message: `step ${step.id} has invalid resolve`,
-                    details: { stepId: step.id, reason: 'empty_resolve_hint' },
-                },
-            };
-        }
-        return { ok: true, step };
-    }
-    if (step.resolve) {
-        return {
-            ok: false,
-            error: {
-                code: 'ERR_BAD_ARGS',
-                message: `step ${step.id} cannot use resolve and resolveId together`,
-            },
-        };
-    }
-    if (!STEP_RESOLVE_STEP_NAMES.has(step.name)) {
-        return {
-            ok: false,
-            error: {
-                code: 'ERR_BAD_ARGS',
-                message: `step ${step.id} does not support resolveId`,
-                details: { stepName: step.name, resolveId },
-            },
-        };
-    }
-    if (!stepResolves || !Object.prototype.hasOwnProperty.call(stepResolves, resolveId)) {
-        return {
-            ok: false,
-            error: {
-                code: 'ERR_BAD_ARGS',
-                message: `step resolve not found: ${resolveId}`,
-                details: { stepId: step.id, resolveId },
-            },
-        };
-    }
-    const resolve = stepResolves[resolveId];
-    if (!isValidStepResolve(resolve)) {
-        return {
-            ok: false,
-            error: {
-                code: 'ERR_BAD_ARGS',
-                message: `step resolve is invalid: ${resolveId}`,
-                details: { stepId: step.id, resolveId, reason: 'empty_resolve_hint' },
-            },
-        };
-    }
-
-    const {resolveId: _resolveId, ...args} = argsRecord as Record<string, unknown>;
-    return {
-        ok: true,
-        step: {...step, args, resolve} as StepUnion,
-    };
-};
 
 const writeRunnerStepResultCache = async (
     deps: RunStepsDeps,
@@ -447,33 +362,31 @@ const resolveRunCheckpoints = (
             sourceProvider?.getCheckpointResolves?.(checkpoint.id) ?? {},
         ]))
         : req.checkpointStepResolves ?? {};
-    const bodies = Object.fromEntries(allCheckpoints.flatMap((checkpoint) => {
-        const body = sourceProvider?.getCheckpointBody?.(checkpoint.id);
-        return body ? [[checkpoint.id, body.source] as const] : [];
-    }));
-    const checkpointById = new Map(allCheckpoints.map((checkpoint) => [checkpoint.id, checkpoint]));
-    const provider: DslCheckpointProvider = {
-        getCheckpoint: (id) => checkpointById.get(id) ?? null,
-        getCheckpointResolves: (id) => stepResolves[id] ?? null,
-        getCheckpointBody: (id) => bodies[id] === undefined ? null : {source: bodies[id], stepResolves: stepResolves[id] ?? {}},
-        listCheckpoints: () => [...checkpointById.values()],
-    };
-    const checkpoints = allCheckpoints
+    const bodies = req.checkpoints === undefined
+        ? Object.fromEntries(allCheckpoints.flatMap((checkpoint) => {
+            const body = sourceProvider?.getCheckpointBody?.(checkpoint.id);
+            return body ? [[checkpoint.id, body.source] as const] : [];
+        }))
+        : req.checkpointBodies ?? {};
+    const snapshot = materializeCheckpointRuntimeSnapshot({
+        checkpoints: allCheckpoints, checkpointStepResolves: stepResolves, checkpointBodies: bodies,
+        workflow: isWorkflow(workspace.workflow) ? workspace.workflow : undefined,
+        entityRulesProvider: deps.resolveEntityRulesProvider?.(req.workspaceName),
+    });
+    const checkpoints = snapshot.provider.listCheckpoints!()
         .filter((checkpoint) => checkpoint.kind === undefined || checkpoint.kind === 'recovery');
     return {
         checkpoints,
-        stepResolves,
-        bodies,
-        provider,
-        entityRulesResolver: (() => {
-            const entityRulesProvider = deps.resolveEntityRulesProvider?.(req.workspaceName);
-            return entityRulesProvider ? createDslEntityRulesResolver(entityRulesProvider) : undefined;
-        })(),
-        resolveResolver: workspace.workflow
-            ? createDslResolveResolver(workspace.workflow, new Map(Object.entries(stepResolves)))
-            : undefined,
+        stepResolves: snapshot.checkpointStepResolves,
+        bodies: snapshot.checkpointBodies,
+        provider: snapshot.provider,
+        entityRulesResolver: snapshot.entityRulesResolver,
+        resolveResolver: snapshot.resolveResolver,
     };
 };
+
+const isWorkflow = (value: unknown): value is import('../workflow').Workflow =>
+    Boolean(value && typeof value === 'object' && 'list' in value && 'get' in value);
 
 export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promise<Checkpoint> => {
     const resolvedDeps = deps || defaultDeps;
@@ -610,9 +523,9 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
                     checkpointStepResolves: checkpointRuntime.stepResolves,
                     checkpointBodies: checkpointRuntime.bodies,
                     checkpointRuntime: {
-                        provider: checkpointRuntime.provider,
-                        entityRulesResolver: checkpointRuntime.entityRulesResolver,
-                        resolveResolver: checkpointRuntime.resolveResolver,
+                        ...checkpointRuntime,
+                        checkpointStepResolves: checkpointRuntime.stepResolves,
+                        checkpointBodies: checkpointRuntime.bodies,
                     },
                 });
                 const checkpointOutput = await runCheckpoint(failedCtx);
