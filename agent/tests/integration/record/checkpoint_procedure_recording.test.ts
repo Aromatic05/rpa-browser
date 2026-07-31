@@ -7,6 +7,7 @@ import {
     buildRecordedCheckpoint,
     checkpointEntityRuleOptions,
 } from '../../../src/record/checkpoint_recording';
+import {ActionError, ERROR_CODES} from '../../../src/actions/results';
 import {runDslSource} from '../../../src/dsl/runtime';
 import {runCheckpointDslBody} from '../../../src/runner/checkpoint/dsl_body';
 import {createDslEntityRulesResolver} from '../../../src/dsl/link';
@@ -327,6 +328,32 @@ test('procedure recording emits a parameterized entity-rule DSL body', async () 
     assert.equal(artifact.bodyDsl.includes('SO-001'), false);
     assert.equal(artifact.bodyDsl.includes('王小虎'), false);
     assert.equal(artifact.bodyDsl.includes('#orderNo'), false);
+});
+
+test('recorded snapshots compile to DSL without a resolve sidecar', () => {
+    const snapshotSteps = [{id: 'snapshot', name: 'browser.snapshot', args: {}} as StepUnion];
+    const procedure = buildRecordedCheckpoint(workspace, snapshotSteps, {}, savePayload);
+    const recovery = buildRecordedCheckpoint(workspace, snapshotSteps, {}, {
+        kind: 'recovery',
+        name: '恢复时快照',
+        profileName: 'expired-session-rule',
+        businessTag: 'auth.expired',
+        entityKind: 'panel',
+    });
+
+    assert.deepEqual(procedure.stepResolves, {});
+    assert.equal(procedure.bodyDsl, 'use entity_rules "order-query-rule" as entity\nsnapshot');
+    assert.deepEqual(recovery.stepResolves, {});
+    assert.equal(recovery.bodyDsl, 'use entity_rules "expired-session-rule" as entity\nsnapshot');
+});
+
+test('unsupported legacy recorder steps remain explicit bad-argument errors', () => {
+    for (const name of ['browser.hover', 'browser.scroll', 'browser.press_key', 'browser.take_screenshot'] as const) {
+        assert.throws(
+            () => buildRecordedCheckpoint(workspace, [{id: name, name, args: {}} as StepUnion], {}, savePayload),
+            (error: unknown) => error instanceof ActionError && error.code === ERROR_CODES.ERR_BAD_ARGS,
+        );
+    }
 });
 
 test('procedure recording can collect table output through the same entity rule', () => {

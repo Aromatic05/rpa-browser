@@ -488,7 +488,7 @@ test('records a business checkpoint through entity-rule highlights without block
                 name?: string;
                 input?: Record<string, unknown>;
                 trigger?: {matchRules?: unknown[]};
-                content?: unknown[];
+                body?: {language?: string; source?: string};
                 output?: unknown;
             };
         }>}).checkpoints || [];
@@ -501,10 +501,7 @@ test('records a business checkpoint through entity-rule highlights without block
         expect(checkpoint.checkpoint.trigger?.matchRules).toEqual([{
             entityExists: {query: '', kind: 'form', businessTag: 'orders.query'},
         }]);
-        const serialized = JSON.stringify(checkpoint.checkpoint.content);
-        expect(serialized).not.toContain('SO-001');
-        expect(serialized).not.toContain('王小虎');
-        expect(serialized).not.toContain('#order-no');
+        expect(checkpoint.checkpoint.body).toEqual({language: 'dsl', source: 'body.dsl'});
 
         await evaluate(agent, workspaceName, `
             document.querySelector('#order-no').value = '';
@@ -651,16 +648,12 @@ test('records a homogeneous row action and replays it against another primary-ke
         const listed = await dispatch(agent.endpoint, action('checkpoint.list', workspaceName));
         const checkpoints = (listed.payload as {checkpoints?: Array<{
             checkpointId: string;
-            checkpoint: {input?: Record<string, unknown>; content?: unknown[]};
+            checkpoint: {input?: Record<string, unknown>; body?: {language?: string; source?: string}};
         }>}).checkpoints || [];
         expect(checkpoints).toHaveLength(1);
         const checkpoint = checkpoints[0];
         expect(checkpoint.checkpoint.input).toEqual({orderNo: 'SO-002'});
-        const serialized = JSON.stringify(checkpoint.checkpoint.content);
-        expect(serialized).toContain('table.row_action');
-        expect(serialized).toContain('confirmShipment');
-        expect(serialized).not.toContain('SO-002');
-        expect(serialized).not.toContain('.confirm-shipment');
+        expect(checkpoint.checkpoint.body).toEqual({language: 'dsl', source: 'body.dsl'});
 
         await evaluate(agent, workspaceName, `
             document.querySelector('#order-no').value = '';
@@ -813,7 +806,7 @@ test('records an entity-rule driven recovery checkpoint and retries the original
         expect(listed.type).toBe('checkpoint.list.result');
         const checkpoints = (listed.payload as {checkpoints?: Array<{
             checkpointId: string;
-            checkpoint: {kind?: string; name?: string; trigger?: {matchRules?: unknown[]}; content?: unknown[]};
+            checkpoint: {kind?: string; name?: string; trigger?: {matchRules?: unknown[]}; body?: {language?: string; source?: string}};
         }>}).checkpoints || [];
         expect(checkpoints).toHaveLength(1);
         const checkpoint = checkpoints[0];
@@ -821,10 +814,7 @@ test('records an entity-rule driven recovery checkpoint and retries the original
         expect(checkpoint.checkpoint.trigger?.matchRules).toEqual([{
             entityExists: {query: '', kind: 'panel', businessTag: 'auth.expired'},
         }]);
-        const serialized = JSON.stringify(checkpoint.checkpoint.content);
-        expect(serialized).not.toContain('#dismiss-session');
-        expect(serialized).toContain('auth.expired');
-        expect(serialized).toContain('dismiss');
+        expect(checkpoint.checkpoint.body).toEqual({language: 'dsl', source: 'body.dsl'});
 
         await evaluate(agent, workspaceName, `
             document.querySelector('#session-alert').style.display = 'flex';
