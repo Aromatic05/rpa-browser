@@ -1,5 +1,5 @@
 import YAML from 'yaml';
-import type { CheckpointStmt, DslProgram, DslStmt, LetStmt, QueryExpr, RefExpr } from '../ast/types';
+import type { CheckpointStmt, DslImport, DslProgram, DslStmt, EntityReference, LetStmt, QueryExpr, RefExpr } from '../ast/types';
 import { DslParseError } from '../diagnostics/errors';
 
 type ParsedLine = {
@@ -9,11 +9,33 @@ type ParsedLine = {
 
 export const parseDsl = (source: string): DslProgram => {
     const lines = tokenizeDsl(source);
-    const parsed = parseBlock(lines, 0, 0, { allowElse: false });
+    const imports = parseImports(lines);
+    const parsed = parseBlock(lines, imports.length, 0, { allowElse: false }, new Set(imports.map((item) => item.alias)));
     if (parsed.nextIndex !== lines.length) {
         throw new DslParseError('unexpected trailing DSL content');
     }
-    return { body: parsed.body };
+    return { imports, body: parsed.body };
+};
+
+const parseImports = (lines: ParsedLine[]): DslImport[] => {
+    const imports: DslImport[] = [];
+    const aliases = new Set<string>();
+    for (const line of lines) {
+        if (!line.content.startsWith('use entity_rules ')) {break;}
+        if (line.indent !== 0) {
+            throw new DslParseError('entity_rules imports must be top-level declarations');
+        }
+        const match = line.content.match(/^use\s+entity_rules\s+"([A-Za-z0-9][A-Za-z0-9._-]*)"\s+as\s+([A-Za-z_][A-Za-z0-9_]*)$/);
+        if (!match) {
+            throw new DslParseError(`invalid entity_rules import: ${line.content}`);
+        }
+        if (aliases.has(match[2])) {
+            throw new DslParseError(`duplicate entity_rules alias: ${match[2]}`);
+        }
+        aliases.add(match[2]);
+        imports.push({kind: 'entity_rules', profileName: match[1], alias: match[2]});
+    }
+    return imports;
 };
 
 const tokenizeDsl = (source: string): ParsedLine[] => {
@@ -46,6 +68,7 @@ const parseBlock = (
     startIndex: number,
     indent: number,
     opts: { allowElse: boolean },
+    entityAliases: ReadonlySet<string>,
 ): { body: DslStmt[]; nextIndex: number } => {
     const body: DslStmt[] = [];
     let index = startIndex;
@@ -66,21 +89,21 @@ const parseBlock = (
         }
 
         if (line.content.startsWith('if ')) {
-            const parsedIf = parseIfStmt(lines, index, indent);
+            const parsedIf = parseIfStmt(lines, index, indent, entityAliases);
             body.push(parsedIf.stmt);
             index = parsedIf.nextIndex;
             continue;
         }
 
         if (line.content.startsWith('for ')) {
-            const parsedFor = parseForStmt(lines, index, indent);
+            const parsedFor = parseForStmt(lines, index, indent, entityAliases);
             body.push(parsedFor.stmt);
             index = parsedFor.nextIndex;
             continue;
         }
 
         const collected = collectStatement(lines, index, indent);
-        body.push(parseStatement(collected.statement));
+        body.push(parseStatement(collected.statement, entityAliases));
         index = collected.nextIndex;
     }
 
@@ -91,6 +114,7 @@ const parseIfStmt = (
     lines: ParsedLine[],
     startIndex: number,
     indent: number,
+    entityAliases: ReadonlySet<string>,
 ): { stmt: DslStmt; nextIndex: number } => {
     const header = lines[startIndex].content;
     if (!header.endsWith(':')) {
@@ -101,12 +125,12 @@ const parseIfStmt = (
         throw new DslParseError(`invalid if statement: ${header}`);
     }
 
-    const thenBlock = parseBlock(lines, startIndex + 1, indent + 2, { allowElse: true });
+    const thenBlock = parseBlock(lines, startIndex + 1, indent + 2, { allowElse: true }, entityAliases);
     let nextIndex = thenBlock.nextIndex;
     let elseBody: DslStmt[] | undefined;
 
     if (nextIndex < lines.length && lines[nextIndex].indent === indent && lines[nextIndex].content === 'else:') {
-        const elseBlock = parseBlock(lines, nextIndex + 1, indent + 2, { allowElse: false });
+        const elseBlock = parseBlock(lines, nextIndex + 1, indent + 2, { allowElse: false }, entityAliases);
         elseBody = elseBlock.body;
         nextIndex = elseBlock.nextIndex;
     }
@@ -126,6 +150,7 @@ const parseForStmt = (
     lines: ParsedLine[],
     startIndex: number,
     indent: number,
+    entityAliases: ReadonlySet<string>,
 ): { stmt: DslStmt; nextIndex: number } => {
     const header = lines[startIndex].content;
     if (!header.endsWith(':')) {
@@ -136,7 +161,7 @@ const parseForStmt = (
         throw new DslParseError(`invalid for statement: ${header}`);
     }
 
-    const bodyBlock = parseBlock(lines, startIndex + 1, indent + 2, { allowElse: false });
+    const bodyBlock = parseBlock(lines, startIndex + 1, indent + 2, { allowElse: false }, entityAliases);
     return {
         stmt: {
             kind: 'for',
@@ -189,9 +214,9 @@ const collectStatement = (
     };
 };
 
-const parseStatement = (statement: string): DslStmt => {
+const parseStatement = (statement: string, entityAliases: ReadonlySet<string>): DslStmt => {
     if (statement.startsWith('let ')) {
-        return parseLet(statement);
+        return parseLet(statement, entityAliases);
     }
     if (statement.startsWith('fill table ')) {
         const match = statement.match(/^fill\s+table\s+"([^"]+)"\s+filter\s+"([^"]+)"\s+with\s+([A-Za-z0-9_.]+)$/);
@@ -267,6 +292,10 @@ const parseStatement = (statement: string): DslStmt => {
         if (!match) {
             throw new DslParseError(`invalid action statement: ${statement}`);
         }
+        const entityReference = parseEntityReference(match[2], entityAliases);
+        if (entityReference) {
+            return {kind: 'entity_act', action: match[1] as 'fill' | 'type' | 'select', target: entityReference, value: toRef(match[3])};
+        }
         return {
             kind: 'act',
             action: match[1] as 'fill' | 'type' | 'select',
@@ -275,9 +304,13 @@ const parseStatement = (statement: string): DslStmt => {
         };
     }
     if (statement.startsWith('click ')) {
-        const match = statement.match(/^click\s+([A-Za-z0-9_.]+)$/);
+        const match = statement.match(/^click\s+(\S+)$/);
         if (!match) {
             throw new DslParseError(`invalid click statement: ${statement}`);
+        }
+        const entityReference = parseEntityReference(match[1], entityAliases);
+        if (entityReference) {
+            return {kind: 'entity_act', action: 'click', target: entityReference};
         }
         return {
             kind: 'act',
@@ -308,7 +341,14 @@ const parseStatement = (statement: string): DslStmt => {
     throw new DslParseError(`unsupported DSL statement: ${statement}`);
 };
 
-const parseLet = (statement: string): LetStmt => {
+const parseLet = (statement: string, entityAliases: ReadonlySet<string>): LetStmt => {
+    const entityQuery = statement.match(/^let\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*query\s+([A-Za-z0-9_.()]+)$/);
+    if (entityQuery) {
+        const reference = parseEntityReference(entityQuery[2], entityAliases);
+        if (reference) {
+            return {kind: 'let', name: entityQuery[1], expr: {kind: 'entity_query', reference}};
+        }
+    }
     const sugarMatch = statement.match(
         /^let\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*query\s+(table|form)\s+"([^"]+)"\s+([A-Za-z_][A-Za-z0-9_]*)$/,
     );
@@ -363,6 +403,18 @@ const parseLet = (statement: string): LetStmt => {
         name: match[1],
         expr,
     };
+};
+
+const parseEntityReference = (source: string, entityAliases: ReadonlySet<string>): EntityReference | null => {
+    const direct = source.match(/^([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)$/);
+    if (direct && entityAliases.has(direct[1])) {
+        return {kind: 'entity_ref', alias: direct[1], entityKey: direct[2], member: direct[3]};
+    }
+    const row = source.match(/^([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)\.row\(([A-Za-z0-9_.]+)\)(?:\.([A-Za-z_][A-Za-z0-9_]*))?$/);
+    if (row && entityAliases.has(row[1])) {
+        return {kind: 'entity_ref', alias: row[1], entityKey: row[2], member: row[4] || 'row', rowValue: toRef(row[3])};
+    }
+    return null;
 };
 
 

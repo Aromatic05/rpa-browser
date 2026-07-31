@@ -7,6 +7,7 @@ type NormalizeContext = {
 export const normalizeDsl = (program: DslProgram): DslProgram => {
     const ctx: NormalizeContext = { nextTempId: 1 };
     return {
+        imports: program.imports,
         body: normalizeStatements(program.body, ctx),
     };
 };
@@ -38,6 +39,9 @@ const normalizeStmt = (stmt: DslStmt, ctx: NormalizeContext): DslStmt[] => {
             ...(stmt.target ? { target: normalizeRef(stmt.target) } : {}),
             ...(stmt.value ? { value: normalizeRef(stmt.value) } : {}),
         }];
+    }
+    if (stmt.kind === 'entity_act') {
+        return [stmt];
     }
     if (stmt.kind === 'checkpoint') {
         return [{

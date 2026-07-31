@@ -4,6 +4,7 @@ import { ERROR_CODES } from '../actions/results';
 import type { WorkspaceRouterInput } from '../runtime/workspace/router';
 import type { ControlPlaneResult } from '../runtime/control_plane';
 import { runDslSource, validateDslSource } from './runtime';
+import { resolveWorkflowDslEntityRulesResolver } from './link';
 import { runWorkspaceExecution } from '../runtime/workspace/execution_coordinator';
 import type { RunStepsDeps } from '../runner/run_steps';
 import type { Workflow, WorkflowDsl, WorkflowDummy } from '../workflow';
@@ -72,8 +73,9 @@ export const createDslControl = (services: DslControlServices): DslControl => ({
 
         const dslName = payload.dslName || resolveDefaultDslName(workflow);
         const dsl = requireDsl(workflow, dslName);
+        const entityRulesResolver = resolveWorkflowDslEntityRulesResolver(workflow);
         if (action.type === 'dsl.validate' || action.type === 'dsl.test') {
-            const validation = validateDslSource(dsl.content);
+            const validation = validateDslSource(dsl.content, entityRulesResolver);
             return {
                 reply: replyAction(action, {
                     ok: validation.diagnostics.length === 0,
@@ -90,6 +92,7 @@ export const createDslControl = (services: DslControlServices): DslControl => ({
             deps: services.runStepsDeps,
             input: payload.input || {},
             checkpointProvider: workspace.checkpoint.getProvider(workflow),
+            entityRulesResolver,
         }));
 
         return {

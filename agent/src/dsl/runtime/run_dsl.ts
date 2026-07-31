@@ -16,6 +16,7 @@ import {
 } from './scope';
 import { resolveDslValue } from './refs';
 import { adaptDslQueryResult } from './value_adapter';
+import type { DslEntityRulesResolver } from '../link';
 
 export type RunDslContext = {
     workspaceName: string;
@@ -23,6 +24,7 @@ export type RunDslContext = {
     input?: Record<string, unknown>;
     checkpointProvider?: DslCheckpointProvider;
     logger?: Logger;
+    entityRulesResolver?: DslEntityRulesResolver;
 };
 
 export type RunDslResult = {
@@ -79,7 +81,7 @@ const executeStmt = async (
     switch (stmt.kind) {
         case 'let': {
             if (stmt.expr.kind === 'query') {
-                const step = buildQueryStep(stmt.expr);
+                const step = buildQueryStep(stmt.expr, (ref) => resolveDslValue(ref, scope));
                 const result = await emitStepAndWait(step, taskRunner, logger, stmtIndex);
                 const value = adaptDslQueryResult(result as import('../../runner/steps/types').BrowserQueryResult);
                 setDslValue(scope, `vars.${stmt.name}`, value);
@@ -111,22 +113,25 @@ const executeStmt = async (
             }
             const target = resolveDslValue(stmt.target, scope);
             if (stmt.action === 'click') {
-                await emitStepAndWait(buildClickStep(target), taskRunner, logger, stmtIndex);
+                await emitStepAndWait(buildClickStep(target, stmt.profileName), taskRunner, logger, stmtIndex);
                 return;
             }
             const value = resolveDslValue(stmt.value, scope);
             const step =
                 stmt.action === 'fill'
-                    ? buildFillStep(target, value)
+                    ? buildFillStep(target, value, stmt.profileName)
                     : stmt.action === 'type'
-                      ? buildTypeStep(target, value)
-                      : buildSelectStep(target, value);
+                      ? buildTypeStep(target, value, stmt.profileName)
+                      : buildSelectStep(target, value, stmt.profileName);
             await emitStepAndWait(step, taskRunner, logger, stmtIndex);
             return;
         }
         case 'form_act':
         case 'table_act': {
             throw new DslRuntimeError(`${stmt.kind} must be expanded before runtime`, 'ERR_DSL_NOT_NORMALIZED');
+        }
+        case 'entity_act': {
+            throw new DslRuntimeError('entity_act must be linked before runtime', 'ERR_DSL_NOT_LINKED');
         }
         case 'checkpoint': {
             const output = await runDslCheckpointCall({

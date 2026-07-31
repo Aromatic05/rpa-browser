@@ -47,6 +47,7 @@ const validateStmt = (
             return;
         case 'form_act':
         case 'table_act':
+        case 'entity_act':
             diagnostics.push(
                 createDiagnostic(
                     'ERR_DSL_NOT_NORMALIZED',
