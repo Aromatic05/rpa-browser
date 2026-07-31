@@ -26,6 +26,7 @@ export const createEntityScopeDraft = (candidate: PickCandidate): CanvasDraft =>
             kind: entityRef.kind,
             name,
             businessTag: `${entityRef.kind}.main`,
+            entityKey: `${entityRef.kind}Main`,
             target: {...target},
             expect: 'unique',
             annotations: [],

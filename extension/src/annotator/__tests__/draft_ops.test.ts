@@ -71,6 +71,7 @@ test('createEntityScopeDraft creates exactly one confirmed entity scope before r
     assert.equal(draft.page.kind, 'table');
     assert.equal(draft.entities[0].source, 'node');
     assert.equal(draft.entities[0].origin, 'manual');
+    assert.equal(draft.entities[0].entityKey, 'tableMain');
     assert.deepEqual(draft.entities[0].target, {classContains: 'orders-module'});
     assert.equal(draft.entities[0].annotations.length, 0);
     assert.equal(draft.entities[0].columns.length, 0);

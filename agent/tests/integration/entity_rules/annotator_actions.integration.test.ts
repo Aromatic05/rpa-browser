@@ -910,6 +910,7 @@ test('table module annotation keeps filter controls in the shared business scope
                 kind: 'table',
                 name: tableCandidate.text || '订单列表',
                 businessTag: 'orders.table',
+                entityKey: 'orders',
                 target: tableCandidate.proposedTargets[0],
                 expect: 'unique',
                 annotations: [],
@@ -966,6 +967,7 @@ test('table module annotation keeps filter controls in the shared business scope
         assert.equal((saved.reply.payload as {saved: boolean}).saved, true);
         const profile = memory.profiles.get('orders-module');
         assert.ok(profile);
+        assert.equal(profile.annotation.bindings.find((binding) => binding.businessTag === 'orders.table')?.entityKey, 'orders');
         const orderFieldRule = profile.match.rules.find((rule) => rule.match.placeholderEquals === '订单编号');
         assert.ok(orderFieldRule?.within?.endsWith('-scope'));
         assert.equal(profile.annotation.bindings.some((binding) =>
@@ -982,6 +984,11 @@ test('table module annotation keeps filter controls in the shared business scope
             rule.match.textContains === '确认发货');
         assert.equal(rowActionRule?.expect, 'one_or_more');
         assert.equal(rowActionRule?.match.idEquals, undefined);
+        const reopened = await invokeCanvas(runtime, 'entity_rules.annotator.open', {
+            profileName: 'orders-module',
+        }, memory.workflow);
+        const reopenedDraft = (reopened.reply.payload as {canvasDraft: {entities: Array<{entityKey?: string}>}}).canvasDraft;
+        assert.equal(reopenedDraft.entities[0]?.entityKey, 'orders');
     } finally {
         await browser.close();
     }

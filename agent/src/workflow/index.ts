@@ -12,4 +12,12 @@ export type {
     WorkflowEntityRules,
 } from './entity_rules';
 export { importWorkflowEntityRules, toEntityRuleBundle, validateWorkflowEntityRules } from './entity_rules';
+export type {
+    EntityRuleExportDiagnostic,
+    EntityRuleExportEntry,
+    EntityRuleExportIndex,
+    EntityRuleExportMember,
+    EntityRuleExportResolution,
+} from './entity_rule_exports';
+export { buildEntityRuleExportIndex } from './entity_rule_exports';
 export { entityRulesArtifactRevision } from './revision';
