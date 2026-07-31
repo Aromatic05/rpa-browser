@@ -5,6 +5,7 @@ import path from 'node:path';
 import YAML from 'yaml';
 import { createWorkspaceHarness } from '../../helpers/workspace_harness';
 import { createWorkflowOnFs, deleteWorkflowFromFs, loadWorkflowFromFs } from '../../../src/workflow';
+import { createDslCodec } from '../../../src/workflow/dsl';
 import { workflowRootDir, workflowsRootDir } from '../../../src/workflow/fs';
 import { runStepList, type RunStepsDeps } from '../../../src/runner/run_steps';
 import type { StepUnion } from '../../../src/runner/steps/types';
@@ -160,6 +161,7 @@ test('DSL codec loads resolve sidecars through the production artifact boundary 
         const reloaded = loadWorkflowFromFs(name);
         assert.throws(() => reloaded.get('secondary', {kind: 'dsl'}), (error: any) => error?.code === 'ERR_WORKFLOW_INVALID_ARTIFACT');
         assert.throws(() => reloaded.list({kind: 'dsl'}), (error: any) => error?.code === 'ERR_WORKFLOW_INVALID_ARTIFACT');
+        assert.throws(() => createDslCodec(name).list(), (error: any) => error?.code === 'ERR_WORKFLOW_INVALID_ARTIFACT');
 
         fs.writeFileSync(path.join(dslDir, 'secondary.resolve.yaml'), YAML.stringify({version: 1, resolves: stepResolves}));
         reloaded.delete('secondary', {kind: 'dsl'});
@@ -232,6 +234,20 @@ test('dsl.save preserves omitted sidecars and rejects invalid candidates before 
         const afterFailure = loadWorkflowFromFs(name).get('main', {kind: 'dsl'});
         assert.equal((afterFailure as any)?.content, 'wait 2');
         assert.equal((afterFailure as any)?.stepResolves.dismissBanner?.hint?.raw?.selector, '#dismiss');
+
+        fs.writeFileSync(path.join(workflowRootDir(name), 'dsls', 'main.resolve.yaml'), 'version: wrong\n');
+        await workspace.router.handle({
+            v: 1,
+            id: 'repair-sidecar',
+            type: 'dsl.save',
+            workspaceName: name,
+            payload: {
+                content: 'use resolves "main" as recorded\nclick recorded.dismissBanner',
+                stepResolves: {dismissBanner: {hint: {raw: {selector: '#repaired'}}}},
+            },
+        } as any, workspace as any, registry as any);
+        const repaired = loadWorkflowFromFs(name).get('main', {kind: 'dsl'});
+        assert.equal((repaired as any)?.stepResolves.dismissBanner?.hint?.raw?.selector, '#repaired');
     } finally {
         cleanup(name);
     }

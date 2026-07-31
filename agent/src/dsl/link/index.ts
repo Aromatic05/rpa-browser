@@ -1,4 +1,4 @@
-export { linkDsl, type DslLinkResult } from './entity_rules';
+export {linkDsl, type DslLinkResult} from './asset_linker';
 export type {
     DslEntityRulesProfile,
     DslEntityRulesProfileResolution,

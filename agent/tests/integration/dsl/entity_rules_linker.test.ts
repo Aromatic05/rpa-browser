@@ -76,7 +76,7 @@ fill other.dismissBanner with input.keyword
     assert.deepEqual(Object.keys(linked.stepResolves).sort(), ['dsl:other:dismissBanner', 'dsl:recorded:dismissBanner']);
     assert.throws(
         () => parseDsl('use resolves "main" as recorded\nuse entity_rules "order-page" as recorded'),
-        /duplicate entity_rules alias/,
+        /duplicate import alias/,
     );
 });
 
@@ -84,6 +84,7 @@ test('resolve bundle and symbol diagnostics are produced before execution', () =
     const missingBundle = validateDslSource('use resolves "missing" as recorded\nclick recorded.dismissBanner', undefined, resolveResolver);
     const missingSymbol = validateDslSource('use resolves "main" as recorded\nclick recorded.unknown', undefined, resolveResolver);
     assert.equal(missingBundle.diagnostics[0]?.code, 'ERR_DSL_RESOLVE_BUNDLE_NOT_FOUND');
+    assert.equal(missingBundle.diagnostics.length, 1);
     assert.equal(missingSymbol.diagnostics[0]?.code, 'ERR_DSL_RESOLVE_SYMBOL_NOT_FOUND');
 });
 
@@ -100,7 +101,7 @@ click order.orderList.row(input.orderNo).edit
     assert.deepEqual((program.body[1] as any).expr.reference.rowValue, {kind: 'ref', ref: 'input.orderNo'});
     assert.throws(
         () => parseDsl('use entity_rules "order-page" as order\nuse entity_rules "other" as order'),
-        /duplicate entity_rules alias/,
+        /duplicate import alias/,
     );
 });
 

@@ -46,7 +46,8 @@ export const createDslCodec = (workflowName: string): WorkflowCodec<WorkflowDsl>
                 .filter((entry) => entry.isFile() && entry.name.endsWith('.dsl'))
                 .map((entry) => entry.name.slice(0, -4))
                 .filter(isArtifactName);
-        } catch {
+        } catch (error) {
+            if (!isMissingFile(error)) {throw error;}
             return [];
         }
         return names
@@ -54,11 +55,12 @@ export const createDslCodec = (workflowName: string): WorkflowCodec<WorkflowDsl>
             .filter((item): item is WorkflowDsl => item !== null);
     },
     save: (value) => {
-        const resolveFile: StepResolveFile = {version: 1, resolves: value.stepResolves};
+        const stepResolves = value.stepResolves ?? {};
+        const resolveFile: StepResolveFile = {version: 1, resolves: stepResolves};
         validateStepResolveFileForSerialization(resolveFile);
         writeTextFile(dslPath(workflowName, value.name), value.content);
         writeYamlFile(dslResolvePath(workflowName, value.name), resolveFile);
-        return value;
+        return {...value, stepResolves};
     },
     delete: (name) => {
         removePath(dslPath(workflowName, name));

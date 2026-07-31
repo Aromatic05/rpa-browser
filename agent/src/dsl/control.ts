@@ -105,9 +105,8 @@ export const createDslControl = (services: DslControlServices): DslControl => ({
                 throw new ActionError(ERROR_CODES.ERR_WORKFLOW_BAD_ARGS, 'dsl.save requires content');
             }
             const dslName = payload.dslName || resolveDefaultDslName(workflow);
-            const existing = workflow.get(dslName, DSL_DUMMY);
             const stepResolves = payload.stepResolves === undefined
-                ? existing?.kind === 'dsl' ? existing.stepResolves : {}
+                ? existingDslResolves(workflow, dslName)
                 : validateStepResolves(payload.stepResolves);
             const resolveResolver = createDslResolveResolver(workflow, new Map([[dslName, stepResolves]]));
             const validation = validateDslSource(payload.content, entityRulesResolver, resolveResolver);
@@ -161,3 +160,8 @@ export const createDslControl = (services: DslControlServices): DslControl => ({
         };
     },
 });
+
+const existingDslResolves = (workflow: Workflow, dslName: string): Record<string, StepResolve> => {
+    const existing = workflow.get(dslName, DSL_DUMMY);
+    return existing?.kind === 'dsl' ? existing.stepResolves : {};
+};

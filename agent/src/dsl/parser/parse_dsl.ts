@@ -37,7 +37,7 @@ const parseImports = (lines: ParsedLine[]): DslImport[] => {
             throw new DslParseError(`invalid import: ${line.content}`);
         }
         if (aliases.has(match[3])) {
-            throw new DslParseError(`duplicate ${match[1]} alias: ${match[3]}`);
+            throw new DslParseError(`duplicate import alias: ${match[3]}`);
         }
         aliases.add(match[3]);
         imports.push(match[1] === 'entity_rules'

@@ -12,7 +12,7 @@ export const createDslResolveResolver = (
         try {
             const artifact = workflow.get(bundleName, {kind: 'dsl'});
             if (!artifact || artifact.kind !== 'dsl') {return {resolves: null, diagnostics: []};}
-            return {resolves: artifact.stepResolves, diagnostics: []};
+            return {resolves: artifact.stepResolves ?? {}, diagnostics: []};
         } catch (error) {
             return {
                 resolves: null,

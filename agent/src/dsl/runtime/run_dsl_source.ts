@@ -21,8 +21,11 @@ export const validateDslSource = (
 ): ValidateDslSourceResult => {
     const parsed = parseDsl(source);
     const linked = linkDsl(parsed, entityRulesResolver, resolveResolver);
+    if (linked.diagnostics.length > 0) {
+        return {diagnostics: linked.diagnostics};
+    }
     const normalized = normalizeDsl(linked.program);
-    return { diagnostics: [...linked.diagnostics, ...validateDsl(normalized)] };
+    return {diagnostics: validateDsl(normalized)};
 };
 
 export const runDslSource = async (
@@ -31,8 +34,11 @@ export const runDslSource = async (
 ): Promise<RunDslSourceResult> => {
     const parsed = parseDsl(source);
     const linked = linkDsl(parsed, ctx.entityRulesResolver, ctx.resolveResolver);
+    if (linked.diagnostics.length > 0) {
+        throw new DslValidationError(linked.diagnostics);
+    }
     const normalized = normalizeDsl(linked.program);
-    const diagnostics = [...linked.diagnostics, ...validateDsl(normalized)];
+    const diagnostics = validateDsl(normalized);
     if (diagnostics.length > 0) {
         throw new DslValidationError(diagnostics);
     }
