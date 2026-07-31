@@ -297,6 +297,71 @@ test('runSteps materializes only recovery-body imports and exposes frozen recove
     });
 });
 
+test('runSteps does not parse an unreferenced preloaded procedure body during recovery snapshot', async () => {
+    let attempts = 0;
+    const queue = createStepsQueue([{id: 'seed', name: 'browser.click', args: {}} as StepUnion]);
+    closeStepsQueue(queue);
+    const checkpoint = await runSteps({
+        runId: 'unreferenced-procedure', workspaceName: 'ws-1',
+        stepsQueue: queue,
+        resultPipe: createResultPipe(), signalChannel: createSignalChannel(), stopOnError: true,
+        checkpoints: [
+            {id: 'recover', kind: 'recovery', trigger: {matchRules: [{errorCode: 'ERR_NOT_FOUND'}]}, policy: {retryOriginal: false}, body: {language: 'dsl', source: 'body.dsl'}},
+            {id: 'unreferenced', kind: 'procedure', body: {language: 'dsl', source: 'body.dsl'}},
+        ],
+        checkpointBodies: {recover: 'wait 1', unreferenced: 'this is invalid DSL'},
+    }, createDeps({
+        'browser.click': async (step) => {
+            attempts += 1;
+            return attempts === 1
+                ? {stepId: step.id, ok: false, error: {code: 'ERR_NOT_FOUND', message: 'missing'}}
+                : {stepId: step.id, ok: true};
+        },
+    }));
+    assert.equal(checkpoint.status, 'completed');
+    assert.equal(attempts, 1);
+});
+
+test('runSteps traverses and freezes a referenced preloaded nested procedure body', async () => {
+    let attempts = 0;
+    let selector = '#frozen';
+    const observed: string[] = [];
+    const deps = createDeps({
+        'browser.click': async (step) => {
+            attempts += 1;
+            if (attempts === 1) {
+                selector = '#live';
+                return {stepId: step.id, ok: false, error: {code: 'ERR_NOT_FOUND', message: 'missing'}};
+            }
+            observed.push(String(step.resolve?.hint?.raw?.selector));
+            return {stepId: step.id, ok: true};
+        },
+    });
+    const workspace = deps.resolveWorkspace('ws-1') as any;
+    workspace.workflow = {
+        name: 'ws-1', list: () => [],
+        get: (name: string) => name === 'bundle'
+            ? {kind: 'dsl', name, content: '', stepResolves: {button: {hint: {raw: {selector}}}}}
+            : null,
+    };
+    const queue = createStepsQueue([{id: 'seed', name: 'browser.click', args: {}} as StepUnion]);
+    closeStepsQueue(queue);
+    const checkpoint = await runSteps({
+        runId: 'preloaded-nested', workspaceName: 'ws-1', stepsQueue: queue,
+        resultPipe: createResultPipe(), signalChannel: createSignalChannel(), stopOnError: true,
+        checkpoints: [
+            {id: 'recover', kind: 'recovery', trigger: {matchRules: [{errorCode: 'ERR_NOT_FOUND'}]}, policy: {retryOriginal: false}, body: {language: 'dsl', source: 'body.dsl'}},
+            {id: 'nested', kind: 'procedure', body: {language: 'dsl', source: 'body.dsl'}},
+        ],
+        checkpointBodies: {
+            recover: 'let value = use checkpoint "nested"',
+            nested: 'use resolves "bundle" as target\nclick target.button',
+        },
+    }, deps);
+    assert.equal(checkpoint.status, 'completed');
+    assert.deepEqual(observed, ['#frozen']);
+});
+
 test('runSteps executes an injected checkpoint DSL body without a checkpoint provider', async () => {
     const observed: StepUnion[] = [];
     let attempts = 0;
