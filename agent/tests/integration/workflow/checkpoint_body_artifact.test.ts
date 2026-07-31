@@ -57,3 +57,16 @@ test('checkpoint body artifacts reject invalid body metadata', () => {
             error instanceof Error && error.cause instanceof Error && /invalid checkpoint body metadata/.test(error.cause.message));
     });
 });
+
+test('checkpoint DSL bodies reject legacy procedure fields before writes', () => {
+    withWorkflowRoot((root) => {
+        const codec = createCheckpointCodec('workflow-c');
+        assert.throws(() => codec.save({
+            kind: 'checkpoint', name: 'ambiguous', stepResolves: {}, hints: {}, bodyDsl: 'output done = input',
+            checkpoint: {
+                id: 'ambiguous', kind: 'procedure', trigger: {matchRules: []}, body: {language: 'dsl', source: 'body.dsl'}, content: [],
+            },
+        }), /body\.dsl cannot be combined with legacy content/);
+        assert.equal(fs.existsSync(path.join(root, 'workflow-c', 'checkpoints', 'ambiguous', 'checkpoint.yaml')), false);
+    });
+});

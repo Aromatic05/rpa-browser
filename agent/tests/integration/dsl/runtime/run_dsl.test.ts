@@ -131,6 +131,15 @@ test('runDsl checkpoint applies resolve sidecar without retaining resolveId', as
     assert.deepEqual(click.resolve, resolve);
 });
 
+test('runDsl keeps legacy action-model checkpoints callable when kind is omitted', async () => {
+    const calls: StubCall[] = [];
+    const checkpoint: Checkpoint = {id: 'legacy', content: [{type: 'act', step: {name: 'browser.click', args: {selector: '#legacy'}}}]};
+    await runDsl(normalizeDsl(parseDsl('use checkpoint "legacy"')), {
+        workspaceName: 'ws-dsl', deps: createDeps(calls), checkpointProvider: {getCheckpoint: () => checkpoint},
+    });
+    assert.equal(calls[0]?.name, 'browser.click');
+});
+
 test('runDsl executes a procedure DSL body through the current step port and binds its output', async () => {
     const calls: StubCall[] = [];
     const checkpoint: Checkpoint = {id: 'ensure', kind: 'procedure', body: {language: 'dsl', source: 'body.dsl'}};
@@ -187,6 +196,22 @@ test('checkpoint DSL bodies expose an immutable failure root while normal DSL ca
     );
 });
 
+test('recovery DSL child scopes retain the read-only failure root', async () => {
+    const output = await runCheckpointDslBody({
+        checkpoint: {id: 'recover-children', kind: 'recovery', body: {language: 'dsl', source: 'body.dsl'}},
+        source: `
+            if failure.error.code:
+              output fromIf = failure.step.name
+            for item in failure.items:
+              output fromFor = failure.error.message
+        `,
+        stepResolves: {}, executeStep: async (step) => ({stepId: step.id, ok: true}),
+        workspaceName: 'ws-dsl', deps: createDeps([]),
+        failure: {step: {name: 'browser.click'}, error: {code: 'ERR_CLICK', message: 'not found'}, items: [1]},
+    });
+    assert.deepEqual(output, {fromIf: 'browser.click', fromFor: 'not found'});
+});
+
 test('DSL checkpoint calls only procedures and detect direct, indirect, and deep recursion', async () => {
     const checkpoint = (id: string, source: string): Checkpoint => ({id, kind: 'procedure', body: {language: 'dsl', source: 'body.dsl'}});
     const direct = checkpoint('direct', 'use checkpoint "direct"');
@@ -223,6 +248,27 @@ test('checkpoint DSL body resolve injection returns Runner validation errors', a
             deps: createDeps([]),
         }),
         (error: unknown) => error instanceof DslRuntimeError && error.code === 'ERR_BAD_ARGS',
+    );
+});
+
+test('checkpoint DSL body injects linked resolves and rejects missing resolve symbols', async () => {
+    const calls: StepUnion[] = [];
+    await runCheckpointDslBody({
+        checkpoint: {id: 'resolve-positive', kind: 'procedure', body: {language: 'dsl', source: 'body.dsl'}},
+        source: 'use resolves "resolve-positive" as target\nclick target.button',
+        stepResolves: {button: {hint: {raw: {selector: '#button'}}}},
+        executeStep: async (step) => {calls.push(step); return {stepId: step.id, ok: true};},
+        workspaceName: 'ws-dsl', deps: createDeps([]),
+    });
+    assert.equal((calls[0].args as {resolveId?: string}).resolveId, undefined);
+    assert.equal(calls[0].resolve?.hint?.raw?.selector, '#button');
+    await assert.rejects(
+        () => runCheckpointDslBody({
+            checkpoint: {id: 'resolve-missing', kind: 'procedure', body: {language: 'dsl', source: 'body.dsl'}},
+            source: 'use resolves "resolve-missing" as target\nclick target.button', stepResolves: {},
+            executeStep: async (step) => ({stepId: step.id, ok: true}), workspaceName: 'ws-dsl', deps: createDeps([]),
+        }),
+        (error: unknown) => error instanceof DslValidationError && error.diagnostics.some((item) => item.code === 'ERR_DSL_RESOLVE_SYMBOL_NOT_FOUND'),
     );
 });
 

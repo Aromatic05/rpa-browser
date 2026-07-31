@@ -200,12 +200,87 @@ test('a failing recovery DSL body does not enter recovery again', async () => {
     };
     const queue = createStepsQueue([{id: 'seed-click', name: 'browser.click', args: {}} as StepUnion]);
     closeStepsQueue(queue);
+    const pipe = createResultPipe();
     const checkpoint = await runSteps({
         runId: 'run-recovery-body', workspaceName: 'ws-1', stepsQueue: queue,
-        resultPipe: createResultPipe(), signalChannel: createSignalChannel(), stopOnError: true,
+        resultPipe: pipe, signalChannel: createSignalChannel(), stopOnError: true,
     }, deps);
     assert.equal(checkpoint.status, 'failed');
     assert.equal(clickAttempts, 2);
+    assert.equal(pipe.items[0]?.error?.code, 'ERR_CLICK_FAILED');
+    assert.deepEqual(pipe.items[0]?.error?.details, {
+        cause: {stepId: 'seed-click', error: {code: 'ERR_CLICK_FAILED', message: 'click failed'}},
+    });
+});
+
+test('runSteps snapshots live checkpoint and workflow DSL assets before recovery', async () => {
+    const liveBodies: Record<string, string> = {
+        recover: 'use resolves "bundle" as target\nclick target.button\nlet nested = use checkpoint "nested"',
+        nested: '',
+    };
+    const liveResolves: Record<string, Record<string, StepResolve>> = {recover: {}, nested: {}};
+    const checkpoints: Checkpoint[] = [
+        {id: 'recover', kind: 'recovery', trigger: {matchRules: [{errorCode: 'ERR_NOT_FOUND'}]}, policy: {retryOriginal: false}, body: {language: 'dsl', source: 'body.dsl'}},
+        {id: 'nested', body: {language: 'dsl', source: 'body.dsl'}},
+    ];
+    let bundle = {kind: 'dsl' as const, name: 'bundle', content: '', stepResolves: {button: {hint: {raw: {selector: '#snapshot'}}}}};
+    const observed: StepUnion[] = [];
+    let attempts = 0;
+    const deps = createDeps({
+        'browser.click': async (step) => {
+            attempts += 1;
+            if (attempts === 1) {
+                liveBodies.recover = 'use resolves "bundle" as target\nclick target.missing';
+                liveBodies.nested = 'click input.missing';
+                bundle = {...bundle, stepResolves: {button: {hint: {raw: {selector: '#live'}}}}};
+                return {stepId: step.id, ok: false, error: {code: 'ERR_NOT_FOUND', message: 'missing'}};
+            }
+            observed.push(step);
+            return {stepId: step.id, ok: true};
+        },
+    });
+    const workspace = deps.resolveWorkspace('ws-1') as any;
+    workspace.workflow = {
+        name: 'ws-1', list: () => [{kind: 'dsl', name: 'bundle'}], get: () => bundle,
+    };
+    workspace.checkpoint = {getProvider: () => ({
+        listCheckpoints: () => checkpoints,
+        getCheckpointResolves: (id: string) => liveResolves[id] || {},
+        getCheckpointBody: (id: string) => liveBodies[id] === undefined ? null : {source: liveBodies[id], stepResolves: liveResolves[id] || {}},
+    })};
+    const queue = createStepsQueue([{id: 'seed', name: 'browser.click', args: {}} as StepUnion]);
+    closeStepsQueue(queue);
+    const pipe = createResultPipe();
+    const completed = await runSteps({runId: 'snapshot', workspaceName: 'ws-1', stepsQueue: queue, resultPipe: pipe, signalChannel: createSignalChannel(), stopOnError: true}, deps);
+    assert.equal(completed.status, 'completed', JSON.stringify(pipe.items));
+    assert.equal(observed[0]?.resolve?.hint?.raw?.selector, '#snapshot');
+});
+
+test('runSteps executes an injected checkpoint DSL body without a checkpoint provider', async () => {
+    const observed: StepUnion[] = [];
+    let attempts = 0;
+    const queue = createStepsQueue([{id: 'seed', name: 'browser.click', args: {selector: '#seed'}} as StepUnion]);
+    closeStepsQueue(queue);
+    const checkpoint = await runSteps({
+        runId: 'injected-body', workspaceName: 'ws-1', stepsQueue: queue,
+        resultPipe: createResultPipe(), signalChannel: createSignalChannel(), stopOnError: true,
+        checkpoints: [{
+            id: 'recover', kind: 'recovery', body: {language: 'dsl', source: 'body.dsl'},
+            trigger: {matchRules: [{errorCode: 'ERR_NOT_FOUND'}]}, policy: {retryOriginal: false},
+        }],
+        checkpointBodies: {recover: 'use resolves "recover" as target\nclick target.button'},
+        checkpointStepResolves: {recover: {button: {hint: {raw: {selector: '#recover'}}}}},
+    }, createDeps({
+        'browser.click': async (step) => {
+            attempts += 1;
+            if (attempts === 1) {return {stepId: step.id, ok: false, error: {code: 'ERR_NOT_FOUND', message: 'missing'}};}
+            observed.push(step);
+            return {stepId: step.id, ok: true};
+        },
+    }));
+    assert.equal(checkpoint.status, 'completed');
+    assert.equal(observed[0].resolve?.hint?.raw?.selector, '#recover');
+    assert.equal((observed[0].args as {resolveId?: string}).resolveId, undefined);
 });
 
 test('run steps request accepts stepResolves typing contract', () => {
