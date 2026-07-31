@@ -10,6 +10,7 @@ import type { RunStepsDeps } from '../runner/run_steps';
 import type { Workflow, WorkflowDsl, WorkflowDummy } from '../workflow';
 import type { StepResolve } from '../runner/steps/types';
 import { validateStepResolveFileForSerialization } from '../runner/serialization/types';
+import { materializeReferencedCheckpointRuntimeSnapshot } from '../runner/checkpoint';
 
 const DSL_DUMMY: WorkflowDummy = {kind: 'dsl'};
 
@@ -138,15 +139,19 @@ export const createDslControl = (services: DslControlServices): DslControl => ({
             };
         }
 
+        const checkpointRuntime = materializeReferencedCheckpointRuntimeSnapshot({
+            sources: [dsl.content], checkpointProvider: workspace.checkpoint.getProvider(workflow), workflow,
+            entityRulesProvider: services.runStepsDeps.resolveEntityRulesProvider?.(workspace.name),
+        });
         const runResult = await runWorkspaceExecution(workspace, action.type, async () => await runDslSource(
             dsl.content,
             {
                 workspaceName: workspace.name,
                 deps: services.runStepsDeps,
                 input: payload.input || {},
-                checkpointProvider: workspace.checkpoint.getProvider(workflow),
-                entityRulesResolver,
-                resolveResolver,
+                checkpointProvider: checkpointRuntime.provider,
+                entityRulesResolver: checkpointRuntime.entityRulesResolver || entityRulesResolver,
+                resolveResolver: checkpointRuntime.resolveResolver || resolveResolver,
             },
         ));
 

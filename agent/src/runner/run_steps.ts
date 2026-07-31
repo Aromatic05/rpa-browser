@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import type { StepResult as ExecStepResult, StepUnion } from './steps/types';
 import { resolveStepArgsRefs } from './step_refs';
-import { runCheckpoint, setCheckpoints, materializeCheckpointRuntimeSnapshot, type Checkpoint as RunnerCheckpoint } from './checkpoint';
+import { runCheckpoint, setCheckpoints, materializeReferencedCheckpointRuntimeSnapshot, type Checkpoint as RunnerCheckpoint } from './checkpoint';
 import { getFailedCtx } from './failed_ctx';
 import { getLogger } from '../logging/logger';
 import {shouldMarkPageSessionDirtyByStep} from './session';
@@ -363,12 +363,19 @@ const resolveRunCheckpoints = (
         ]))
         : req.checkpointStepResolves ?? {};
     const bodies = req.checkpoints === undefined
-        ? Object.fromEntries(allCheckpoints.flatMap((checkpoint) => {
+        ? Object.fromEntries(allCheckpoints
+            .filter((checkpoint) => checkpoint.kind === undefined || checkpoint.kind === 'recovery')
+            .flatMap((checkpoint) => {
             const body = sourceProvider?.getCheckpointBody?.(checkpoint.id);
             return body ? [[checkpoint.id, body.source] as const] : [];
         }))
         : req.checkpointBodies ?? {};
-    const snapshot = materializeCheckpointRuntimeSnapshot({
+    const snapshot = materializeReferencedCheckpointRuntimeSnapshot({
+        sources: Object.values(bodies), checkpointProvider: sourceProvider || {
+            getCheckpoint: (id) => allCheckpoints.find((checkpoint) => checkpoint.id === id) || null,
+            getCheckpointResolves: (id) => stepResolves[id] || null,
+            getCheckpointBody: (id) => bodies[id] === undefined ? null : {source: bodies[id], stepResolves: stepResolves[id] || {}},
+        },
         checkpoints: allCheckpoints, checkpointStepResolves: stepResolves, checkpointBodies: bodies,
         workflow: isWorkflow(workspace.workflow) ? workspace.workflow : undefined,
         entityRulesProvider: deps.resolveEntityRulesProvider?.(req.workspaceName),
@@ -438,7 +445,7 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
             throw new Error('runSteps deps not initialized');
         }
         checkpointRuntime = resolveRunCheckpoints(req, resolvedDeps);
-        setCheckpoints(checkpointRuntime.checkpoints);
+        setCheckpoints(checkpointRuntime.provider.listCheckpoints!());
         while (true) {
         while (req.signalChannel.cursor < req.signalChannel.items.length) {
             const event = req.signalChannel.items[req.signalChannel.cursor++];

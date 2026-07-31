@@ -43,7 +43,7 @@ export type RunDslResult = {
 export const runDsl = async (program: DslProgram, ctx: RunDslContext): Promise<RunDslResult> => {
     const scope = createDslScope(ctx.input, ctx.failure);
     const taskRunner = ctx.stepExecutionPort ? undefined : createDslTaskRunner({
-        workspaceName: ctx.workspaceName, deps: ctx.deps, stopOnError: true, stepResolves: ctx.stepResolves,
+        workspaceName: ctx.workspaceName, deps: ctx.deps, stopOnError: true,
     });
     const rawPort: StepExecutionPort = ctx.stepExecutionPort || {execute: async (step) => toExecutorStepResult(await taskRunner!.runStep(step))};
     const port: StepExecutionPort = {

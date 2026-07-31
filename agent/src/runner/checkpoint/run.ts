@@ -2,6 +2,7 @@ import { getLogger } from '../../logging/logger';
 import type { Checkpoint, CheckpointCtx } from './types';
 import { runCheckpointProcedure } from './runtime';
 import { runCheckpointDslBody } from './dsl_body';
+import { getEffectiveCheckpointMaxAttempts } from './match';
 
 const log = getLogger('step');
 
@@ -28,7 +29,7 @@ export const maybeRunCheckpoint = async (ctx: CheckpointCtx): Promise<Checkpoint
                 entityRulesResolver: ctx.failedCtx.checkpointRuntime?.entityRulesResolver,
                 resolveResolver: ctx.failedCtx.checkpointRuntime?.resolveResolver,
                 checkpointProvider: ctx.failedCtx.checkpointRuntime?.provider,
-                failure: {step: {name: ctx.failedCtx.step.name}, error: {code: ctx.failedCtx.rawResult.error?.code, message: ctx.failedCtx.rawResult.error?.message}, attempt: ctx.failedCtx.checkpointAttempt, maxAttempts: ctx.failedCtx.checkpointMaxAttempts, ...(ctx.failedCtx.currentUrl ? {url: ctx.failedCtx.currentUrl} : {})},
+                failure: checkpointFailureScope(ctx),
             });
             return {...ctx, runResult: {stepId: ctx.failedCtx.step.id, ok: true, data: {checkpointId: ctx.checkpoint.id, checkpointName: ctx.checkpoint.name, output}}};
         } catch (error) {
@@ -133,10 +134,37 @@ const checkpointBodyFailure = (ctx: CheckpointCtx, error: {code: string; message
     runResult: {
         stepId: ctx.failedCtx.step.id,
         ok: false,
-        error: {...error, details: {...(error?.details as Record<string, unknown> | undefined), cause: {stepId: ctx.failedCtx.step.id, error: ctx.failedCtx.rawResult.error}}},
+        error: {
+            ...error,
+            details: {
+                ...(isRecord(error.details) ? error.details : error.details === undefined ? {} : {failureDetails: error.details}),
+                cause: {stepId: ctx.failedCtx.step.id, error: ctx.failedCtx.rawResult.error},
+            },
+        },
     },
     meta: {...(ctx.meta || {}), checkpointBodyFailure: true},
 });
+
+const checkpointFailureScope = (ctx: CheckpointCtx): Record<string, unknown> => ({
+    step: freezeClone({id: ctx.failedCtx.step.id, name: ctx.failedCtx.step.name, args: ctx.failedCtx.step.args}),
+    error: {code: ctx.failedCtx.rawResult.error?.code, message: ctx.failedCtx.rawResult.error?.message},
+    attempt: ctx.failedCtx.checkpointAttempt + 1,
+    maxAttempts: getEffectiveCheckpointMaxAttempts(ctx.checkpoint!, ctx.failedCtx.checkpointMaxAttempts),
+    ...(ctx.failedCtx.currentUrl ? {url: ctx.failedCtx.currentUrl} : {}),
+});
+
+const freezeClone = <T>(value: T): T => {
+    const clone = structuredClone(value);
+    const freeze = (current: unknown): unknown => {
+        if (!current || typeof current !== 'object' || Object.isFrozen(current)) {return current;}
+        Object.values(current).forEach(freeze);
+        return Object.freeze(current);
+    };
+    return freeze(clone) as T;
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+    Boolean(value && typeof value === 'object' && !Array.isArray(value));
 
 const hasActionContent = (content: Checkpoint['content']) => {
     if (!content || content.length === 0) {return false;}
