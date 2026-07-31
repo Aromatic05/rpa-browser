@@ -67,7 +67,7 @@ test('runStepList injects runtime step.resolve from args.resolveId', async () =>
     assert.equal(observed.length, 1);
     assert.equal(observed[0].resolve?.hint?.raw?.selector, '#submit');
     assert.equal(observed[0].resolve?.policy?.requireVisible, true);
-    assert.equal((observed[0].args as { resolveId?: string }).resolveId, 'resolveSubmit');
+    assert.equal((observed[0].args as { resolveId?: string }).resolveId, undefined);
 });
 
 test('runStepList returns ERR_BAD_ARGS for missing or conflicting resolve sources', async () => {

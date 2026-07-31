@@ -41,6 +41,12 @@ const normalizeStmt = (stmt: DslStmt): DslStmt[] => {
             ...(stmt.value ? {value: normalizeRef(stmt.value)} : {}),
         }];
     }
+    if (stmt.kind === 'resolve_act') {
+        return [{
+            ...stmt,
+            ...(stmt.value ? {value: normalizeRef(stmt.value)} : {}),
+        }];
+    }
     if (stmt.kind === 'entity_act') {
         return [stmt];
     }

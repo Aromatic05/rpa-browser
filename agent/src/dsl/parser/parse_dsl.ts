@@ -1,5 +1,5 @@
 import YAML from 'yaml';
-import type { CheckpointStmt, DslImport, DslProgram, DslStmt, EntityReference, LetStmt, QueryExpr, RefExpr } from '../ast/types';
+import type { CheckpointStmt, DslImport, DslProgram, DslStmt, EntityReference, LetStmt, QueryExpr, RefExpr, ResolveReference } from '../ast/types';
 import { DslParseError } from '../diagnostics/errors';
 
 type ParsedLine = {
@@ -10,7 +10,14 @@ type ParsedLine = {
 export const parseDsl = (source: string): DslProgram => {
     const lines = tokenizeDsl(source);
     const imports = parseImports(lines);
-    const parsed = parseBlock(lines, imports.length, 0, { allowElse: false }, new Set(imports.map((item) => item.alias)));
+    const parsed = parseBlock(
+        lines,
+        imports.length,
+        0,
+        { allowElse: false },
+        new Set(imports.filter((item) => item.kind === 'entity_rules').map((item) => item.alias)),
+        new Set(imports.filter((item) => item.kind === 'resolves').map((item) => item.alias)),
+    );
     if (parsed.nextIndex !== lines.length) {
         throw new DslParseError('unexpected trailing DSL content');
     }
@@ -21,19 +28,21 @@ const parseImports = (lines: ParsedLine[]): DslImport[] => {
     const imports: DslImport[] = [];
     const aliases = new Set<string>();
     for (const line of lines) {
-        if (!line.content.startsWith('use entity_rules ')) {break;}
+        if (!line.content.startsWith('use entity_rules ') && !line.content.startsWith('use resolves ')) {break;}
         if (line.indent !== 0) {
-            throw new DslParseError('entity_rules imports must be top-level declarations');
+            throw new DslParseError('imports must be top-level declarations');
         }
-        const match = line.content.match(/^use\s+entity_rules\s+"([A-Za-z0-9][A-Za-z0-9._-]*)"\s+as\s+([A-Za-z_][A-Za-z0-9_]*)$/);
+        const match = line.content.match(/^use\s+(entity_rules|resolves)\s+"([A-Za-z0-9][A-Za-z0-9._-]*)"\s+as\s+([A-Za-z_][A-Za-z0-9_]*)$/);
         if (!match) {
-            throw new DslParseError(`invalid entity_rules import: ${line.content}`);
+            throw new DslParseError(`invalid import: ${line.content}`);
         }
-        if (aliases.has(match[2])) {
-            throw new DslParseError(`duplicate entity_rules alias: ${match[2]}`);
+        if (aliases.has(match[3])) {
+            throw new DslParseError(`duplicate import alias: ${match[3]}`);
         }
-        aliases.add(match[2]);
-        imports.push({kind: 'entity_rules', profileName: match[1], alias: match[2]});
+        aliases.add(match[3]);
+        imports.push(match[1] === 'entity_rules'
+            ? {kind: 'entity_rules', profileName: match[2], alias: match[3]}
+            : {kind: 'resolves', bundleName: match[2], alias: match[3]});
     }
     return imports;
 };
@@ -69,6 +78,7 @@ const parseBlock = (
     indent: number,
     opts: { allowElse: boolean },
     entityAliases: ReadonlySet<string>,
+    resolveAliases: ReadonlySet<string>,
 ): { body: DslStmt[]; nextIndex: number } => {
     const body: DslStmt[] = [];
     let index = startIndex;
@@ -89,21 +99,21 @@ const parseBlock = (
         }
 
         if (line.content.startsWith('if ')) {
-            const parsedIf = parseIfStmt(lines, index, indent, entityAliases);
+            const parsedIf = parseIfStmt(lines, index, indent, entityAliases, resolveAliases);
             body.push(parsedIf.stmt);
             index = parsedIf.nextIndex;
             continue;
         }
 
         if (line.content.startsWith('for ')) {
-            const parsedFor = parseForStmt(lines, index, indent, entityAliases);
+            const parsedFor = parseForStmt(lines, index, indent, entityAliases, resolveAliases);
             body.push(parsedFor.stmt);
             index = parsedFor.nextIndex;
             continue;
         }
 
         const collected = collectStatement(lines, index, indent);
-        body.push(parseStatement(collected.statement, entityAliases));
+        body.push(parseStatement(collected.statement, entityAliases, resolveAliases));
         index = collected.nextIndex;
     }
 
@@ -115,6 +125,7 @@ const parseIfStmt = (
     startIndex: number,
     indent: number,
     entityAliases: ReadonlySet<string>,
+    resolveAliases: ReadonlySet<string>,
 ): { stmt: DslStmt; nextIndex: number } => {
     const header = lines[startIndex].content;
     if (!header.endsWith(':')) {
@@ -125,12 +136,12 @@ const parseIfStmt = (
         throw new DslParseError(`invalid if statement: ${header}`);
     }
 
-    const thenBlock = parseBlock(lines, startIndex + 1, indent + 2, { allowElse: true }, entityAliases);
+    const thenBlock = parseBlock(lines, startIndex + 1, indent + 2, { allowElse: true }, entityAliases, resolveAliases);
     let nextIndex = thenBlock.nextIndex;
     let elseBody: DslStmt[] | undefined;
 
     if (nextIndex < lines.length && lines[nextIndex].indent === indent && lines[nextIndex].content === 'else:') {
-        const elseBlock = parseBlock(lines, nextIndex + 1, indent + 2, { allowElse: false }, entityAliases);
+        const elseBlock = parseBlock(lines, nextIndex + 1, indent + 2, { allowElse: false }, entityAliases, resolveAliases);
         elseBody = elseBlock.body;
         nextIndex = elseBlock.nextIndex;
     }
@@ -151,6 +162,7 @@ const parseForStmt = (
     startIndex: number,
     indent: number,
     entityAliases: ReadonlySet<string>,
+    resolveAliases: ReadonlySet<string>,
 ): { stmt: DslStmt; nextIndex: number } => {
     const header = lines[startIndex].content;
     if (!header.endsWith(':')) {
@@ -161,7 +173,7 @@ const parseForStmt = (
         throw new DslParseError(`invalid for statement: ${header}`);
     }
 
-    const bodyBlock = parseBlock(lines, startIndex + 1, indent + 2, { allowElse: false }, entityAliases);
+    const bodyBlock = parseBlock(lines, startIndex + 1, indent + 2, { allowElse: false }, entityAliases, resolveAliases);
     return {
         stmt: {
             kind: 'for',
@@ -214,7 +226,11 @@ const collectStatement = (
     };
 };
 
-const parseStatement = (statement: string, entityAliases: ReadonlySet<string>): DslStmt => {
+const parseStatement = (
+    statement: string,
+    entityAliases: ReadonlySet<string>,
+    resolveAliases: ReadonlySet<string>,
+): DslStmt => {
     if (statement.startsWith('let ')) {
         return parseLet(statement, entityAliases);
     }
@@ -296,6 +312,10 @@ const parseStatement = (statement: string, entityAliases: ReadonlySet<string>): 
         if (entityReference) {
             return {kind: 'entity_act', action: match[1] as 'fill' | 'type' | 'select', target: entityReference, value: toRef(match[3])};
         }
+        const resolveReference = parseResolveReference(match[2], resolveAliases);
+        if (resolveReference) {
+            return {kind: 'resolve_act', action: match[1] as 'fill' | 'type' | 'select', target: resolveReference, value: toRef(match[3])};
+        }
         return {
             kind: 'act',
             action: match[1] as 'fill' | 'type' | 'select',
@@ -311,6 +331,10 @@ const parseStatement = (statement: string, entityAliases: ReadonlySet<string>): 
         const entityReference = parseEntityReference(match[1], entityAliases);
         if (entityReference) {
             return {kind: 'entity_act', action: 'click', target: entityReference};
+        }
+        const resolveReference = parseResolveReference(match[1], resolveAliases);
+        if (resolveReference) {
+            return {kind: 'resolve_act', action: 'click', target: resolveReference};
         }
         return {
             kind: 'act',
@@ -415,6 +439,12 @@ const parseEntityReference = (source: string, entityAliases: ReadonlySet<string>
         return {kind: 'entity_ref', alias: row[1], entityKey: row[2], member: row[4] || 'row', rowValue: toRef(row[3])};
     }
     return null;
+};
+
+const parseResolveReference = (source: string, resolveAliases: ReadonlySet<string>): ResolveReference | null => {
+    const match = source.match(/^([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)$/);
+    if (!match || !resolveAliases.has(match[1])) {return null;}
+    return {kind: 'resolve_ref', alias: match[1], symbol: match[2]};
 };
 
 

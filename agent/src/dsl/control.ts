@@ -3,11 +3,13 @@ import { ActionError, ERROR_CODES } from '../actions/results';
 import type { WorkspaceRouterInput } from '../runtime/workspace/router';
 import type { ControlPlaneResult } from '../runtime/control_plane';
 import { runDslSource, validateDslSource } from './runtime';
-import { createDslEntityRulesResolver, type DslEntityRulesResolver } from './link';
+import { createDslEntityRulesResolver, createDslResolveResolver, type DslEntityRulesResolver, type DslResolveResolver } from './link';
 import { DslValidationError } from './diagnostics';
 import { runWorkspaceExecution } from '../runtime/workspace/execution_coordinator';
 import type { RunStepsDeps } from '../runner/run_steps';
 import type { Workflow, WorkflowDsl, WorkflowDummy } from '../workflow';
+import type { StepResolve } from '../runner/steps/types';
+import { validateStepResolveFileForSerialization } from '../runner/serialization/types';
 
 const DSL_DUMMY: WorkflowDummy = {kind: 'dsl'};
 
@@ -53,6 +55,21 @@ const resolveEntityRulesResolver = (
     return createDslEntityRulesResolver(workspace.entityRules.getProvider(workflow));
 };
 
+const resolveDslResolves = (workflow: Workflow): DslResolveResolver => createDslResolveResolver(workflow);
+
+const validateStepResolves = (value: unknown): Record<string, StepResolve> => {
+    try {
+        const resolves = structuredClone(value) as Record<string, StepResolve>;
+        validateStepResolveFileForSerialization({version: 1, resolves});
+        return resolves;
+    } catch (error) {
+        throw new ActionError(
+            ERROR_CODES.ERR_WORKFLOW_BAD_ARGS,
+            `invalid DSL resolve sidecar: ${error instanceof Error ? error.message : String(error)}`,
+        );
+    }
+};
+
 export const createDslControl = (services: DslControlServices): DslControl => ({
     handle: async (input) => {
         const {action, workspace} = input;
@@ -70,13 +87,14 @@ export const createDslControl = (services: DslControlServices): DslControl => ({
             dslName?: string;
             content?: string;
             input?: Record<string, unknown>;
+            stepResolves?: Record<string, StepResolve>;
         };
 
         if (action.type === 'dsl.get') {
             const dslName = payload.dslName || resolveDefaultDslName(workflow);
             const dsl = requireDsl(workflow, dslName);
             return {
-                reply: replyAction(action, {workspaceName: workspace.name, dslName, content: dsl.content}),
+                reply: replyAction(action, {workspaceName: workspace.name, dslName, content: dsl.content, stepResolves: dsl.stepResolves}),
                 events: [],
             };
         }
@@ -87,11 +105,15 @@ export const createDslControl = (services: DslControlServices): DslControl => ({
                 throw new ActionError(ERROR_CODES.ERR_WORKFLOW_BAD_ARGS, 'dsl.save requires content');
             }
             const dslName = payload.dslName || resolveDefaultDslName(workflow);
-            const validation = validateDslSource(payload.content, entityRulesResolver);
+            const stepResolves = payload.stepResolves === undefined
+                ? existingDslResolves(workflow, dslName)
+                : validateStepResolves(payload.stepResolves);
+            const resolveResolver = createDslResolveResolver(workflow, new Map([[dslName, stepResolves]]));
+            const validation = validateDslSource(payload.content, entityRulesResolver, resolveResolver);
             if (validation.diagnostics.length > 0) {
                 throw new DslValidationError(validation.diagnostics);
             }
-            workflow.save({kind: 'dsl', name: dslName, content: payload.content});
+            workflow.save({kind: 'dsl', name: dslName, content: payload.content, stepResolves});
             return {
                 reply: replyAction(action, {workspaceName: workspace.name, dslName, saved: true}),
                 events: [],
@@ -100,8 +122,9 @@ export const createDslControl = (services: DslControlServices): DslControl => ({
 
         const dslName = payload.dslName || resolveDefaultDslName(workflow);
         const dsl = requireDsl(workflow, dslName);
+        const resolveResolver = resolveDslResolves(workflow);
         if (action.type === 'dsl.validate' || action.type === 'dsl.test') {
-            const validation = validateDslSource(dsl.content, entityRulesResolver);
+            const validation = validateDslSource(dsl.content, entityRulesResolver, resolveResolver);
             return {
                 reply: replyAction(action, {
                     ok: validation.diagnostics.length === 0,
@@ -123,6 +146,7 @@ export const createDslControl = (services: DslControlServices): DslControl => ({
                 input: payload.input || {},
                 checkpointProvider: workspace.checkpoint.getProvider(workflow),
                 entityRulesResolver,
+                resolveResolver,
             },
         ));
 
@@ -136,3 +160,8 @@ export const createDslControl = (services: DslControlServices): DslControl => ({
         };
     },
 });
+
+const existingDslResolves = (workflow: Workflow, dslName: string): Record<string, StepResolve> => {
+    const existing = workflow.get(dslName, DSL_DUMMY);
+    return existing?.kind === 'dsl' ? existing.stepResolves : {};
+};

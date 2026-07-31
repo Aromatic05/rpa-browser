@@ -1,5 +1,5 @@
 import type { RunStepsDeps, StepResult as TaskStepResult } from '../../runner/run_steps';
-import type { StepResult as ExecutorStepResult, StepUnion } from '../../runner/steps/types';
+import type { StepResolve, StepResult as ExecutorStepResult, StepUnion } from '../../runner/steps/types';
 import { runDslCheckpointCall, type DslCheckpointProvider } from '../emit/checkpoint_call';
 import { getLogger, type Logger } from '../../logging/logger';
 import { buildClickStep, buildFillStep, buildQueryStep, buildSelectStep, buildSnapshotStep, buildTypeStep } from '../emit/step_builder';
@@ -17,6 +17,7 @@ import {
 import { resolveDslValue } from './refs';
 import { adaptDslQueryResult } from './value_adapter';
 import type { DslEntityRulesResolver } from '../link';
+import type { DslResolveResolver } from '../link';
 
 export type RunDslContext = {
     workspaceName: string;
@@ -25,6 +26,8 @@ export type RunDslContext = {
     checkpointProvider?: DslCheckpointProvider;
     logger?: Logger;
     entityRulesResolver?: DslEntityRulesResolver;
+    resolveResolver?: DslResolveResolver;
+    stepResolves?: Record<string, StepResolve>;
 };
 
 export type RunDslResult = {
@@ -37,6 +40,7 @@ export const runDsl = async (program: DslProgram, ctx: RunDslContext): Promise<R
         workspaceName: ctx.workspaceName,
         deps: ctx.deps,
         stopOnError: true,
+        stepResolves: ctx.stepResolves,
     });
     const logger = ctx.logger || getLogger('dsl');
 
@@ -143,6 +147,30 @@ const executeStmt = async (
                 : stmt.action === 'type'
                     ? buildTypeStep(target, value, profileName)
                     : buildSelectStep(target, value, profileName);
+            await emitStepAndWait(step, taskRunner, logger, stmtIndex);
+            return;
+        }
+        case 'resolve_act': {
+            if (!stmt.resolveId) {
+                throw new DslRuntimeError('resolve action must be linked before runtime', 'ERR_DSL_NOT_LINKED');
+            }
+            const target = {resolveId: stmt.resolveId};
+            safeLog(logger, 'debug', 'dsl.resolve.action', {
+                alias: stmt.target.alias,
+                bundleName: stmt.target.bundleName,
+                symbol: stmt.target.symbol,
+                resolveId: stmt.resolveId,
+            });
+            if (stmt.action === 'click') {
+                await emitStepAndWait(buildClickStep(target), taskRunner, logger, stmtIndex);
+                return;
+            }
+            const value = resolveDslValue(stmt.value, scope);
+            const step = stmt.action === 'fill'
+                ? buildFillStep(target, value)
+                : stmt.action === 'type'
+                    ? buildTypeStep(target, value)
+                    : buildSelectStep(target, value);
             await emitStepAndWait(step, taskRunner, logger, stmtIndex);
             return;
         }
