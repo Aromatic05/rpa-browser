@@ -1,15 +1,22 @@
 import path from 'node:path';
 import fs from 'node:fs';
-import { DslRuntimeError } from '../dsl/diagnostics/errors';
+import { WorkflowError } from './errors';
 import { createCheckpointCodec, type WorkflowCheckpoint } from './checkpoint';
 import { createDslCodec, type WorkflowDsl } from './dsl';
-import { ensureDir, existsDir, listDirectories, readYamlFile, removePath, workflowManifestPath, workflowRootDir, workflowsRootDir, writeYamlFile } from './fs';
+import { ensureDir, existsDir, listDirectories, readYamlFile, removePath, requireArtifactName, workflowManifestPath, workflowRootDir, workflowsRootDir, writeYamlFile } from './fs';
 import { createRecordingCodec, type WorkflowRecording } from './recording';
 import { createEntityRulesCodec, type WorkflowEntityRules } from './entity_rules';
 import { createNamedStore, type NamedStore } from './store';
 
 export type WorkflowArtifactKind = 'recording' | 'checkpoint' | 'dsl' | 'entity_rules';
 export type WorkflowDummy = { kind: WorkflowArtifactKind };
+
+const WORKFLOW_ARTIFACT_KINDS = new Set<WorkflowArtifactKind>([
+    'recording',
+    'checkpoint',
+    'dsl',
+    'entity_rules',
+]);
 
 export type WorkflowArtifact = WorkflowRecording | WorkflowCheckpoint | WorkflowDsl | WorkflowEntityRules;
 
@@ -45,6 +52,7 @@ export type WorkflowManifest = {
 
 export type Workflow = {
     readonly name: string;
+    entryDslName?: () => string;
     save: (value: WorkflowArtifact) => WorkflowArtifact;
     get: (name: string, dummy: WorkflowDummy) => WorkflowArtifact | null;
     list: (dummy: WorkflowDummy) => WorkflowCatalogItem[];
@@ -71,15 +79,15 @@ const readManifest = (workflowName: string): WorkflowManifest => {
     const filePath = workflowManifestPath(workflowName);
     const parsed = readYamlFile(filePath);
     if (!isRecord(parsed) || parsed.version !== 1 || typeof parsed.name !== 'string') {
-        throw new DslRuntimeError(`invalid workflow manifest: ${workflowName}`, 'ERR_WORKFLOW_INVALID_MANIFEST');
+        throw new WorkflowError(`invalid workflow manifest: ${workflowName}`, 'ERR_WORKFLOW_INVALID_MANIFEST');
     }
     if (!isRecord(parsed.entry) || typeof parsed.entry.dsl !== 'string') {
-        throw new DslRuntimeError(`invalid workflow manifest entry: ${workflowName}`, 'ERR_WORKFLOW_INVALID_MANIFEST');
+        throw new WorkflowError(`invalid workflow manifest entry: ${workflowName}`, 'ERR_WORKFLOW_INVALID_MANIFEST');
     }
     if (!Array.isArray(parsed.catalog)) {
-        throw new DslRuntimeError(`invalid workflow manifest catalog: ${workflowName}`, 'ERR_WORKFLOW_INVALID_MANIFEST');
+        throw new WorkflowError(`invalid workflow manifest catalog: ${workflowName}`, 'ERR_WORKFLOW_INVALID_MANIFEST');
     }
-    return parsed as WorkflowManifest;
+    return parseWorkflowManifest(parsed, workflowName);
 };
 
 const writeManifest = (manifest: WorkflowManifest): void => {
@@ -154,13 +162,14 @@ const hasCatalog = (manifest: WorkflowManifest, kind: WorkflowArtifactKind, name
 
 export const loadWorkflowFromFs = (workflowName: string): Workflow => {
     if (!existsDir(workflowRootDir(workflowName))) {
-        throw new DslRuntimeError(`workflow not found: ${workflowName}`, 'ERR_WORKFLOW_NOT_FOUND');
+        throw new WorkflowError(`workflow not found: ${workflowName}`, 'ERR_WORKFLOW_NOT_FOUND');
     }
     const manifest = readManifest(workflowName);
     const internal = createInternal(workflowName);
 
     return {
         name: workflowName,
+        entryDslName: () => manifest.entry.dsl,
         save: (value) => {
             const saved = saveArtifact(internal, value);
             const idx = manifest.catalog.findIndex((item) => item.kind === saved.kind && item.name === saved.name);
@@ -170,13 +179,11 @@ export const loadWorkflowFromFs = (workflowName: string): Workflow => {
             } else {
                 manifest.catalog.push(nextItem);
             }
-            if (saved.kind === 'dsl' && saved.name === 'main') {
-                manifest.entry.dsl = 'main';
-            }
             writeManifest(manifest);
             return saved;
         },
         get: (name, dummy) => {
+            requireArtifactName(name, `${dummy.kind} artifact name`);
             if (!hasCatalog(manifest, dummy.kind, name)) {
                 return null;
             }
@@ -184,6 +191,10 @@ export const loadWorkflowFromFs = (workflowName: string): Workflow => {
         },
         list: (dummy) => manifest.catalog.filter((item) => item.kind === dummy.kind),
         delete: (name, dummy) => {
+            requireArtifactName(name, `${dummy.kind} artifact name`);
+            if (dummy.kind === 'dsl' && name === manifest.entry.dsl) {
+                throw new WorkflowError(`cannot delete workflow entry DSL: ${name}`, 'ERR_WORKFLOW_BAD_ARGS');
+            }
             const deleted = resolveStore(internal, dummy.kind).delete(name);
             manifest.catalog = manifest.catalog.filter((item) => !(item.kind === dummy.kind && item.name === name));
             writeManifest(manifest);
@@ -195,7 +206,7 @@ export const loadWorkflowFromFs = (workflowName: string): Workflow => {
 export const createWorkflowOnFs = (workflowName: string): Workflow => {
     const rootDir = workflowRootDir(workflowName);
     if (existsDir(rootDir)) {
-        throw new DslRuntimeError(`workflow already exists: ${workflowName}`, 'ERR_WORKFLOW_BAD_ARGS');
+        throw new WorkflowError(`workflow already exists: ${workflowName}`, 'ERR_WORKFLOW_BAD_ARGS');
     }
     ensureDir(path.join(rootDir, 'recordings'));
     ensureDir(path.join(rootDir, 'checkpoints'));
@@ -217,15 +228,15 @@ export const renameWorkflowOnFs = (fromName: string, toName: string): void => {
     const fromDir = workflowRootDir(fromName);
     const toDir = workflowRootDir(toName);
     if (!existsDir(fromDir)) {
-        throw new DslRuntimeError(`workflow not found: ${fromName}`, 'ERR_WORKFLOW_NOT_FOUND');
+        throw new WorkflowError(`workflow not found: ${fromName}`, 'ERR_WORKFLOW_NOT_FOUND');
     }
     if (existsDir(toDir)) {
-        throw new DslRuntimeError(`workflow already exists: ${toName}`, 'ERR_WORKFLOW_BAD_ARGS');
+        throw new WorkflowError(`workflow already exists: ${toName}`, 'ERR_WORKFLOW_BAD_ARGS');
     }
     fs.renameSync(fromDir, toDir);
     const renamedManifestPath = workflowManifestPath(toName);
-    const manifest = parseWorkflowManifest(readYamlFile(renamedManifestPath), toName);
-writeYamlFile(renamedManifestPath, {
+    const manifest = parseWorkflowManifest(readYamlFile(renamedManifestPath), fromName);
+    writeYamlFile(renamedManifestPath, {
         ...manifest,
         name: toName,
         updatedAt: Date.now(),
@@ -236,22 +247,29 @@ export const copyWorkflowOnFs = (sourceName: string, targetName: string): void =
     const sourceDir = workflowRootDir(sourceName);
     const targetDir = workflowRootDir(targetName);
     if (!existsDir(sourceDir)) {
-        throw new DslRuntimeError(`workflow not found: ${sourceName}`, 'ERR_WORKFLOW_NOT_FOUND');
+        throw new WorkflowError(`workflow not found: ${sourceName}`, 'ERR_WORKFLOW_NOT_FOUND');
     }
     if (existsDir(targetDir)) {
-        throw new DslRuntimeError(`workflow already exists: ${targetName}`, 'ERR_WORKFLOW_BAD_ARGS');
+        throw new WorkflowError(`workflow already exists: ${targetName}`, 'ERR_WORKFLOW_BAD_ARGS');
     }
     fs.cpSync(sourceDir, targetDir, { recursive: true });
     const copiedManifestPath = workflowManifestPath(targetName);
-    const manifest = parseWorkflowManifest(readYamlFile(copiedManifestPath), targetName);
-writeYamlFile(copiedManifestPath, {
+    const manifest = parseWorkflowManifest(readYamlFile(copiedManifestPath), sourceName);
+    writeYamlFile(copiedManifestPath, {
         ...manifest,
         name: targetName,
         updatedAt: Date.now(),
     } satisfies WorkflowManifest);
 };
 
-export const listWorkflowNames = (): string[] => listDirectories(workflowsRootDir());
+export const listWorkflowNames = (): string[] => listDirectories(workflowsRootDir()).filter((name) => {
+    try {
+        requireArtifactName(name, 'workflow name');
+        return true;
+    } catch {
+        return false;
+    }
+});
 export const deleteWorkflowFromFs = (workflowName: string): void => {
     removePath(workflowRootDir(workflowName));
 };
@@ -263,10 +281,34 @@ const parseWorkflowManifest = (value: unknown, workflowName: string): WorkflowMa
     if (!isRecord(value) || value.version !== 1 || typeof value.name !== 'string'
         || !isRecord(value.entry) || typeof value.entry.dsl !== 'string' || !Array.isArray(value.catalog)
         || typeof value.createdAt !== 'number' || typeof value.updatedAt !== 'number') {
-        throw new DslRuntimeError(
+        throw new WorkflowError(
             `invalid workflow manifest: ${workflowName}`,
             'ERR_WORKFLOW_INVALID_MANIFEST',
         );
+    }
+    requireArtifactName(value.name, 'workflow name');
+    if (value.name !== workflowName) {
+        throw new WorkflowError(
+            `workflow manifest identity mismatch: directory=${workflowName} manifest=${value.name}`,
+            'ERR_WORKFLOW_INVALID_MANIFEST',
+        );
+    }
+    requireArtifactName(value.entry.dsl, 'workflow entry DSL name');
+    const catalogKeys = new Set<string>();
+    for (const item of value.catalog) {
+        if (!isRecord(item) || typeof item.kind !== 'string'
+            || !WORKFLOW_ARTIFACT_KINDS.has(item.kind as WorkflowArtifactKind)
+            || typeof item.name !== 'string' || typeof item.title !== 'string'
+            || typeof item.createdAt !== 'number' || typeof item.updatedAt !== 'number'
+            || typeof item.summary !== 'string') {
+            throw new WorkflowError(`invalid workflow manifest catalog: ${workflowName}`, 'ERR_WORKFLOW_INVALID_MANIFEST');
+        }
+        requireArtifactName(item.name, `${item.kind} artifact name`);
+        const key = `${item.kind}:${item.name}`;
+        if (catalogKeys.has(key)) {
+            throw new WorkflowError(`duplicate workflow catalog entry: ${key}`, 'ERR_WORKFLOW_INVALID_MANIFEST');
+        }
+        catalogKeys.add(key);
     }
     return value as WorkflowManifest;
 };

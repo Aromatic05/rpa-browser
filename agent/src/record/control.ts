@@ -31,7 +31,6 @@ import { setRecorderRuntimeEnabled, type RecorderEvent } from './capture/recorde
 import { ingestRecordPayload } from './pipeline/input';
 import { replayRecording, type ReplayEvent, type ReplayOptions } from './replay';
 import type { StepResolve, StepUnion } from '../runner/steps/types';
-import {isValidStepResolve} from '../runner/steps/resolve_utils';
 import type { WorkflowDummy, WorkflowRecording } from '../workflow';
 import {
     buildRecordedCheckpoint,
@@ -39,6 +38,7 @@ import {
     checkpointStepSummary,
     requireCheckpointEntityRuleOption,
 } from './checkpoint_recording';
+import { persistRecordedStep } from './checkpoint/common';
 import type { ExecutionBindings } from '../runtime/execution/bindings';
 import type { PageRegistry } from '../runtime/browser/page_registry';
 import type { Logger } from '../logging/logger';
@@ -95,15 +95,6 @@ const toSavedRecordingList = (workspace: WorkspaceRouterInput['workspace']) =>
             const steps = loaded?.kind === 'recording' ? loaded.steps : [];
             return { recordingName: item.name, stepCount: steps.length };
         });
-
-const stripStepForPersistence = (step: StepUnion): StepUnion => {
-    return {
-        id: step.id,
-        name: step.name,
-        args: step.args,
-        entityRules: step.entityRules,
-    } as StepUnion;
-};
 
 const listExecutableTabs = (workspace: WorkspaceRouterInput['workspace']) =>
     workspace.tabs.listTabs().filter((tab) => Boolean(tab.page) && !tab.page?.isClosed());
@@ -416,23 +407,10 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
             const recordingName = (payload.recordingName || '').trim() || `recording-${Date.now()}`;
             const orderedSteps = normalizeRecordingStepOrder(bundle.steps, services.navDedupeWindowMs);
             services.recordingState.recordings.set(token, orderedSteps);
-            const persistedSteps = orderedSteps.map(stripStepForPersistence);
             const stepResolves: Record<string, StepResolve> = {};
-            if (payload.includeStepResolve === true) {
-                for (const step of orderedSteps) {
-                    const enhancement = Object.hasOwn(bundle.enrichments, step.id)
-                        ? bundle.enrichments[step.id]
-                        : undefined;
-                    const candidate: StepResolve | undefined = enhancement
-                        ? {
-                              hint: enhancement.resolveHint,
-                              policy: enhancement.resolvePolicy,
-                          }
-                        : undefined;
-                    if (!candidate || !isValidStepResolve(candidate)) {continue;}
-                    stepResolves[step.id] = candidate;
-                }
-            }
+            const persistedSteps = payload.includeStepResolve === true
+                ? orderedSteps.map((step, index) => persistRecordedStep(step, index, bundle.enrichments, stepResolves))
+                : orderedSteps.map((step, index) => persistRecordedStep(step, index, {}, stepResolves));
             if (!bundle.manifest?.activeTabRef) {
                 throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'recording manifest missing activeTabRef');
             }

@@ -1,9 +1,11 @@
 import path from 'node:path';
-import { DslRuntimeError } from '../dsl/diagnostics/errors';
+import { WorkflowError } from './errors';
 import {
     listDirectories,
     readYamlFile,
     removePath,
+    requireArtifactName,
+    workflowArtifactPath,
     workflowRootDir,
     writeYamlFile,
 } from './fs';
@@ -55,10 +57,8 @@ export type EntityRuleBundle = {
     annotation: EntityRuleAnnotationArtifact;
 };
 
-const PROFILE_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
-
 const entityRuleDirectory = (workflowName: string, profileName: string): string =>
-    path.join(workflowRootDir(workflowName), 'entity_rules', profileName);
+    workflowArtifactPath(workflowName, 'entity_rules', requireArtifactName(profileName, 'entity-rule profile name'));
 
 export const validateWorkflowEntityRules = (value: unknown): WorkflowEntityRules => {
     if (!isRecord(value) || value.kind !== 'entity_rules') {
@@ -136,7 +136,15 @@ export const createEntityRulesCodec = (workflowName: string): WorkflowCodec<Work
             return null;
         }
     },
-    list: () => listDirectories(path.join(workflowRootDir(workflowName), 'entity_rules'))
+    list: () => listDirectories(workflowArtifactPath(workflowName, 'entity_rules'))
+        .filter((name) => {
+            try {
+                requireArtifactName(name, 'entity-rule profile name');
+                return true;
+            } catch {
+                return false;
+            }
+        })
         .map((name) => createEntityRulesCodec(workflowName).load(name))
         .filter((value): value is WorkflowEntityRules => value !== null),
     save: (value) => {
@@ -380,10 +388,11 @@ const assertAcyclicDependencies = (rules: readonly EntityRuleMatchRecord[]): voi
 
 const requireProfileName = (value: unknown): string => {
     const name = requireNonEmptyString(value, 'profile name');
-    if (!PROFILE_NAME_PATTERN.test(name)) {
+    try {
+        return requireArtifactName(name, 'entity-rule profile name');
+    } catch {
         throw invalidArtifact(`invalid profile name: ${name}`);
     }
-    return name;
 };
 
 const requireNonEmptyString = (value: unknown, field: string): string => {
@@ -396,7 +405,7 @@ const requireNonEmptyString = (value: unknown, field: string): string => {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
     Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 
-const invalidArtifact = (message: string): DslRuntimeError => new DslRuntimeError(
+const invalidArtifact = (message: string): WorkflowError => new WorkflowError(
     `invalid Snapshot V2 entity_rules artifact: ${message}`,
     'ERR_ENTITY_RULES_INVALID',
 );
