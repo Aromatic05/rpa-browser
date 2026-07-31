@@ -11,7 +11,7 @@ import {
 } from '../../snapshot/annotator';
 import type {ObservationNodeId, PageObservation, Rect} from '../../snapshot/observation/model/contracts';
 import type {PageSessionSelection, PageSnapshotSessionEntry} from '../../snapshot/session/contracts';
-import type {WorkflowEntityRules} from '../../workflow';
+import {entityRulesArtifactRevision, type WorkflowEntityRules} from '../../workflow';
 import type {RunStepsDeps} from '../run_steps_types';
 import {ensureFreshPageSession} from '../session/capture';
 import {
@@ -177,7 +177,7 @@ const legacyOpen = async (
             pageKind: canvasDraft?.page.kind ?? inferPageKind(projection),
             profileName: profile?.name ?? null,
             canvasDraft,
-            artifactRevision: profile ? revision(current.entry) : null,
+            artifactRevision: profile ? entityRulesArtifactRevision(profile) : null,
             visualTargetRefs: canvasDraft ? visualRefs(current.entry, projection, canvasDraft) : [],
             availableProfiles: availableProfiles.map((candidate) => ({
                 profileName: candidate.name,
@@ -346,6 +346,16 @@ const legacySave = async (
     const canvasDraft = requireCanvas(payload.canvasDraft);
     const requestedProfileName = optionalString(payload.profileName);
     if (requestedProfileName) {canvasDraft.profileName = requestedProfileName;}
+    const expectedRevision = requireExpectedRevision(payload.expectedRevision);
+    const existing = findProfileByName(input.workspace.workflow, canvasDraft.profileName);
+    const actualRevision = existing ? entityRulesArtifactRevision(existing) : null;
+    if (expectedRevision !== actualRevision) {
+        throw new ActionError(ERROR_CODES.ERR_CONFLICT, 'annotator artifact revision conflict', {
+            profileName: canvasDraft.profileName,
+            expectedRevision,
+            actualRevision,
+        });
+    }
     const current = await ensureFreshPageSession(deps, input.workspace.name, {
         tabName: optionalString(payload.tabName),
     });
@@ -362,14 +372,14 @@ const legacySave = async (
     if (saved.kind !== 'entity_rules') {
         throw new ActionError(ERROR_CODES.ERR_INTERNAL, 'workflow returned a non-entity_rules artifact');
     }
-    const refreshed = await ensureFreshPageSession(deps, input.workspace.name, {
+    await ensureFreshPageSession(deps, input.workspace.name, {
         explicit: true,
         tabName: optionalString(payload.tabName),
     });
     return {
         reply: replyAction(input.action, {
             profileName: saved.name,
-            artifactRevision: revision(refreshed.entry),
+            artifactRevision: entityRulesArtifactRevision(saved),
             saved: true,
         }),
         events: [],
@@ -1482,8 +1492,14 @@ const slug = (value: string): string => value.trim().toLowerCase()
     .replace(/^-+|-+$/gu, '')
     .slice(0, 48);
 
-const revision = (entry: PageSnapshotSessionEntry): string =>
-    `${entry.identity.pageEpoch}:${String(entry.identity.captureRevision)}`;
+const requireExpectedRevision = (value: unknown): string | null => {
+    if (value === null) {return null;}
+    const revision = optionalString(value);
+    if (!revision) {
+        throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'expectedRevision must be a string or null');
+    }
+    return revision;
+};
 
 const optionalString = (value: unknown): string | undefined =>
     typeof value === 'string' && value.trim() ? value.trim() : undefined;

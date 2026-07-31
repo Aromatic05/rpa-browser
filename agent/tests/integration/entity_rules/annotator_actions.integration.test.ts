@@ -714,6 +714,16 @@ test('legacy canvas annotator protocol is adapted to the V2 PageSession and Quer
         }, memory.workflow);
         assert.equal((checked.reply.payload as {stale: boolean}).stale, false);
 
+        await assert.rejects(
+            async () => await invoke(runtime, 'entity_rules.annotator.save', {
+                canvasDraft: recognizedDraft,
+                profileName: 'order-form',
+                expectedRevision: 'sha256:nonexistent',
+            }, memory.workflow),
+            (error: unknown) => error instanceof ActionError && error.code === ERROR_CODES.ERR_CONFLICT,
+        );
+        assert.equal(memory.profiles.has('order-form'), false);
+
         const saved = await invoke(runtime, 'entity_rules.annotator.save', {
             canvasDraft: recognizedDraft,
             profileName: 'order-form',
@@ -754,6 +764,37 @@ test('legacy canvas annotator protocol is adapted to the V2 PageSession and Quer
         assert.equal(explicitlyOpenedPayload.profileName, 'order-form');
         assert.ok(explicitlyOpenedPayload.canvasDraft);
         assert.ok(explicitlyOpenedPayload.artifactRevision);
+        assert.match(explicitlyOpenedPayload.artifactRevision, /^sha256:[0-9a-f]{64}$/u);
+
+        const editorRevision = explicitlyOpenedPayload.artifactRevision;
+        const editorADraft = structuredClone(explicitlyOpenedPayload.canvasDraft) as {
+            entities: Array<{name: string}>;
+        };
+        const editorBDraft = structuredClone(explicitlyOpenedPayload.canvasDraft) as {
+            entities: Array<{name: string}>;
+        };
+        editorADraft.entities[0].name = 'Editor A';
+        editorBDraft.entities[0].name = 'Editor B';
+        const savedByA = await invoke(runtime, 'entity_rules.annotator.save', {
+            canvasDraft: editorADraft,
+            profileName: 'order-form',
+            expectedRevision: editorRevision,
+        }, memory.workflow);
+        const savedByARevision = (savedByA.reply.payload as {artifactRevision: string}).artifactRevision;
+        assert.match(savedByARevision, /^sha256:[0-9a-f]{64}$/u);
+        assert.notEqual(savedByARevision, editorRevision);
+
+        await assert.rejects(
+            async () => await invoke(runtime, 'entity_rules.annotator.save', {
+                canvasDraft: editorBDraft,
+                profileName: 'order-form',
+                expectedRevision: editorRevision,
+            }, memory.workflow),
+            (error: unknown) => error instanceof ActionError && error.code === ERROR_CODES.ERR_CONFLICT,
+        );
+        const rootBinding = memory.profiles.get('order-form')?.annotation.bindings
+            .find((binding) => binding.businessTag === 'order.form');
+        assert.equal(rootBinding?.displayName, 'Editor A');
     } finally {
         await browser.close();
     }

@@ -302,3 +302,18 @@ test('buildSessionKey returns null when pageIdentity is absent', () => {
     const s = initialState();
     assert.equal(buildSessionKey(s), null);
 });
+
+
+test('runSaveLoop explains artifact revision conflicts without clearing the draft', async () => {
+    const edited = draftEdited(openState(), makeDraft('edited'));
+    const client = mockClient({
+        save: async () => {
+            const error = new Error('annotator artifact revision conflict') as Error & {code: string};
+            error.code = 'ERR_CONFLICT';
+            throw error;
+        },
+    });
+    const next = await runSaveLoop(edited, client);
+    assert.equal(next.dirty, true);
+    assert.equal(next.error, '保存失败：规则已被其他编辑器修改。请重新打开规则并合并更改。');
+});

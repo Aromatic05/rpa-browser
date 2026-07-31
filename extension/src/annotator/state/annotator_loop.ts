@@ -28,6 +28,9 @@ const errorMessage = (error: unknown): string => {
     if (code === 'ERR_CONNECT' || /connect failed/i.test(message)) {
         return '无法连接到本地 RPA 服务。';
     }
+    if (code === 'ERR_CONFLICT') {
+        return '规则已被其他编辑器修改。请重新打开规则并合并更改。';
+    }
     return message;
 };
 
