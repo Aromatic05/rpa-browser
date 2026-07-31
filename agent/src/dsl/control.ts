@@ -29,8 +29,10 @@ const requireWorkspaceWorkflow = (input: WorkspaceRouterInput): Workflow => {
 };
 
 const resolveDefaultDslName = (workflow: Workflow): string => {
-    const items = workflow.list(DSL_DUMMY);
-    return items[0]?.name || 'main';
+    if (!workflow.entryDslName) {
+        throw new ActionError(ERROR_CODES.ERR_WORKFLOW_BAD_ARGS, 'workflow does not expose an entry DSL');
+    }
+    return workflow.entryDslName();
 };
 
 const requireDsl = (workflow: Workflow, dslName: string): WorkflowDsl => {

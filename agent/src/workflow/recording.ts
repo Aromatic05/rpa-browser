@@ -3,7 +3,7 @@ import type { StepUnion } from '../runner/steps/types';
 import type { StepResolve } from '../runner/steps/types';
 import type { StepFile, StepResolveFile } from '../runner/serialization/types';
 import { validateStepFileForSerialization, validateStepResolveFileForSerialization } from '../runner/serialization/types';
-import { listDirectories, readValidatedYamlFile, readYamlFile, removePath, workflowRootDir, writeYamlFile } from './fs';
+import { listDirectories, readValidatedYamlFile, readYamlFile, removePath, requireArtifactName, workflowArtifactPath, workflowRootDir, writeYamlFile } from './fs';
 import type { WorkflowCodec } from './store';
 
 export type WorkflowRecording = {
@@ -25,12 +25,12 @@ export type WorkflowRecording = {
 };
 
 const recordingDir = (workflowName: string, recordingName: string): string =>
-    path.join(workflowRootDir(workflowName), 'recordings', recordingName);
+    workflowArtifactPath(workflowName, 'recordings', requireArtifactName(recordingName, 'recording name'));
 
 export const createRecordingCodec = (workflowName: string): WorkflowCodec<WorkflowRecording> => ({
     kind: 'recording',
     is: (value: unknown): value is WorkflowRecording =>
-        isRecord(value) && value.kind === 'recording' && typeof value.name === 'string' && value.name.length > 0,
+        isRecord(value) && value.kind === 'recording' && typeof value.name === 'string' && isArtifactName(value.name),
     load: (name) => {
         const dir = recordingDir(workflowName, name);
         try {
@@ -39,23 +39,16 @@ export const createRecordingCodec = (workflowName: string): WorkflowCodec<Workfl
                 path.join(dir, 'steps.yaml'),
                 validateStepFileForSerialization,
             );
-            let stepResolves: Record<string, StepResolve> = {};
-            try {
-                const resolveFile = readValidatedYamlFile<StepResolveFile>(
-                    path.join(dir, 'step_resolve.yaml'),
-                    validateStepResolveFileForSerialization,
-                );
-                stepResolves = resolveFile.resolves;
-            } catch {
-                // Optional sidecar: absence or invalid content falls back to no resolves.
-            }
+            const resolveFile = readOptionalResolveFile(path.join(dir, 'step_resolve.yaml'));
+            const stepResolves = resolveFile?.resolves ?? {};
             return { kind: 'recording', name, recording, steps: stepsFile.steps, stepResolves };
         } catch {
             return null;
         }
     },
     list: () =>
-        listDirectories(path.join(workflowRootDir(workflowName), 'recordings'))
+        listDirectories(workflowArtifactPath(workflowName, 'recordings'))
+            .filter(isArtifactName)
             .map((name) => createRecordingCodec(workflowName).load(name))
             .filter((item): item is WorkflowRecording => item !== null),
     save: (value) => {
@@ -88,6 +81,27 @@ export const createRecordingCodec = (workflowName: string): WorkflowCodec<Workfl
         return true;
     },
 });
+
+const readOptionalResolveFile = (filePath: string): StepResolveFile | null => {
+    try {
+        return readValidatedYamlFile<StepResolveFile>(filePath, validateStepResolveFileForSerialization);
+    } catch (error) {
+        if (isMissingFile(error)) {return null;}
+        throw error;
+    }
+};
+
+const isMissingFile = (error: unknown): boolean =>
+    typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT';
+
+const isArtifactName = (name: string): boolean => {
+    try {
+        requireArtifactName(name, 'recording name');
+        return true;
+    } catch {
+        return false;
+    }
+};
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
     typeof value === 'object' && value !== null && !Array.isArray(value);

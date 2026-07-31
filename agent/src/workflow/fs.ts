@@ -1,6 +1,16 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import YAML from 'yaml';
+import { DslRuntimeError } from '../dsl/diagnostics/errors';
+
+const ARTIFACT_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
+export const requireArtifactName = (value: unknown, label = 'artifact name'): string => {
+    if (typeof value !== 'string' || !ARTIFACT_NAME_PATTERN.test(value) || value === '.' || value === '..') {
+        throw new DslRuntimeError(`invalid ${label}: ${String(value)}`, 'ERR_WORKFLOW_BAD_ARGS');
+    }
+    return value;
+};
 
 const defaultWorkflowsRootDir = (): string => path.resolve(process.cwd(), '.artifacts', 'workflows');
 
@@ -8,8 +18,42 @@ export const workflowsRootDir = (): string => {
     const configuredRoot = process.env.RPA_WORKFLOW_ROOT?.trim();
     return configuredRoot ? path.resolve(configuredRoot) : defaultWorkflowsRootDir();
 };
-export const workflowRootDir = (workflowName: string): string => path.join(workflowsRootDir(), workflowName);
-export const workflowManifestPath = (workflowName: string): string => path.join(workflowRootDir(workflowName), 'workflow.yaml');
+export const workflowRootDir = (workflowName: string): string =>
+    containedWorkflowRoot(workflowName);
+export const workflowManifestPath = (workflowName: string): string => workflowArtifactPath(workflowName, 'workflow.yaml');
+
+const containedWorkflowRoot = (workflowName: string): string => {
+    const root = path.join(workflowsRootDir(), requireArtifactName(workflowName, 'workflow name'));
+    assertContainedPath(workflowsRootDir(), root);
+    return root;
+};
+
+export const workflowArtifactPath = (workflowName: string, ...parts: string[]): string => {
+    const root = workflowRootDir(workflowName);
+    const target = path.resolve(root, ...parts);
+    assertContainedPath(root, target);
+    return target;
+};
+
+const assertContainedPath = (root: string, target: string): void => {
+    const lexicalRelative = path.relative(path.resolve(root), target);
+    if (lexicalRelative === '..' || lexicalRelative.startsWith(`..${path.sep}`) || path.isAbsolute(lexicalRelative)) {
+        throw new DslRuntimeError(`workflow artifact path escapes root: ${target}`, 'ERR_WORKFLOW_BAD_ARGS');
+    }
+    let ancestor = target;
+    while (!fs.existsSync(ancestor)) {
+        const parent = path.dirname(ancestor);
+        if (parent === ancestor) {return;}
+        ancestor = parent;
+    }
+    if (!fs.existsSync(root)) {return;}
+    const canonicalRoot = fs.realpathSync(root);
+    const canonicalAncestor = fs.realpathSync(ancestor);
+    const canonicalRelative = path.relative(canonicalRoot, canonicalAncestor);
+    if (canonicalRelative === '..' || canonicalRelative.startsWith(`..${path.sep}`) || path.isAbsolute(canonicalRelative)) {
+        throw new DslRuntimeError(`workflow artifact path escapes root: ${target}`, 'ERR_WORKFLOW_BAD_ARGS');
+    }
+};
 
 export const existsDir = (dirPath: string): boolean => {
     try {

@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import { DslRuntimeError } from '../dsl/diagnostics/errors';
 import { createCheckpointCodec, type WorkflowCheckpoint } from './checkpoint';
 import { createDslCodec, type WorkflowDsl } from './dsl';
-import { ensureDir, existsDir, listDirectories, readYamlFile, removePath, workflowManifestPath, workflowRootDir, workflowsRootDir, writeYamlFile } from './fs';
+import { ensureDir, existsDir, listDirectories, readYamlFile, removePath, requireArtifactName, workflowManifestPath, workflowRootDir, workflowsRootDir, writeYamlFile } from './fs';
 import { createRecordingCodec, type WorkflowRecording } from './recording';
 import { createEntityRulesCodec, type WorkflowEntityRules } from './entity_rules';
 import { createNamedStore, type NamedStore } from './store';
@@ -45,6 +45,7 @@ export type WorkflowManifest = {
 
 export type Workflow = {
     readonly name: string;
+    entryDslName?: () => string;
     save: (value: WorkflowArtifact) => WorkflowArtifact;
     get: (name: string, dummy: WorkflowDummy) => WorkflowArtifact | null;
     list: (dummy: WorkflowDummy) => WorkflowCatalogItem[];
@@ -79,7 +80,7 @@ const readManifest = (workflowName: string): WorkflowManifest => {
     if (!Array.isArray(parsed.catalog)) {
         throw new DslRuntimeError(`invalid workflow manifest catalog: ${workflowName}`, 'ERR_WORKFLOW_INVALID_MANIFEST');
     }
-    return parsed as WorkflowManifest;
+    return parseWorkflowManifest(parsed, workflowName);
 };
 
 const writeManifest = (manifest: WorkflowManifest): void => {
@@ -161,6 +162,7 @@ export const loadWorkflowFromFs = (workflowName: string): Workflow => {
 
     return {
         name: workflowName,
+        entryDslName: () => manifest.entry.dsl,
         save: (value) => {
             const saved = saveArtifact(internal, value);
             const idx = manifest.catalog.findIndex((item) => item.kind === saved.kind && item.name === saved.name);
@@ -170,13 +172,11 @@ export const loadWorkflowFromFs = (workflowName: string): Workflow => {
             } else {
                 manifest.catalog.push(nextItem);
             }
-            if (saved.kind === 'dsl' && saved.name === 'main') {
-                manifest.entry.dsl = 'main';
-            }
             writeManifest(manifest);
             return saved;
         },
         get: (name, dummy) => {
+            requireArtifactName(name, `${dummy.kind} artifact name`);
             if (!hasCatalog(manifest, dummy.kind, name)) {
                 return null;
             }
@@ -184,6 +184,10 @@ export const loadWorkflowFromFs = (workflowName: string): Workflow => {
         },
         list: (dummy) => manifest.catalog.filter((item) => item.kind === dummy.kind),
         delete: (name, dummy) => {
+            requireArtifactName(name, `${dummy.kind} artifact name`);
+            if (dummy.kind === 'dsl' && name === manifest.entry.dsl) {
+                throw new DslRuntimeError(`cannot delete workflow entry DSL: ${name}`, 'ERR_WORKFLOW_BAD_ARGS');
+            }
             const deleted = resolveStore(internal, dummy.kind).delete(name);
             manifest.catalog = manifest.catalog.filter((item) => !(item.kind === dummy.kind && item.name === name));
             writeManifest(manifest);
@@ -251,7 +255,14 @@ writeYamlFile(copiedManifestPath, {
     } satisfies WorkflowManifest);
 };
 
-export const listWorkflowNames = (): string[] => listDirectories(workflowsRootDir());
+export const listWorkflowNames = (): string[] => listDirectories(workflowsRootDir()).filter((name) => {
+    try {
+        requireArtifactName(name, 'workflow name');
+        return true;
+    } catch {
+        return false;
+    }
+});
 export const deleteWorkflowFromFs = (workflowName: string): void => {
     removePath(workflowRootDir(workflowName));
 };
@@ -267,6 +278,14 @@ const parseWorkflowManifest = (value: unknown, workflowName: string): WorkflowMa
             `invalid workflow manifest: ${workflowName}`,
             'ERR_WORKFLOW_INVALID_MANIFEST',
         );
+    }
+    requireArtifactName(value.name, 'workflow name');
+    requireArtifactName(value.entry.dsl, 'workflow entry DSL name');
+    for (const item of value.catalog) {
+        if (!isRecord(item) || typeof item.kind !== 'string' || typeof item.name !== 'string') {
+            throw new DslRuntimeError(`invalid workflow manifest catalog: ${workflowName}`, 'ERR_WORKFLOW_INVALID_MANIFEST');
+        }
+        requireArtifactName(item.name, `${item.kind} artifact name`);
     }
     return value as WorkflowManifest;
 };

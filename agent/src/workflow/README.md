@@ -50,6 +50,14 @@ Workspace actions must use `action.workspaceName` only.
 - recordings: `recordings/<recordingName>/`
 - checkpoints: `checkpoints/<checkpointName>/`
 - dsls: `dsls/<dslName>.dsl`
+- entity-rule profiles: `entity_rules/<profileName>/` with `match.yaml`, `annotation.yaml`, and optional `page.yaml`
+
+## Artifact Names and Entry DSL
+
+- Workflow names, recording names, checkpoint IDs, DSL names, and entity-rule profile names use the same safe artifact-name boundary. Empty names, `.`/`..`, path separators, traversal, and other unsafe names are rejected before filesystem access.
+- Filesystem artifact paths are checked for canonical containment under the workflow root before reads, writes, or deletes.
+- `workflow.yaml.entry.dsl` is the authoritative default for `dsl.get`, `dsl.save`, `dsl.test`, and `dsl.run`. A missing or unreadable entry DSL returns the action's structured not-found diagnostic; it never falls back to another catalog item.
+- The entry DSL cannot be deleted while it is configured as `workflow.yaml.entry.dsl`.
 
 ## Legacy Paths Removed
 
