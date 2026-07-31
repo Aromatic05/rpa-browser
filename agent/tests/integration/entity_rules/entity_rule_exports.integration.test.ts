@@ -96,6 +96,31 @@ test('uses the profile page kind when the root binding and root rule omit it', (
     assert.equal(result.index?.entities[0]?.kind, 'table');
 });
 
+test('exports primary-key column labels produced by the annotator', () => {
+    const localized = profile();
+    localized.annotation.bindings[0].primaryKey = {fieldKey: 'orderNo', columns: ['订单编号']};
+
+    const result = buildEntityRuleExportIndex(localized);
+
+    assert.deepEqual(result.diagnostics, []);
+    assert.deepEqual(result.index?.entities[0]?.primaryKey, {fieldKey: 'orderNo', columns: ['订单编号']});
+    assert.deepEqual(result.index?.entities[0]?.rowActions, [
+        {actionIntent: 'approve', targetKind: 'table.row_action'},
+    ]);
+});
+
+test('diagnoses empty or duplicate primary-key column labels', () => {
+    for (const columns of [[], [''], ['订单编号', '订单编号']]) {
+        const invalid = profile();
+        invalid.annotation.bindings[0].primaryKey = {fieldKey: 'orderNo', columns};
+        assert.equal(
+            buildEntityRuleExportIndex(invalid).diagnostics.some((diagnostic) =>
+                diagnostic.code === 'entity_rule_exports.malformed_primary_key'),
+            true,
+        );
+    }
+});
+
 test('diagnoses malformed table primary keys', () => {
     const invalid = profile();
     invalid.annotation.bindings[0].primaryKey = {fieldKey: 'missing'};
