@@ -25,15 +25,6 @@ const getCheckpointBinding = async (ctx: CheckpointCtx) => {
 const TRANSIENT_ERROR_CODES = new Set(['ERR_TIMEOUT']);
 const FATAL_ERROR_CODES = new Set(['ERR_BAD_ARGS', 'ERR_INTERNAL']);
 
-let checkpointStore: Checkpoint[] = [];
-
-export const setCheckpoints = (checkpoints: Checkpoint[]): void => {
-    checkpointStore = [...checkpoints];
-};
-
-export const listCheckpoints = (injected?: Checkpoint[]): Checkpoint[] =>
-    injected ? [...injected] : [...checkpointStore];
-
 const firstRuleStepName = (checkpoint: Checkpoint) => {
     const matched = getCheckpointMatchRules(checkpoint).find((rule) => 'stepName' in rule);
     return matched && 'stepName' in matched ? matched.stepName : undefined;
@@ -65,7 +56,7 @@ export const maybeEnterCheckpoint = async (ctx: CheckpointCtx): Promise<Checkpoi
 export const maybePickCheckpoint = async (ctx: CheckpointCtx): Promise<CheckpointCtx> => {
     if (!ctx.active) {return ctx;}
 
-    const candidates = listCheckpoints(ctx.failedCtx.checkpoints)
+    const candidates = [...(ctx.failedCtx.checkpoints || [])]
         .filter((item) => item.enabled !== false)
         .filter((item) => ctx.failedCtx.checkpointAttempt < getEffectiveCheckpointMaxAttempts(item, ctx.failedCtx.checkpointMaxAttempts))
         .filter((item) => {

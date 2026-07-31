@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { maybeEnterCheckpoint, maybePickCheckpoint, setCheckpoints } from '../../../../src/runner/checkpoint/match';
+import { maybeEnterCheckpoint, maybePickCheckpoint } from '../../../../src/runner/checkpoint/match';
 import { maybeBindCheckpoint } from '../../../../src/runner/checkpoint/bind';
 import { maybeRunCheckpoint } from '../../../../src/runner/checkpoint/run';
 import { foldCheckpointResult } from '../../../../src/runner/checkpoint/fold';
@@ -116,42 +116,41 @@ test('maybeEnterCheckpoint: normal failure enters', async () => {
 });
 
 test('maybePickCheckpoint: no candidates', async () => {
-    setCheckpoints([]);
-    const result = await maybePickCheckpoint(createCtx());
+    const result = await maybePickCheckpoint(createCtx({failedCtx: createFailedCtx({checkpoints: []})}));
     assert.equal(result.active, false);
     assert.equal(result.stopReason, 'checkpoint_not_found');
 });
 
 test('maybePickCheckpoint: candidates but no match', async () => {
-    setCheckpoints([
+    const checkpoints: import('../../../../src/runner/checkpoint/types').Checkpoint[] = [
         {
             id: 'cp-1',
             name: 'cp',
             trigger: { matchRules: [{ errorCode: 'ERR_TIMEOUT' }] },
             content: [],
         },
-    ]);
-    const result = await maybePickCheckpoint(createCtx());
+    ];
+    const result = await maybePickCheckpoint(createCtx({failedCtx: createFailedCtx({checkpoints})}));
     assert.equal(result.active, false);
     assert.equal(result.stopReason, 'checkpoint_not_found');
 });
 
 test('maybePickCheckpoint: single matched checkpoint', async () => {
-    setCheckpoints([
+    const checkpoints: import('../../../../src/runner/checkpoint/types').Checkpoint[] = [
         {
             id: 'cp-1',
             name: 'cp',
             trigger: { matchRules: [{ errorCode: 'ERR_NOT_FOUND' }, { stepName: 'browser.click' }] },
             content: [],
         },
-    ]);
-    const result = await maybePickCheckpoint(createCtx());
+    ];
+    const result = await maybePickCheckpoint(createCtx({failedCtx: createFailedCtx({checkpoints})}));
     assert.equal(result.active, true);
     assert.equal(result.checkpoint?.id, 'cp-1');
 });
 
 test('maybePickCheckpoint: priority wins', async () => {
-    setCheckpoints([
+    const checkpoints: import('../../../../src/runner/checkpoint/types').Checkpoint[] = [
         {
             id: 'cp-low',
             name: 'low',
@@ -166,13 +165,13 @@ test('maybePickCheckpoint: priority wins', async () => {
             trigger: { matchRules: [{ errorCode: 'ERR_NOT_FOUND' }] },
             content: [],
         },
-    ]);
-    const result = await maybePickCheckpoint(createCtx());
+    ];
+    const result = await maybePickCheckpoint(createCtx({failedCtx: createFailedCtx({checkpoints})}));
     assert.equal(result.checkpoint?.id, 'cp-high');
 });
 
 test('maybePickCheckpoint: checkpoint policy maxAttempts blocks re-entry', async () => {
-    setCheckpoints([
+    const checkpoints: import('../../../../src/runner/checkpoint/types').Checkpoint[] = [
         {
             id: 'cp-limited',
             name: 'limited',
@@ -182,12 +181,13 @@ test('maybePickCheckpoint: checkpoint policy maxAttempts blocks re-entry', async
             },
             content: [],
         },
-    ]);
+    ];
     const result = await maybePickCheckpoint(
         createCtx({
             failedCtx: createFailedCtx({
                 checkpointAttempt: 1,
                 checkpointMaxAttempts: 3,
+                checkpoints,
             }),
         }),
     );
@@ -196,7 +196,7 @@ test('maybePickCheckpoint: checkpoint policy maxAttempts blocks re-entry', async
 });
 
 test('maybePickCheckpoint: entityExists matches by businessTag', async () => {
-    setCheckpoints([
+    const checkpoints: import('../../../../src/runner/checkpoint/types').Checkpoint[] = [
         {
             id: 'cp-entity-tag',
             name: 'entity-tag',
@@ -211,7 +211,7 @@ test('maybePickCheckpoint: entityExists matches by businessTag', async () => {
             ] },
             content: [],
         },
-    ]);
+    ];
     const deps = await createDepsWithBusinessEntity();
     const refreshReasons: Array<'explicit' | undefined> = [];
     deps.pageSession.ensureFresh = async (input) => {
@@ -224,6 +224,7 @@ test('maybePickCheckpoint: entityExists matches by businessTag', async () => {
         createCtx({
             failedCtx: createFailedCtx({
                 deps,
+                checkpoints,
             }),
         }),
     );

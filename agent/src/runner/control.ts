@@ -35,6 +35,8 @@ type TaskRunState = {
     checkpoint: Checkpoint;
     stepResolves: Record<string, StepResolve>;
     checkpoints: RunnerCheckpoint[];
+    checkpointStepResolves: Record<string, Record<string, StepResolve>>;
+    checkpointBodies: Record<string, string>;
 };
 
 export type RunnerControlDeps = {
@@ -47,9 +49,28 @@ export type RunnerControl = {
 
 
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+    Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+
 const readStepResolves = (value: unknown): Record<string, StepResolve> => {
     if (!value || typeof value !== 'object' || Array.isArray(value)) {return {};}
     return {...value as Record<string, StepResolve>};
+};
+
+const readCheckpointStepResolves = (value: unknown): Record<string, Record<string, StepResolve>> => {
+    if (!isRecord(value)) {return {};}
+    return Object.fromEntries(Object.entries(value)
+        .filter(([, resolves]) => isRecord(resolves))
+        .map(([checkpointId, resolves]) => [checkpointId, readStepResolves(resolves)]));
+};
+
+const readCheckpointBodies = (value: unknown): Record<string, string> => {
+    if (!isRecord(value)) {return {};}
+    const bodies: Record<string, string> = {};
+    for (const [checkpointId, body] of Object.entries(value)) {
+        if (typeof body === 'string') {bodies[checkpointId] = body;}
+    }
+    return bodies;
 };
 
 const readCheckpoints = (value: unknown): RunnerCheckpoint[] =>
@@ -58,12 +79,6 @@ const readCheckpoints = (value: unknown): RunnerCheckpoint[] =>
             && typeof item === 'object'
             && typeof (item as {id?: unknown}).id === 'string')
         : [];
-
-const mergeCheckpoints = (target: RunnerCheckpoint[], additions: readonly RunnerCheckpoint[]): void => {
-    const byId = new Map(target.map((checkpoint) => [checkpoint.id, checkpoint]));
-    for (const checkpoint of additions) {byId.set(checkpoint.id, checkpoint);}
-    target.splice(0, target.length, ...byId.values());
-};
 
 export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => {
     const runnerConfig = deps?.runnerConfig || getRunnerConfig();
@@ -127,6 +142,8 @@ export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => 
                     runId?: string;
                     stepResolves?: Record<string, StepResolve>;
                     checkpoints?: RunnerCheckpoint[];
+                    checkpointStepResolves?: Record<string, Record<string, StepResolve>>;
+                    checkpointBodies?: Record<string, string>;
                 };
                 const workspaceName = workspace.name;
                 const runId = payload.runId || crypto.randomUUID();
@@ -143,6 +160,8 @@ export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => 
                     checkpoint: { runId, workspaceName, status: 'running', cursor: 0, updatedAt: Date.now() },
                     stepResolves: readStepResolves(payload.stepResolves),
                     checkpoints: readCheckpoints(payload.checkpoints),
+                    checkpointStepResolves: readCheckpointStepResolves(payload.checkpointStepResolves),
+                    checkpointBodies: readCheckpointBodies(payload.checkpointBodies),
                 };
                 runtime.runs.set(runId, state);
                 await persistCheckpoint(toTaskRunCheckpoint(runId, workspaceName, 'running', 0));
@@ -155,6 +174,8 @@ export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => 
                     signalChannel: signals,
                     stepResolves: state.stepResolves,
                     checkpoints: state.checkpoints,
+                    checkpointStepResolves: state.checkpointStepResolves,
+                    checkpointBodies: state.checkpointBodies,
                     stopOnError: true,
                     onCheckpoint: async (checkpoint) => {
                         state.checkpoint = checkpoint;
@@ -190,13 +211,22 @@ export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => 
                     steps?: StepUnion[];
                     stepResolves?: Record<string, StepResolve>;
                     checkpoints?: RunnerCheckpoint[];
+                    checkpointStepResolves?: Record<string, Record<string, StepResolve>>;
+                    checkpointBodies?: Record<string, string>;
                     close?: boolean;
                 };
                 const run = getRun(requireRunId(payload));
                 if (!run) {throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'run not found');}
+                if (payload.checkpoints !== undefined
+                    || payload.checkpointStepResolves !== undefined
+                    || payload.checkpointBodies !== undefined) {
+                    throw new ActionError(
+                        ERROR_CODES.ERR_BAD_ARGS,
+                        'checkpoint assets must be provided by task.run.start or task.run.resume',
+                    );
+                }
                 const steps = Array.isArray(payload.steps) ? payload.steps : [];
                 Object.assign(run.stepResolves, readStepResolves(payload.stepResolves));
-                mergeCheckpoints(run.checkpoints, readCheckpoints(payload.checkpoints));
                 if (steps.length > 0) {enqueueSteps(run.queue, steps);}
                 if (payload.close === true) {closeStepsQueue(run.queue);}
                 return { reply: replyAction(action, { runId: run.runId, queued: steps.length, cursor: run.queue.cursor }), events: [] };
@@ -283,6 +313,8 @@ export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => 
                     steps?: StepUnion[];
                     stepResolves?: Record<string, StepResolve>;
                     checkpoints?: RunnerCheckpoint[];
+                    checkpointStepResolves?: Record<string, Record<string, StepResolve>>;
+                    checkpointBodies?: Record<string, string>;
                     close?: boolean;
                 };
                 const runId = requireRunId(payload);
@@ -312,6 +344,8 @@ export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => 
                     checkpoint,
                     stepResolves: readStepResolves(payload.stepResolves),
                     checkpoints: readCheckpoints(payload.checkpoints),
+                    checkpointStepResolves: readCheckpointStepResolves(payload.checkpointStepResolves),
+                    checkpointBodies: readCheckpointBodies(payload.checkpointBodies),
                 };
                 runtime.runs.set(checkpoint.runId, state);
                 await persistCheckpoint(toTaskRunCheckpoint(checkpoint.runId, checkpoint.workspaceName, 'running', checkpoint.cursor));
@@ -324,6 +358,8 @@ export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => 
                     signalChannel: signals,
                     stepResolves: state.stepResolves,
                     checkpoints: state.checkpoints,
+                    checkpointStepResolves: state.checkpointStepResolves,
+                    checkpointBodies: state.checkpointBodies,
                     stopOnError: true,
                     onCheckpoint: async (next) => {
                         state.checkpoint = next;
