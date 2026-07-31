@@ -13,11 +13,35 @@ export type EntityRuleExportMember =
     | {kind: 'rowAction'; symbol: string; rowPrimaryKey: string}
     | {kind: 'query'; symbol: string};
 
+export type EntityRuleExportField = {
+    fieldKey: string;
+    targetKind: 'form.field' | 'table.filter' | 'entity.field';
+};
+
+export type EntityRuleExportAction = {
+    actionIntent: string;
+    targetKind: 'form.action' | 'table.module_action' | 'entity.action';
+};
+
+export type EntityRuleExportRowAction = {
+    actionIntent: string;
+    targetKind: 'table.row_action';
+};
+
+export type EntityRuleExportColumn = {
+    fieldKey: string;
+};
+
 export type EntityRuleExportEntry = {
     profileName: string;
     entityKey: string;
     businessTag: string;
     kind: EntityRulePageKind;
+    fields: readonly EntityRuleExportField[];
+    actions: readonly EntityRuleExportAction[];
+    columns: readonly EntityRuleExportColumn[];
+    rowActions: readonly EntityRuleExportRowAction[];
+    supportedQueries: readonly string[];
     primaryKey?: {fieldKey: string; columns?: readonly string[]};
     members: readonly EntityRuleExportMember[];
 };
@@ -76,7 +100,7 @@ const buildEntry = (
     const entityKey = text(root.entityKey);
     const businessTag = text(root.businessTag);
     const rootRule = ruleId ? rules.get(ruleId) : undefined;
-    const kind = entityKind(root.entityKind) ?? entityKind(rootRule?.match.kind);
+    const kind = entityKind(root.entityKind) ?? entityKind(rootRule?.match.kind) ?? entityKind(profile.page?.kind);
     const context = {entityKey, ruleId};
     if (!entityKey) {
         diagnostics.push(diagnostic('missing_entity_key', 'business entity root has no entityKey and is not exportable', context));
@@ -88,20 +112,33 @@ const buildEntry = (
     if (!entityKey || !businessTag || !kind) {return [];}
 
     const scoped = profile.annotation.bindings.filter((binding) => binding.ruleId !== ruleId && belongsToRoot(binding.ruleId, ruleId, rules));
-    const fields = [...scoped.flatMap((binding) => symbol(binding.fieldKey, 'field', entityKey, binding.ruleId, diagnostics)),
-        ...columnFields(root.columns, entityKey, ruleId, diagnostics)];
-    const actions = scoped.flatMap((binding) => binding.actionRole === 'row' || binding.paginationRole
-        ? [] : symbol(binding.actionIntent, 'action', entityKey, binding.ruleId, diagnostics));
+    const fields = uniqueFields(
+        scoped.flatMap((binding) => field(binding.fieldKey, kind, entityKey, binding.ruleId, diagnostics)),
+    );
+    const actions = uniqueActions(scoped.flatMap((binding) => binding.actionRole === 'row' || binding.paginationRole
+        ? [] : action(binding.actionIntent, kind, entityKey, binding.ruleId, diagnostics)));
+    const columns = uniqueColumns(columnFields(root.columns, entityKey, ruleId, diagnostics));
     const primaryKey = primaryKeyFor(root.primaryKey, kind, root.columns, context, diagnostics);
-    const rowActions = rowActionSymbols(root, scoped, primaryKey, entityKey, ruleId, diagnostics);
-    const queries = querySymbols(kind, Boolean(root.pagination));
+    const rowActions = uniqueRowActions(rowActionSymbols(root, scoped, primaryKey, entityKey, ruleId, diagnostics));
+    const supportedQueries = querySymbols(kind, Boolean(root.pagination));
+    const members = uniqueMembers([
+        ...fields.map((item) => ({kind: 'field' as const, symbol: item.fieldKey})),
+        ...actions.map((item) => ({kind: 'action' as const, symbol: item.actionIntent})),
+        ...rowActions.map((item) => ({kind: 'rowAction' as const, symbol: item.actionIntent, rowPrimaryKey: primaryKey!.fieldKey})),
+        ...supportedQueries.map((query) => ({kind: 'query' as const, symbol: query.slice(query.indexOf('.') + 1)})),
+    ], entityKey, diagnostics);
     return [{
         profileName: profile.name,
         entityKey,
         businessTag,
         kind,
+        fields,
+        actions,
+        columns,
+        rowActions,
+        supportedQueries,
         ...(primaryKey ? {primaryKey} : {}),
-        members: uniqueMembers([...fields, ...actions, ...rowActions, ...queries], entityKey, diagnostics),
+        members,
     }];
 };
 
@@ -118,7 +155,7 @@ const uniqueMembers = (
     return [...bySymbol.values()];
 };
 
-const rowActionSymbols = (root: Record<string, unknown>, scoped: readonly Record<string, unknown>[], primaryKey: EntityRuleExportEntry['primaryKey'], entityKey: string, ruleId: string | undefined, diagnostics: EntityRuleExportDiagnostic[]): EntityRuleExportMember[] => {
+const rowActionSymbols = (root: Record<string, unknown>, scoped: readonly Record<string, unknown>[], primaryKey: EntityRuleExportEntry['primaryKey'], entityKey: string, ruleId: string | undefined, diagnostics: EntityRuleExportDiagnostic[]): EntityRuleExportRowAction[] => {
     const values = [
         ...scoped.filter((binding) => binding.actionRole === 'row').map((binding) => binding.actionIntent),
         ...arrayRecords(root.columns).flatMap((column) => arrayRecords(column.actions).map((action) => action.actionIntent)),
@@ -134,7 +171,7 @@ const rowActionSymbols = (root: Record<string, unknown>, scoped: readonly Record
             diagnostics.push(diagnostic('invalid_identifier', `rowAction symbol is not a valid identifier: ${member}`, {entityKey, ruleId}));
             return [];
         }
-        return [{kind: 'rowAction' as const, symbol: member, rowPrimaryKey: primaryKey!.fieldKey}];
+        return [{actionIntent: member, targetKind: 'table.row_action' as const}];
     });
 };
 
@@ -158,24 +195,43 @@ const primaryKeyFor = (value: unknown, kind: EntityRulePageKind, columnsValue: u
     return {fieldKey, ...(columns ? {columns} : {})};
 };
 
-const columnFields = (value: unknown, entityKey: string, ruleId: string | undefined, diagnostics: EntityRuleExportDiagnostic[]): EntityRuleExportMember[] => arrayRecords(value)
-    .flatMap((column) => symbol(column.fieldKey, 'field', entityKey, ruleId, diagnostics));
+const columnFields = (value: unknown, entityKey: string, ruleId: string | undefined, diagnostics: EntityRuleExportDiagnostic[]): EntityRuleExportColumn[] => arrayRecords(value)
+    .flatMap((column) => {
+        const fieldKey = checkedIdentifier(column.fieldKey, 'column', entityKey, ruleId, diagnostics);
+        return fieldKey ? [{fieldKey}] : [];
+    });
 
-const symbol = (value: unknown, kind: 'field' | 'action', entityKey: string, ruleId: string | undefined, diagnostics: EntityRuleExportDiagnostic[]): EntityRuleExportMember[] => {
-    const member = text(value);
-    if (!member) {return [];}
-    if (!identifier.test(member)) {
-        diagnostics.push(diagnostic('invalid_identifier', `${kind} symbol is not a valid identifier: ${member}`, {entityKey, ruleId}));
-        return [];
-    }
-    return [{kind, symbol: member}];
+const field = (value: unknown, kind: EntityRulePageKind, entityKey: string, ruleId: string | undefined, diagnostics: EntityRuleExportDiagnostic[]): EntityRuleExportField[] => {
+    const fieldKey = checkedIdentifier(value, 'field', entityKey, ruleId, diagnostics);
+    return fieldKey ? [{fieldKey, targetKind: kind === 'table' ? 'table.filter' : kind === 'form' ? 'form.field' : 'entity.field'}] : [];
 };
 
-const querySymbols = (kind: EntityRulePageKind, paginated: boolean): EntityRuleExportMember[] => kind === 'table'
-    ? ['currentRows', 'rowCount', ...(paginated ? ['hasNextPage', 'nextPageTarget'] : [])].map((symbol) => ({kind: 'query' as const, symbol}))
+const action = (value: unknown, kind: EntityRulePageKind, entityKey: string, ruleId: string | undefined, diagnostics: EntityRuleExportDiagnostic[]): EntityRuleExportAction[] => {
+    const actionIntent = checkedIdentifier(value, 'action', entityKey, ruleId, diagnostics);
+    return actionIntent ? [{actionIntent, targetKind: kind === 'table' ? 'table.module_action' : kind === 'form' ? 'form.action' : 'entity.action'}] : [];
+};
+
+const checkedIdentifier = (value: unknown, kind: string, entityKey: string, ruleId: string | undefined, diagnostics: EntityRuleExportDiagnostic[]): string | undefined => {
+    const member = text(value);
+    if (!member) {return undefined;}
+    if (!identifier.test(member)) {
+        diagnostics.push(diagnostic('invalid_identifier', `${kind} symbol is not a valid identifier: ${member}`, {entityKey, ruleId}));
+        return undefined;
+    }
+    return member;
+};
+
+const querySymbols = (kind: EntityRulePageKind, paginated: boolean): string[] => kind === 'table'
+    ? ['table.currentRows', 'table.rowCount', ...(paginated ? ['table.hasNextPage', 'table.nextPageTarget'] : [])]
     : kind === 'form'
-        ? ['fields', 'actions'].map((symbol) => ({kind: 'query' as const, symbol}))
+        ? ['form.fields', 'form.actions']
         : [];
+
+const uniqueFields = (values: EntityRuleExportField[]): EntityRuleExportField[] => uniqueBy(values, (item) => item.fieldKey);
+const uniqueActions = (values: EntityRuleExportAction[]): EntityRuleExportAction[] => uniqueBy(values, (item) => item.actionIntent);
+const uniqueColumns = (values: EntityRuleExportColumn[]): EntityRuleExportColumn[] => uniqueBy(values, (item) => item.fieldKey);
+const uniqueRowActions = (values: EntityRuleExportRowAction[]): EntityRuleExportRowAction[] => uniqueBy(values, (item) => item.actionIntent);
+const uniqueBy = <T>(values: readonly T[], key: (value: T) => string): T[] => [...new Map(values.map((value) => [key(value), value])).values()];
 
 const belongsToRoot = (ruleId: unknown, rootRuleId: string | undefined, rules: ReadonlyMap<string, WorkflowEntityRules['match']['rules'][number]>): boolean => {
     if (typeof ruleId !== 'string' || !rootRuleId) {return false;}

@@ -13,11 +13,15 @@ export type {
 } from './entity_rules';
 export { importWorkflowEntityRules, toEntityRuleBundle, validateWorkflowEntityRules } from './entity_rules';
 export type {
+    EntityRuleExportAction,
+    EntityRuleExportColumn,
     EntityRuleExportDiagnostic,
     EntityRuleExportEntry,
+    EntityRuleExportField,
     EntityRuleExportIndex,
     EntityRuleExportMember,
     EntityRuleExportResolution,
+    EntityRuleExportRowAction,
 } from './entity_rule_exports';
 export { buildEntityRuleExportIndex } from './entity_rule_exports';
 export { entityRulesArtifactRevision } from './revision';

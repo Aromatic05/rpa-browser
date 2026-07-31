@@ -44,6 +44,11 @@ test('exports stable symbols without deriving from labels', () => {
         {kind: 'query', symbol: 'currentRows'},
         {kind: 'query', symbol: 'rowCount'},
     ]);
+    assert.deepEqual(first.index?.entities[0]?.fields, [
+        {fieldKey: 'orderNo', targetKind: 'table.filter'},
+    ]);
+    assert.deepEqual(first.index?.entities[0]?.columns, [{fieldKey: 'orderNo'}]);
+    assert.deepEqual(first.index?.entities[0]?.supportedQueries, ['table.currentRows', 'table.rowCount']);
 });
 
 test('diagnoses duplicate entity keys and ambiguous member symbols', () => {
@@ -73,6 +78,22 @@ test('leaves V2 profiles without entityKey runtime-readable but non-exportable',
 
     assert.equal(result.index, null);
     assert.equal(result.diagnostics[0]?.code, 'entity_rule_exports.missing_entity_key');
+});
+
+test('uses the profile page kind when the root binding and root rule omit it', () => {
+    const fallback = profile();
+    delete fallback.annotation.bindings[0].entityKind;
+    fallback.match = {
+        ...fallback.match,
+        rules: fallback.match.rules.map((rule, index) => index === 0
+            ? {...rule, match: {}}
+            : rule),
+    };
+
+    const result = buildEntityRuleExportIndex(fallback);
+
+    assert.deepEqual(result.diagnostics, []);
+    assert.equal(result.index?.entities[0]?.kind, 'table');
 });
 
 test('diagnoses malformed table primary keys', () => {

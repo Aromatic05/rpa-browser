@@ -556,6 +556,7 @@ test('annotator apply materializes table columns primary keys and row actions', 
 
         const rootBinding = draft.annotation.bindings.find((binding) =>
             binding.ruleId === 'entity-orders-table');
+        assert.equal(rootBinding?.entityKey, 'ordersTable');
         assert.deepEqual(rootBinding?.primaryKey, {
             fieldKey: 'orderId',
             columns: ['Order ID'],
@@ -613,6 +614,7 @@ test('annotator apply creates a generic entity rule from confirmed canonical sel
             expect: 'unique',
             match: {kind: 'dialog', idEquals: 'ConfirmDialog'},
         });
+        assert.equal(payload.draft.annotation.bindings[0]?.entityKey, 'orderConfirm');
     } finally {
         await browser.close();
     }

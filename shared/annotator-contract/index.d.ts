@@ -86,7 +86,7 @@ export type AnnotatorPickPayload = {point: AnnotatorPoint; tabName?: string};
 export type AnnotatorRecognizePayload = {profileName?: string; refresh?: boolean; tabName?: string};
 export type AnnotatorVisualizePayload = {profileName?: string; tabName?: string};
 export type AnnotatorSemanticInput =
-    | {kind: 'entity'; businessTag: string; displayName?: string; entityKind?: 'form' | 'table' | 'dialog' | 'list' | 'panel' | 'toolbar' | 'kv'}
+    | {kind: 'entity'; businessTag: string; entityKey?: string; displayName?: string; entityKind?: 'form' | 'table' | 'dialog' | 'list' | 'panel' | 'toolbar' | 'kv'}
     | {kind: 'field'; fieldKey: string; displayName?: string}
     | {kind: 'action'; actionIntent: string; displayName?: string}
     | {kind: 'column'; fieldKey: string; displayName?: string; columnKind?: 'text' | 'number' | 'date' | 'status'}
