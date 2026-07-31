@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeDsl, parseDsl, runDsl } from '../../../../src/dsl';
-import { DslRuntimeError } from '../../../../src/dsl/diagnostics/errors';
+import { normalizeDsl, parseDsl, runDsl, runDslSource } from '../../../../src/dsl';
+import { runCheckpointDslBody } from '../../../../src/runner/checkpoint/dsl_body';
+import { DslRuntimeError, DslValidationError } from '../../../../src/dsl/diagnostics/errors';
 import type { DslCheckpointProvider } from '../../../../src/dsl/emit';
 import type { RunStepsDeps } from '../../../../src/runner/run_steps';
 import type { Checkpoint } from '../../../../src/runner/checkpoint';
@@ -149,6 +150,80 @@ test('runDsl executes a procedure DSL body through the current step port and bin
     assert.deepEqual(calls.map((call) => call.name), ['browser.click', 'browser.fill']);
     assert.deepEqual(calls[1].args, {nodeId: 'target', value: 'yes'});
     assert.deepEqual(result.scope.vars.session, {authenticated: 'yes'});
+    assert.deepEqual(result.scope.output, {});
+});
+
+test('checkpoint DSL bodies expose an immutable failure root while normal DSL cannot reference it', async () => {
+    const checkpoint: Checkpoint = {id: 'recover', kind: 'recovery', body: {language: 'dsl', source: 'body.dsl'}};
+    const output = await runCheckpointDslBody({
+        checkpoint,
+        source: `
+            output step = failure.step.name
+            output code = failure.error.code
+            output message = failure.error.message
+            output attempt = failure.attempt
+            output maxAttempts = failure.maxAttempts
+            output url = failure.url
+        `,
+        stepResolves: {},
+        executeStep: async (step) => ({stepId: step.id, ok: true}),
+        workspaceName: 'ws-dsl',
+        deps: createDeps([]),
+        failure: {
+            step: {name: 'browser.click'},
+            error: {code: 'ERR_CLICK', message: 'not found'},
+            attempt: 2,
+            maxAttempts: 3,
+            url: 'https://example.test/failed',
+        },
+    });
+    assert.deepEqual(output, {
+        step: 'browser.click', code: 'ERR_CLICK', message: 'not found', attempt: 2, maxAttempts: 3,
+        url: 'https://example.test/failed',
+    });
+    await assert.rejects(
+        () => runDslSource('output leaked = failure.error.code', {workspaceName: 'ws-dsl', deps: createDeps([])}),
+        (error: unknown) => error instanceof DslValidationError,
+    );
+});
+
+test('DSL checkpoint calls only procedures and detect direct, indirect, and deep recursion', async () => {
+    const checkpoint = (id: string, source: string): Checkpoint => ({id, kind: 'procedure', body: {language: 'dsl', source: 'body.dsl'}});
+    const direct = checkpoint('direct', 'use checkpoint "direct"');
+    const first = checkpoint('first', 'use checkpoint "second"');
+    const second = checkpoint('second', 'use checkpoint "first"');
+    const recovery: Checkpoint = {id: 'recovery', kind: 'recovery', body: {language: 'dsl', source: 'body.dsl'}};
+    const deep = Array.from({length: 17}, (_, index) => checkpoint(`deep-${index}`, index === 16 ? 'output done = input.value' : `use checkpoint "deep-${index + 1}"`));
+    const all = [direct, first, second, recovery, ...deep];
+    const provider: DslCheckpointProvider = {
+        getCheckpoint: (id) => all.find((item) => item.id === id) ?? null,
+        getCheckpointResolves: () => ({}),
+        getCheckpointBody: (id) => {
+            const item = all.find((candidate) => candidate.id === id);
+            return item?.body ? {source: item.id === 'recovery' ? 'output ignored = input.value' : item.id.startsWith('deep-') ? (item.id === 'deep-16' ? 'output done = input.value' : `use checkpoint "deep-${Number(item.id.slice(5)) + 1}"`) : item.id === 'direct' ? 'use checkpoint "direct"' : item.id === 'first' ? 'use checkpoint "second"' : 'use checkpoint "first"', stepResolves: {}} : null;
+        },
+    };
+    const run = async (id: string) => await runDsl(normalizeDsl(parseDsl(`use checkpoint "${id}"`)), {
+        workspaceName: 'ws-dsl', deps: createDeps([]), checkpointProvider: provider,
+    });
+    await assert.rejects(() => run('recovery'), (error: unknown) => error instanceof DslRuntimeError && error.code === 'ERR_DSL_CHECKPOINT_NOT_CALLABLE');
+    await assert.rejects(() => run('direct'), (error: unknown) => error instanceof DslRuntimeError && error.code === 'ERR_DSL_CHECKPOINT_RECURSION');
+    await assert.rejects(() => run('first'), (error: unknown) => error instanceof DslRuntimeError && error.code === 'ERR_DSL_CHECKPOINT_RECURSION');
+    await assert.rejects(() => run('deep-0'), (error: unknown) => error instanceof DslRuntimeError && error.code === 'ERR_DSL_CHECKPOINT_DEPTH');
+});
+
+test('checkpoint DSL body resolve injection returns Runner validation errors', async () => {
+    await assert.rejects(
+        () => runCheckpointDslBody({
+            checkpoint: {id: 'resolve-body', kind: 'procedure', body: {language: 'dsl', source: 'body.dsl'}},
+            source: 'use resolves "resolve-body" as target\nclick target.button',
+            stepResolves: {button: {}},
+            executeStep: async (step) => ({stepId: step.id, ok: true}),
+            workspaceName: 'ws-dsl',
+            deps: createDeps([]),
+        }),
+        (error: unknown) => error instanceof DslRuntimeError && error.code === 'ERR_BAD_ARGS',
+    );
 });
 
 test('runDsl wraps failed act steps as DslRuntimeError', async () => {

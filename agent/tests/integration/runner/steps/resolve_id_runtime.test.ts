@@ -177,6 +177,37 @@ test('checkpoint act step injects resolve from serialized resolveId sidecar', as
     assert.equal(observed.some((step) => step.resolve?.hint?.raw?.selector === '#checkpoint-submit'), true);
 });
 
+test('a failing recovery DSL body does not enter recovery again', async () => {
+    let clickAttempts = 0;
+    const deps = createDeps({
+        'browser.click': async (step) => {
+            clickAttempts += 1;
+            return {stepId: step.id, ok: false, error: {code: 'ERR_CLICK_FAILED', message: 'click failed'}};
+        },
+    });
+    const workspace = deps.resolveWorkspace('ws-1') as any;
+    workspace.workflow = {name: 'ws-1'};
+    workspace.checkpoint = {
+        getProvider: () => ({
+            listCheckpoints: () => [{
+                id: 'recovery-body', kind: 'recovery',
+                trigger: {matchRules: [{errorCode: 'ERR_CLICK_FAILED'}]},
+                body: {language: 'dsl', source: 'body.dsl'},
+            }],
+            getCheckpointResolves: () => ({}),
+            getCheckpointBody: () => ({source: 'click failure.step.name', stepResolves: {}}),
+        }),
+    };
+    const queue = createStepsQueue([{id: 'seed-click', name: 'browser.click', args: {}} as StepUnion]);
+    closeStepsQueue(queue);
+    const checkpoint = await runSteps({
+        runId: 'run-recovery-body', workspaceName: 'ws-1', stepsQueue: queue,
+        resultPipe: createResultPipe(), signalChannel: createSignalChannel(), stopOnError: true,
+    }, deps);
+    assert.equal(checkpoint.status, 'failed');
+    assert.equal(clickAttempts, 2);
+});
+
 test('run steps request accepts stepResolves typing contract', () => {
     const typed: { stepResolves?: Record<string, StepResolve> } = {
         stepResolves: {
