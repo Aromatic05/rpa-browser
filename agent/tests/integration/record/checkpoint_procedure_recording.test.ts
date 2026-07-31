@@ -1,11 +1,19 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import {
     buildRecordedCheckpoint,
     checkpointEntityRuleOptions,
 } from '../../../src/record/checkpoint_recording';
-import {runCheckpointProcedure} from '../../../src/runner/checkpoint/runtime';
-import type {StepResult, StepUnion} from '../../../src/runner/steps/types';
+import {runDslSource} from '../../../src/dsl/runtime';
+import {runCheckpointDslBody} from '../../../src/runner/checkpoint/dsl_body';
+import {createDslEntityRulesResolver} from '../../../src/dsl/link';
+import {createWorkspaceEntityRulesProvider} from '../../../src/snapshot/rules/runtime';
+import {createWorkflowCheckpointProvider} from '../../../src/workflow/checkpoint';
+import {createCheckpointCodec} from '../../../src/workflow/checkpoint';
+import type {StepUnion} from '../../../src/runner/steps/types';
 import type {WorkflowArtifact, WorkflowEntityRules} from '../../../src/workflow';
 
 const entityRule: WorkflowEntityRules = {
@@ -28,6 +36,9 @@ const entityRule: WorkflowEntityRules = {
             {
                 ruleId: 'root',
                 businessTag: 'orders.query',
+                entityKey: 'ordersQuery',
+                primaryKey: {fieldKey: 'orderNo'},
+                columns: [{fieldKey: 'orderNo'}],
                 displayName: '订单查询',
                 legacyCanvas: {
                     version: 1,
@@ -96,6 +107,7 @@ const errorEntityRule: WorkflowEntityRules = {
             {
                 ruleId: 'root',
                 businessTag: 'auth.expired',
+                entityKey: 'authExpired',
                 entityKind: 'panel',
                 displayName: '登录失效提示',
                 legacyCanvas: {
@@ -292,7 +304,7 @@ test('entity-rule options expose business fields and actions without internal ru
     }]);
 });
 
-test('procedure recording parameterizes business inputs and resolves targets through entity rules', async () => {
+test('procedure recording emits a parameterized entity-rule DSL body', async () => {
     const artifact = buildRecordedCheckpoint(workspace, recordedSteps, recordedEnhancements, savePayload);
     assert.equal(artifact.checkpoint.kind, 'procedure');
     assert.equal(artifact.checkpoint.name, '查询订单');
@@ -302,53 +314,19 @@ test('procedure recording parameterizes business inputs and resolves targets thr
     assert.deepEqual(artifact.checkpoint.input, {orderNo: 'SO-001', buyer: '王小虎'});
     assert.equal(artifact.checkpoint.output, undefined);
 
-    const content = artifact.checkpoint.content ?? [];
-    assert.equal(content.length, 6);
-    assert.deepEqual(content[0], {
-        type: 'query',
-        args: {
-            op: 'entity.target',
-            businessTag: 'orders.query',
-            target: {kind: 'table.filter', fieldKey: 'orderNo'},
-        },
-        entityRules: {selection: 'explicit', profiles: ['order-query-rule'], strict: true},
-        saveAs: 'target1',
-    });
-    assert.deepEqual(content[1], {
-        type: 'act',
-        step: {
-            name: 'browser.fill',
-            args: {nodeId: {ref: 'local.target1.nodeId'}, value: {ref: 'input.orderNo'}},
-            entityRules: {selection: 'explicit', profiles: ['order-query-rule'], strict: true},
-        },
-    });
-    assert.equal(JSON.stringify(content).includes('SO-001'), false);
-    assert.equal(JSON.stringify(content).includes('王小虎'), false);
-    assert.equal(JSON.stringify(content).includes('#orderNo'), false);
-
-    const executed: StepUnion[] = [];
-    const result = await runCheckpointProcedure({
-        checkpoint: artifact.checkpoint,
-        input: {orderNo: 'SO-999', buyer: '李雷'},
-        stepIdPrefix: 'procedure-test',
-        executeStep: async (step): Promise<StepResult> => {
-            executed.push(structuredClone(step));
-            if (step.name === 'browser.assert') {return {stepId: step.id, ok: true, data: {}};}
-            if (step.name === 'browser.query') {
-                const target = (step.args as {target?: {fieldKey?: string; actionIntent?: string}}).target;
-                return {stepId: step.id, ok: true, data: {nodeId: target?.fieldKey ?? target?.actionIntent}};
-            }
-            return {stepId: step.id, ok: true, data: {}};
-        },
-    });
-    assert.equal(result.ok, true);
-    const fills = executed.filter((step) => step.name === 'browser.fill');
-    assert.deepEqual(fills.map((step) => step.args), [
-        {nodeId: 'orderNo', value: 'SO-999'},
-        {nodeId: 'buyer', value: '李雷'},
-    ]);
-    const click = executed.find((step) => step.name === 'browser.click');
-    assert.deepEqual(click?.args, {nodeId: 'query'});
+    assert.deepEqual(artifact.checkpoint.body, {language: 'dsl', source: 'body.dsl'});
+    assert.equal(artifact.checkpoint.prepare, undefined);
+    assert.equal(artifact.checkpoint.content, undefined);
+    assert.equal(artifact.checkpoint.output, undefined);
+    assert.equal(artifact.bodyDsl, [
+        'use entity_rules "order-query-rule" as entity',
+        'fill entity.ordersQuery.orderNo with input.orderNo',
+        'fill entity.ordersQuery.buyer with input.buyer',
+        'click entity.ordersQuery.query',
+    ].join('\n'));
+    assert.equal(artifact.bodyDsl.includes('SO-001'), false);
+    assert.equal(artifact.bodyDsl.includes('王小虎'), false);
+    assert.equal(artifact.bodyDsl.includes('#orderNo'), false);
 });
 
 test('procedure recording can collect table output through the same entity rule', () => {
@@ -356,13 +334,51 @@ test('procedure recording can collect table output through the same entity rule'
         ...savePayload,
         outputKind: 'table.currentRows',
     });
-    assert.deepEqual(artifact.checkpoint.output, {rows: {ref: 'local.checkpointOutput.value'}});
-    assert.deepEqual(artifact.checkpoint.content?.at(-1), {
-        type: 'query',
-        args: {op: 'entity', businessTag: 'orders.query', query: 'table.currentRows'},
-        entityRules: {selection: 'explicit', profiles: ['order-query-rule'], strict: true},
-        saveAs: 'checkpointOutput',
-    });
+    assert.equal(artifact.checkpoint.output, undefined);
+    assert.equal(artifact.bodyDsl?.endsWith('output rows = checkpointOutput'), true);
+});
+
+test('recorded procedure survives close/reload and executes through the formal checkpoint provider', async () => {
+    const artifact = buildRecordedCheckpoint(workspace, recordedSteps, recordedEnhancements, savePayload);
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rpa-recorder-dsl-'));
+    const previous = process.env.RPA_WORKFLOW_ROOT;
+    process.env.RPA_WORKFLOW_ROOT = root;
+    try {
+        const codec = createCheckpointCodec('ws-reload');
+        codec.save(artifact);
+        const loaded = codec.load(artifact.name);
+        assert.ok(loaded);
+        const yaml = fs.readFileSync(path.join(root, 'ws-reload', 'checkpoints', artifact.name, 'checkpoint.yaml'), 'utf8');
+        assert.match(yaml, /body:/);
+        assert.doesNotMatch(yaml, /(?:prepare|content|output):/);
+        const calls: StepUnion[] = [];
+        await runDslSource(`use checkpoint "${artifact.name}" with {
+  orderNo: input.orderNo
+  buyer: input.buyer
+}`, {
+            workspaceName: 'ws-reload', deps: {} as never,
+            input: {orderNo: 'SO-999', buyer: '李雷'},
+            checkpointProvider: createWorkflowCheckpointProvider(new Map([[loaded.name, loaded]])),
+            entityRulesResolver: createDslEntityRulesResolver(createWorkspaceEntityRulesProvider(workflow as never)),
+            stepExecutionPort: {
+                execute: async (step) => {
+                    calls.push(structuredClone(step));
+                    if (step.name === 'browser.query') {
+                        const target = (step.args as {target?: {fieldKey?: string; actionIntent?: string}}).target;
+                        return {stepId: step.id, ok: true, data: {kind: 'nodeId', nodeId: target?.fieldKey ?? target?.actionIntent}};
+                    }
+                    return {stepId: step.id, ok: true, data: {}};
+                },
+            },
+        });
+        assert.deepEqual(calls.filter((step) => step.name === 'browser.fill').map((step) => step.args), [
+            {nodeId: 'orderNo', value: 'SO-999'}, {nodeId: 'buyer', value: '李雷'},
+        ]);
+        assert.deepEqual(calls.find((step) => step.name === 'browser.click')?.args, {nodeId: 'query'});
+    } finally {
+        if (previous === undefined) {delete process.env.RPA_WORKFLOW_ROOT;} else {process.env.RPA_WORKFLOW_ROOT = previous;}
+        fs.rmSync(root, {recursive: true, force: true});
+    }
 });
 
 test('procedure recording turns a repeated row control into a primary-key row action', async () => {
@@ -371,45 +387,16 @@ test('procedure recording turns a repeated row control into a primary-key row ac
         name: '查询并确认发货',
     });
     assert.deepEqual(artifact.checkpoint.input, {orderNo: 'SO-002'});
-    const serialized = JSON.stringify(artifact.checkpoint.content);
+    const serialized = artifact.bodyDsl || '';
     assert.equal(serialized.includes('#ship-so-002'), false);
-    assert.equal(serialized.includes('table.row_action'), true);
+    assert.equal(serialized.includes('.row(input.orderNo).'), true);
     assert.equal(serialized.includes('confirmShipment'), true);
 
-    const executed: StepUnion[] = [];
-    const result = await runCheckpointProcedure({
-        checkpoint: artifact.checkpoint,
-        input: {orderNo: 'SO-003'},
-        stepIdPrefix: 'row-action-procedure',
-        executeStep: async (step): Promise<StepResult> => {
-            executed.push(structuredClone(step));
-            if (step.name === 'browser.assert') {return {stepId: step.id, ok: true, data: {}};}
-            if (step.name === 'browser.query') {
-                const target = (step.args as {
-                    target?: {
-                        kind?: string;
-                        primaryKey?: {fieldKey?: string; value?: string};
-                        actionIntent?: string;
-                    };
-                }).target;
-                const nodeId = target?.kind === 'table.row_action'
-                    ? `${target.primaryKey?.value}:${target.actionIntent}`
-                    : target?.actionIntent ?? target?.primaryKey?.fieldKey ?? 'query';
-                return {stepId: step.id, ok: true, data: {nodeId}};
-            }
-            return {stepId: step.id, ok: true, data: {}};
-        },
-    });
-    assert.equal(result.ok, true);
-    const clicks = executed.filter((step) => step.name === 'browser.click');
-    assert.deepEqual(clicks.map((step) => step.args), [
-        {nodeId: 'query'},
-        {nodeId: 'SO-003:confirmShipment'},
-    ]);
+    assert.equal(artifact.bodyDsl?.includes('click entity.ordersQuery.row(input.orderNo).confirmShipment'), true);
 });
 
 
-test('recovery recording is triggered by the selected error entity rule and re-resolves semantic actions', () => {
+test('recovery recording is triggered by the selected error entity rule and executes its DSL body', async () => {
     const artifact = buildRecordedCheckpoint(workspace, recoverySteps, recoveryEnhancements, {
         kind: 'recovery',
         name: '关闭登录失效提示',
@@ -424,31 +411,27 @@ test('recovery recording is triggered by the selected error entity rule and re-r
         {entityExists: {query: '', kind: 'panel', businessTag: 'auth.expired'}},
         {stepName: 'browser.click'},
     ]);
-    assert.deepEqual(artifact.checkpoint.content, [
-        {
-            type: 'query',
-            args: {
-                op: 'entity.target',
-                businessTag: 'auth.expired',
-                target: {kind: 'entity.action', actionIntent: 'dismiss'},
-            },
-            entityRules: {selection: 'explicit', profiles: ['expired-session-rule'], strict: true},
-            saveAs: 'target1',
-        },
-        {
-            type: 'act',
-            step: {
-                name: 'browser.click',
-                args: {nodeId: {ref: 'local.target1.nodeId'}},
-                entityRules: {selection: 'explicit', profiles: ['expired-session-rule'], strict: true},
-            },
-        },
-    ]);
+    assert.deepEqual(artifact.checkpoint.body, {language: 'dsl', source: 'body.dsl'});
+    assert.equal(artifact.checkpoint.content, undefined);
+    assert.equal(artifact.bodyDsl, 'use entity_rules "expired-session-rule" as entity\nclick entity.authExpired.dismiss');
     assert.deepEqual(artifact.checkpoint.policy, {
         maxAttempts: 1,
         retryOriginal: true,
         stopOnFailure: true,
     });
+    const calls: StepUnion[] = [];
+    await runCheckpointDslBody({
+        checkpoint: artifact.checkpoint, source: artifact.bodyDsl!, stepResolves: artifact.stepResolves,
+        workspaceName: 'ws-1', deps: {} as never,
+        entityRulesResolver: createDslEntityRulesResolver(createWorkspaceEntityRulesProvider(workflow as never)),
+        executeStep: async (step) => {
+            calls.push(structuredClone(step));
+            if (step.name === 'browser.query') {return {stepId: step.id, ok: true, data: {kind: 'nodeId', nodeId: 'dismiss'}};}
+            return {stepId: step.id, ok: true, data: {}};
+        },
+    });
+    assert.deepEqual(calls.map((step) => step.name), ['browser.query', 'browser.click']);
+    assert.deepEqual(calls[1]?.args, {nodeId: 'dismiss'});
 });
 
 test('legacy recovery constraints are optional additions to the error entity trigger', () => {
