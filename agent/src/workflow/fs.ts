@@ -1,13 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import YAML from 'yaml';
-import { DslRuntimeError } from '../dsl/diagnostics/errors';
+import { WorkflowError } from './errors';
 
 const ARTIFACT_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
 export const requireArtifactName = (value: unknown, label = 'artifact name'): string => {
     if (typeof value !== 'string' || !ARTIFACT_NAME_PATTERN.test(value) || value === '.' || value === '..') {
-        throw new DslRuntimeError(`invalid ${label}: ${String(value)}`, 'ERR_WORKFLOW_BAD_ARGS');
+        throw new WorkflowError(`invalid ${label}: ${String(value)}`, 'ERR_WORKFLOW_BAD_ARGS');
     }
     return value;
 };
@@ -38,7 +38,7 @@ export const workflowArtifactPath = (workflowName: string, ...parts: string[]): 
 const assertContainedPath = (root: string, target: string): void => {
     const lexicalRelative = path.relative(path.resolve(root), target);
     if (lexicalRelative === '..' || lexicalRelative.startsWith(`..${path.sep}`) || path.isAbsolute(lexicalRelative)) {
-        throw new DslRuntimeError(`workflow artifact path escapes root: ${target}`, 'ERR_WORKFLOW_BAD_ARGS');
+        throw new WorkflowError(`workflow artifact path escapes root: ${target}`, 'ERR_WORKFLOW_BAD_ARGS');
     }
     let ancestor = target;
     while (!fs.existsSync(ancestor)) {
@@ -51,7 +51,7 @@ const assertContainedPath = (root: string, target: string): void => {
     const canonicalAncestor = fs.realpathSync(ancestor);
     const canonicalRelative = path.relative(canonicalRoot, canonicalAncestor);
     if (canonicalRelative === '..' || canonicalRelative.startsWith(`..${path.sep}`) || path.isAbsolute(canonicalRelative)) {
-        throw new DslRuntimeError(`workflow artifact path escapes root: ${target}`, 'ERR_WORKFLOW_BAD_ARGS');
+        throw new WorkflowError(`workflow artifact path escapes root: ${target}`, 'ERR_WORKFLOW_BAD_ARGS');
     }
 };
 

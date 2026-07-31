@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { DslRuntimeError } from '../dsl/diagnostics/errors';
+import { WorkflowError } from './errors';
 import {
     listDirectories,
     readYamlFile,
@@ -405,7 +405,7 @@ const requireNonEmptyString = (value: unknown, field: string): string => {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
     Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 
-const invalidArtifact = (message: string): DslRuntimeError => new DslRuntimeError(
+const invalidArtifact = (message: string): WorkflowError => new WorkflowError(
     `invalid Snapshot V2 entity_rules artifact: ${message}`,
     'ERR_ENTITY_RULES_INVALID',
 );

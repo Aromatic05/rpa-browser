@@ -4,6 +4,7 @@ import type { StepResolve } from '../runner/steps/types';
 import type { StepFile, StepResolveFile } from '../runner/serialization/types';
 import { validateStepFileForSerialization, validateStepResolveFileForSerialization } from '../runner/serialization/types';
 import { listDirectories, readValidatedYamlFile, readYamlFile, removePath, requireArtifactName, workflowArtifactPath, workflowRootDir, writeYamlFile } from './fs';
+import { invalidWorkflowArtifact } from './errors';
 import type { WorkflowCodec } from './store';
 
 export type WorkflowRecording = {
@@ -42,8 +43,9 @@ export const createRecordingCodec = (workflowName: string): WorkflowCodec<Workfl
             const resolveFile = readOptionalResolveFile(path.join(dir, 'step_resolve.yaml'));
             const stepResolves = resolveFile?.resolves ?? {};
             return { kind: 'recording', name, recording, steps: stepsFile.steps, stepResolves };
-        } catch {
-            return null;
+        } catch (error) {
+            if (isMissingFile(error)) {return null;}
+            throw invalidWorkflowArtifact('recording', name, error);
         }
     },
     list: () =>

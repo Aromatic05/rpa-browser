@@ -4,6 +4,7 @@ import type { StepResolve } from '../runner/steps/types';
 import type { CheckpointHintFile, CheckpointResolveFile, SingleCheckpointFile } from '../runner/serialization/types';
 import { validateCheckpointResolveFileForSerialization, validateSingleCheckpointFileForSerialization } from '../runner/serialization/types';
 import { listDirectories, readValidatedYamlFile, readYamlFile, removePath, requireArtifactName, workflowArtifactPath, workflowRootDir, writeYamlFile } from './fs';
+import { invalidWorkflowArtifact } from './errors';
 import type { WorkflowCodec } from './store';
 import type { DslCheckpointProvider } from '../dsl/emit';
 
@@ -36,8 +37,9 @@ export const createCheckpointCodec = (workflowName: string): WorkflowCodec<Workf
             const stepResolves = resolveFile?.resolves ?? {};
             const hints = readOptionalHints(path.join(dir, 'checkpoint_hints.yaml'));
             return { kind: 'checkpoint', name, checkpoint: checkpointFile.checkpoint, stepResolves, hints };
-        } catch {
-            return null;
+        } catch (error) {
+            if (isMissingFile(error)) {return null;}
+            throw invalidWorkflowArtifact('checkpoint', name, error);
         }
     },
     list: () =>

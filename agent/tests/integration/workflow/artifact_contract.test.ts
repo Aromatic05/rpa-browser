@@ -31,17 +31,22 @@ const recording = (name: string, steps: StepUnion[] = [], stepResolves = {}) => 
 test('workflow artifact names reject traversal on read, write, and delete without escaping the workflow root', () => {
     const name = uniqueName('artifact-name');
     const escaped = path.join(workflowsRootDir(), `${name}-escaped.dsl`);
+    const escapedWorkflow = path.resolve(workflowsRootDir(), '..', `${name}-workflow`);
     cleanup(name);
     fs.rmSync(escaped, { force: true });
+    fs.rmSync(escapedWorkflow, { recursive: true, force: true });
     try {
+        assert.throws(() => createWorkflowOnFs(`../${name}-workflow`));
         const workflow = createWorkflowOnFs(name);
         assert.throws(() => workflow.save({ kind: 'dsl', name: `../${name}-escaped`, content: 'wait 1' }));
         assert.throws(() => workflow.get(`../${name}-escaped`, { kind: 'dsl' }));
         assert.throws(() => workflow.delete(`../${name}-escaped`, { kind: 'dsl' }));
         assert.equal(fs.existsSync(escaped), false);
+        assert.equal(fs.existsSync(escapedWorkflow), false);
     } finally {
         cleanup(name);
         fs.rmSync(escaped, { force: true });
+        fs.rmSync(escapedWorkflow, { recursive: true, force: true });
     }
 });
 
@@ -80,6 +85,36 @@ test('workflow manifest entry.dsl is authoritative for default DSL actions and m
     }
 });
 
+test('workflow manifest rejects identity mismatches and duplicate catalog entries', () => {
+    const name = uniqueName('manifest-integrity');
+    cleanup(name);
+    try {
+        const workflow = createWorkflowOnFs(name);
+        workflow.save({ kind: 'dsl', name: 'main', content: 'wait 1' });
+        const manifestPath = path.join(workflowRootDir(name), 'workflow.yaml');
+        const manifest = YAML.parse(fs.readFileSync(manifestPath, 'utf8')) as {
+            name: string;
+            catalog: unknown[];
+        };
+        fs.writeFileSync(manifestPath, YAML.stringify({ ...manifest, name: 'other-workflow' }), 'utf8');
+        assert.throws(
+            () => loadWorkflowFromFs(name),
+            (error: any) => error?.code === 'ERR_WORKFLOW_INVALID_MANIFEST',
+        );
+
+        fs.writeFileSync(manifestPath, YAML.stringify({
+            ...manifest,
+            catalog: [...manifest.catalog, structuredClone(manifest.catalog[0])],
+        }), 'utf8');
+        assert.throws(
+            () => loadWorkflowFromFs(name),
+            (error: any) => error?.code === 'ERR_WORKFLOW_INVALID_MANIFEST',
+        );
+    } finally {
+        cleanup(name);
+    }
+});
+
 test('invalid optional recording and checkpoint sidecars fail artifact loading instead of becoming empty objects', () => {
     const name = uniqueName('invalid-sidecar');
     cleanup(name);
@@ -94,8 +129,14 @@ test('invalid optional recording and checkpoint sidecars fail artifact loading i
         fs.writeFileSync(path.join(workflowRootDir(name), 'recordings', 'recording-1', 'step_resolve.yaml'), 'version: wrong\n');
         fs.writeFileSync(path.join(workflowRootDir(name), 'checkpoints', 'checkpoint-1', 'checkpoint_hints.yaml'), 'version: wrong\n');
         const reloaded = loadWorkflowFromFs(name);
-        assert.equal(reloaded.get('recording-1', { kind: 'recording' }), null);
-        assert.equal(reloaded.get('checkpoint-1', { kind: 'checkpoint' }), null);
+        assert.throws(
+            () => reloaded.get('recording-1', { kind: 'recording' }),
+            (error: any) => error?.code === 'ERR_WORKFLOW_INVALID_ARTIFACT',
+        );
+        assert.throws(
+            () => reloaded.get('checkpoint-1', { kind: 'checkpoint' }),
+            (error: any) => error?.code === 'ERR_WORKFLOW_INVALID_ARTIFACT',
+        );
     } finally {
         cleanup(name);
     }
