@@ -48,21 +48,26 @@ const unwrap = async <T>(promise: Promise<AnnotatorReply>): Promise<T> => {
 
 export const createAnnotatorClient = (dispatch: AnnotatorDispatch): AnnotatorClient => ({
     open: (payload) => unwrap<AnnotatorOpenResult>(
-        dispatch('entity_rules.annotator.open', payload as unknown as Record<string, unknown>),
+        dispatch('entity_rules.annotator.open', canvasPayload(payload)),
     ),
     pick: (payload) => unwrap<AnnotatorPickResult>(
-        dispatch('entity_rules.annotator.pick', payload as unknown as Record<string, unknown>),
+        dispatch('entity_rules.annotator.pick', canvasPayload(payload)),
     ),
     recognize: (payload) => unwrap<AnnotatorRecognizeResult>(
-        dispatch('entity_rules.annotator.recognize', payload as unknown as Record<string, unknown>),
+        dispatch('entity_rules.annotator.recognize', canvasPayload(payload)),
     ),
     visualize: (payload) => unwrap<AnnotatorVisualizeResult>(
-        dispatch('entity_rules.annotator.visualize', payload as unknown as Record<string, unknown>),
+        dispatch('entity_rules.annotator.visualize', canvasPayload(payload)),
     ),
     check: (payload) => unwrap<AnnotatorCheckResult>(
-        dispatch('entity_rules.annotator.check', payload as unknown as Record<string, unknown>),
+        dispatch('entity_rules.annotator.check', canvasPayload(payload)),
     ),
     save: (payload) => unwrap<AnnotatorSaveResult>(
-        dispatch('entity_rules.annotator.save', payload as unknown as Record<string, unknown>),
+        dispatch('entity_rules.annotator.save', canvasPayload(payload)),
     ),
+});
+
+const canvasPayload = (payload: object): Record<string, unknown> => ({
+    annotatorProtocol: 'canvas-v1',
+    ...payload,
 });

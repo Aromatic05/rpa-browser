@@ -1,3 +1,4 @@
+export type AnnotatorProtocol = 'projection-v1' | 'canvas-v1';
 export type AnnotatorPoint = {x: number; y: number};
 export type AnnotatorRect = {x: number; y: number; width: number; height: number};
 export type AnnotatorAnchor = {

@@ -24,7 +24,7 @@ import {
     workflowProfileToAnnotatorDraft,
 } from './draft';
 import {materializeAnnotatorTarget} from './materialize';
-import {handleLegacyAnnotatorAction, isLegacyAnnotatorPayload} from './legacy';
+import {handleLegacyAnnotatorAction} from './legacy';
 
 export type CreateRunnerAnnotatorControllerInput = {
     runStepsDeps: RunStepsDeps;
@@ -34,8 +34,10 @@ export const createRunnerAnnotatorController = (
     input: CreateRunnerAnnotatorControllerInput,
 ): EntityRulesAnnotatorPort => ({
     handle: async ({action, workspace}) => {
-        const payload = requirePayload(action.payload);
-        if (isLegacyAnnotatorPayload(payload)) {
+        const rawPayload = requirePayload(action.payload);
+        const protocol = requireAnnotatorProtocol(rawPayload);
+        const payload = withoutAnnotatorProtocol(rawPayload);
+        if (protocol === 'canvas-v1') {
             return await handleLegacyAnnotatorAction(
                 input.runStepsDeps,
                 {action, workspace},
@@ -277,6 +279,33 @@ const pickReply = async (
         },
     };
     return {reply: replyAction(input.action, replyPayload), events: []};
+};
+
+type AnnotatorProtocol = 'projection-v1' | 'canvas-v1';
+
+const requireAnnotatorProtocol = (payload: Readonly<Record<string, unknown>>): AnnotatorProtocol => {
+    if (payload.annotatorProtocol === 'projection-v1' || payload.annotatorProtocol === 'canvas-v1') {
+        return payload.annotatorProtocol;
+    }
+    if (payload.annotatorProtocol === undefined) {
+        throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'annotatorProtocol is required');
+    }
+    const received = typeof payload.annotatorProtocol === 'string'
+        ? payload.annotatorProtocol
+        : Array.isArray(payload.annotatorProtocol)
+            ? 'array'
+            : typeof payload.annotatorProtocol;
+    throw new ActionError(
+        ERROR_CODES.ERR_BAD_ARGS,
+        `unsupported annotator protocol: ${received}`,
+    );
+};
+
+const withoutAnnotatorProtocol = (
+    payload: Readonly<Record<string, unknown>>,
+): Record<string, unknown> => {
+    const {annotatorProtocol: _protocol, ...rest} = payload;
+    return rest;
 };
 
 const requirePayload = (value: unknown): Record<string, unknown> => {

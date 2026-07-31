@@ -59,9 +59,9 @@ await log('annotator client sends only canonical action payloads', async () => {
     await client.recognize('orders');
 
     assert.deepEqual(sent, [
-        {type: 'entity_rules.annotator.open', payload: {profileName: 'orders'}},
-        {type: 'entity_rules.annotator.pick', payload: {point: {x: 140, y: 136}}},
-        {type: 'entity_rules.annotator.recognize', payload: {profileName: 'orders', refresh: true}},
+        {type: 'entity_rules.annotator.open', payload: {annotatorProtocol: 'projection-v1', profileName: 'orders'}},
+        {type: 'entity_rules.annotator.pick', payload: {annotatorProtocol: 'projection-v1', point: {x: 140, y: 136}}},
+        {type: 'entity_rules.annotator.recognize', payload: {annotatorProtocol: 'projection-v1', profileName: 'orders', refresh: true}},
     ]);
     assert.equal(JSON.stringify(sent).includes('selector'), false);
     assert.equal(JSON.stringify(sent).includes('element'), false);
@@ -430,6 +430,7 @@ await log('annotator client and session apply canonical targets without extensio
     assert.deepEqual(sent, [{
         type: 'entity_rules.annotator.apply',
         payload: {
+            annotatorProtocol: 'projection-v1',
             draft,
             targetId: 'action:submit',
             semantic: {kind: 'action', actionIntent: 'submit'},

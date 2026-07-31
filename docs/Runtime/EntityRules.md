@@ -58,7 +58,12 @@ open -> pick/recognize -> local edit -> apply -> check -> save
 
 `apply` 只更新草稿；`save` 才写入 workflow artifact。保存必须使用真实 artifact revision 做乐观并发控制，页面 capture revision 不能替代 artifact revision。
 
-Annotator 协议必须显式版本化或使用独立 action 名，不能根据 `url`、`canvasDraft` 等普通业务字段猜测协议版本。
+Annotator 请求使用显式 `annotatorProtocol` discriminator：
+
+- `projection-v1`：共享 V2 projection/draft API；
+- `canvas-v1`：当前产品 CanvasDraft 编辑 API。
+
+服务端会在路由前剥离 discriminator。缺失或未知协议会返回 `ERR_BAD_ARGS`，不能根据 `url`、`canvasDraft`、`expectedRevision` 等普通业务字段猜测协议版本。
 
 ## V1 导入
 

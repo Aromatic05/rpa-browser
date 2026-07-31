@@ -111,13 +111,6 @@ type LegacyCompileResult = {
     ruleIdByCanvasId: Map<string, string>;
 };
 
-export const isLegacyAnnotatorPayload = (payload: Readonly<Record<string, unknown>>): boolean =>
-    'canvasDraft' in payload
-    || 'fingerprint' in payload
-    || 'workspaceName' in payload
-    || 'url' in payload
-    || 'expectedRevision' in payload;
-
 const entityVisualId = (entityId: string): string => `entity:${entityId}`;
 const paginationVisualId = (entityId: string): string => `${entityId}_pgpage`;
 

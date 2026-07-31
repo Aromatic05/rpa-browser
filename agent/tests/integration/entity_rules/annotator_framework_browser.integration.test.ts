@@ -34,7 +34,7 @@ const invoke = async (
         id: crypto.randomUUID(),
         type,
         workspaceName: 'ws-1',
-        payload,
+        payload: {annotatorProtocol: 'projection-v1', ...(payload ?? {})},
     } satisfies Action,
     workspace: {name: 'ws-1', workflow} as never,
     workspaceRegistry: {} as never,

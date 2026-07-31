@@ -411,7 +411,7 @@ const loadAnnotatorSessionController = (() => {
             ensureHandle: ensureAnnotatorHandle,
             open: async (payload) => await dispatchAnnotator(
                 'entity_rules.annotator.open',
-                payload,
+                {annotatorProtocol: 'canvas-v1', ...payload},
             ) as ActionShape,
             pageUrl: () => location.href,
             onEditorActiveChange: (active) => {

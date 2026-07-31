@@ -57,7 +57,10 @@ const request = async <T>(
     type: string,
     payload: Record<string, unknown>,
 ): Promise<T> => {
-    const reply = await sendAction(type, payload);
+    const reply = await sendAction(type, {
+        annotatorProtocol: 'projection-v1',
+        ...payload,
+    });
     if (reply.type.endsWith('.failed')) {
         throw new Error(readFailure(reply));
     }

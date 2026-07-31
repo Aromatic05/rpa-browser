@@ -38,9 +38,52 @@ const invoke = async (
     payload?: Record<string, unknown>,
     targetWorkflow: Workflow = workflow,
 ) => await runtime.handle({
-    action: action(type, payload),
+    action: action(type, {annotatorProtocol: 'projection-v1', ...(payload ?? {})}),
     workspace: {name: 'ws-1', workflow: targetWorkflow} as never,
     workspaceRegistry: {} as never,
+});
+
+
+const invokeCanvas = async (
+    runtime: ReturnType<typeof createEntityRulesRuntime>,
+    type: string,
+    payload?: Record<string, unknown>,
+    targetWorkflow: Workflow = workflow,
+) => await runtime.handle({
+    action: action(type, {annotatorProtocol: 'canvas-v1', ...(payload ?? {})}),
+    workspace: {name: 'ws-1', workflow: targetWorkflow} as never,
+    workspaceRegistry: {} as never,
+});
+
+
+
+test('annotator protocol routing requires an explicit discriminator', async () => {
+    const runtime = createEntityRulesRuntime({
+        annotator: createRunnerAnnotatorController({runStepsDeps: {} as never}),
+    });
+    const raw = async (payload: Record<string, unknown>) => await runtime.handle({
+        action: action('entity_rules.annotator.open', payload),
+        workspace: {name: 'ws-1', workflow} as never,
+        workspaceRegistry: {} as never,
+    });
+    await assert.rejects(
+        async () => await raw({url: 'https://example.test'}),
+        (error: unknown) => error instanceof ActionError
+            && error.code === ERROR_CODES.ERR_BAD_ARGS
+            && /annotatorProtocol/u.test(error.message),
+    );
+    await assert.rejects(
+        async () => await raw({annotatorProtocol: 'future-v9'}),
+        (error: unknown) => error instanceof ActionError
+            && error.code === ERROR_CODES.ERR_BAD_ARGS
+            && /unsupported annotator protocol/u.test(error.message),
+    );
+    await assert.rejects(
+        async () => await raw({annotatorProtocol: 'projection-v1', url: 'https://example.test'}),
+        (error: unknown) => error instanceof ActionError
+            && error.code === ERROR_CODES.ERR_BAD_ARGS
+            && /unsupported annotator payload fields: url/u.test(error.message),
+    );
 });
 
 test('annotator open pick recognize and visualize use one PageSession projection contract', async () => {
@@ -629,7 +672,7 @@ test('legacy canvas annotator protocol is adapted to the V2 PageSession and Quer
         });
         const memory = createMemoryWorkflow();
 
-        const opened = await invoke(runtime, 'entity_rules.annotator.open', {
+        const opened = await invokeCanvas(runtime, 'entity_rules.annotator.open', {
             workspaceName: 'ws-1',
             tabName: 'tab-1',
             url: page.url(),
@@ -646,7 +689,7 @@ test('legacy canvas annotator protocol is adapted to the V2 PageSession and Quer
 
         const button = await page.locator('#Save').boundingBox();
         assert.ok(button);
-        const picked = await invoke(runtime, 'entity_rules.annotator.pick', {
+        const picked = await invokeCanvas(runtime, 'entity_rules.annotator.pick', {
             purpose: 'entity',
             fingerprint: {
                 point: {x: button.x + button.width / 2, y: button.y + button.height / 2},
@@ -693,7 +736,7 @@ test('legacy canvas annotator protocol is adapted to the V2 PageSession and Quer
             }],
             preserved: {},
         };
-        const recognized = await invoke(runtime, 'entity_rules.annotator.recognize', {
+        const recognized = await invokeCanvas(runtime, 'entity_rules.annotator.recognize', {
             canvasDraft: scopedDraft,
         }, memory.workflow);
         const recognizedDraft = (recognized.reply.payload as {canvasDraft: {
@@ -709,13 +752,13 @@ test('legacy canvas annotator protocol is adapted to the V2 PageSession and Quer
         assert.equal(typeof v2TargetId, 'string');
         orderNumber.target = {classContains: 'ant-input', v2TargetId};
 
-        const checked = await invoke(runtime, 'entity_rules.annotator.check', {
+        const checked = await invokeCanvas(runtime, 'entity_rules.annotator.check', {
             canvasDraft: recognizedDraft,
         }, memory.workflow);
         assert.equal((checked.reply.payload as {stale: boolean}).stale, false);
 
         await assert.rejects(
-            async () => await invoke(runtime, 'entity_rules.annotator.save', {
+            async () => await invokeCanvas(runtime, 'entity_rules.annotator.save', {
                 canvasDraft: recognizedDraft,
                 profileName: 'order-form',
                 expectedRevision: 'sha256:nonexistent',
@@ -724,7 +767,7 @@ test('legacy canvas annotator protocol is adapted to the V2 PageSession and Quer
         );
         assert.equal(memory.profiles.has('order-form'), false);
 
-        const saved = await invoke(runtime, 'entity_rules.annotator.save', {
+        const saved = await invokeCanvas(runtime, 'entity_rules.annotator.save', {
             canvasDraft: recognizedDraft,
             profileName: 'order-form',
             expectedRevision: null,
@@ -732,7 +775,7 @@ test('legacy canvas annotator protocol is adapted to the V2 PageSession and Quer
         assert.equal((saved.reply.payload as {saved: boolean}).saved, true);
         assert.equal(memory.profiles.has('order-form'), true);
 
-        const discovered = await invoke(runtime, 'entity_rules.annotator.open', {
+        const discovered = await invokeCanvas(runtime, 'entity_rules.annotator.open', {
             workspaceName: 'ws-1',
             tabName: 'tab-1',
             url: page.url(),
@@ -750,7 +793,7 @@ test('legacy canvas annotator protocol is adapted to the V2 PageSession and Quer
         assert.deepEqual(discoveredPayload.availableProfiles.map((item) => item.profileName), ['order-form']);
         assert.notEqual(discoveredPayload.suggestedProfileName, 'order-form');
 
-        const explicitlyOpened = await invoke(runtime, 'entity_rules.annotator.open', {
+        const explicitlyOpened = await invokeCanvas(runtime, 'entity_rules.annotator.open', {
             workspaceName: 'ws-1',
             tabName: 'tab-1',
             url: page.url(),
@@ -775,7 +818,7 @@ test('legacy canvas annotator protocol is adapted to the V2 PageSession and Quer
         };
         editorADraft.entities[0].name = 'Editor A';
         editorBDraft.entities[0].name = 'Editor B';
-        const savedByA = await invoke(runtime, 'entity_rules.annotator.save', {
+        const savedByA = await invokeCanvas(runtime, 'entity_rules.annotator.save', {
             canvasDraft: editorADraft,
             profileName: 'order-form',
             expectedRevision: editorRevision,
@@ -785,7 +828,7 @@ test('legacy canvas annotator protocol is adapted to the V2 PageSession and Quer
         assert.notEqual(savedByARevision, editorRevision);
 
         await assert.rejects(
-            async () => await invoke(runtime, 'entity_rules.annotator.save', {
+            async () => await invokeCanvas(runtime, 'entity_rules.annotator.save', {
                 canvasDraft: editorBDraft,
                 profileName: 'order-form',
                 expectedRevision: editorRevision,
@@ -838,7 +881,7 @@ test('table module annotation keeps filter controls in the shared business scope
         const header = await page.getByRole('columnheader', {name: '订单编号'}).boundingBox();
         assert.ok(header);
 
-        const picked = await invoke(runtime, 'entity_rules.annotator.pick', {
+        const picked = await invokeCanvas(runtime, 'entity_rules.annotator.pick', {
             purpose: 'entity',
             fingerprint: {
                 point: {x: header.x + header.width / 2, y: header.y + header.height / 2},
@@ -875,7 +918,7 @@ test('table module annotation keeps filter controls in the shared business scope
             }],
             preserved: {},
         };
-        const recognized = await invoke(runtime, 'entity_rules.annotator.recognize', {
+        const recognized = await invokeCanvas(runtime, 'entity_rules.annotator.recognize', {
             canvasDraft: scopedDraft,
         }, memory.workflow);
         const canvasDraft = (recognized.reply.payload as {canvasDraft: {
@@ -903,7 +946,7 @@ test('table module annotation keeps filter controls in the shared business scope
         assert.equal(entity.annotations[0].target.placeholderEquals, '订单编号');
         assert.equal(entity.annotations[0].target.classContains, undefined);
 
-        const checked = await invoke(runtime, 'entity_rules.annotator.check', {canvasDraft}, memory.workflow);
+        const checked = await invokeCanvas(runtime, 'entity_rules.annotator.check', {canvasDraft}, memory.workflow);
         const checkPayload = checked.reply.payload as {
             stale: boolean;
             results: Array<{canvasAnnotationId: string; status: string; expected: string}>;
@@ -915,7 +958,7 @@ test('table module annotation keeps filter controls in the shared business scope
         assert.equal(checkPayload.results.find((result) => result.canvasAnnotationId === entity.annotations[2].id)?.expected, 'unique');
         assert.equal(checkPayload.results.find((result) => result.canvasAnnotationId === entity.columns[2].actions[0].id)?.expected, 'one_or_more');
 
-        const saved = await invoke(runtime, 'entity_rules.annotator.save', {
+        const saved = await invokeCanvas(runtime, 'entity_rules.annotator.save', {
             canvasDraft,
             profileName: 'orders-module',
             expectedRevision: null,
