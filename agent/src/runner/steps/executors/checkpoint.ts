@@ -105,6 +105,9 @@ export const executeBrowserCheckpoint = async (
                 error: {
                     code: error instanceof Error && 'code' in error ? String((error as {code: unknown}).code) : 'ERR_CHECKPOINT_BODY_FAILED',
                     message: error instanceof Error ? error.message : String(error),
+                    ...(error && typeof error === 'object' && 'details' in error
+                        ? {details: (error as {details?: unknown}).details}
+                        : {}),
                 },
             };
         }

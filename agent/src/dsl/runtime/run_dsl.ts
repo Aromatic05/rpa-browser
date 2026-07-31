@@ -260,6 +260,7 @@ const emitStepAndWait = async (
         throw new DslRuntimeError(
             result.error?.message || `DSL step failed: ${step.name}`,
             result.error?.code || 'ERR_DSL_STEP_FAILED',
+            result.error?.details,
         );
     }
     return result.data;
