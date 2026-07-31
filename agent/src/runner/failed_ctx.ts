@@ -1,6 +1,14 @@
 import type { RunStepsDeps } from './run_steps_types';
 import type { Checkpoint } from './checkpoint/types';
 import type { StepResolve, StepResult, StepUnion } from './steps/types';
+import type { DslCheckpointProvider } from '../dsl/emit';
+import type { DslEntityRulesResolver, DslResolveResolver } from '../dsl/link';
+
+export type CheckpointRuntimeSnapshot = {
+    provider: DslCheckpointProvider;
+    entityRulesResolver?: DslEntityRulesResolver;
+    resolveResolver?: DslResolveResolver;
+};
 
 export type FailedCtx = {
     runId: string;
@@ -18,6 +26,7 @@ export type FailedCtx = {
     checkpoints?: Checkpoint[];
     checkpointStepResolves?: Record<string, Record<string, StepResolve>>;
     checkpointBodies?: Record<string, string>;
+    checkpointRuntime?: CheckpointRuntimeSnapshot;
     currentUrl?: string;
 };
 
@@ -37,6 +46,7 @@ export const getFailedCtx = async (input: {
     checkpoints?: Checkpoint[];
     checkpointStepResolves?: Record<string, Record<string, StepResolve>>;
     checkpointBodies?: Record<string, string>;
+    checkpointRuntime?: CheckpointRuntimeSnapshot;
 }): Promise<FailedCtx> => {
     let currentUrl: string | undefined;
     try {
@@ -75,6 +85,7 @@ export const getFailedCtx = async (input: {
         checkpoints: input.checkpoints,
         checkpointStepResolves: input.checkpointStepResolves,
         checkpointBodies: input.checkpointBodies,
+        checkpointRuntime: input.checkpointRuntime,
         currentUrl,
     };
 };

@@ -100,7 +100,7 @@ const normalizePayload = (value: unknown): unknown => {
 };
 
 const normalizeRef = (expr: RefExpr): RefExpr => {
-    if (expr.ref.startsWith('input.') || expr.ref.startsWith('vars.') || expr.ref.startsWith('output.')) {
+    if (expr.ref.startsWith('input.') || expr.ref.startsWith('failure.') || expr.ref.startsWith('vars.') || expr.ref.startsWith('output.')) {
         return expr;
     }
     return {...expr, ref: `vars.${expr.ref}`};

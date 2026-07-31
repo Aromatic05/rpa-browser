@@ -3,8 +3,7 @@ import type { Checkpoint } from '../runner/checkpoint';
 import type { StepResolve } from '../runner/steps/types';
 import type { CheckpointHintFile, CheckpointResolveFile, SingleCheckpointFile } from '../runner/serialization/types';
 import { validateCheckpointResolveFileForSerialization, validateSingleCheckpointFileForSerialization } from '../runner/serialization/types';
-import { listDirectories, readValidatedYamlFile, readYamlFile, removePath, requireArtifactName, workflowArtifactPath, writeYamlFile } from './fs';
-import fs from 'node:fs';
+import { listDirectories, readTextFile, readValidatedYamlFile, readYamlFile, removePath, requireArtifactName, workflowArtifactPath, writeTextFile, writeYamlFile } from './fs';
 import { invalidWorkflowArtifact } from './errors';
 import type { WorkflowCodec } from './store';
 import type { DslCheckpointProvider } from '../dsl/emit';
@@ -66,9 +65,9 @@ export const createCheckpointCodec = (workflowName: string): WorkflowCodec<Workf
         writeYamlFile(path.join(dir, 'checkpoint_hints.yaml'), { version: 1, hints: value.hints });
         const bodyPath = path.join(dir, 'body.dsl');
         if (value.bodyDsl !== undefined) {
-            fs.writeFileSync(bodyPath, value.bodyDsl, 'utf8');
-        } else if (fs.existsSync(bodyPath)) {
-            fs.unlinkSync(bodyPath);
+            writeTextFile(bodyPath, value.bodyDsl);
+        } else {
+            removePath(bodyPath);
         }
         return value;
     },
@@ -132,9 +131,14 @@ const parseCheckpointHints = (value: unknown): CheckpointHintFile['hints'] => {
 
 const readCheckpointBody = (dir: string, checkpoint: Checkpoint): string | undefined => {
     const bodyPath = path.join(dir, 'body.dsl');
-    const exists = fs.existsSync(bodyPath);
-    validateCheckpointBody(checkpoint, exists ? fs.readFileSync(bodyPath, 'utf8') : undefined);
-    return exists ? fs.readFileSync(bodyPath, 'utf8') : undefined;
+    let bodyDsl: string | undefined;
+    try {
+        bodyDsl = readTextFile(bodyPath);
+    } catch (error) {
+        if (!isMissingFile(error)) {throw error;}
+    }
+    validateCheckpointBody(checkpoint, bodyDsl);
+    return bodyDsl;
 };
 
 const validateCheckpointBody = (checkpoint: Checkpoint, bodyDsl: string | undefined): void => {

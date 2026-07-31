@@ -2,7 +2,6 @@ import { getLogger } from '../../logging/logger';
 import type { Checkpoint, CheckpointCtx } from './types';
 import { runCheckpointProcedure } from './runtime';
 import { runCheckpointDslBody } from './dsl_body';
-import { createDslEntityRulesResolver } from '../../dsl/link';
 
 const log = getLogger('step');
 
@@ -26,16 +25,10 @@ export const maybeRunCheckpoint = async (ctx: CheckpointCtx): Promise<Checkpoint
             const output = await runCheckpointDslBody({
                 checkpoint: ctx.checkpoint, source: body, stepResolves: checkpointStepResolves || {}, executeStep: executeCheckpointStep,
                 workspaceName: ctx.failedCtx.workspaceName, deps: ctx.failedCtx.deps,
-                entityRulesResolver: (() => {
-                    const provider = ctx.failedCtx.deps.resolveEntityRulesProvider?.(ctx.failedCtx.workspaceName);
-                    return provider ? createDslEntityRulesResolver(provider) : undefined;
-                })(),
-                checkpointProvider: (() => {
-                    const workspace = ctx.failedCtx.deps.resolveWorkspace(ctx.failedCtx.workspaceName);
-                    return workspace.checkpoint && workspace.workflow
-                        ? workspace.checkpoint.getProvider(workspace.workflow) : undefined;
-                })(),
-                input: {failure: {step: {name: ctx.failedCtx.step.name, args: ctx.failedCtx.step.args}, error: {code: ctx.failedCtx.rawResult.error?.code, message: ctx.failedCtx.rawResult.error?.message}, attempt: ctx.failedCtx.checkpointAttempt, maxAttempts: ctx.failedCtx.checkpointMaxAttempts, ...(ctx.failedCtx.currentUrl ? {url: ctx.failedCtx.currentUrl} : {})}},
+                entityRulesResolver: ctx.failedCtx.checkpointRuntime?.entityRulesResolver,
+                resolveResolver: ctx.failedCtx.checkpointRuntime?.resolveResolver,
+                checkpointProvider: ctx.failedCtx.checkpointRuntime?.provider,
+                failure: {step: {name: ctx.failedCtx.step.name}, error: {code: ctx.failedCtx.rawResult.error?.code, message: ctx.failedCtx.rawResult.error?.message}, attempt: ctx.failedCtx.checkpointAttempt, maxAttempts: ctx.failedCtx.checkpointMaxAttempts, ...(ctx.failedCtx.currentUrl ? {url: ctx.failedCtx.currentUrl} : {})},
             });
             return {...ctx, runResult: {stepId: ctx.failedCtx.step.id, ok: true, data: {checkpointId: ctx.checkpoint.id, checkpointName: ctx.checkpoint.name, output}}};
         } catch (error) {

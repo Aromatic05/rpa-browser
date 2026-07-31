@@ -4,6 +4,7 @@ import type { DslEntityRulesResolver, DslResolveResolver } from '../../dsl/link'
 import type { StepResolve, StepResult, StepUnion } from '../steps/types';
 import type { Checkpoint } from './types';
 import type { DslCheckpointProvider } from '../../dsl/emit';
+import { injectStepResolve } from '../run_steps';
 
 export const MAX_CHECKPOINT_DSL_DEPTH = 16;
 
@@ -11,6 +12,7 @@ export const runCheckpointDslBody = async (options: {
     checkpoint: Checkpoint;
     source: string;
     input?: Record<string, unknown>;
+    failure?: Record<string, unknown>;
     stepResolves: Record<string, StepResolve>;
     executeStep: (step: StepUnion) => Promise<StepResult>;
     workspaceName: string;
@@ -29,12 +31,9 @@ export const runCheckpointDslBody = async (options: {
     }
     const port: StepExecutionPort = {
         execute: async (step) => {
-            const resolveId = typeof (step.args as Record<string, unknown>).resolveId === 'string'
-                ? (step.args as Record<string, unknown>).resolveId as string : undefined;
-            const runtimeStep = resolveId && options.stepResolves[resolveId]
-                ? {...step, args: Object.fromEntries(Object.entries(step.args).filter(([key]) => key !== 'resolveId')), resolve: options.stepResolves[resolveId]} as StepUnion
-                : step;
-            return await options.executeStep(runtimeStep);
+            const runtimeStep = injectStepResolve(step, options.stepResolves);
+            if (!runtimeStep.ok) {return {stepId: step.id, ok: false, error: runtimeStep.error};}
+            return await options.executeStep(runtimeStep.step);
         },
     };
     const resolveResolver: DslResolveResolver = {
@@ -46,6 +45,7 @@ export const runCheckpointDslBody = async (options: {
         workspaceName: options.workspaceName,
         deps: options.deps,
         input: {...(options.checkpoint.input || {}), ...(options.input || {})},
+        failure: options.failure,
         stepExecutionPort: port,
         entityRulesResolver: options.entityRulesResolver,
         resolveResolver,

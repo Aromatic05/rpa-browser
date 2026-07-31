@@ -23,6 +23,7 @@ export type RunDslContext = {
     workspaceName: string;
     deps: RunStepsDeps;
     input?: Record<string, unknown>;
+    failure?: Record<string, unknown>;
     checkpointProvider?: DslCheckpointProvider;
     logger?: Logger;
     entityRulesResolver?: DslEntityRulesResolver;
@@ -39,7 +40,7 @@ export type RunDslResult = {
 };
 
 export const runDsl = async (program: DslProgram, ctx: RunDslContext): Promise<RunDslResult> => {
-    const scope = createDslScope(ctx.input);
+    const scope = createDslScope(ctx.input, ctx.failure);
     const taskRunner = ctx.stepExecutionPort ? undefined : createDslTaskRunner({
         workspaceName: ctx.workspaceName, deps: ctx.deps, stopOnError: true, stepResolves: ctx.stepResolves,
     });

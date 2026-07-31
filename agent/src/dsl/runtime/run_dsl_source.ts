@@ -38,7 +38,7 @@ export const runDslSource = async (
         throw new DslValidationError(linked.diagnostics);
     }
     const normalized = normalizeDsl(linked.program);
-    const diagnostics = validateDsl(normalized);
+    const diagnostics = validateDsl(normalized, {allowFailureRoot: ctx.failure !== undefined});
     if (diagnostics.length > 0) {
         throw new DslValidationError(diagnostics);
     }

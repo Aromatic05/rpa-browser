@@ -22,6 +22,8 @@ import type { StepResolve } from './steps/types';
 import { isValidStepResolve } from './steps/resolve_utils';
 import { resolveStepEntityRulesExecution } from '../snapshot/rules/runtime';
 import { summarizeStepArgs } from './step_event_summary';
+import { createDslEntityRulesResolver, createDslResolveResolver } from '../dsl/link';
+import type { DslCheckpointProvider } from '../dsl/emit';
 
 export type {
     Checkpoint,
@@ -234,7 +236,7 @@ const STEP_RESOLVE_STEP_NAMES: ReadonlySet<StepName> = new Set<StepName>([
 const isRecord = (value: unknown): value is Record<string, unknown> =>
     typeof value === 'object' && value !== null;
 
-const injectStepResolve = (
+export const injectStepResolve = (
     step: StepUnion,
     stepResolves?: Record<string, StepResolve>,
 ): { ok: true; step: StepUnion } | { ok: false; error: ExecStepResult['error'] } => {
@@ -433,31 +435,43 @@ export const setRunStepsDeps = (deps: RunStepsDeps): void => {
 const resolveRunCheckpoints = (
     req: RunStepsRequest,
     deps: RunStepsDeps,
-): {checkpoints: RunnerCheckpoint[]; stepResolves: Record<string, Record<string, StepResolve>>; bodies: Record<string, string>} => {
-    if (req.checkpoints !== undefined) {
-        return {
-            checkpoints: req.checkpoints,
-            stepResolves: req.checkpointStepResolves ?? {},
-            bodies: {},
-        };
-    }
+): {checkpoints: RunnerCheckpoint[]; stepResolves: Record<string, Record<string, StepResolve>>; bodies: Record<string, string>; provider: DslCheckpointProvider; entityRulesResolver?: import('../dsl/link').DslEntityRulesResolver; resolveResolver?: import('../dsl/link').DslResolveResolver} => {
     const workspace = deps.resolveWorkspace(req.workspaceName);
-    if (!workspace.checkpoint?.getProvider || !workspace.workflow) {
-        return {checkpoints: [], stepResolves: {}, bodies: {}};
-    }
-    const provider = workspace.checkpoint.getProvider(workspace.workflow);
-    const checkpoints = (provider.listCheckpoints?.() ?? [])
+    const sourceProvider = req.checkpoints === undefined && workspace.checkpoint && workspace.workflow
+        ? workspace.checkpoint.getProvider(workspace.workflow)
+        : undefined;
+    const allCheckpoints = req.checkpoints ?? sourceProvider?.listCheckpoints?.() ?? [];
+    const stepResolves = req.checkpoints === undefined
+        ? Object.fromEntries(allCheckpoints.map((checkpoint) => [
+            checkpoint.id,
+            sourceProvider?.getCheckpointResolves?.(checkpoint.id) ?? {},
+        ]))
+        : req.checkpointStepResolves ?? {};
+    const bodies = Object.fromEntries(allCheckpoints.flatMap((checkpoint) => {
+        const body = sourceProvider?.getCheckpointBody?.(checkpoint.id);
+        return body ? [[checkpoint.id, body.source] as const] : [];
+    }));
+    const checkpointById = new Map(allCheckpoints.map((checkpoint) => [checkpoint.id, checkpoint]));
+    const provider: DslCheckpointProvider = {
+        getCheckpoint: (id) => checkpointById.get(id) ?? null,
+        getCheckpointResolves: (id) => stepResolves[id] ?? null,
+        getCheckpointBody: (id) => bodies[id] === undefined ? null : {source: bodies[id], stepResolves: stepResolves[id] ?? {}},
+        listCheckpoints: () => [...checkpointById.values()],
+    };
+    const checkpoints = allCheckpoints
         .filter((checkpoint) => checkpoint.kind === undefined || checkpoint.kind === 'recovery');
     return {
         checkpoints,
-        stepResolves: Object.fromEntries(checkpoints.map((checkpoint) => [
-            checkpoint.id,
-            provider.getCheckpointResolves?.(checkpoint.id) ?? {},
-        ])),
-        bodies: Object.fromEntries(checkpoints.flatMap((checkpoint) => {
-            const body = provider.getCheckpointBody?.(checkpoint.id);
-            return body ? [[checkpoint.id, body.source] as const] : [];
-        })),
+        stepResolves,
+        bodies,
+        provider,
+        entityRulesResolver: (() => {
+            const entityRulesProvider = deps.resolveEntityRulesProvider?.(req.workspaceName);
+            return entityRulesProvider ? createDslEntityRulesResolver(entityRulesProvider) : undefined;
+        })(),
+        resolveResolver: workspace.workflow
+            ? createDslResolveResolver(workspace.workflow, new Map(Object.entries(stepResolves)))
+            : undefined,
     };
 };
 
@@ -472,7 +486,7 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
     let activeStep: StepUnion | undefined;
     let activeCursor = req.stepsQueue.cursor;
     let activeResultPublished = false;
-    let checkpointRuntime: ReturnType<typeof resolveRunCheckpoints> = { checkpoints: [], stepResolves: {}, bodies: {} };
+    let checkpointRuntime: ReturnType<typeof resolveRunCheckpoints> | undefined;
 
     const finish = async (finalStatus: RunStatus): Promise<Checkpoint> => {
         const checkpoint = checkpointOf(req.runId, req.workspaceName, finalStatus, req.stepsQueue.cursor);
@@ -595,6 +609,11 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
                     checkpoints: checkpointRuntime.checkpoints,
                     checkpointStepResolves: checkpointRuntime.stepResolves,
                     checkpointBodies: checkpointRuntime.bodies,
+                    checkpointRuntime: {
+                        provider: checkpointRuntime.provider,
+                        entityRulesResolver: checkpointRuntime.entityRulesResolver,
+                        resolveResolver: checkpointRuntime.resolveResolver,
+                    },
                 });
                 const checkpointOutput = await runCheckpoint(failedCtx);
                 finalResult = checkpointOutput.finalResult;
