@@ -3,74 +3,52 @@ import assert from 'node:assert/strict';
 import { parseDsl } from '../../../../src/dsl/parser';
 import { normalizeDsl } from '../../../../src/dsl/normalize';
 
-test('normalizeDsl expands fill form into let query and fill act', () => {
-    const normalized = normalizeDsl(
-        parseDsl(`
-            fill form "order.form" field "buyer" with input.user.name
-        `),
-    );
+test('normalizeDsl expands fill form into one linked entity action', () => {
+    const normalized = normalizeDsl(parseDsl(`
+        fill form "order.form" field "buyer" with input.user.name
+    `));
 
-    assert.equal(normalized.body.length, 2);
-    assert.deepEqual(normalized.body[0], {
-        kind: 'let',
-        name: 'dslFormTarget1',
-        expr: {
-            kind: 'query',
-            op: 'entity.target',
-            businessTag: 'order.form',
-            payload: {
-                kind: 'form.field',
-                fieldKey: 'buyer',
-            },
-        },
-    });
-    assert.deepEqual(normalized.body[1], {
-        kind: 'act',
+    assert.deepEqual(normalized.body, [{
+        kind: 'linked_entity_act',
         action: 'fill',
-        target: { kind: 'ref', ref: 'vars.dslFormTarget1' },
-        value: { kind: 'ref', ref: 'input.user.name' },
-    });
-});
-
-test('normalizeDsl expands click form into let query and click act', () => {
-    const normalized = normalizeDsl(
-        parseDsl(`
-            click form "order.form" action "submit"
-        `),
-    );
-
-    assert.equal(normalized.body.length, 2);
-    assert.deepEqual(normalized.body[0], {
-        kind: 'let',
-        name: 'dslFormTarget1',
-        expr: {
+        targetQuery: {
             kind: 'query',
             op: 'entity.target',
             businessTag: 'order.form',
-            payload: {
-                kind: 'form.action',
-                actionIntent: 'submit',
-            },
+            payload: {kind: 'form.field', fieldKey: 'buyer'},
         },
-    });
-    assert.deepEqual(normalized.body[1], {
-        kind: 'act',
-        action: 'click',
-        target: { kind: 'ref', ref: 'vars.dslFormTarget1' },
-    });
+        value: {kind: 'ref', ref: 'input.user.name'},
+    }]);
 });
 
-test('normalizeDsl removes form_act and allocates stable temp names', () => {
-    const normalized = normalizeDsl(
-        parseDsl(`
-            fill form "order.form" field "buyer" with input.user.name
-            click form "order.form" action "submit"
-        `),
-    );
+test('normalizeDsl expands click form without generated temporary variables', () => {
+    const normalized = normalizeDsl(parseDsl(`
+        click form "order.form" action "submit"
+    `));
 
-    assert.equal(normalized.body.some((stmt) => stmt.kind === 'form_act'), false);
-    assert.equal(normalized.body[0].kind === 'let' ? normalized.body[0].name : '', 'dslFormTarget1');
-    assert.equal(normalized.body[2].kind === 'let' ? normalized.body[2].name : '', 'dslFormTarget2');
+    assert.deepEqual(normalized.body, [{
+        kind: 'linked_entity_act',
+        action: 'click',
+        targetQuery: {
+            kind: 'query',
+            op: 'entity.target',
+            businessTag: 'order.form',
+            payload: {kind: 'form.action', actionIntent: 'submit'},
+        },
+    }]);
+});
+
+test('normalizeDsl removes form and table sugar without leaking implementation variables', () => {
+    const normalized = normalizeDsl(parseDsl(`
+        fill form "order.form" field "buyer" with input.user.name
+        click form "order.form" action "submit"
+        fill table "orders.table" filter "orderNo" with input.orderNo
+        click table "orders.table" action "search"
+    `));
+
+    assert.equal(normalized.body.every((stmt) => stmt.kind === 'linked_entity_act'), true);
+    assert.equal(JSON.stringify(normalized).includes('dslFormTarget'), false);
+    assert.equal(JSON.stringify(normalized).includes('dslTableTarget'), false);
 });
 
 test('normalizeDsl expands table filter and module action syntax sugar', () => {
@@ -81,35 +59,25 @@ test('normalizeDsl expands table filter and module action syntax sugar', () => {
 
     assert.deepEqual(normalized.body, [
         {
-            kind: 'let',
-            name: 'dslTableTarget1',
-            expr: {
+            kind: 'linked_entity_act',
+            action: 'fill',
+            targetQuery: {
                 kind: 'query',
                 op: 'entity.target',
                 businessTag: 'orders.table',
                 payload: {kind: 'table.filter', fieldKey: '订单编号'},
             },
-        },
-        {
-            kind: 'act',
-            action: 'fill',
-            target: {kind: 'ref', ref: 'vars.dslTableTarget1'},
             value: {kind: 'ref', ref: 'input.orderNo'},
         },
         {
-            kind: 'let',
-            name: 'dslTableTarget2',
-            expr: {
+            kind: 'linked_entity_act',
+            action: 'click',
+            targetQuery: {
                 kind: 'query',
                 op: 'entity.target',
                 businessTag: 'orders.table',
                 payload: {kind: 'table.module_action', actionIntent: 'search'},
             },
-        },
-        {
-            kind: 'act',
-            action: 'click',
-            target: {kind: 'ref', ref: 'vars.dslTableTarget2'},
         },
     ]);
 });

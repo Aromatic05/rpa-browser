@@ -1,0 +1,30 @@
+export type DslEntityRulesEntityKind = 'form' | 'table' | 'dialog' | 'list' | 'panel' | 'toolbar' | 'kv';
+
+export type DslEntityRulesProfile = {
+    profileName: string;
+    entities: readonly {
+        entityKey: string;
+        businessTag: string;
+        kind: DslEntityRulesEntityKind;
+        fields: readonly {fieldKey: string; targetKind: 'form.field' | 'table.filter' | 'entity.field'}[];
+        actions: readonly {actionIntent: string; targetKind: 'form.action' | 'table.module_action' | 'entity.action'}[];
+        columns: readonly {fieldKey: string}[];
+        rowActions: readonly {actionIntent: string; targetKind: 'table.row_action'}[];
+        supportedQueries: readonly string[];
+        primaryKey?: {fieldKey: string};
+    }[];
+};
+
+export type DslEntityRulesResolutionDiagnostic = {
+    code: string;
+    message: string;
+};
+
+export type DslEntityRulesProfileResolution = {
+    profile: DslEntityRulesProfile | null;
+    diagnostics: readonly DslEntityRulesResolutionDiagnostic[];
+};
+
+export type DslEntityRulesResolver = {
+    resolveProfile: (profileName: string) => DslEntityRulesProfileResolution;
+};

@@ -16,6 +16,7 @@ import {
 } from './scope';
 import { resolveDslValue } from './refs';
 import { adaptDslQueryResult } from './value_adapter';
+import type { DslEntityRulesResolver } from '../link';
 
 export type RunDslContext = {
     workspaceName: string;
@@ -23,6 +24,7 @@ export type RunDslContext = {
     input?: Record<string, unknown>;
     checkpointProvider?: DslCheckpointProvider;
     logger?: Logger;
+    entityRulesResolver?: DslEntityRulesResolver;
 };
 
 export type RunDslResult = {
@@ -79,7 +81,7 @@ const executeStmt = async (
     switch (stmt.kind) {
         case 'let': {
             if (stmt.expr.kind === 'query') {
-                const step = buildQueryStep(stmt.expr);
+                const step = buildQueryStep(stmt.expr, (ref) => resolveDslValue(ref, scope));
                 const result = await emitStepAndWait(step, taskRunner, logger, stmtIndex);
                 const value = adaptDslQueryResult(result as import('../../runner/steps/types').BrowserQueryResult);
                 setDslValue(scope, `vars.${stmt.name}`, value);
@@ -111,22 +113,45 @@ const executeStmt = async (
             }
             const target = resolveDslValue(stmt.target, scope);
             if (stmt.action === 'click') {
-                await emitStepAndWait(buildClickStep(target), taskRunner, logger, stmtIndex);
+                await emitStepAndWait(buildClickStep(target, stmt.profileName), taskRunner, logger, stmtIndex);
                 return;
             }
             const value = resolveDslValue(stmt.value, scope);
             const step =
                 stmt.action === 'fill'
-                    ? buildFillStep(target, value)
+                    ? buildFillStep(target, value, stmt.profileName)
                     : stmt.action === 'type'
-                      ? buildTypeStep(target, value)
-                      : buildSelectStep(target, value);
+                      ? buildTypeStep(target, value, stmt.profileName)
+                      : buildSelectStep(target, value, stmt.profileName);
+            await emitStepAndWait(step, taskRunner, logger, stmtIndex);
+            return;
+        }
+        case 'linked_entity_act': {
+            const queryStep = buildQueryStep(stmt.targetQuery, (ref) => resolveDslValue(ref, scope));
+            const queryResult = await emitStepAndWait(queryStep, taskRunner, logger, stmtIndex);
+            const target = adaptDslQueryResult(
+                queryResult as import('../../runner/steps/types').BrowserQueryResult,
+            );
+            const profileName = stmt.targetQuery.profileName;
+            if (stmt.action === 'click') {
+                await emitStepAndWait(buildClickStep(target, profileName), taskRunner, logger, stmtIndex);
+                return;
+            }
+            const value = resolveDslValue(stmt.value, scope);
+            const step = stmt.action === 'fill'
+                ? buildFillStep(target, value, profileName)
+                : stmt.action === 'type'
+                    ? buildTypeStep(target, value, profileName)
+                    : buildSelectStep(target, value, profileName);
             await emitStepAndWait(step, taskRunner, logger, stmtIndex);
             return;
         }
         case 'form_act':
         case 'table_act': {
             throw new DslRuntimeError(`${stmt.kind} must be expanded before runtime`, 'ERR_DSL_NOT_NORMALIZED');
+        }
+        case 'entity_act': {
+            throw new DslRuntimeError('entity_act must be linked before runtime', 'ERR_DSL_NOT_LINKED');
         }
         case 'checkpoint': {
             const output = await runDslCheckpointCall({
@@ -207,14 +232,17 @@ const sleep = async (durationMs: number): Promise<void> => {
 
 const previewValue = (value: unknown): unknown => {
     if (typeof value === 'string') {
-        return value.length > 100 ? `${value.slice(0, 100)}...` : value;
+        return {type: 'string', length: value.length};
     }
-    if (!value || typeof value !== 'object') {
-        return value;
+    if (value === null || value === undefined) {
+        return {type: value === null ? 'null' : 'undefined'};
+    }
+    if (typeof value !== 'object') {
+        return {type: typeof value};
     }
     return {
         type: Array.isArray(value) ? 'array' : 'object',
-        keys: Object.keys(value),
+        ...(Array.isArray(value) ? {length: value.length} : {keys: Object.keys(value)}),
     };
 };
 

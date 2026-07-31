@@ -55,6 +55,7 @@ export const completeRunStepsDeps = (
     },
     input: TestExecutionBinding = {},
 ): RunStepsDeps => {
+    const hasExplicitWorkspaceName = input.workspaceName !== undefined;
     const workspaceName = input.workspaceName || 'ws-1';
     const tabName = input.tabName || 'tab-1';
     const completePage = (value?: any) => {
@@ -140,10 +141,15 @@ export const completeRunStepsDeps = (
         pageSession: partial.pageSession || new PageSnapshotSessionStore(),
         snapshotProjection: partial.snapshotProjection || new SnapshotProjectionBaselineStore(),
         resolveWorkspace: partial.resolveWorkspace || ((name: string) => {
-            if (name !== workspaceName) {
+            if (hasExplicitWorkspaceName && name !== workspaceName) {
                 throw new Error(`workspace not found: ${name}`);
             }
-            return workspace;
+            if (name === workspaceName) {return workspace;}
+            return {
+                ...workspace,
+                name,
+                workflow: {name},
+            } as RuntimeWorkspace;
         }),
         dispatchAction: partial.dispatchAction || (async (action: Action) => createReply(action)),
     } as RunStepsDeps;
