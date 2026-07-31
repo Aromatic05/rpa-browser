@@ -1,9 +1,10 @@
 import type { DslDiagnostic } from '../diagnostics';
 import { createDiagnostic } from '../diagnostics';
-import type { DslEntityRulesProfile, DslEntityRulesResolver } from './types';
-import type { DslExpr, DslProgram, DslStmt, EntityReference } from '../ast/types';
+import type { DslEntityRulesProfile, DslEntityRulesResolver, DslResolveResolver } from './types';
+import type { DslExpr, DslProgram, DslStmt, EntityReference, ResolveActStmt } from '../ast/types';
+import type { StepResolve } from '../../runner/steps/types';
 
-export type DslLinkResult = {program: DslProgram; diagnostics: DslDiagnostic[]};
+export type DslLinkResult = {program: DslProgram; diagnostics: DslDiagnostic[]; stepResolves: Record<string, StepResolve>};
 
 type LinkedReference = {
     profileName: string;
@@ -12,13 +13,49 @@ type LinkedReference = {
     query?: string;
 };
 
-export const linkDsl = (program: DslProgram, resolver?: DslEntityRulesResolver): DslLinkResult => {
+export const linkDsl = (
+    program: DslProgram,
+    resolver?: DslEntityRulesResolver,
+    resolveResolver?: DslResolveResolver,
+): DslLinkResult => {
     const diagnostics: DslDiagnostic[] = [];
     const profiles = new Map<string, DslEntityRulesProfile>();
+    const resolveBundles = new Map<string, {bundleName: string; resolves: Record<string, StepResolve>}>();
+    const stepResolves: Record<string, StepResolve> = {};
     const imports = program.imports || [];
 
     for (let index = 0; index < imports.length; index += 1) {
         const imported = imports[index];
+        if (imported.kind === 'resolves') {
+            if (!resolveResolver) {
+                diagnostics.push(createDiagnostic(
+                    'ERR_DSL_RESOLVE_RESOLVER_REQUIRED',
+                    `resolves resolver is required for bundle: ${imported.bundleName} (alias ${imported.alias})`,
+                    `imports.${index}`,
+                ));
+                continue;
+            }
+            const resolution = resolveResolver.resolveBundle(imported.bundleName);
+            for (const diagnostic of resolution.diagnostics) {
+                diagnostics.push(createDiagnostic(
+                    diagnostic.code,
+                    `${diagnostic.message} (bundle ${imported.bundleName}, alias ${imported.alias})`,
+                    `imports.${index}`,
+                ));
+            }
+            if (!resolution.resolves) {
+                if (resolution.diagnostics.length === 0) {
+                    diagnostics.push(createDiagnostic(
+                        'ERR_DSL_RESOLVE_BUNDLE_NOT_FOUND',
+                        `resolve bundle not found: ${imported.bundleName} (alias ${imported.alias})`,
+                        `imports.${index}`,
+                    ));
+                }
+                continue;
+            }
+            resolveBundles.set(imported.alias, {bundleName: imported.bundleName, resolves: resolution.resolves});
+            continue;
+        }
         if (!resolver) {
             diagnostics.push(createDiagnostic(
                 'ERR_DSL_ENTITY_RESOLVER_REQUIRED',
@@ -58,24 +95,32 @@ export const linkDsl = (program: DslProgram, resolver?: DslEntityRulesResolver):
     }
 
     return {
-        program: {...program, body: linkStatements(program.body, profiles, diagnostics, 'body')},
+        program: {...program, body: linkStatements(program.body, profiles, resolveBundles, stepResolves, diagnostics, 'body')},
         diagnostics,
+        stepResolves,
     };
 };
 
 const linkStatements = (
     body: readonly DslStmt[],
     profiles: ReadonlyMap<string, DslEntityRulesProfile>,
+    resolveBundles: ReadonlyMap<string, {bundleName: string; resolves: Record<string, StepResolve>}>,
+    stepResolves: Record<string, StepResolve>,
     diagnostics: DslDiagnostic[],
     path: string,
-): DslStmt[] => body.flatMap((stmt, index) => linkStmt(stmt, profiles, diagnostics, `${path}.${index}`));
+): DslStmt[] => body.flatMap((stmt, index) => linkStmt(stmt, profiles, resolveBundles, stepResolves, diagnostics, `${path}.${index}`));
 
 const linkStmt = (
     stmt: DslStmt,
     profiles: ReadonlyMap<string, DslEntityRulesProfile>,
+    resolveBundles: ReadonlyMap<string, {bundleName: string; resolves: Record<string, StepResolve>}>,
+    stepResolves: Record<string, StepResolve>,
     diagnostics: DslDiagnostic[],
     path: string,
 ): DslStmt[] => {
+    if (stmt.kind === 'resolve_act') {
+        return [linkResolveAction(stmt, resolveBundles, stepResolves, diagnostics, path)];
+    }
     if (stmt.kind === 'entity_act') {
         const linked = linkReference(stmt.target, stmt.action, profiles, diagnostics, `${path}.target`);
         if (!linked?.target) {return [stmt];}
@@ -99,18 +144,45 @@ const linkStmt = (
         return [{
             ...stmt,
             condition: linkExpr(stmt.condition, profiles, diagnostics, `${path}.condition`),
-            then: linkStatements(stmt.then, profiles, diagnostics, `${path}.then`),
-            else: stmt.else ? linkStatements(stmt.else, profiles, diagnostics, `${path}.else`) : undefined,
+            then: linkStatements(stmt.then, profiles, resolveBundles, stepResolves, diagnostics, `${path}.then`),
+            else: stmt.else ? linkStatements(stmt.else, profiles, resolveBundles, stepResolves, diagnostics, `${path}.else`) : undefined,
         }];
     }
     if (stmt.kind === 'for') {
         return [{
             ...stmt,
             iterable: linkExpr(stmt.iterable, profiles, diagnostics, `${path}.iterable`),
-            body: linkStatements(stmt.body, profiles, diagnostics, `${path}.body`),
+            body: linkStatements(stmt.body, profiles, resolveBundles, stepResolves, diagnostics, `${path}.body`),
         }];
     }
     return [stmt];
+};
+
+const linkResolveAction = (
+    stmt: ResolveActStmt,
+    bundles: ReadonlyMap<string, {bundleName: string; resolves: Record<string, StepResolve>}>,
+    stepResolves: Record<string, StepResolve>,
+    diagnostics: DslDiagnostic[],
+    path: string,
+): ResolveActStmt => {
+    const bundle = bundles.get(stmt.target.alias);
+    const ref = `${stmt.target.alias}.${stmt.target.symbol}`;
+    if (!bundle) {
+        diagnostics.push(createDiagnostic('ERR_DSL_RESOLVE_BUNDLE_NOT_FOUND', `resolve alias is not linked: ${stmt.target.alias}`, `${path}.target`));
+        return stmt;
+    }
+    const resolve = bundle.resolves[stmt.target.symbol];
+    if (!resolve) {
+        diagnostics.push(createDiagnostic(
+            'ERR_DSL_RESOLVE_SYMBOL_NOT_FOUND',
+            `resolve symbol not found: ${bundle.bundleName}.${ref}`,
+            `${path}.target`,
+        ));
+        return stmt;
+    }
+    const resolveId = `dsl:${stmt.target.alias}:${stmt.target.symbol}`;
+    stepResolves[resolveId] = resolve;
+    return {...stmt, target: {...stmt.target, bundleName: bundle.bundleName}, resolveId};
 };
 
 const linkExpr = (

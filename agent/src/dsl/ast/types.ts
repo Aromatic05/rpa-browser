@@ -7,9 +7,13 @@ export type DslImport = {
     kind: 'entity_rules';
     profileName: string;
     alias: string;
+} | {
+    kind: 'resolves';
+    bundleName: string;
+    alias: string;
 };
 
-export type DslStmt = LetStmt | ActStmt | EntityActStmt | LinkedEntityActStmt | FormActStmt | TableActStmt | CheckpointStmt | IfStmt | ForStmt;
+export type DslStmt = LetStmt | ActStmt | ResolveActStmt | EntityActStmt | LinkedEntityActStmt | FormActStmt | TableActStmt | CheckpointStmt | IfStmt | ForStmt;
 
 export type LetStmt = {
     kind: 'let';
@@ -38,6 +42,13 @@ export type EntityReference = {
     entityKey: string;
     member: string;
     rowValue?: RefExpr;
+};
+
+export type ResolveReference = {
+    kind: 'resolve_ref';
+    alias: string;
+    symbol: string;
+    bundleName?: string;
 };
 
 export type EntityQueryExpr = {
@@ -73,6 +84,14 @@ export type EntityActStmt = {
     action: 'fill' | 'click' | 'type' | 'select';
     target: EntityReference;
     value?: RefExpr;
+};
+
+export type ResolveActStmt = {
+    kind: 'resolve_act';
+    action: 'fill' | 'click' | 'type' | 'select';
+    target: ResolveReference;
+    value?: RefExpr;
+    resolveId?: string;
 };
 
 export type LinkedEntityActStmt = {

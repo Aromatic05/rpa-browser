@@ -28,3 +28,13 @@ export type DslEntityRulesProfileResolution = {
 export type DslEntityRulesResolver = {
     resolveProfile: (profileName: string) => DslEntityRulesProfileResolution;
 };
+
+export type DslResolveBundleResolution = {
+    resolves: Record<string, StepResolve> | null;
+    diagnostics: readonly DslEntityRulesResolutionDiagnostic[];
+};
+
+export type DslResolveResolver = {
+    resolveBundle: (bundleName: string) => DslResolveBundleResolution;
+};
+import type { StepResolve } from '../../runner/steps/types';

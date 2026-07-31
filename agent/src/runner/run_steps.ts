@@ -297,9 +297,10 @@ const injectStepResolve = (
         };
     }
 
+    const {resolveId: _resolveId, ...args} = argsRecord as Record<string, unknown>;
     return {
         ok: true,
-        step: { ...step, resolve },
+        step: {...step, args, resolve} as StepUnion,
     };
 };
 

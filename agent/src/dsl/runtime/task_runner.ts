@@ -13,7 +13,7 @@ import {
     type RunStepsDeps,
     type StepResult,
 } from '../../runner/run_steps';
-import type { StepUnion } from '../../runner/steps/types';
+import type { StepResolve, StepUnion } from '../../runner/steps/types';
 
 const DEFAULT_POLL_LIMIT = 100;
 
@@ -29,6 +29,7 @@ export type CreateDslTaskRunnerOptions = {
     workspaceName: string;
     deps: RunStepsDeps;
     stopOnError?: boolean;
+    stepResolves?: Record<string, StepResolve>;
 };
 
 export const createDslTaskRunner = (options: CreateDslTaskRunnerOptions): DslTaskRunner => {
@@ -55,6 +56,7 @@ export const createDslTaskRunner = (options: CreateDslTaskRunnerOptions): DslTas
             stepsQueue: queue,
             resultPipe: pipe,
             signalChannel: signals,
+            stepResolves: options.stepResolves,
             stopOnError: options.stopOnError ?? true,
             onCheckpoint: async (checkpoint) => {
                 latestCheckpoint = checkpoint;

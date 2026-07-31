@@ -6,6 +6,7 @@ import type {
     DslStmt,
     LinkedEntityActStmt,
     RefExpr,
+    ResolveActStmt,
 } from '../ast/types';
 import { createDiagnostic, type DslDiagnostic } from '../diagnostics/diagnostics';
 import { collectDefinitelyAssignedVariables } from '../analysis/definite_assignment';
@@ -52,6 +53,9 @@ const validateStmt = (
         case 'linked_entity_act':
             validateLinkedEntityAct(stmt, scope, diagnostics, path);
             return;
+        case 'resolve_act':
+            validateResolveAct(stmt, scope, diagnostics, path);
+            return;
         case 'form_act':
         case 'table_act':
         case 'entity_act':
@@ -87,6 +91,28 @@ const validateStmt = (
             return;
         }
     }
+};
+
+const validateResolveAct = (
+    stmt: ResolveActStmt,
+    scope: ValidateScope,
+    diagnostics: DslDiagnostic[],
+    path: string,
+): void => {
+    if (!stmt.resolveId) {
+        diagnostics.push(createDiagnostic('ERR_DSL_NOT_LINKED', 'resolve action must be linked before validation', `${path}.target`));
+    }
+    if (stmt.action === 'click') {
+        if (stmt.value) {
+            diagnostics.push(createDiagnostic('ERR_DSL_BAD_ACT_ARGS', 'DSL click does not accept a value', `${path}.value`));
+        }
+        return;
+    }
+    if (!stmt.value) {
+        diagnostics.push(createDiagnostic('ERR_DSL_BAD_ACT_ARGS', `DSL ${stmt.action} requires a ref value`, `${path}.value`));
+        return;
+    }
+    validateRef(stmt.value, scope, diagnostics, `${path}.value`);
 };
 
 const validateAct = (

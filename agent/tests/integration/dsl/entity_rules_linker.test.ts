@@ -6,6 +6,7 @@ import {
     linkDsl,
     type DslEntityRulesProfile,
     type DslEntityRulesResolver,
+    type DslResolveResolver,
 } from '../../../src/dsl/link';
 import { runDslSource, validateDslSource } from '../../../src/dsl/runtime';
 import { createWorkspaceEntityRulesProvider } from '../../../src/snapshot/rules/runtime';
@@ -48,6 +49,43 @@ const resolver: DslEntityRulesResolver = {
         ? {profile, diagnostics: []}
         : {profile: null, diagnostics: []},
 };
+
+const resolveResolver: DslResolveResolver = {
+    resolveBundle: (bundleName) => bundleName === 'main' || bundleName === 'secondary'
+        ? {resolves: {dismissBanner: {hint: {raw: {selector: `#${bundleName}`}}} as any}, diagnostics: []}
+        : {resolves: null, diagnostics: []},
+};
+
+test('parseDsl and linkDsl treat resolves as typed two-segment references with isolated runtime IDs', () => {
+    const linked = linkDsl(parseDsl(`
+use resolves "main" as recorded
+use resolves "secondary" as other
+click recorded.dismissBanner
+fill other.dismissBanner with input.keyword
+`), undefined, resolveResolver);
+
+    assert.deepEqual(linked.diagnostics, []);
+    assert.deepEqual(linked.program.imports, [
+        {kind: 'resolves', bundleName: 'main', alias: 'recorded'},
+        {kind: 'resolves', bundleName: 'secondary', alias: 'other'},
+    ]);
+    assert.equal((linked.program.body[0] as any).kind, 'resolve_act');
+    assert.equal((linked.program.body[0] as any).resolveId, 'dsl:recorded:dismissBanner');
+    assert.equal((linked.program.body[1] as any).resolveId, 'dsl:other:dismissBanner');
+    assert.notEqual((linked.program.body[0] as any).resolveId, (linked.program.body[1] as any).resolveId);
+    assert.deepEqual(Object.keys(linked.stepResolves).sort(), ['dsl:other:dismissBanner', 'dsl:recorded:dismissBanner']);
+    assert.throws(
+        () => parseDsl('use resolves "main" as recorded\nuse entity_rules "order-page" as recorded'),
+        /duplicate entity_rules alias/,
+    );
+});
+
+test('resolve bundle and symbol diagnostics are produced before execution', () => {
+    const missingBundle = validateDslSource('use resolves "missing" as recorded\nclick recorded.dismissBanner', undefined, resolveResolver);
+    const missingSymbol = validateDslSource('use resolves "main" as recorded\nclick recorded.unknown', undefined, resolveResolver);
+    assert.equal(missingBundle.diagnostics[0]?.code, 'ERR_DSL_RESOLVE_BUNDLE_NOT_FOUND');
+    assert.equal(missingSymbol.diagnostics[0]?.code, 'ERR_DSL_RESOLVE_SYMBOL_NOT_FOUND');
+});
 
 test('parseDsl keeps entity-rule imports out of executable statements and parses typed symbolic references', () => {
     const program = parseDsl(`

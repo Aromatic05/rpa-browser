@@ -189,7 +189,10 @@ export const loadWorkflowFromFs = (workflowName: string): Workflow => {
             }
             return resolveStore(internal, dummy.kind).get(name);
         },
-        list: (dummy) => manifest.catalog.filter((item) => item.kind === dummy.kind),
+        list: (dummy) => manifest.catalog.filter((item) => item.kind === dummy.kind).map((item) => {
+            resolveStore(internal, dummy.kind).get(item.name);
+            return item;
+        }),
         delete: (name, dummy) => {
             requireArtifactName(name, `${dummy.kind} artifact name`);
             if (dummy.kind === 'dsl' && name === manifest.entry.dsl) {
