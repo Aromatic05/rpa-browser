@@ -196,6 +196,97 @@ test('browser.checkpoint executes prepare/content/output with runtime scopes', a
     assert.equal((results[0].data as any).output.expectedHost, 'example.test');
 });
 
+test('browser.checkpoint requires a scoped checkpoint provider', async () => {
+    const {deps} = await createDeps();
+
+    const result = await executeBrowserCheckpoint({
+        id: 'cp-provider-missing',
+        name: 'browser.checkpoint',
+        args: {checkpointId: 'cp-procedure'},
+    }, deps, 'ws-1');
+
+    assert.equal(result.ok, false);
+    assert.equal(result.error?.code, 'ERR_CHECKPOINT_PROVIDER_UNAVAILABLE');
+});
+
+test('browser.checkpoint rejects a recovery checkpoint', async () => {
+    const {checkpoint, results} = await runWithCheckpoints({
+        id: 'cp-recovery-call',
+        name: 'browser.checkpoint',
+        args: {checkpointId: 'cp-recovery'},
+    } as StepUnion, [{
+        id: 'cp-recovery',
+        kind: 'recovery',
+        content: [],
+    }]);
+
+    assert.equal(checkpoint.status, 'failed');
+    assert.equal(results[0].ok, false);
+    assert.equal(results[0].error?.code, 'ERR_CHECKPOINT_NOT_CALLABLE');
+});
+
+test('concurrent runSteps calls isolate same-id procedure checkpoint snapshots', async () => {
+    let releaseFirstRun!: () => void;
+    const firstRunBlocked = new Promise<void>((resolve) => {releaseFirstRun = resolve;});
+    let firstRunReachedGate!: () => void;
+    const firstRunAtGate = new Promise<void>((resolve) => {firstRunReachedGate = resolve;});
+    const observed: Record<string, {output?: unknown; resolve?: unknown}> = {};
+    const createConcurrentDeps = (workspaceName: string) => completeRunStepsDeps({
+        config: {} as any,
+        pluginHost: {
+            getExecutors: () => ({
+                'test.gate': async (step: StepUnion) => {
+                    firstRunReachedGate();
+                    await firstRunBlocked;
+                    return {stepId: step.id, ok: true};
+                },
+                'browser.checkpoint': executeBrowserCheckpoint,
+                'browser.click': async (step: StepUnion) => {
+                    observed[workspaceName] = {resolve: step.resolve};
+                    return {stepId: step.id, ok: true, data: {workspaceName}};
+                },
+            }),
+        } as any,
+    }, {workspaceName, page: {url: () => `https://${workspaceName}.test`}});
+    const procedure = (workspaceName: string): Checkpoint => ({
+        id: 'shared-procedure',
+        kind: 'procedure',
+        content: [{
+            type: 'act',
+            step: {name: 'browser.click', args: {resolveId: 'shared-action'}},
+            saveAs: 'click',
+        } as CheckpointAction],
+        output: {workspaceName: {ref: 'local.click.workspaceName'}},
+    });
+    const run = async (workspaceName: string, deps: Awaited<ReturnType<typeof createConcurrentDeps>>, gated: boolean) => {
+        const queue = createStepsQueue([
+            ...(gated ? [{id: `${workspaceName}-gate`, name: 'test.gate', args: {}} as unknown as StepUnion] : []),
+            {id: `${workspaceName}-checkpoint`, name: 'browser.checkpoint', args: {checkpointId: 'shared-procedure'}} as StepUnion,
+        ]);
+        closeStepsQueue(queue);
+        const pipe = createResultPipe();
+        const checkpoint = await runSteps({
+            runId: `${workspaceName}-run`, workspaceName, stepsQueue: queue, resultPipe: pipe,
+            signalChannel: createSignalChannel(), checkpoints: [procedure(workspaceName)],
+            checkpointStepResolves: {['shared-procedure']: {'shared-action': {hint: {target: {nodeId: `node-${workspaceName}`}}}}},
+        }, deps);
+        return {checkpoint, results: readResultPipe(pipe).items};
+    };
+
+    const first = run('workspace-a', createConcurrentDeps('workspace-a'), true);
+    await firstRunAtGate;
+    const second = await run('workspace-b', createConcurrentDeps('workspace-b'), false);
+    releaseFirstRun();
+    const firstResult = await first;
+
+    for (const [workspaceName, result] of [['workspace-a', firstResult], ['workspace-b', second]] as const) {
+        assert.equal(result.checkpoint.status, 'completed');
+        const checkpointResult = result.results.find((item) => item.stepId === `${workspaceName}-checkpoint`);
+        assert.equal((checkpointResult?.data as any).output.workspaceName, workspaceName);
+        assert.deepEqual(observed[workspaceName].resolve, {hint: {target: {nodeId: `node-${workspaceName}`}}});
+    }
+});
+
 test('browser.checkpoint fails on missing ref and invalid output path', async () => {
     const step: StepUnion = {
         id: 'cp-step-2',
@@ -337,25 +428,16 @@ test('browser.checkpoint applies persisted V2 resolve sidecars to nested actions
         } as CheckpointAction],
     };
     const resolve = {hint: {target: {nodeId: nodeIds.next_page}}};
-    const workspace = deps.resolveWorkspace('ws-1');
-    deps.resolveWorkspace = () => ({
-        ...workspace,
-        workflow: {} as never,
-        checkpoint: {
-            getProvider: () => ({
-                getCheckpoint: (id: string) => id === checkpoint.id ? checkpoint : null,
-                getCheckpointResolves: (id: string) => id === checkpoint.id
-                    ? {'approve-button': resolve}
-                    : null,
-            }),
-        },
-    } as never);
-
     const result = await executeBrowserCheckpoint({
         id: 'cp-call-resolve',
         name: 'browser.checkpoint',
         args: {checkpointId: checkpoint.id},
-    }, deps, 'ws-1');
+    }, deps, 'ws-1', {
+        checkpointProvider: {
+            getCheckpoint: (id) => id === checkpoint.id ? checkpoint : null,
+            getCheckpointResolves: (id) => id === checkpoint.id ? {'approve-button': resolve} : null,
+        },
+    });
 
     assert.equal(result.ok, true);
     assert.deepEqual(receivedResolve, resolve);
@@ -384,23 +466,16 @@ test('browser.checkpoint validates nested entity_rules before invoking executors
             },
         } as CheckpointAction],
     };
-    const workspace = deps.resolveWorkspace('ws-1');
-    deps.resolveWorkspace = () => ({
-        ...workspace,
-        workflow: {} as never,
-        checkpoint: {
-            getProvider: () => ({
-                getCheckpoint: (id: string) => id === checkpoint.id ? checkpoint : null,
-                getCheckpointResolves: () => ({}),
-            }),
-        },
-    } as never);
-
     const result = await executeBrowserCheckpoint({
         id: 'cp-call-invalid-rules',
         name: 'browser.checkpoint',
         args: {checkpointId: checkpoint.id},
-    }, deps, 'ws-1');
+    }, deps, 'ws-1', {
+        checkpointProvider: {
+            getCheckpoint: (id) => id === checkpoint.id ? checkpoint : null,
+            getCheckpointResolves: () => ({}),
+        },
+    });
 
     assert.equal(result.ok, false);
     assert.equal(result.error?.code, 'ERR_BAD_ARGS');
