@@ -1,7 +1,8 @@
 import crypto from 'node:crypto';
 import type { StepResult as ExecStepResult, StepUnion } from './steps/types';
+import { validateCheckpointFileForSerialization } from './serialization/types';
 import { resolveStepArgsRefs } from './step_refs';
-import { runCheckpoint, materializeReferencedCheckpointRuntimeSnapshot, type Checkpoint as RunnerCheckpoint } from './checkpoint';
+import { isAutomaticRecoveryCheckpoint, runCheckpoint, materializeReferencedCheckpointRuntimeSnapshot, type Checkpoint as RunnerCheckpoint } from './checkpoint';
 import { getFailedCtx } from './failed_ctx';
 import { getLogger } from '../logging/logger';
 import {shouldMarkPageSessionDirtyByStep} from './session';
@@ -366,6 +367,9 @@ const resolveRunCheckpoints = (
     req: RunStepsRequest,
     deps: RunStepsDeps,
 ): {checkpoints: RunnerCheckpoint[]; stepResolves: Record<string, Record<string, StepResolve>>; bodies: Record<string, string>; provider: DslCheckpointProvider; entityRulesResolver?: import('../dsl/link').DslEntityRulesResolver; resolveResolver?: import('../dsl/link').DslResolveResolver} => {
+    if (req.checkpoints !== undefined) {
+        validateCheckpointFileForSerialization({version: 1, checkpoints: req.checkpoints});
+    }
     const workspace = deps.resolveWorkspace(req.workspaceName);
     const sourceProvider = req.checkpoints === undefined && workspace.checkpoint && workspace.workflow
         ? workspace.checkpoint.getProvider(workspace.workflow)
@@ -385,7 +389,7 @@ const resolveRunCheckpoints = (
         }))
         : req.checkpointBodies ?? {};
     const recoverySources = allCheckpoints
-        .filter((checkpoint) => checkpoint.kind === undefined || checkpoint.kind === 'recovery')
+        .filter(isAutomaticRecoveryCheckpoint)
         .flatMap((checkpoint) => bodies[checkpoint.id] === undefined ? [] : [bodies[checkpoint.id]]);
     const queuedProcedureSources = req.stepsQueue.items
         .slice(req.stepsQueue.cursor)
@@ -407,7 +411,7 @@ const resolveRunCheckpoints = (
         entityRulesProvider: deps.resolveEntityRulesProvider?.(req.workspaceName),
     });
     const checkpoints = snapshot.provider.listCheckpoints!()
-        .filter((checkpoint) => checkpoint.kind === undefined || checkpoint.kind === 'recovery');
+        .filter(isAutomaticRecoveryCheckpoint);
     return {
         checkpoints,
         stepResolves: snapshot.checkpointStepResolves,
@@ -421,12 +425,19 @@ const resolveRunCheckpoints = (
 const isWorkflow = (value: unknown): value is import('../workflow').Workflow =>
     Boolean(value && typeof value === 'object' && 'list' in value && 'get' in value);
 
+const requireCheckpointMaxAttempts = (value: number | undefined): number => {
+    if (value === undefined) {return Number.MAX_SAFE_INTEGER;}
+    const resolved = value;
+    if (!Number.isSafeInteger(resolved) || resolved < 0) {
+        throw new Error('checkpointMaxAttempts must be a non-negative finite integer');
+    }
+    return resolved;
+};
+
 export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promise<Checkpoint> => {
     const resolvedDeps = deps || defaultDeps;
     const stopOnError = req.stopOnError ?? true;
     const checkpointEnabled = req.checkpointEnabled ?? true;
-    const checkpointMaxAttempts = req.checkpointMaxAttempts ?? 1;
-    const checkpointAttempts = new Map<string, number>();
     const runLocalStepResults: RunLocalStepResults = {};
     let status: RunStatus = 'running';
     let activeStep: StepUnion | undefined;
@@ -470,6 +481,7 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
         if (!resolvedDeps) {
             throw new Error('runSteps deps not initialized');
         }
+        const checkpointMaxAttempts = requireCheckpointMaxAttempts(req.checkpointMaxAttempts);
         checkpointRuntime = resolveRunCheckpoints(req, resolvedDeps);
         while (true) {
         while (req.signalChannel.cursor < req.signalChannel.items.length) {
@@ -540,42 +552,60 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
             let finalResult = result;
             let nextStatus: RunStatus | undefined;
             if (!result.ok) {
-                const attempt = checkpointAttempts.get(step.id) ?? 0;
-                const failedCtx = await getFailedCtx({
-                    runId: req.runId,
-                    workspaceName: req.workspaceName,
-                    stepIndex,
-                    step,
-                    rawResult: result,
-                    stopOnError,
-                    checkpointEnabled,
-                    checkpointAttempt: attempt,
-                    checkpointMaxAttempts,
-                    inCheckpointFlow: false,
-                    deps: resolvedDeps,
-                    executeStep: (nestedStep, stepResolves) => executeOne(
-                        nestedStep,
-                        req.workspaceName,
-                        runLocalStepResults,
-                        resolvedDeps,
-                        stepResolves ?? req.stepResolves,
-                        checkpointRuntime!.provider,
-                        checkpointRuntime!.entityRulesResolver,
-                        checkpointRuntime!.resolveResolver,
-                    ),
-                    checkpoints: checkpointRuntime.checkpoints,
-                    checkpointStepResolves: checkpointRuntime.stepResolves,
-                    checkpointBodies: checkpointRuntime.bodies,
-                    checkpointRuntime: {
-                        ...checkpointRuntime,
+                const checkpointAttempts = new Map<string, number>();
+                let failedResult = result;
+                while (!failedResult.ok) {
+                    const failedCtx = await getFailedCtx({
+                        runId: req.runId,
+                        workspaceName: req.workspaceName,
+                        stepIndex,
+                        step,
+                        rawResult: failedResult,
+                        stopOnError,
+                        checkpointEnabled,
+                        checkpointAttempt: 0,
+                        checkpointAttempts: Object.fromEntries(checkpointAttempts),
+                        checkpointMaxAttempts,
+                        inCheckpointFlow: false,
+                        deps: resolvedDeps,
+                        executeStep: (nestedStep, stepResolves) => executeOne(
+                            nestedStep,
+                            req.workspaceName,
+                            runLocalStepResults,
+                            resolvedDeps,
+                            stepResolves ?? req.stepResolves,
+                            checkpointRuntime!.provider,
+                            checkpointRuntime!.entityRulesResolver,
+                            checkpointRuntime!.resolveResolver,
+                        ),
+                        checkpoints: checkpointRuntime.checkpoints,
                         checkpointStepResolves: checkpointRuntime.stepResolves,
                         checkpointBodies: checkpointRuntime.bodies,
-                    },
-                });
-                const checkpointOutput = await runCheckpoint(failedCtx);
-                finalResult = checkpointOutput.finalResult;
-                nextStatus = checkpointOutput.nextStatus;
-                checkpointAttempts.set(step.id, attempt + 1);
+                        checkpointRuntime: {
+                            ...checkpointRuntime,
+                            checkpointStepResolves: checkpointRuntime.stepResolves,
+                            checkpointBodies: checkpointRuntime.bodies,
+                        },
+                    });
+                    const checkpointOutput = await runCheckpoint(failedCtx);
+                    finalResult = checkpointOutput.finalResult;
+                    nextStatus = checkpointOutput.nextStatus;
+                    const checkpointId = typeof checkpointOutput.meta?.checkpointId === 'string'
+                        ? checkpointOutput.meta.checkpointId
+                        : undefined;
+                    if (checkpointId) {
+                        checkpointAttempts.set(checkpointId, (checkpointAttempts.get(checkpointId) ?? 0) + 1);
+                    }
+                    if (
+                        nextStatus
+                        || finalResult.ok
+                        || checkpointOutput.meta?.stopReason !== 'checkpoint_retry_failed'
+                        || !checkpointId
+                    ) {
+                        break;
+                    }
+                    failedResult = finalResult;
+                }
             }
 
             const output: StepResult = {

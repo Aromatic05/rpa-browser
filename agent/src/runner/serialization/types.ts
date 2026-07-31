@@ -3,6 +3,7 @@ import type { Checkpoint } from '../checkpoint/types';
 import type { StepArgsMap, StepName, StepResolve } from '../steps/types';
 import { assertStepEntityRulesControl, type StepEntityRulesControl } from '../../snapshot/rules/model';
 import { isValidStepResolve, normalizeStepResolve } from '../steps/resolve_utils';
+import {validateCheckpointRuntimeControls} from './checkpoint_validation';
 
 export type SerializedStep<TName extends StepName = StepName> = {
     id: string;
@@ -131,18 +132,24 @@ export const validateCheckpointFileForSerialization = (file: CheckpointFile): vo
         if (!checkpoint || typeof checkpoint !== 'object') {
             throw new Error('checkpoint entry must be an object');
         }
-        if (!checkpoint.id) {
+        if (typeof checkpoint.id !== 'string' || !checkpoint.id.trim()) {
             throw new Error('checkpoint entry must include id');
         }
-        if (!checkpoint.trigger || !Array.isArray(checkpoint.trigger.matchRules)) {
+        if (checkpoint.kind !== undefined && checkpoint.kind !== 'procedure' && checkpoint.kind !== 'recovery') {
+            throw new Error(`checkpoint ${checkpoint.id} kind must be procedure or recovery`);
+        }
+        if (checkpoint.trigger !== undefined && !Array.isArray(checkpoint.trigger.matchRules)) {
             throw new Error(`checkpoint ${checkpoint.id} must use trigger.matchRules`);
+        }
+        if (checkpoint.kind === 'recovery' && (
+            !checkpoint.trigger || checkpoint.trigger.matchRules.length === 0
+        )) {
+            throw new Error(`recovery checkpoint ${checkpoint.id} must include at least one trigger.matchRules entry`);
         }
         if ('matchRules' in checkpoint) {
             throw new Error(`checkpoint ${checkpoint.id} must use trigger.matchRules`);
         }
-        if (checkpoint.policy && 'trigger' in checkpoint.policy) {
-            throw new Error(`checkpoint ${checkpoint.id} must keep trigger at checkpoint root`);
-        }
+        validateCheckpointRuntimeControls(checkpoint);
         assertNoCoreHintFields(checkpoint, `checkpoints[${index}]`);
         assertCheckpointBodyDoesNotMixLegacyProcedureFields(checkpoint);
         assertCheckpointActionsEntityRules(checkpoint.prepare, `checkpoints[${index}].prepare`);

@@ -88,15 +88,14 @@ test('maybeEnterCheckpoint: disabled -> not entered', async () => {
     assert.equal(result.stopReason, 'checkpoint_not_entered');
 });
 
-test('maybeEnterCheckpoint: transient error does not enter', async () => {
+test('maybeEnterCheckpoint: timeout failures remain eligible for explicit recovery', async () => {
     const ctx = createCtx({
         failedCtx: createFailedCtx({
             rawResult: { stepId: 's1', ok: false, error: { code: 'ERR_TIMEOUT', message: 'timeout' } },
         }),
     });
     const result = await maybeEnterCheckpoint(ctx);
-    assert.equal(result.active, false);
-    assert.equal(result.stopReason, 'checkpoint_not_entered');
+    assert.equal(result.active, true);
 });
 
 test('maybeEnterCheckpoint: fatal error does not enter', async () => {
@@ -185,7 +184,8 @@ test('maybePickCheckpoint: checkpoint policy maxAttempts blocks re-entry', async
     const result = await maybePickCheckpoint(
         createCtx({
             failedCtx: createFailedCtx({
-                checkpointAttempt: 1,
+                checkpointAttempt: 0,
+                checkpointAttempts: {'cp-limited': 1},
                 checkpointMaxAttempts: 3,
                 checkpoints,
             }),
@@ -193,6 +193,36 @@ test('maybePickCheckpoint: checkpoint policy maxAttempts blocks re-entry', async
     );
     assert.equal(result.active, false);
     assert.equal(result.stopReason, 'checkpoint_not_found');
+});
+
+test('maybePickCheckpoint: an exhausted candidate does not consume another checkpoint budget', async () => {
+    const checkpoints: import('../../../../src/runner/checkpoint/types').Checkpoint[] = [
+        {
+            id: 'cp-exhausted',
+            priority: 10,
+            trigger: {matchRules: [{errorCode: 'ERR_NOT_FOUND'}]},
+            policy: {maxAttempts: 1},
+            content: [],
+        },
+        {
+            id: 'cp-fallback',
+            priority: 1,
+            trigger: {matchRules: [{errorCode: 'ERR_NOT_FOUND'}]},
+            policy: {maxAttempts: 1},
+            content: [],
+        },
+    ];
+    const result = await maybePickCheckpoint(createCtx({
+        failedCtx: createFailedCtx({
+            checkpointAttempt: 0,
+            checkpointAttempts: {'cp-exhausted': 1},
+            checkpoints,
+        }),
+    }));
+
+    assert.equal(result.active, true);
+    assert.equal(result.checkpoint?.id, 'cp-fallback');
+    assert.equal(result.meta?.checkpointAttempt, 0);
 });
 
 test('maybePickCheckpoint: entityExists matches by businessTag', async () => {
@@ -231,6 +261,32 @@ test('maybePickCheckpoint: entityExists matches by businessTag', async () => {
     assert.equal(result.active, true);
     assert.equal(result.checkpoint?.id, 'cp-entity-tag');
     assert.deepEqual(refreshReasons, ['explicit']);
+});
+
+test('maybePickCheckpoint: every match rule must match before recovery is selected', async () => {
+    const deps = await createDepsWithBusinessEntity();
+    deps.pageSession.ensureFresh = async (input) => {
+        const cached = deps.pageSession.read(input.pageKey);
+        assert.ok(cached);
+        return cached;
+    };
+    const result = await maybePickCheckpoint(createCtx({
+        failedCtx: createFailedCtx({
+            deps,
+            checkpoints: [{
+                id: 'requires-error-and-entity',
+                trigger: {matchRules: [
+                    {errorCode: 'ERR_NOT_FOUND'},
+                    {entityExists: {query: '', kind: 'panel', businessTag: 'missing.panel'}},
+                ]},
+                content: [],
+            }],
+        }),
+    }));
+
+    assert.equal(result.active, false);
+    assert.equal(result.checkpoint, undefined);
+    assert.equal(result.stopReason, 'checkpoint_not_found');
 });
 
 test('maybeBindCheckpoint: binds variables', async () => {

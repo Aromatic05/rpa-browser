@@ -10,7 +10,6 @@ Checkpoint 在 step 失败后提供恢复与过程化执行机制，核心入口
 
 - `procedure`
 - `recovery`
-- `guard`
 
 ### 结构
 
@@ -18,7 +17,7 @@ Checkpoint 在 step 失败后提供恢复与过程化执行机制，核心入口
 - `prepare[]`
 - `content[]`
 - `output`
-- `policy.maxAttempts/retryOriginal/stopOnFailure`
+- `policy.maxAttempts/retryOriginal`
 
 ### action 类型
 

@@ -32,7 +32,7 @@ export const buildRecordedRecoveryCheckpoint = (
         id: checkpointId, kind: 'recovery', name, input,
         trigger: {matchRules: recoveryTriggerRules(option, payload), entityRules: entityRuleControl(option)},
         body: {language: 'dsl', source: 'body.dsl'},
-        policy: {maxAttempts: 1, retryOriginal: payload.retryOriginal !== false, stopOnFailure: true}, enabled: true, priority: 0,
+        policy: {maxAttempts: 1, retryOriginal: payload.retryOriginal !== false}, enabled: true, priority: 0,
     };
     const bodyDsl = compileRecordedCheckpointDsl({workspace, checkpointId, entity: option, operations, stepResolves});
     return {kind: 'checkpoint', name: checkpointId, checkpoint, stepResolves, hints: {}, bodyDsl};

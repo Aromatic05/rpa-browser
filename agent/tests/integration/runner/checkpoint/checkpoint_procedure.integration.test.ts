@@ -217,6 +217,7 @@ test('browser.checkpoint rejects a recovery checkpoint', async () => {
     } as StepUnion, [{
         id: 'cp-recovery',
         kind: 'recovery',
+        trigger: {matchRules: [{errorCode: 'ERR_NOT_FOUND'}]},
         content: [],
     }]);
 

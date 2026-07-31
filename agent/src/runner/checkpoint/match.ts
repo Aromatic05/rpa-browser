@@ -4,7 +4,7 @@ import { buildPageSessionEntityView, filterPageSessionEntities } from '../sessio
 import type { EntityKind } from '../steps/types';
 import type {StepEntityRulesControl} from '../../snapshot/rules/model';
 import {visibleTextEvaluation} from '../page/visible_text';
-import { getCheckpointMatchRules, type Checkpoint, type CheckpointCtx, type MatchRule } from './types';
+import { getCheckpointMatchRules, isAutomaticRecoveryCheckpoint, type Checkpoint, type CheckpointCtx, type MatchRule } from './types';
 
 const log = getLogger('step');
 const getCheckpointBinding = async (ctx: CheckpointCtx) => {
@@ -22,7 +22,6 @@ const getCheckpointBinding = async (ctx: CheckpointCtx) => {
 };
 
 
-const TRANSIENT_ERROR_CODES = new Set(['ERR_TIMEOUT']);
 const FATAL_ERROR_CODES = new Set(['ERR_BAD_ARGS', 'ERR_INTERNAL']);
 
 const firstRuleStepName = (checkpoint: Checkpoint) => {
@@ -44,7 +43,7 @@ export const maybeEnterCheckpoint = async (ctx: CheckpointCtx): Promise<Checkpoi
         return { ...ctx, active: false, stopReason: 'checkpoint_not_entered' };
     }
 
-    if (code && (TRANSIENT_ERROR_CODES.has(code) || FATAL_ERROR_CODES.has(code))) {
+    if (code && FATAL_ERROR_CODES.has(code)) {
         log.info('checkpoint.enter', { entered: false, reason: 'checkpoint_not_entered', code, stepId: failedCtx.step.id });
         return { ...ctx, active: false, stopReason: 'checkpoint_not_entered' };
     }
@@ -57,8 +56,9 @@ export const maybePickCheckpoint = async (ctx: CheckpointCtx): Promise<Checkpoin
     if (!ctx.active) {return ctx;}
 
     const candidates = [...(ctx.failedCtx.checkpoints || [])]
+        .filter(isAutomaticRecoveryCheckpoint)
         .filter((item) => item.enabled !== false)
-        .filter((item) => ctx.failedCtx.checkpointAttempt < getEffectiveCheckpointMaxAttempts(item, ctx.failedCtx.checkpointMaxAttempts))
+        .filter((item) => checkpointAttemptFor(ctx, item.id) < getEffectiveCheckpointMaxAttempts(item, ctx.failedCtx.checkpointMaxAttempts))
         .filter((item) => {
             const scopedStepName = firstRuleStepName(item);
             return !scopedStepName || scopedStepName === ctx.failedCtx.step.name;
@@ -86,13 +86,24 @@ export const maybePickCheckpoint = async (ctx: CheckpointCtx): Promise<Checkpoin
         }
         if (hit) {
             log.info('checkpoint.pick', { checkpointId: candidate.id, checkpointName: candidate.name, stepId: ctx.failedCtx.step.id });
-            return { ...ctx, checkpoint: candidate, meta: { ...(ctx.meta || {}), checkpointId: candidate.id } };
+            return {
+                ...ctx,
+                checkpoint: candidate,
+                meta: {
+                    ...(ctx.meta || {}),
+                    checkpointId: candidate.id,
+                    checkpointAttempt: checkpointAttemptFor(ctx, candidate.id),
+                },
+            };
         }
     }
 
     log.info('checkpoint.pick', { checkpointId: null, stepId: ctx.failedCtx.step.id });
     return { ...ctx, active: false, stopReason: 'checkpoint_not_found' };
 };
+
+const checkpointAttemptFor = (ctx: CheckpointCtx, checkpointId: string): number =>
+    ctx.failedCtx.checkpointAttempts?.[checkpointId] ?? ctx.failedCtx.checkpointAttempt;
 
 const evalUrlIncludesRule = async (needle: string, ctx: CheckpointCtx): Promise<boolean> => {
     const binding = await getCheckpointBinding(ctx);
@@ -158,8 +169,10 @@ export const evalMatchRule = async (
 
 export const getEffectiveCheckpointMaxAttempts = (checkpoint: Checkpoint, fallbackMaxAttempts: number): number => {
     const candidateMaxAttempts = checkpoint.policy?.maxAttempts;
-    if (typeof candidateMaxAttempts === 'number' && Number.isFinite(candidateMaxAttempts) && candidateMaxAttempts >= 0) {
-        return Math.min(candidateMaxAttempts, fallbackMaxAttempts);
-    }
-    return fallbackMaxAttempts;
+    const policyMaxAttempts = typeof candidateMaxAttempts === 'number'
+        && Number.isSafeInteger(candidateMaxAttempts)
+        && candidateMaxAttempts >= 0
+        ? candidateMaxAttempts
+        : 1;
+    return Math.min(policyMaxAttempts, fallbackMaxAttempts);
 };

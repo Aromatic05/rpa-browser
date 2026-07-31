@@ -148,10 +148,15 @@ const checkpointBodyFailure = (ctx: CheckpointCtx, error: {code: string; message
 const checkpointFailureScope = (ctx: CheckpointCtx): Record<string, unknown> => ({
     step: freezeClone({id: ctx.failedCtx.step.id, name: ctx.failedCtx.step.name, args: ctx.failedCtx.step.args}),
     error: {code: ctx.failedCtx.rawResult.error?.code, message: ctx.failedCtx.rawResult.error?.message},
-    attempt: ctx.failedCtx.checkpointAttempt + 1,
+    attempt: selectedCheckpointAttempt(ctx) + 1,
     maxAttempts: getEffectiveCheckpointMaxAttempts(ctx.checkpoint!, ctx.failedCtx.checkpointMaxAttempts),
     ...(ctx.failedCtx.currentUrl ? {url: ctx.failedCtx.currentUrl} : {}),
 });
+
+const selectedCheckpointAttempt = (ctx: CheckpointCtx): number =>
+    typeof ctx.meta?.checkpointAttempt === 'number'
+        ? ctx.meta.checkpointAttempt
+        : ctx.failedCtx.checkpointAttempt;
 
 const freezeClone = <T>(value: T): T => {
     const clone = structuredClone(value);

@@ -173,6 +173,18 @@ checkpoints:
     assert.doesNotThrow(() => validateCheckpointFileForSerialization(checkpointFile));
 });
 
+test('procedure checkpoints may omit automatic recovery triggers', () => {
+    const procedureFile = parse(`
+version: 1
+checkpoints:
+  - id: legacy-procedure
+    kind: procedure
+    content: []
+`) as CheckpointFile;
+
+    assert.doesNotThrow(() => validateCheckpointFileForSerialization(procedureFile));
+});
+
 test('checkpoints.yaml rejects misplaced trigger fields', () => {
     const withTopLevel = parse(`
 version: 1
@@ -198,6 +210,107 @@ checkpoints:
 
     assert.throws(() => validateCheckpointFileForSerialization(withTopLevel), /trigger\.matchRules/);
     assert.throws(() => validateCheckpointFileForSerialization(withPolicyTrigger), /checkpoint root/);
+});
+
+test('checkpoints.yaml rejects recovery checkpoints without an explicit match rule', () => {
+    const catchAll = parse(`
+version: 1
+checkpoints:
+  - id: catch-all
+    kind: recovery
+    trigger:
+      matchRules: []
+    content: []
+`) as CheckpointFile;
+
+    assert.throws(
+        () => validateCheckpointFileForSerialization(catchAll),
+        /recovery checkpoint catch-all must include at least one trigger\.matchRules entry/,
+    );
+});
+
+test('checkpoints.yaml rejects unsupported checkpoint kinds instead of persisting silent no-ops', () => {
+    for (const kind of ['guard', 'recoverry']) {
+        const invalidKind = parse(`
+version: 1
+checkpoints:
+  - id: unsupported-kind
+    kind: ${kind}
+    trigger:
+      matchRules:
+        - errorCode: ERR_NOT_FOUND
+    content: []
+`) as CheckpointFile;
+
+        assert.throws(
+            () => validateCheckpointFileForSerialization(invalidKind),
+            /checkpoint unsupported-kind kind must be procedure or recovery/,
+        );
+    }
+});
+
+test('checkpoints.yaml normalizes legacy stopOnFailure=true and rejects unsupported false semantics', () => {
+    const legacy = parse(`
+version: 1
+checkpoints:
+  - id: legacy-stop
+    kind: recovery
+    trigger:
+      matchRules:
+        - errorCode: ERR_NOT_FOUND
+    policy:
+      stopOnFailure: true
+    content: []
+`) as CheckpointFile;
+    const unsupported = parse(`
+version: 1
+checkpoints:
+  - id: unsupported-stop
+    kind: recovery
+    trigger:
+      matchRules:
+        - errorCode: ERR_NOT_FOUND
+    policy:
+      stopOnFailure: false
+    content: []
+`) as CheckpointFile;
+
+    validateCheckpointFileForSerialization(legacy);
+    assert.equal('stopOnFailure' in (legacy.checkpoints[0].policy || {}), false);
+    assert.throws(
+        () => validateCheckpointFileForSerialization(unsupported),
+        /checkpoint unsupported-stop policy\.stopOnFailure=false is unsupported/,
+    );
+});
+
+test('checkpoints.yaml rejects malformed runtime controls and match rules', () => {
+    const base = (): CheckpointFile => ({
+        version: 1,
+        checkpoints: [{
+            id: 'invalid-control',
+            kind: 'recovery',
+            trigger: {matchRules: [{errorCode: 'ERR_NOT_FOUND'}]},
+            content: [],
+        }],
+    });
+    const cases: Array<{mutate: (checkpoint: any) => void; message: RegExp}> = [
+        {mutate: (checkpoint) => { checkpoint.enabled = 'false'; }, message: /enabled must be a boolean/},
+        {mutate: (checkpoint) => { checkpoint.priority = Number.NaN; }, message: /priority must be a finite number/},
+        {mutate: (checkpoint) => { checkpoint.policy = {maxAttempts: -1}; }, message: /maxAttempts must be a non-negative integer/},
+        {mutate: (checkpoint) => { checkpoint.policy = {maxAttempts: 1.5}; }, message: /maxAttempts must be a non-negative integer/},
+        {mutate: (checkpoint) => { checkpoint.policy = {retryOriginal: 'yes'}; }, message: /retryOriginal must be a boolean/},
+        {mutate: (checkpoint) => { checkpoint.policy = {unknown: true}; }, message: /unsupported policy field: unknown/},
+        {mutate: (checkpoint) => { checkpoint.trigger.matchRules = [{}]; }, message: /match rule must contain exactly one supported condition/},
+        {mutate: (checkpoint) => { checkpoint.trigger.matchRules = [{errorCode: 'ERR', extra: true}]; }, message: /match rule must contain exactly one supported condition/},
+        {mutate: (checkpoint) => { checkpoint.trigger.matchRules = [{errorCode: ''}]; }, message: /errorCode must be a non-empty string/},
+        {mutate: (checkpoint) => { checkpoint.trigger.matchRules = [{entityExists: {query: 42}}]; }, message: /entityExists.query must be a string/},
+    ];
+
+    for (const item of cases) {
+        const file = base();
+        item.mutate(file.checkpoints[0]);
+        assert.throws(() => validateCheckpointFileForSerialization(file), item.message);
+    }
 });
 
 test('checkpoints.yaml rejects nested rawContext, hint, and locatorCandidates in core content', () => {

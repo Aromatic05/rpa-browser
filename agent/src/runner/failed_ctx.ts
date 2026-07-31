@@ -13,6 +13,7 @@ export type FailedCtx = {
     stopOnError: boolean;
     checkpointEnabled: boolean;
     checkpointAttempt: number;
+    checkpointAttempts?: Readonly<Record<string, number>>;
     checkpointMaxAttempts: number;
     inCheckpointFlow: boolean;
     deps: RunStepsDeps;
@@ -33,6 +34,7 @@ export const getFailedCtx = async (input: {
     stopOnError: boolean;
     checkpointEnabled: boolean;
     checkpointAttempt: number;
+    checkpointAttempts?: Readonly<Record<string, number>>;
     checkpointMaxAttempts: number;
     inCheckpointFlow: boolean;
     deps: RunStepsDeps;
@@ -72,6 +74,7 @@ export const getFailedCtx = async (input: {
         stopOnError: input.stopOnError,
         checkpointEnabled: input.checkpointEnabled,
         checkpointAttempt: input.checkpointAttempt,
+        checkpointAttempts: input.checkpointAttempts,
         checkpointMaxAttempts: input.checkpointMaxAttempts,
         inCheckpointFlow: input.inCheckpointFlow,
         deps: input.deps,

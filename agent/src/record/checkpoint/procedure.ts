@@ -50,7 +50,7 @@ export const buildRecordedProcedureCheckpoint = (
     const checkpoint: Checkpoint = {
         id: checkpointId, kind: 'procedure', name, input,
         trigger: {matchRules: [{entityExists: entityCondition(option)}], entityRules: entityRuleControl(option)},
-        body: {language: 'dsl', source: 'body.dsl'}, policy: {stopOnFailure: true}, enabled: true, priority: 0,
+        body: {language: 'dsl', source: 'body.dsl'}, enabled: true, priority: 0,
     };
     const bodyDsl = compileRecordedCheckpointDsl({workspace, checkpointId, entity: option, operations, stepResolves, output});
     return {kind: 'checkpoint', name: checkpointId, checkpoint, stepResolves, hints: {}, bodyDsl};

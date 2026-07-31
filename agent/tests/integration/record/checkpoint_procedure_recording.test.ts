@@ -461,7 +461,6 @@ test('recovery recording is triggered by the selected error entity rule and exec
     assert.deepEqual(artifact.checkpoint.policy, {
         maxAttempts: 1,
         retryOriginal: true,
-        stopOnFailure: true,
     });
     const calls: StepUnion[] = [];
     await runCheckpointDslBody({
