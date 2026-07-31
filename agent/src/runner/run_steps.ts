@@ -21,6 +21,7 @@ import type {
 import type { StepResolve } from './steps/types';
 import { isValidStepResolve } from './steps/resolve_utils';
 import { resolveStepEntityRulesExecution } from '../snapshot/rules/runtime';
+import { summarizeStepArgs } from './step_event_summary';
 
 export type {
     Checkpoint,
@@ -546,7 +547,7 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
                 workspaceName: req.workspaceName,
                 stepId: step.id,
                 name: step.name,
-                argsSummary: step.args,
+                argsSummary: summarizeStepArgs(step),
             });
 
             const result = await executeOne(step, req.workspaceName, runLocalStepResults, resolvedDeps, req.stepResolves);
