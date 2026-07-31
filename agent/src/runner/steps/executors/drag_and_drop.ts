@@ -1,9 +1,8 @@
 import type { Step, StepResult } from '../types';
-import type { RunStepsDeps } from '../../run_steps';
+import type { RunStepsDeps } from '../../run_steps_types';
 import { awaitPageBoundBinding } from '../helpers/runtime_binding';
-import { mapTraceError } from '../helpers/target';
 import { pickDelayMs, waitForHumanDelay } from '../helpers/delay';
-import { resolveTarget } from '../helpers/resolve_target';
+import { resolveAtomicActionTarget } from '../../../snapshot';
 
 export const executeBrowserDragAndDrop = async (
     step: Step<'browser.drag_and_drop'>,
@@ -11,59 +10,57 @@ export const executeBrowserDragAndDrop = async (
     workspaceName: string,
 ): Promise<StepResult> => {
     const binding = await awaitPageBoundBinding(deps, workspaceName);
-    const source = await resolveTarget(binding, {
+    const source = await resolveAtomicActionTarget(binding.page, {
         nodeId: step.args.sourceNodeId,
         selector: step.args.sourceSelector,
-        resolve: step.resolve,
-    }, {
-        deps,
-        workspaceName,
-        reason: 'browser.drag_and_drop.source',
-        stepId: step.id,
-        stepName: step.name,
     });
-    if (!source.ok) {return { stepId: step.id, ok: false, error: source.error };}
-
-    if (step.args.destNodeId || step.args.destSelector) {
-        const dest = await resolveTarget(binding, {
-            nodeId: step.args.destNodeId,
-            selector: step.args.destSelector,
-            resolve: step.resolve,
-        }, {
-            deps,
-            workspaceName,
-            reason: 'browser.drag_and_drop.dest',
-            stepId: step.id,
-            stepName: step.name,
-        });
-        if (!dest.ok) {return { stepId: step.id, ok: false, error: dest.error };}
-        const result = await binding.traceTools['trace.locator.dragDrop']({
-            source: { selector: source.target.selector },
-            dest: { selector: dest.target.selector },
-        });
-        if (!result.ok) {
-            return { stepId: step.id, ok: false, error: mapTraceError(result.error) };
-        }
-        if (deps.config.humanPolicy.enabled) {
-            const delayMs = pickDelayMs(
-                deps.config.humanPolicy.clickDelayMsRange.min,
-                deps.config.humanPolicy.clickDelayMsRange.max,
-            );
-            if (delayMs > 0) {await waitForHumanDelay(binding.page, delayMs);}
-        }
-        return { stepId: step.id, ok: true };
+    if (!source.ok) {
+        return { stepId: step.id, ok: false, error: {
+            code: source.error.code,
+            message: source.error.message,
+            details: source.error.details,
+        } };
     }
 
-    if (!step.args.destCoord) {
-        return { stepId: step.id, ok: false, error: { code: 'ERR_INTERNAL', message: 'missing drag destination' } };
+    try {
+        if (step.args.destNodeId || step.args.destSelector) {
+            const destination = await resolveAtomicActionTarget(binding.page, {
+                nodeId: step.args.destNodeId,
+                selector: step.args.destSelector,
+            });
+            if (!destination.ok) {
+                return { stepId: step.id, ok: false, error: {
+                    code: destination.error.code,
+                    message: destination.error.message,
+                    details: destination.error.details,
+                } };
+            }
+            await source.target.locator.dragTo(destination.target.locator, {
+                timeout: deps.config.waitPolicy.visibleTimeoutMs,
+            });
+        } else if (step.args.destCoord) {
+            const box = await source.target.locator.boundingBox();
+            if (!box) {
+                return { stepId: step.id, ok: false, error: {
+                    code: 'ERR_UNRESOLVED',
+                    message: 'drag source has no visible bounding box',
+                    details: { nodeId: source.target.nodeId },
+                } };
+            }
+            await binding.page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+            await binding.page.mouse.down();
+            await binding.page.mouse.move(step.args.destCoord.x, step.args.destCoord.y, { steps: 8 });
+            await binding.page.mouse.up();
+        } else {
+            return { stepId: step.id, ok: false, error: { code: 'ERR_BAD_ARGS', message: 'missing drag destination' } };
+        }
+    } catch (error) {
+        return { stepId: step.id, ok: false, error: {
+            code: /timeout/i.test(String(error)) ? 'ERR_TIMEOUT' : 'ERR_INTERNAL',
+            message: error instanceof Error ? error.message : String(error),
+        } };
     }
-    const result = await binding.traceTools['trace.locator.dragDrop']({
-        source: { selector: source.target.selector },
-        destCoord: step.args.destCoord,
-    });
-    if (!result.ok) {
-        return { stepId: step.id, ok: false, error: mapTraceError(result.error) };
-    }
+
     if (deps.config.humanPolicy.enabled) {
         const delayMs = pickDelayMs(
             deps.config.humanPolicy.clickDelayMsRange.min,
@@ -71,5 +68,13 @@ export const executeBrowserDragAndDrop = async (
         );
         if (delayMs > 0) {await waitForHumanDelay(binding.page, delayMs);}
     }
-    return { stepId: step.id, ok: true };
+    return {
+        stepId: step.id,
+        ok: true,
+        data: {
+            sourceNodeId: source.target.nodeId,
+            captureRevision: source.target.snapshot.observation.identity.captureRevision,
+            resolver: 'snapshot-v2-canonical-locator',
+        },
+    };
 };

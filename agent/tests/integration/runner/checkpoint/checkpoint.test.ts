@@ -8,6 +8,7 @@ import type { CheckpointCtx } from '../../../../src/runner/checkpoint/types';
 import type { FailedCtx } from '../../../../src/runner/failed_ctx';
 import type { StepResult, StepUnion } from '../../../../src/runner/steps/types';
 import { completeRunStepsDeps } from '../../../helpers/run_steps_workspace';
+import { createV2BusinessPage } from '../../../helpers/v2_business_page';
 
 const rawFailure: StepResult = {
     stepId: 's1',
@@ -54,81 +55,30 @@ const createCtx = (overrides?: Partial<CheckpointCtx>): CheckpointCtx => {
     };
 };
 
-const createBindingWithBusinessEntity = (businessTag: string) => {
+const createDepsWithBusinessEntity = async () => {
     const workspaceName = 'ws-1';
     const tabName = 'tab-token-1';
     const url = 'https://example.test/orders';
-    const snapshot = {
-        root: { id: 'root', role: 'root', children: [] },
-        nodeIndex: {},
-        entityIndex: { entities: {}, byNodeId: {} },
-        locatorIndex: {},
-        bboxIndex: {},
-        attrIndex: {},
-        contentStore: {},
-    } as any;
-
-    return {
-        workspaceName,
-        tabName,
-        page: { url: () => url },
-        traceTools: {
-            'trace.page.getInfo': async () => ({ ok: true, data: { url } }),
-            'trace.page.evaluate': async () => ({ ok: true, data: true }),
-        },
-        traceCtx: {
-            cache: {
-                snapshotSessionStore: {
-                    version: 1,
-                    entries: {
-                        [`${workspaceName}:${tabName}`]: {
-                            pageIdentity: { workspaceName, tabName, url },
-                            baseSnapshot: snapshot,
-                            finalSnapshot: snapshot,
-                            finalEntityView: {
-                                entities: [
-                                    {
-                                        id: 'final_ent_1',
-                                        entityId: 'ent_1',
-                                        nodeId: 'node_1',
-                                        kind: 'table',
-                                        type: 'region',
-                                        name: 'Order Table',
-                                        businessTag,
-                                        source: 'auto',
-                                    },
-                                ],
-                                byNodeId: {
-                                    node_1: [
-                                        {
-                                            id: 'final_ent_1',
-                                            entityId: 'ent_1',
-                                            nodeId: 'node_1',
-                                            kind: 'table',
-                                            type: 'region',
-                                            name: 'Order Table',
-                                            businessTag,
-                                            source: 'auto',
-                                        },
-                                    ],
-                                },
-                                bindingIndex: {
-                                    fieldsByEntity: {},
-                                    actionsByEntity: {},
-                                    columnsByEntity: {},
-                                },
-                            },
-                            overlays: { renamedNodes: {}, addedEntities: [], deletedEntities: [] },
-                            diffBaselines: {},
-                            dirty: false,
-                            lastRefreshAt: Date.now(),
-                            version: 1,
-                        },
-                    },
-                },
+    const page = { url: () => url };
+    const deps = completeRunStepsDeps(
+        { pluginHost: {} as any, config: {} as any },
+        {
+            workspaceName,
+            tabName,
+            page,
+            traceTools: {
+                'trace.page.getInfo': async () => ({ ok: true, data: { url } }),
+                'trace.page.evaluate': async () => ({ ok: true, data: true }),
             },
         },
-    } as any;
+    );
+    const { capture } = createV2BusinessPage();
+    await deps.pageSession.ensureFresh({
+        pageKey: page as never,
+        pageUrl: url,
+        capture: async () => capture,
+    });
+    return deps;
 };
 
 test('maybeEnterCheckpoint: disabled -> not entered', async () => {
@@ -253,28 +203,33 @@ test('maybePickCheckpoint: entityExists matches by businessTag', async () => {
             trigger: { matchRules: [
                 {
                     entityExists: {
-                        query: 'Order',
+                        query: 'order table',
                         kind: 'table',
-                        businessTag: 'order.list.main',
+                        businessTag: 'order.table.main',
                     },
                 },
             ] },
             content: [],
         },
     ]);
-    const binding = createBindingWithBusinessEntity('order.list.main');
+    const deps = await createDepsWithBusinessEntity();
+    const refreshReasons: Array<'explicit' | undefined> = [];
+    deps.pageSession.ensureFresh = async (input) => {
+        refreshReasons.push(input.reason);
+        const cached = deps.pageSession.read(input.pageKey);
+        assert.ok(cached);
+        return cached;
+    };
     const result = await maybePickCheckpoint(
         createCtx({
             failedCtx: createFailedCtx({
-                deps: completeRunStepsDeps(
-                    { pluginHost: {} as any, config: {} as any },
-                    binding,
-                ),
+                deps,
             }),
         }),
     );
     assert.equal(result.active, true);
     assert.equal(result.checkpoint?.id, 'cp-entity-tag');
+    assert.deepEqual(refreshReasons, ['explicit']);
 });
 
 test('maybeBindCheckpoint: binds variables', async () => {

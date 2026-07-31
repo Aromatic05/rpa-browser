@@ -38,7 +38,6 @@ workflow artifact 在 agent 侧受路径校验与绑定策略控制。start_exte
 ## 当前限制
 
 - 暂无完整 DSL 编辑器。
-- 暂无人工标注 UI。
 - 暂无多 DSL 文件选择 UI。
 
 ## 风险提示

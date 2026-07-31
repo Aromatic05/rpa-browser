@@ -17,10 +17,10 @@ import type { ControlPlaneResult } from '../control_plane';
 import type { RecordControl } from '../../record/control';
 import type { DslControl } from '../../dsl/control';
 import type { CheckpointControl } from '../../checkpoint/control';
-import type { EntityRulesControl } from '../../entity_rules/control';
 import type { RunnerControl } from '../../runner/control';
 import type { TabsControl } from './tabs';
 import type { McpControl } from '../../mcp/control';
+import type { EntityRulesRuntime } from '../../snapshot/rules';
 
 export type WorkspaceRouterInput = {
     action: Action;
@@ -33,7 +33,7 @@ export type WorkspaceRouterDeps = {
     recordControl: RecordControl;
     dslControl: DslControl;
     checkpointControl: CheckpointControl;
-    entityRulesControl: EntityRulesControl;
+    entityRulesRuntime: EntityRulesRuntime;
     runnerControl: RunnerControl;
     mcpControl: McpControl;
 };
@@ -48,7 +48,8 @@ export const createWorkspaceRouter = (deps: WorkspaceRouterDeps): WorkspaceRoute
             return await deps.tabsControl.handle({ action, workspace, workspaceRegistry });
         }
 
-        if (action.type.startsWith('record.') || action.type.startsWith('play.')) {
+        if (action.type.startsWith('record.') || action.type.startsWith('play.')
+            || action.type.startsWith('checkpoint.record.')) {
             return await deps.recordControl.handle({ action, workspace, workspaceRegistry });
         }
 
@@ -61,7 +62,7 @@ export const createWorkspaceRouter = (deps: WorkspaceRouterDeps): WorkspaceRoute
         }
 
         if (action.type.startsWith('entity_rules.')) {
-            return await deps.entityRulesControl.handle({ action, workspace, workspaceRegistry });
+            return await deps.entityRulesRuntime.handle({ action, workspace, workspaceRegistry });
         }
 
         if (action.type.startsWith('task.run.')) {

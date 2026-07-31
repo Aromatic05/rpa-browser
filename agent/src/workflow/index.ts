@@ -3,5 +3,13 @@ export type { Workflow, WorkflowArtifact, WorkflowCatalogItem, WorkflowDummy, Wo
 export type { WorkflowRecording } from './recording';
 export type { WorkflowCheckpoint } from './checkpoint';
 export type { WorkflowDsl } from './dsl';
-export type { WorkflowEntityRules } from './entity_rules';
-export { toEntityRuleBundle } from './entity_rules';
+export type {
+    EntityRuleAnnotationArtifact,
+    EntityRuleAnnotationBinding,
+    EntityRuleBundle,
+    EntityRuleMatchArtifact,
+    EntityRuleMatchRecord,
+    WorkflowEntityRules,
+} from './entity_rules';
+export { importWorkflowEntityRules, toEntityRuleBundle, validateWorkflowEntityRules } from './entity_rules';
+export { entityRulesArtifactRevision } from './revision';

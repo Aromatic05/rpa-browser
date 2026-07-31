@@ -7,8 +7,20 @@
  * - 通过强类型映射约束 name 与 args 的对应关系
  */
 
-import type { BBox, EntityKind, SnapshotFilter } from './executors/snapshot/core/types';
+import type { Rect } from '../../snapshot/observation/model/contracts';
 import type { SelectOptionKind } from './executors/select_option/types';
+import type { StepEntityRulesControl } from '../../snapshot/rules/model';
+import type { SnapshotProjectionViewMode } from '../../snapshot/projection';
+
+export type BBox = Rect;
+
+export type EntityKind = 'form' | 'table' | 'dialog' | 'list' | 'panel' | 'toolbar' | 'kv';
+
+export type SnapshotFilter = {
+    role?: string | string[];
+    text?: string;
+    interactive?: boolean;
+};
 
 export type StepName =
     | 'browser.goto'
@@ -189,6 +201,7 @@ export type StepArgsMap = {
     'browser.get_page_info': Record<string, never>;
     'browser.list_tabs': Record<string, never>;
     'browser.snapshot': {
+        mode?: SnapshotProjectionViewMode;
         refresh?: boolean;
         contain?: string;
         depth?: number;
@@ -310,7 +323,7 @@ export type StepArgsMap = {
         urlIncludes?: string;
         textVisible?: string;
         entityExists?: {
-            query: string;
+            query?: string;
             kind?: EntityKind | EntityKind[];
             businessTag?: string | string[];
         };
@@ -348,11 +361,27 @@ export type StepArgsMap = {
               businessTag: string;
               target:
                   | {
+                        kind: 'entity.field';
+                        fieldKey: string;
+                    }
+                  | {
+                        kind: 'entity.action';
+                        actionIntent: string;
+                    }
+                  | {
                         kind: 'form.field';
                         fieldKey: string;
                     }
                   | {
                         kind: 'form.action';
+                        actionIntent: string;
+                    }
+                  | {
+                        kind: 'table.filter';
+                        fieldKey: string;
+                    }
+                  | {
+                        kind: 'table.module_action';
                         actionIntent: string;
                     }
                   | {
@@ -394,6 +423,8 @@ export type Step<TName extends StepName = StepName> = {
     id: string;
     name: TName;
     args: StepArgsMap[TName];
+    /** Persisted per-step entity_rules selection and override. */
+    entityRules?: StepEntityRulesControl;
     /**
      * Runtime-only metadata. It is not serialized into core steps.yaml.
      */

@@ -35,6 +35,12 @@ extension 是浏览器侧入口，负责 chrome message wiring、lifecycle wirin
 - `actions/ws_client.ts`：WebSocket Action 传输。
 - `shared/send.ts`：shared transport helper，不属于 action gateway。
 
+## Shadow DOM 宿主
+
+扩展在目标页面挂载两个相互独立的 Shadow DOM 宿主，均带 `data-rpa-snapshot-ignore` 以排除出 snapshot：
+
+- Debug 面板宿主。
+
 ## 当前协议约束
 
 - `Action.v` 必须为 `1`。

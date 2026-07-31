@@ -302,9 +302,6 @@ hints:
     why: 提交按钮结构不稳定
     scope:
       businessTag: order.form.main
-    preferredEntityRules:
-      - order_form_main
-      - order_form_submit
     fallbacks:
       - kind: role
         role: button
@@ -316,7 +313,6 @@ hints:
     assert.equal(hintFile.version, 1);
     assert.equal(hintFile.hints['recover-order-form-submit']?.scope?.businessTag, 'order.form.main');
     assert.equal(Array.isArray(hintFile.hints['recover-order-form-submit']?.fallbacks), true);
-    assert.equal(Array.isArray(hintFile.hints['recover-order-form-submit']?.preferredEntityRules), true);
     assert.equal(Array.isArray(hintFile.hints['recover-order-form-submit']?.notes), true);
 });
 
@@ -336,7 +332,6 @@ test('checkpoint example yaml files round-trip without leaking hints into core f
         assert.equal(serialized.includes('{{'), false);
         assert.equal(serialized.includes('}}'), false);
         assert.equal(serialized.includes('rawContext'), false);
-        assert.equal(serialized.includes('preferredEntityRules'), false);
         assert.equal(serialized.includes('fallbacks'), false);
         assert.equal(serialized.includes('locatorCandidates'), false);
         assert.equal(serialized.includes('replayHints'), false);

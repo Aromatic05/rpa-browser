@@ -3,7 +3,7 @@ import { deriveFailedActionType, type RequestActionType } from './action_types.j
 
 export type { Action };
 
-export const replyAction = <P = unknown>(request: Action<RequestActionType>, payload?: P, type?: string): Action => ({
+export const replyAction = (request: Action<RequestActionType>, payload?: unknown, type?: string): Action => ({
     v: 1,
     id: crypto.randomUUID(),
     type: type ?? `${request.type}.result`,

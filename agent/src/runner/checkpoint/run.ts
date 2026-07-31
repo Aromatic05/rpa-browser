@@ -11,14 +11,25 @@ const toStepFailureReason = (stepName: string) =>
 
 export const maybeRunCheckpoint = async (ctx: CheckpointCtx): Promise<CheckpointCtx> => {
     if (!ctx.active || !ctx.checkpoint) {return ctx;}
+    const checkpointStepResolves = ctx.failedCtx.checkpointStepResolves?.[ctx.checkpoint.id];
+    const executeCheckpointStep = (step: Parameters<typeof ctx.failedCtx.executeStep>[0]) =>
+        ctx.failedCtx.executeStep(step, checkpointStepResolves);
 
     if (ctx.checkpoint.prepare || ctx.checkpoint.output || hasActionContent(ctx.checkpoint.content)) {
         const output = await runCheckpointProcedure({
             checkpoint: ctx.checkpoint,
             stepIdPrefix: `recovery:${ctx.failedCtx.step.id}`,
-            executeStep: ctx.failedCtx.executeStep,
+            executeStep: executeCheckpointStep,
         });
         if (!output.ok) {
+            log.warning('checkpoint.run', {
+                checkpointId: ctx.checkpoint.id,
+                ok: false,
+                code: output.error?.code,
+                message: output.error?.message,
+                details: output.error?.details,
+                stopReason: 'checkpoint_step_failed',
+            });
             return {
                 ...ctx,
                 active: false,
@@ -47,7 +58,7 @@ export const maybeRunCheckpoint = async (ctx: CheckpointCtx): Promise<Checkpoint
     if (!ctx.boundContent) {return ctx;}
 
     for (const item of ctx.boundContent) {
-        const result = await ctx.failedCtx.executeStep(item);
+        const result = await executeCheckpointStep(item);
         if (!result.ok) {
             const stopReason = toStepFailureReason(item.name);
             const nextStatus = result.error?.code === 'ERR_CHECKPOINT_SUSPEND' ? 'suspended' : undefined;

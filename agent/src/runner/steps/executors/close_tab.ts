@@ -3,6 +3,15 @@ import type { RunStepsDeps } from '../../run_steps';
 import { ACTION_TYPES } from '../../../actions/action_types';
 import crypto from 'node:crypto';
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === 'object' && value !== null;
+
+const failureText = (payload: unknown, key: 'code' | 'message', fallback: string): string => {
+    if (!isRecord(payload)) {return fallback;}
+    const value = payload[key];
+    return typeof value === 'string' && value ? value : fallback;
+};
+
 export const executeBrowserCloseTab = async (
     step: Step<'browser.close_tab'>,
     deps: RunStepsDeps,
@@ -43,8 +52,8 @@ export const executeBrowserCloseTab = async (
             stepId: step.id,
             ok: false,
             error: {
-                code: String((closed.payload as { code?: unknown })?.code || 'ERR_TAB_CLOSE'),
-                message: String((closed.payload as { message?: unknown })?.message || 'tab.close failed'),
+                code: failureText(closed.payload, 'code', 'ERR_TAB_CLOSE'),
+                message: failureText(closed.payload, 'message', 'tab.close failed'),
             },
         };
     }
@@ -69,8 +78,8 @@ export const executeBrowserCloseTab = async (
                 stepId: step.id,
                 ok: false,
                 error: {
-                    code: String((closedFallback.payload as { code?: unknown })?.code || 'ERR_TAB_CLOSE_TIMEOUT'),
-                    message: String((closedFallback.payload as { message?: unknown })?.message || `tab.close fallback failed: ${tabName}`),
+                    code: failureText(closedFallback.payload, 'code', 'ERR_TAB_CLOSE_TIMEOUT'),
+                    message: failureText(closedFallback.payload, 'message', `tab.close fallback failed: ${tabName}`),
                 },
             };
         }

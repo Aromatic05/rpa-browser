@@ -13,7 +13,6 @@
 - agent: `PageRegistry` 作为低层 page 绑定基础设施，供 `WorkspaceTabs` 内部使用。
 - extension background: `RouterState` 维护 `tabState`、`bindingNameToWorkspaceTab`、`windowToWorkspace`。
 - 绑定目标：每个 `tabName` 必须映射到唯一 `(workspaceName, tabName)`。
-- `RuntimeWorkspace` 聚合体持有：`tabs`、`record`、`dsl`、`checkpoint`、`entityRules`、`runner`、`mcp`、`router`。
 
 ## 3. 通信总线
 
@@ -154,7 +153,6 @@ flowchart TD
 
 ## 10. 当前运行时边界
 
-- `RuntimeWorkspace` 聚合体直接持有：`tabs`、`record`、`dsl`、`checkpoint`、`entityRules`、`runner`、`mcp`、`router`。
 - `RuntimeWorkspace` 不持有：`tabRegistry`、`getPage`、`controls`、`serviceLifecycle`。
 - `WorkspaceTabs` 负责 tab 生命周期管理（create、close、activate、report、ping、reassign），内部持有 `Page` 句柄。
 - `PageRegistry` 退化为 `WorkspaceTabs` 内部使用的低层 page 绑定基础设施。

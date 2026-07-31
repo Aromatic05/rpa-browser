@@ -111,11 +111,11 @@ const isKnownGroup = (group: string): group is ToolGroup =>
 export const resolveEnabledToolNames = (policy?: Partial<RunnerConfig['mcpPolicy']>): Set<string> => {
     const resolved = {
         ...defaultRunnerConfig.mcpPolicy,
-        ...(policy || {}),
+        ...policy,
     };
-    const groups = (resolved.enabledToolGroups || []).filter(isKnownGroup);
-    const enableTools = (resolved.enableTools || []).filter(isKnownTool);
-    const disableTools = (resolved.disableTools || []).filter(isKnownTool);
+    const groups = resolved.enabledToolGroups.filter(isKnownGroup);
+    const enableTools = resolved.enableTools.filter(isKnownTool);
+    const disableTools = resolved.disableTools.filter(isKnownTool);
 
     let selected = new Set(toolDefinitions.map((tool) => tool.name));
 
@@ -147,8 +147,9 @@ export const getToolHandlers = (
     options?: { enabledTools?: Set<string> },
 ): Record<string, McpToolHandler> => {
     const handlers = createWorkspaceToolHandlers(deps);
-    if (!options?.enabledTools) {return handlers;}
-    return Object.fromEntries(Object.entries(handlers).filter(([name]) => options.enabledTools!.has(name)));
+    const enabledTools = options?.enabledTools;
+    if (!enabledTools) {return handlers;}
+    return Object.fromEntries(Object.entries(handlers).filter(([name]) => enabledTools.has(name)));
 };
 
 export const executeTool = async (
@@ -158,13 +159,12 @@ export const executeTool = async (
 ): Promise<{ ok: boolean; results: unknown[]; trace?: unknown; error?: unknown }> => {
     const enabledTools = resolveEnabledToolNames(deps.config?.mcpPolicy);
     const handlers = getToolHandlers(deps, { enabledTools });
-    const handler = handlers[name];
-    if (!handler) {
+    if (!Object.hasOwn(handlers, name)) {
         return {
             ok: false,
             results: [{ stepId: 'invalid', ok: false, error: { code: 'ERR_UNSUPPORTED', message: `unknown tool: ${name}` } }],
             error: { code: 'ERR_UNSUPPORTED', message: `unknown tool: ${name}` },
         };
     }
-    return await handler(args);
+    return await handlers[name](args);
 };

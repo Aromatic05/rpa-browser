@@ -115,8 +115,9 @@ const executeStmt = async (
             await emitStepAndWait(step, taskRunner, logger, stmtIndex);
             return;
         }
-        case 'form_act': {
-            throw new DslRuntimeError('form_act must be expanded before runtime', 'ERR_DSL_NOT_NORMALIZED');
+        case 'form_act':
+        case 'table_act': {
+            throw new DslRuntimeError(`${stmt.kind} must be expanded before runtime`, 'ERR_DSL_NOT_NORMALIZED');
         }
         case 'checkpoint': {
             const output = await runDslCheckpointCall({
@@ -199,7 +200,7 @@ const previewValue = (value: unknown): unknown => {
     }
     return {
         type: Array.isArray(value) ? 'array' : 'object',
-        keys: Object.keys(value as Record<string, unknown>),
+        keys: Object.keys(value),
     };
 };
 
@@ -220,5 +221,7 @@ const safeLog = (logger: Logger, level: 'debug' | 'error', event: string, payloa
             return;
         }
         logger.error(event, payload);
-    } catch {}
+    } catch {
+        // Logging must never affect DSL execution.
+    }
 };

@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>订单查询</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #f3f6fb; color: #172033; font-family: system-ui, sans-serif; }
+    .page { max-width: 980px; margin: 24px auto; padding: 0 20px; }
+    .orders-module { background: #fff; border: 1px solid #d8dee9; border-radius: 14px; overflow: hidden; box-shadow: 0 12px 32px rgba(15, 23, 42, .08); }
+    .orders-header { padding: 18px 22px; border-bottom: 1px solid #e8edf4; }
+    .orders-header h1 { margin: 0; font-size: 22px; }
+    .orders-query { display: grid; grid-template-columns: 1fr 180px auto auto; gap: 12px; align-items: end; padding: 18px 22px; background: #f8fafc; }
+    .field { display: grid; gap: 6px; }
+    label { font-size: 13px; color: #475569; }
+    input, select { height: 36px; border: 1px solid #cbd5e1; border-radius: 8px; padding: 0 10px; background: #fff; }
+    button { height: 36px; border: 0; border-radius: 8px; padding: 0 16px; cursor: pointer; }
+    #searchOrders { background: #2563eb; color: #fff; }
+    #resetOrders { background: #e2e8f0; color: #334155; }
+    .orders-results { padding: 18px 22px 10px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 12px; border-bottom: 1px solid #e2e8f0; text-align: left; }
+    th { background: #f8fafc; font-size: 13px; }
+    td { font-size: 13px; }
+    .row-action { height: 28px; padding: 0 9px; margin-right: 6px; background: #eff6ff; color: #1d4ed8; }
+    .delete-action { background: #fff1f2; color: #be123c; }
+    .orders-pagination { display: flex; justify-content: flex-end; gap: 8px; padding: 14px 22px 20px; }
+    .orders-pagination button { background: #f1f5f9; color: #334155; }
+    #nextPage { background: #2563eb; color: #fff; }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="orders-module" aria-label="订单查询列表">
+      <header class="orders-header"><h1>订单查询列表</h1></header>
+      <form class="orders-query" aria-label="订单查询条件" onsubmit="return false">
+        <div class="field">
+          <label for="orderNoQuery">订单编号</label>
+          <input id="orderNoQuery" name="orderNo" />
+        </div>
+        <div class="field">
+          <label for="statusQuery">状态</label>
+          <select id="statusQuery" name="status">
+            <option value="">全部</option>
+            <option value="pending">待处理</option>
+            <option value="done">已完成</option>
+          </select>
+        </div>
+        <button id="searchOrders" type="button">查询</button>
+        <button id="resetOrders" type="button">重置</button>
+      </form>
+      <div class="orders-results">
+        <table aria-label="订单结果">
+          <thead>
+            <tr><th>订单编号</th><th>采购人</th><th>金额</th><th>状态</th><th>操作</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>ORD-001</td><td>张三</td><td>¥1280</td><td>待处理</td>
+              <td><button class="row-action" type="button">编辑</button><button class="row-action delete-action" type="button">删除</button></td>
+            </tr>
+            <tr>
+              <td>ORD-002</td><td>李四</td><td>¥860</td><td>已完成</td>
+              <td><button class="row-action" type="button">编辑</button><button class="row-action delete-action" type="button">删除</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <nav class="orders-pagination" aria-label="分页">
+        <button id="previousPage" type="button">上一页</button>
+        <button id="nextPage" type="button">下一页</button>
+      </nav>
+    </section>
+  </main>
+</body>
+</html>

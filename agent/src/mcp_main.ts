@@ -14,6 +14,9 @@ import { createControlServer, registerControlShutdown } from './control';
 import { ensureWorkflowOnFs } from './workflow';
 import { createPortAllocator } from './runtime/service/ports';
 import type { RunStepsDeps } from './runner/run_steps_types';
+import {PageSnapshotSessionStore} from './snapshot/session';
+import {SnapshotProjectionBaselineStore} from './runner/session';
+import {createRecordingSnapshotPort} from './record/pipeline/snapshot';
 
 const TAB_NAME_KEY = '__rpa_tab_name';
 const NAV_DEDUPE_WINDOW_MS = 1200;
@@ -31,7 +34,6 @@ const logNotice = (...args: unknown[]) => { actionLog.warning('[RPA:mcp]', ...ar
 const logError = (...args: unknown[]) => { actionLog.error('[RPA:mcp]', ...args); };
 
 const paths = resolvePaths();
-const recordingState = createRecordingState();
 let onPageBoundHook: (page: Page, tabName: string) => void = () => undefined;
 let onBindingClosedHook: (tabName: string) => void = () => undefined;
 
@@ -53,6 +55,8 @@ const runtimeRegistry = createExecutionBindings({
 
 const runStepsDeps: RunStepsDeps = {
     runtime: runtimeRegistry,
+    pageSession: new PageSnapshotSessionStore(),
+    snapshotProjection: new SnapshotProjectionBaselineStore(),
     resolveWorkspace: (workspaceName: string) => {
         const workspace = workspaceRegistry.getWorkspace(workspaceName);
         if (!workspace) {
@@ -68,6 +72,7 @@ const runStepsDeps: RunStepsDeps = {
     pluginHost: runnerPluginHost,
 };
 setRunStepsDeps(runStepsDeps);
+const recordingState = createRecordingState({snapshotPort: createRecordingSnapshotPort(runStepsDeps)});
 
 const portAllocator = createPortAllocator();
 
@@ -90,12 +95,8 @@ const workspaceRegistry = createWorkspaceRegistry({
 });
 runStepsDeps.resolveEntityRulesProvider = (workspaceName: string) => {
     const workspace = workspaceRegistry.getWorkspace(workspaceName);
-    if (!workspace) {
-        return null;
-    }
-    return workspace.entityRules.getProvider(workspace.workflow);
+    return workspace ? workspace.entityRules.getProvider(workspace.workflow) : null;
 };
-
 onPageBoundHook = (page, tabName) => {
     const workspace = workspaceRegistry.listWorkspaces().find((item) => item.tabs.hasTab(tabName)) || null;
     if (!workspace) {

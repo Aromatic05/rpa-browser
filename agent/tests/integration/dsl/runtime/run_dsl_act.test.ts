@@ -28,7 +28,11 @@ const createDeps = (calls: StubCall[]): RunStepsDeps =>
                         return {
                             stepId: step.id,
                             ok: true,
-                            data: { kind: 'nodeId', nodeId: 'buyer-input' },
+                            data: {
+                                kind: 'nodeId',
+                                nodeId: 'buyer-input',
+                                meta: {controlKind: 'custom_select'},
+                            },
                         };
                     },
                     'browser.type': async (step: StepUnion) => {
@@ -73,7 +77,7 @@ test('runDsl executes type/select/snapshot as browser steps', async () => {
         ['browser.query', 'browser.type', 'browser.select_option', 'browser.snapshot'],
     );
     assert.deepEqual(calls[1].args, { nodeId: 'buyer-input', text: 'alice' });
-    assert.deepEqual(calls[2].args, { nodeId: 'buyer-input', kind: 'native_select', values: ['approved'] });
+    assert.deepEqual(calls[2].args, { nodeId: 'buyer-input', kind: 'custom_select', values: ['approved'] });
     assert.deepEqual(calls[3].args, {});
 });
 

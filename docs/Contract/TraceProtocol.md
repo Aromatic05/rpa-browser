@@ -47,12 +47,13 @@ Trace 不直接返回 StepResult。
 - `a11ySnapshotRaw`
 - `a11yNodeMap`
 - `a11yTree`
-- `latestSnapshot`
-- `snapshotSessionStore`
+- `lastSnapshotId`
+- `a11yCacheGen`
 - `consoleEntries`
 - `networkEntries`
 
-缓存仅用于优化观测与查询，不承诺跨进程持久化。
+缓存仅用于 Trace 层的 A11y、console 与 network 观测，不承诺跨进程持久化。
+Snapshot V2 的 `PageSnapshotSessionStore` 与 `SnapshotProjectionBaselineStore` 由 runner 显式注入，禁止放入 `TraceCache` 或通过 `latestSnapshot` 兼容字段旁路传递。
 
 ## sink 与 hooks
 

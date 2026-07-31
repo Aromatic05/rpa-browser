@@ -43,7 +43,6 @@ Workspace actions must use `action.workspaceName` only.
 - `recording`
 - `checkpoint`
 - `dsl`
-- `entity_rules`
 
 ## Directories
 
@@ -51,13 +50,11 @@ Workspace actions must use `action.workspaceName` only.
 - recordings: `recordings/<recordingName>/`
 - checkpoints: `checkpoints/<checkpointName>/`
 - dsls: `dsls/<dslName>.dsl`
-- entity rules: `entity_rules/<profileName>/`
 
 ## Legacy Paths Removed
 
 - no `steps/<recordingName>/` main path
 - no `dsl/<dslName>.dsl` main path
-- no `agent/.artifacts/entity_rules/profiles/<profile>/` main path
 - no scene-based workflow main path
 - no `workflow:<name>` main path
 
@@ -73,17 +70,13 @@ Workspace actions must use `action.workspaceName` only.
 
 ## Workspace Runtime Controls
 
-- RuntimeWorkspace controls include `workflow`, `checkpoint`, `entityRules`, `record`, `dsl`, `runner`, `mcp`.
 - `checkpoint.*` is routed to workspace checkpoint control.
-- `entity_rules.*` is routed to workspace entityRules control.
 - `task.run.checkpoint` remains runner-owned execution progress checkpoint.
 - workflow checkpoint artifact and runner task checkpoint are separate domains.
 - DSL uses workspace checkpoint provider.
-- snapshot pipeline uses workspace entityRules provider.
 - snapshot executor does not read workflow directly.
 - snapshot executor does not read filesystem rule artifacts directly.
 - shared action protocol package is not introduced in this stage.
-- legacy names `entity-rules`, `ENTITY_RULES`, and `EntityRules` are removed from active runtime naming.
 
 ## Record Persistence Boundary
 

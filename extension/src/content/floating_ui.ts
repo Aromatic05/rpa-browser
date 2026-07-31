@@ -1,5 +1,8 @@
 import type { Action } from '../shared/types.js';
 import { preparePanelAction, pushPanelLog, type PanelLogEntry } from './panel_actions.js';
+import {mountCheckpointRecorderUI} from './checkpoint_recorder_ui.js';
+import {mountEntityRulesBrowserUI} from './entity_rules_browser_ui.js';
+import type {EntityRuleSelection} from '../../../shared/entity-rules-contract/index.js';
 
 export type FloatingUIOptions = {
     tabName: string;
@@ -10,19 +13,25 @@ export type FloatingUIOptions = {
         address?: { workspaceName?: string; tabName?: string },
     ) => Promise<Action>;
     onEvent?: (handler: (action: Action) => void) => void;
+    onEnterAnnotation?: (profileName?: string) => void;
+    onEntityRulePreview?: (selection: EntityRuleSelection | null) => Promise<boolean>;
+    onCheckpointEntityRulePreview?: (selection: EntityRuleSelection | null) => Promise<boolean>;
 };
 
 export type FloatingUIHandle = {
     unmount: () => void;
     scheduleRefresh: () => void;
+    onPageChanged: () => void;
+    setPageWorkspace: (workspaceName: string) => void;
+    setAnnotatorDebugState: (detail: string) => void;
 };
 
 type WorkspaceItem = { workspaceName: string; activeTabName?: string; tabCount: number };
 type TabItem = { tabName: string; url: string; title: string; active: boolean };
 
-type ViewKey = 'Conn' | 'WS' | 'Tabs' | 'Rec' | 'Play' | 'Flow' | 'Log';
+type ViewKey = 'Conn' | 'WS' | 'Tabs' | 'Rec' | 'Play' | 'Flow' | 'ER' | 'Log';
 const UUIDorUnsafe = (): string => {
-    if (typeof globalThis.crypto?.randomUUID === 'function') {
+    if (typeof globalThis.crypto.randomUUID === 'function') {
         return globalThis.crypto.randomUUID();
     }
     const rand = () => Math.floor(Math.random() * 0xffffffff).toString(16).padStart(8, '0');
@@ -33,12 +42,20 @@ const UUIDorUnsafe = (): string => {
 export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     const ROOT_ID = 'rpa-floating-panel';
     if (document.getElementById(ROOT_ID)) {
-        return { unmount: () => undefined, scheduleRefresh: () => undefined };
+        return {
+            unmount: () => undefined,
+            scheduleRefresh: () => undefined,
+            onPageChanged: () => undefined,
+            setPageWorkspace: () => undefined,
+            setAnnotatorDebugState: () => undefined,
+        };
     }
+    const manifest = chrome.runtime.getManifest();
+    const buildId = manifest.version_name ?? manifest.version;
 
     const state = {
         activeView: 'Conn' as ViewKey,
-        activeWorkspaceName: opts.workspaceName || '',
+        activeWorkspaceName: opts.workspaceName,
         activeTabName: '',
         workspaces: [] as WorkspaceItem[],
         tabs: [] as TabItem[],
@@ -53,8 +70,9 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         unsavedStepCount: 0,
         dslRaw: '{}',
         checkpointRaw: '{}',
-        entityRulesRaw: '{}',
+        annotatorDebug: null as unknown,
     };
+    let pageWorkspaceName = opts.workspaceName;
 
     const host = document.createElement('div');
     host.id = ROOT_ID;
@@ -64,14 +82,16 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     host.style.top = '16px';
     host.style.right = '16px';
     host.style.zIndex = '2147483647';
+    host.style.pointerEvents = 'none';
 
     const shadow = host.attachShadow({ mode: 'open' });
     const style = document.createElement('style');
     style.textContent = `
       :host { all: initial; }
-      .wrap { display:flex; flex-direction:column; align-items:flex-end; gap:8px; font-family: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
-      .ball { width:44px; height:44px; border-radius:999px; border:none; background:#111827; color:#f9fafb; font-size:12px; font-weight:700; cursor:pointer; }
-      .panel { width:420px; border-radius:12px; background:#fff; border:1px solid #e2e8f0; box-shadow:0 12px 28px rgba(15,23,42,.24); display:none; overflow:hidden; }
+      .wrap { pointer-events:none; display:flex; flex-direction:column; align-items:flex-end; gap:8px; font-family: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+      .launchers { pointer-events:auto; display:flex; align-items:center; gap:8px; }
+      .ball { width:44px; height:44px; border-radius:999px; border:none; background:#111827; color:#f9fafb; font-size:12px; font-weight:700; cursor:pointer; box-shadow:0 8px 20px rgba(15,23,42,.22); }
+      .panel { pointer-events:auto; width:420px; border-radius:12px; background:#fff; border:1px solid #e2e8f0; box-shadow:0 12px 28px rgba(15,23,42,.24); display:none; overflow:hidden; }
       .panel.open { display:block; }
       .tabs { display:flex; border-bottom:1px solid #e2e8f0; background:#f8fafc; }
       .tabs button { border:none; border-right:1px solid #e2e8f0; border-radius:0; background:transparent; padding:8px 10px; font-size:12px; cursor:pointer; }
@@ -83,7 +103,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
       .title { font-size:11px; color:#475569; margin-bottom:6px; font-weight:700; }
       button { padding:6px 8px; font-size:12px; border-radius:8px; border:1px solid #cbd5e1; background:#fff; cursor:pointer; }
       button.primary { background:#2563eb; border-color:#2563eb; color:#fff; }
-      input, textarea { width:100%; box-sizing:border-box; padding:6px 8px; font-size:12px; border-radius:8px; border:1px solid #cbd5e1; }
+      input, textarea, select { width:100%; box-sizing:border-box; padding:6px 8px; font-size:12px; border-radius:8px; border:1px solid #cbd5e1; background:#fff; }
       textarea { min-height:72px; resize:vertical; }
       .hint { font-size:11px; color:#64748b; margin-bottom:6px; }
       .list { display:flex; flex-direction:column; gap:6px; }
@@ -91,10 +111,13 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
       .footer pre { margin:0; max-height:120px; overflow:auto; white-space:pre-wrap; font-size:11px; }
       .log-list { display:flex; flex-direction:column; gap:6px; }
       .log-item { font-size:11px; border:1px solid #e2e8f0; border-radius:6px; padding:6px; }
+      .debug-json { margin:0; max-height:300px; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; font:11px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace; color:#0f172a; }
     `;
 
     const wrap = document.createElement('div');
     wrap.className = 'wrap';
+    const launchers = document.createElement('div');
+    launchers.className = 'launchers';
     const ball = document.createElement('button');
     ball.className = 'ball';
     ball.textContent = 'RPA';
@@ -110,7 +133,8 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     footer.appendChild(out);
 
     panel.append(tabsBar, body, footer);
-    wrap.append(ball, panel);
+    launchers.append(ball);
+    wrap.append(launchers, panel);
     shadow.append(style, wrap);
     document.documentElement.appendChild(host);
 
@@ -129,8 +153,15 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         state.logs = pushPanelLog(state.logs, { at: Date.now(), kind, action });
     };
 
-    const sendPanelAction = async (type: string, payload?: Record<string, unknown>): Promise<Action> => {
-        const prepared = preparePanelAction(type, payload, state.activeWorkspaceName || null);
+    let checkpointRecorder: ReturnType<typeof mountCheckpointRecorderUI> | null = null;
+    let entityRulesBrowser: ReturnType<typeof mountEntityRulesBrowserUI> | null = null;
+
+    const sendPanelActionForWorkspace = async (
+        type: string,
+        payload: Record<string, unknown> | undefined,
+        workspaceName: string | null,
+    ): Promise<Action> => {
+        const prepared = preparePanelAction(type, payload, workspaceName);
         if ('error' in prepared) {
             setOutput(prepared.error);
             logAction('failed', prepared.error);
@@ -153,6 +184,39 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         return reply;
     };
 
+    const sendPanelAction = async (type: string, payload?: Record<string, unknown>): Promise<Action> =>
+        await sendPanelActionForWorkspace(type, payload, state.activeWorkspaceName || null);
+
+    const sendPageWorkspaceAction = async (type: string, payload?: Record<string, unknown>): Promise<Action> =>
+        await sendPanelActionForWorkspace(type, payload, pageWorkspaceName);
+
+    entityRulesBrowser = mountEntityRulesBrowserUI({
+        launchers,
+        surface: wrap,
+        before: ball,
+        pageUrl: () => location.href,
+        sendAction: sendPageWorkspaceAction,
+        onCreate: () => opts.onEnterAnnotation?.(),
+        onEdit: (profileName) => opts.onEnterAnnotation?.(profileName),
+        onPreview: async (selection) => await opts.onEntityRulePreview?.(selection) ?? false,
+        onActiveChange: (active) => {
+            checkpointRecorder?.setVisible(!active);
+        },
+    });
+
+    checkpointRecorder = mountCheckpointRecorderUI({
+        launchers,
+        surface: wrap,
+        before: ball,
+        sendAction: sendPageWorkspaceAction,
+        onActiveChange: (active) => {
+            entityRulesBrowser.setVisible(!active);
+        },
+        onEntityRulePreview: async (selection) => {
+            await opts.onCheckpointEntityRulePreview?.(selection);
+        },
+    });
+
     const refreshWorkspaces = async () => {
         await sendPanelAction('workspace.list', {});
     };
@@ -165,7 +229,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
 
     const parseJsonOrErr = (raw: string): Record<string, unknown> | null => {
         try {
-            const parsed = JSON.parse(raw || '{}');
+            const parsed = JSON.parse(raw.trim() ? raw : '{}') as unknown;
             if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
                 setOutput({ code: 'ERR_BAD_ARGS', message: 'JSON must be object' });
                 return null;
@@ -199,7 +263,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         if (Array.isArray(payload.tabs)) {
             state.tabs = payload.tabs as TabItem[];
             const activeTab = state.tabs.find((t) => t.active);
-            state.activeTabName = activeTab?.tabName || '';
+            state.activeTabName = activeTab?.tabName ?? '';
         }
         if (Array.isArray(payload.recordings)) {
             state.savedRecordings = payload.recordings
@@ -207,15 +271,19 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
                 .map((item) => {
                     const row = item as Record<string, unknown>;
                     return {
-                        recordingName: String(row.recordingName || ''),
-                        stepCount: Number(row.stepCount || 0),
+                        recordingName: typeof row.recordingName === 'string' ? row.recordingName : '',
+                        stepCount: typeof row.stepCount === 'number' && Number.isFinite(row.stepCount)
+                            ? row.stepCount
+                            : 0,
                     };
                 })
                 .filter((item) => Boolean(item.recordingName));
         }
         if (payload.unsaved && typeof payload.unsaved === 'object') {
             const unsaved = payload.unsaved as Record<string, unknown>;
-            state.unsavedStepCount = Number(unsaved.stepCount || 0);
+            state.unsavedStepCount = typeof unsaved.stepCount === 'number' && Number.isFinite(unsaved.stepCount)
+                ? unsaved.stepCount
+                : 0;
         }
         if (requestType === 'workspace.setActive' && !action.type.endsWith('.failed')) {
             const workspaceName = typeof payload.workspaceName === 'string' ? payload.workspaceName : '';
@@ -255,7 +323,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         addPlayEvent(action);
     };
 
-    const createButton = (label: string, onClick: () => unknown | Promise<unknown>, primary = false) => {
+    const createButton = (label: string, onClick: () => unknown, primary = false): HTMLButtonElement => {
         const btn = document.createElement('button');
         btn.textContent = label;
         if (primary) {btn.classList.add('primary');}
@@ -275,6 +343,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
           <div class="hint">tabName: ${opts.tabName}</div>
           <div class="hint">url: ${location.href}</div>
           <div class="hint">title: ${document.title}</div>
+          <div class="hint">extensionBuild: ${buildId}</div>
         `;
         const row = document.createElement('div');
         row.className = 'row';
@@ -301,7 +370,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         const wsList = document.createElement('div');
         wsList.className = 'list';
         state.workspaces.forEach((ws) => {
-            wsList.appendChild(createButton(`${ws.workspaceName} (${ws.tabCount})`, async () => {
+            wsList.appendChild(createButton(`${ws.workspaceName} (${String(ws.tabCount)})`, async () => {
                 state.activeWorkspaceName = ws.workspaceName;
                 await sendPanelAction('workspace.setActive', { workspaceName: ws.workspaceName });
             }, ws.workspaceName === state.activeWorkspaceName));
@@ -420,12 +489,12 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         list.className = 'list';
         const unsaved = document.createElement('div');
         unsaved.className = 'hint';
-        unsaved.textContent = `unsaved stepCount: ${state.unsavedStepCount}`;
+        unsaved.textContent = `unsaved stepCount: ${String(state.unsavedStepCount)}`;
         list.append(unsaved);
         state.savedRecordings.forEach((item) => {
             const line = document.createElement('div');
             line.className = 'hint';
-            line.textContent = `${item.recordingName} (${item.stepCount})`;
+            line.textContent = `${item.recordingName} (${String(item.stepCount)})`;
             list.append(line);
         });
         box.append(row1, row2, row3, list);
@@ -446,7 +515,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         state.savedRecordings.forEach((item) => {
             const option = document.createElement('option');
             option.value = item.recordingName;
-            option.textContent = `${item.recordingName} (${item.stepCount})`;
+            option.textContent = `${item.recordingName} (${String(item.stepCount)})`;
             source.appendChild(option);
         });
         source.value = state.replaySource;
@@ -510,13 +579,33 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
                 { label: 'checkpoint.save', type: 'checkpoint.save' },
                 { label: 'checkpoint.delete', type: 'checkpoint.delete' },
             ]),
-            renderSub('Entity Rules', state.entityRulesRaw, (v) => { state.entityRulesRaw = v; }, [
-                { label: 'entity_rules.list', type: 'entity_rules.list' },
-                { label: 'entity_rules.get', type: 'entity_rules.get' },
-                { label: 'entity_rules.save', type: 'entity_rules.save' },
-                { label: 'entity_rules.delete', type: 'entity_rules.delete' },
-            ]),
         );
+        return root;
+    };
+
+    const renderEntityRules = () => {
+        const root = document.createElement('div');
+        const box = document.createElement('div');
+        box.className = 'section';
+        box.appendChild(Object.assign(document.createElement('div'), {
+            className: 'title',
+            textContent: 'Entity Rules State',
+        }));
+        const row = document.createElement('div');
+        row.className = 'row';
+        row.append(
+            createButton('Copy JSON', async () => {
+                await navigator.clipboard.writeText(JSON.stringify(state.annotatorDebug, null, 2));
+            }),
+            createButton('Clear View', () => { state.annotatorDebug = null; renderActiveView(); }),
+        );
+        const pre = document.createElement('pre');
+        pre.className = 'debug-json';
+        pre.textContent = state.annotatorDebug
+            ? JSON.stringify(state.annotatorDebug, null, 2)
+            : 'Open the annotator to inspect CanvasDraft, internal keys, bindings and validation results.';
+        box.append(row, pre);
+        root.append(box);
         return root;
     };
 
@@ -530,7 +619,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         row.append(
             createButton('Clear Log', () => { state.logs = []; renderActiveView(); }),
             createButton('Copy Last', async () => {
-                const last = state.logs[state.logs.length - 1];
+                const last = state.logs.at(-1);
                 if (!last) {return;}
                 await navigator.clipboard.writeText(JSON.stringify(last.action));
             }),
@@ -542,7 +631,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
             const el = document.createElement('div');
             el.className = 'log-item';
             const p = (item.action.payload && typeof item.action.payload === 'object') ? JSON.stringify(item.action.payload).slice(0, 100) : '';
-            el.textContent = `[${item.kind}] ${item.action.type} ws=${item.action.workspaceName || '-'} replyTo=${item.action.replyTo || '-'} payload=${p}`;
+            el.textContent = `[${item.kind}] ${item.action.type} ws=${item.action.workspaceName ?? '-'} replyTo=${item.action.replyTo ?? '-'} payload=${p}`;
             list.appendChild(el);
         });
         box.append(list);
@@ -558,10 +647,11 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         if (state.activeView === 'Rec') {body.appendChild(renderRec());}
         if (state.activeView === 'Play') {body.appendChild(renderPlay());}
         if (state.activeView === 'Flow') {body.appendChild(renderFlow());}
+        if (state.activeView === 'ER') {body.appendChild(renderEntityRules());}
         if (state.activeView === 'Log') {body.appendChild(renderLog());}
     };
 
-    const views: ViewKey[] = ['Conn', 'WS', 'Tabs', 'Rec', 'Play', 'Flow', 'Log'];
+    const views: ViewKey[] = ['Conn', 'WS', 'Tabs', 'Rec', 'Play', 'Flow', 'ER', 'Log'];
     views.forEach((name) => {
         const btn = document.createElement('button');
         btn.textContent = name;
@@ -595,8 +685,31 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
             refreshPending = false;
             void refreshWorkspaces();
             void refreshTabs();
+            void entityRulesBrowser.refresh();
         });
     };
 
-    return { unmount: () => { host.remove(); }, scheduleRefresh };
+    return {
+        unmount: () => {
+            entityRulesBrowser.unmount();
+            checkpointRecorder.unmount();
+            host.remove();
+        },
+        scheduleRefresh,
+        onPageChanged: () => {
+            void entityRulesBrowser.close();
+            checkpointRecorder.onPageChanged();
+        },
+        setPageWorkspace: (workspaceName) => {
+            pageWorkspaceName = workspaceName;
+        },
+        setAnnotatorDebugState: (raw: string) => {
+            try {
+                state.annotatorDebug = JSON.parse(raw) as unknown;
+            } catch {
+                state.annotatorDebug = {parseError: true, raw};
+            }
+            if (state.activeView === 'ER') {renderActiveView();}
+        },
+    };
 };

@@ -14,15 +14,15 @@ import { getLogger } from '../../logging/logger';
 export class MemorySink implements TraceSink {
     private readonly events: TraceEvent[] = [];
 
-    write(event: TraceEvent) {
+    write(event: TraceEvent): void {
         this.events.push(event);
     }
 
-    getEvents() {
+    getEvents(): TraceEvent[] {
         return [...this.events];
     }
 
-    clear() {
+    clear(): void {
         this.events.length = 0;
     }
 }
@@ -34,7 +34,7 @@ export class MemorySink implements TraceSink {
 export class ConsoleSink implements TraceSink {
     private readonly log = getLogger('trace');
 
-    write(event: TraceEvent) {
+    write(event: TraceEvent): void {
         // 控制台输出保持简洁，避免泄露敏感数据
         this.log('[trace]', event.type, event.op, event);
     }
@@ -56,7 +56,7 @@ export class FileSink implements TraceSink {
         this.stream = fs.createWriteStream(filePath, { flags: 'a' });
     }
 
-    write(event: TraceEvent) {
+    write(event: TraceEvent): void {
         this.stream.write(`${JSON.stringify(event)}\n`);
     }
 }

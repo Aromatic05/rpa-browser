@@ -15,7 +15,7 @@ export type RecorderSinkDeps = {
     wsTap?: (stage: string, data: Record<string, unknown>) => void;
 };
 
-export const createRecorderEventSinkHandler = (deps: RecorderSinkDeps) => {
+export const createRecorderEventSinkHandler = (deps: RecorderSinkDeps): ((event: RecorderEvent, page: Page, tabName: string) => Promise<void>) => {
     const wsTap = deps.wsTap || (() => undefined);
     return async (event: RecorderEvent, page: Page, tabName: string) => {
         const workspaceName = deps.findWorkspaceNameByTabName(tabName);

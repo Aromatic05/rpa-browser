@@ -11,7 +11,6 @@ import {
 import type { RecordingManifest } from '../../../src/record/recording';
 import type { RecordingTabManifest } from '../../../src/record/recording';
 import type { RecordedStepEnhancement } from '../../../src/record/types';
-import type { SnapshotPageIdentity } from '../../../src/runner/steps/executors/snapshot/core/types';
 
 type ExpectTrue<T extends true> = T;
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -38,11 +37,6 @@ type RecordedPageIdentity = NonNullable<NonNullable<RecordedStepEnhancement['sna
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const _recordedPageIdentityKeys = expectTrue<
     Equal<keyof RecordedPageIdentity, 'workspaceName' | 'tabName' | 'url'>
->(true);
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const _snapshotPageIdentityKeys = expectTrue<
-    Equal<keyof SnapshotPageIdentity, 'workspaceName' | 'tabName' | 'url'>
 >(true);
 
 const __filename = fileURLToPath(import.meta.url);

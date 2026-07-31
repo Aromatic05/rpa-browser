@@ -113,20 +113,11 @@ const getTarget = (type: LogType): LogTarget => {
             ...baseLevels,
         };
     }
-    if (type === 'ext') {
-        return {
-            consoleEnabled: obs.extConsoleEnabled,
-            fileEnabled: obs.extFileEnabled,
-            filePath: resolveLogPath(obs.extFilePath),
-            ...baseLevels,
-        };
-    }
     return {
-        consoleEnabled: false,
-        fileEnabled: false,
-        filePath: '',
-        consoleMinLevel: 'warning',
-        fileMinLevel: 'warning',
+        consoleEnabled: obs.extConsoleEnabled,
+        fileEnabled: obs.extFileEnabled,
+        filePath: resolveLogPath(obs.extFilePath),
+        ...baseLevels,
     };
 };
 

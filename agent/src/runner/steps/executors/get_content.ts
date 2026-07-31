@@ -1,21 +1,25 @@
-import type { Step, StepResult } from '../types';
-import type { RunStepsDeps } from '../../run_steps';
-import { awaitPageBoundBinding } from '../helpers/runtime_binding';
-import { mapTraceError } from '../helpers/target';
+import type {Step, StepResult} from '../types';
+import type {RunStepsDeps} from '../../run_steps';
+import {ensureFreshPageSession} from '../../session/capture';
+import {resolveSnapshotContentRef} from '../../../snapshot/projection';
 
 export const executeBrowserGetContent = async (
     step: Step<'browser.get_content'>,
     deps: RunStepsDeps,
     workspaceName: string,
 ): Promise<StepResult> => {
-    const binding = await awaitPageBoundBinding(deps, workspaceName);
-    const result = await binding.traceTools['trace.page.getContent']({ ref: step.args.ref });
-    if (!result.ok) {
-        return { stepId: step.id, ok: false, error: mapTraceError(result.error) };
+    const {entry} = await ensureFreshPageSession(deps, workspaceName);
+    const resolved = resolveSnapshotContentRef(entry, step.args.ref);
+    if (!resolved.ok) {
+        return {
+            stepId: step.id,
+            ok: false,
+            error: {code: resolved.code, message: resolved.message, details: {ref: step.args.ref}},
+        };
     }
     return {
         stepId: step.id,
         ok: true,
-        data: result.data,
+        data: {ref: step.args.ref, nodeId: resolved.nodeId, content: resolved.content},
     };
 };

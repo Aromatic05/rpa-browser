@@ -62,19 +62,12 @@ export const defaultRunnerConfig: RunnerConfig = {
         dslFilePath: '.artifacts/logs/dsl/dsl-{ts}.log',
         screenshotOnError: false,
     },
-    confidencePolicy: {
-        enabled: true,
-        minScore: 0.6,
-        roleWeight: 0.5,
-        nameWeight: 0.25,
-        textWeight: 0.15,
-        selectorBonus: 0.15,
-    },
     checkpointPolicy: {
         enabled: true,
         filePath: '.artifacts/checkpoints/task_runs.json',
         flushIntervalMs: 1200,
     },
+    entityRules: defaultEntityRuleConfig,
     mcpPolicy: {
         enabledToolGroups: [],
         enableTools: [],
@@ -85,5 +78,4 @@ export const defaultRunnerConfig: RunnerConfig = {
             'browser.mouse',
         ],
     },
-    entityRules: defaultEntityRuleConfig,
 };

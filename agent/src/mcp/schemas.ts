@@ -13,6 +13,7 @@ const entityKindSchema = z.enum(['form', 'table', 'dialog', 'list', 'panel', 'to
 const entityKindOrArraySchema = z.union([entityKindSchema, z.array(entityKindSchema).nonempty()]);
 const textOrArraySchema = z.union([z.string(), z.array(z.string()).nonempty()]);
 const snapshotRoleFilterSchema = z.union([z.string(), z.array(z.string()).nonempty()]);
+const snapshotProjectionModeSchema = z.enum(['overview', 'interaction', 'annotation', 'debug', 'full']);
 const snapshotFilterInputSchema = z
     .object({
         role: snapshotRoleFilterSchema.optional(),
@@ -93,6 +94,7 @@ export const browserListTabsInputSchema = z.object({
 
 export const browserSnapshotInputSchema = z.object({
     tabName: z.string().optional(),
+    mode: snapshotProjectionModeSchema.optional(),
     refresh: z.boolean().optional(),
     contain: z.string().optional(),
     depth: z.number().int().min(-1).optional(),
@@ -203,6 +205,14 @@ export const browserQueryInputSchema = z.union([
         op: z.literal('entity.target'),
         businessTag: z.string(),
         target: z.discriminatedUnion('kind', [
+            z.object({
+                kind: z.literal('entity.field'),
+                fieldKey: z.string(),
+            }),
+            z.object({
+                kind: z.literal('entity.action'),
+                actionIntent: z.string(),
+            }),
             z.object({
                 kind: z.literal('form.field'),
                 fieldKey: z.string(),
@@ -501,6 +511,7 @@ export const toolInputJsonSchemas = {
         required: [],
         properties: {
             tabName: { type: 'string' },
+            mode: { type: 'string', enum: ['overview', 'interaction', 'annotation', 'debug', 'full'] },
             refresh: { type: 'boolean' },
             contain: { type: 'string' },
             depth: { type: 'integer', minimum: -1 },
@@ -732,6 +743,24 @@ export const toolInputJsonSchemas = {
                     businessTag: { type: 'string' },
                     target: {
                         oneOf: [
+                            {
+                                type: 'object',
+                                required: ['kind', 'fieldKey'],
+                                properties: {
+                                    kind: { type: 'string', enum: ['entity.field'] },
+                                    fieldKey: { type: 'string' },
+                                },
+                                additionalProperties: false,
+                            },
+                            {
+                                type: 'object',
+                                required: ['kind', 'actionIntent'],
+                                properties: {
+                                    kind: { type: 'string', enum: ['entity.action'] },
+                                    actionIntent: { type: 'string' },
+                                },
+                                additionalProperties: false,
+                            },
                             {
                                 type: 'object',
                                 required: ['kind', 'fieldKey'],

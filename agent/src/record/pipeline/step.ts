@@ -197,8 +197,8 @@ export const appendWorkspaceRecordingEvent = async (
     if (!isWorkspaceRecordingEnabled(state, workspaceName)) {return { accepted: false };}
     const effectiveToken = getWorkspaceUnsavedToken(state, workspaceName);
     const eventRecordSeq = nextRecordingSeq(state, effectiveToken);
-    const tabScopedCacheKey = `${effectiveToken}::${tabName}`;
     if (state.replaying.has(tabName)) {return { accepted: false };}
+    if (page) {state.snapshotPort.markDirty(page, 'interaction');}
     const pendingFillKey = event.selector ? fillEventKey(tabName, event.selector.trim()) : undefined;
     const buildNormalizeContext = () => ({
         state,
@@ -206,8 +206,6 @@ export const appendWorkspaceRecordingEvent = async (
         workspaceName,
         tabName,
         page,
-        snapshotCache: state.recordSnapshotCache,
-        cacheKey: tabScopedCacheKey,
         createStep,
         buildResolveFromEvent,
     });
@@ -224,7 +222,9 @@ export const appendWorkspaceRecordingEvent = async (
             stepName: StepName;
             ts?: number;
             tabName?: string;
-        }) => startRecordedStepEnrichment({ ...input, snapshotCache: state.recordSnapshotCache, cacheKey: tabScopedCacheKey }),
+        }) => {
+            startRecordedStepEnrichment(input);
+        },
     };
     const removeRecordedStep = (stepId: string) => {
         const list = state.recordings.get(effectiveToken) || [];
@@ -257,7 +257,6 @@ export const appendWorkspaceRecordingEvent = async (
 
     if (event.type === 'navigate') {
         state.lastNavigateTs.set(navigateDedupeKey(effectiveToken, tabName), event.ts);
-        state.recordSnapshotCache.delete(tabScopedCacheKey);
     }
 
     if (event.type === 'scroll' && typeof event.scrollY === 'number') {
@@ -286,7 +285,7 @@ export const appendWorkspaceRecordingEvent = async (
     let provisionalClickStep: StepUnion | undefined;
     if (event.type === 'click') {
         const provisional = toStep(event);
-        if (provisional && provisional.name === 'browser.click') {
+        if (provisional?.name === 'browser.click') {
             const normalized = enrichRecordedStep(state, effectiveToken, tabName, provisional);
             normalized.meta = { ...(normalized.meta || { source: 'record' }), recordSeq: eventRecordSeq };
             const list = state.recordings.get(effectiveToken) || [];
@@ -296,8 +295,8 @@ export const appendWorkspaceRecordingEvent = async (
             recordLog('step_queued', {
                 stepId: normalized.id,
                 stepName: normalized.name,
-                ts: normalized.meta?.ts,
-                tabName: normalized.meta?.tabName || tabName,
+                ts: normalized.meta.ts,
+                tabName: normalized.meta.tabName || tabName,
                 workspaceName,
                 provisional: true,
             });
@@ -307,17 +306,15 @@ export const appendWorkspaceRecordingEvent = async (
                 stepId: normalized.id,
                 event,
                 page,
-                snapshotCache: state.recordSnapshotCache,
-                cacheKey: tabScopedCacheKey,
                 workspaceName,
                 stepName: normalized.name,
-                ts: normalized.meta?.ts,
-                tabName: normalized.meta?.tabName || tabName,
+                ts: normalized.meta.ts,
+                tabName: normalized.meta.tabName || tabName,
             });
         }
     }
 
-    let currentEvent = event;
+    const currentEvent = event;
     for (let round = 0; round < 3; round += 1) {
         recordLog('record_normalizer_enter', {
             workspaceName,
@@ -333,8 +330,9 @@ export const appendWorkspaceRecordingEvent = async (
             reason: normalizedEvent.status === 'pass' ? 'pass' : undefined,
             stepName: normalizedEvent.status === 'handled' ? normalizedEvent.step.name : undefined,
             selector: currentEvent.selector,
-            valuesLength: normalizedEvent.status === 'handled' && Array.isArray((normalizedEvent.step.args as any).values)
-                ? (normalizedEvent.step.args as any).values.length
+            valuesLength: normalizedEvent.status === 'handled'
+                && normalizedEvent.step.name === 'browser.select_option'
+                ? normalizedEvent.step.args.values.length
                 : undefined,
         });
         if (normalizedEvent.status === 'pending') {
@@ -352,15 +350,15 @@ export const appendWorkspaceRecordingEvent = async (
                     {
                         ...normalizedEvent.step,
                         id: provisionalClickStep.id,
-                    } as StepUnion,
+                    },
                 );
                 merged.meta = { ...(merged.meta || { source: 'record' }), recordSeq: eventRecordSeq };
                 replaceRecordedStep(provisionalClickStep.id, merged);
                 recordLog('step_updated', {
                     stepId: merged.id,
                     stepName: merged.name,
-                    ts: merged.meta?.ts,
-                    tabName: merged.meta?.tabName || tabName,
+                    ts: merged.meta.ts,
+                    tabName: merged.meta.tabName || tabName,
                     workspaceName,
                 });
                 if (normalizedEvent.continueCurrentEvent) {
@@ -380,7 +378,7 @@ export const appendWorkspaceRecordingEvent = async (
                 {
                     ...normalizedEvent.step,
                     meta: { ...(normalizedEvent.step.meta || { source: 'record' }), recordSeq: eventRecordSeq },
-                } as StepUnion,
+                },
                 normalizedEvent.enhancementEvent,
                 hooks,
                 { workspaceName, page },
@@ -424,8 +422,6 @@ export const appendWorkspaceRecordingEvent = async (
         stepId: normalized.id,
         event: currentEvent,
         page,
-        snapshotCache: state.recordSnapshotCache,
-        cacheKey: tabScopedCacheKey,
         workspaceName,
         stepName: normalized.name,
         ts: normalized.meta?.ts,
@@ -445,7 +441,6 @@ export const appendWorkspaceRecordingStep = (
     const recordLog = getLogger('record');
     if (!isWorkspaceRecordingEnabled(state, workspaceName)) {return { accepted: false };}
     const effectiveToken = getWorkspaceUnsavedToken(state, workspaceName);
-    const tabScopedCacheKey = `${effectiveToken}::${tabName}`;
     if (state.replaying.has(tabName) || state.replaying.has(effectiveToken)) {return { accepted: false };}
     if (options?.flushPendingFill !== false) {
         const hooks = {
@@ -461,15 +456,15 @@ export const appendWorkspaceRecordingStep = (
                 stepName: StepName;
                 ts?: number;
                 tabName?: string;
-            }) => startRecordedStepEnrichment({ ...input, snapshotCache: state.recordSnapshotCache, cacheKey: tabScopedCacheKey }),
+            }) => {
+            startRecordedStepEnrichment(input);
+        },
         };
         flushPendingChoiceEvents(state, effectiveToken, {
             state,
             recordingToken: effectiveToken,
             workspaceName,
             tabName,
-            snapshotCache: state.recordSnapshotCache,
-            cacheKey: tabScopedCacheKey,
             createStep,
             buildResolveFromEvent,
         }, hooks, { workspaceName, reason: 'append_step' });

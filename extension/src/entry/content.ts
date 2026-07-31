@@ -8,10 +8,6 @@
  * - 仅处理 UI 与消息，不做持久化。
  */
 
-interface Window {
-    __rpaTokenInjected?: boolean;
-}
-
 type ActionScopeInput = {
     workspaceName?: string;
     tabName?: string;
@@ -25,13 +21,70 @@ type ActionShape = {
     payload?: unknown;
 };
 
+type EntityRuleSelection = {
+    profileName: string;
+    businessTag: string;
+    entityKind: 'form' | 'table' | 'dialog' | 'list' | 'panel' | 'toolbar' | 'kv';
+};
+
 type FloatingUIExports = {
     mountFloatingUI: (opts: {
         tabName: string;
         workspaceName: string;
         onAction: (type: string, payload?: unknown, scope?: Record<string, unknown>) => Promise<unknown>;
         onEvent?: (handler: (action: ActionShape) => void) => void;
-    }) => { scheduleRefresh: () => void };
+        onEnterAnnotation?: (profileName?: string) => void;
+        onEntityRulePreview?: (selection: EntityRuleSelection | null) => Promise<boolean>;
+        onCheckpointEntityRulePreview?: (selection: EntityRuleSelection | null) => Promise<boolean>;
+    }) => {
+        scheduleRefresh: () => void;
+        onPageChanged: () => void;
+        setPageWorkspace: (workspaceName: string) => void;
+        setAnnotatorDebugState: (detail: string) => void;
+    };
+};
+
+type AnnotatorHandle = {
+    unmount: () => void;
+    show: () => void;
+    hide: () => void;
+    setState: (state: unknown) => void;
+    getState: () => unknown;
+    open: (result: unknown) => void;
+    exit: () => void;
+    setInteractionMode: (mode: 'edit' | 'inspect' | 'passthrough') => void;
+};
+
+type AnnotatorSessionController = {
+    openEditor: (profileName?: string) => Promise<boolean>;
+    previewRule: (selection: EntityRuleSelection | null) => Promise<boolean>;
+    previewCheckpoint: (selection: EntityRuleSelection | null) => Promise<boolean>;
+    close: (owner?: 'editor' | 'rule-preview' | 'checkpoint-preview') => void;
+};
+
+type AnnotatorSessionControllerExports = {
+    createAnnotatorSessionController: (options: {
+        ensureHandle: () => Promise<AnnotatorHandle | null>;
+        open: (payload: Record<string, unknown>) => Promise<ActionShape>;
+        pageUrl: () => string;
+        onEditorActiveChange?: (active: boolean) => void;
+        onError?: (owner: string, error: unknown) => void;
+    }) => AnnotatorSessionController;
+};
+
+type AnnotatorExports = {
+    startAnnotator: (
+        handlers: {
+            onExit: () => void;
+            onUndo: () => void;
+            onRedo: () => void;
+            onCheck: () => void;
+            onSave: () => void;
+            dispatch?: (type: string, payload?: Record<string, unknown>) => Promise<unknown>;
+            onDebugState?: (detail: string) => void;
+        },
+        doc?: Document,
+    ) => AnnotatorHandle;
 };
 
 type TokenBridgeExports = {
@@ -54,8 +107,15 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
     typeof value === 'object' && value !== null;
 const isOrdinaryPageUrl = (url: string): boolean =>
     url.startsWith('http://') || url.startsWith('https://');
+const isRuntimeBootstrapPage = (): boolean => {
+    try {
+        return new URL(location.href).searchParams.get('rpaRuntimeBootstrap') === '1';
+    } catch {
+        return false;
+    }
+};
 const UUIDorUnsafe = (): string => {
-    if (typeof globalThis.crypto?.randomUUID === 'function') {
+    if (typeof globalThis.crypto.randomUUID === 'function') {
         return globalThis.crypto.randomUUID();
     }
     const rand = () => Math.floor(Math.random() * 0xffffffff).toString(16).padStart(8, '0');
@@ -109,15 +169,45 @@ const loadFloatingUI = (() => {
     };
 })();
 
+const loadAnnotator = (() => {
+    let cached: Promise<AnnotatorExports> | null = null;
+    return () => {
+        if (!cached) {
+            const url = chrome.runtime.getURL('annotator/annotator.js');
+            cached = import(url) as Promise<AnnotatorExports>;
+        }
+        return cached;
+    };
+})();
+
+const loadAnnotatorSessionController = (() => {
+    let cached: Promise<AnnotatorSessionControllerExports> | null = null;
+    return () => {
+        if (!cached) {
+            const url = chrome.runtime.getURL('content/annotator_session_controller.js');
+            cached = import(url) as Promise<AnnotatorSessionControllerExports>;
+        }
+        return cached;
+    };
+})();
+
 (() => {
     // 幂等保护：避免重复注入 UI 与监听器
     if (window.top !== window) {return;}
+    if (isRuntimeBootstrapPage()) {
+        chrome.runtime.sendMessage({type: 'RPA_RUNTIME_BOOTSTRAP_WAKE'}, () => {
+            void chrome.runtime.lastError;
+        });
+        return;
+    }
     if (window.__rpaTokenInjected) {return;}
     window.__rpaTokenInjected = true;
 
     // tabName + hello 绑定（异步初始化，所有使用点需 await）
     let tokenReady: Promise<{ tabName: string; workspaceName: string }> | null = null;
+    let currentBinding: { tabName: string; workspaceName: string } | null = null;
     let lastReportedUrl = '';
+    let onPageContextChanged = (): void => undefined;
     const sendReport = async (workspaceName?: string) => {
         const resolved = workspaceName ? { workspaceName } : await ensureToken();
         const { send } = await loadSend();
@@ -141,34 +231,37 @@ const loadFloatingUI = (() => {
         lastReportedUrl = url;
     };
     const ensureToken = () => {
+        if (currentBinding) {
+            return Promise.resolve(currentBinding);
+        }
         tokenReady ??= (async () => {
                 const mod = await loadTokenBridge();
                 const result = await mod.ensureTabNameAsync();
+                currentBinding = result;
                 mod.bindHello(result.tabName, () => {
                     // hello is only for binding refresh; URL ownership is handled
                     // by report-on-change hooks below.
                 });
                 return result;
             })();
-        return tokenReady!;
+        return tokenReady;
     };
     const bindReportOnUrlChange = () => {
         const emit = () => {
             if (!isOrdinaryPageUrl(location.href)) {return;}
+            if (location.href === lastReportedUrl) {return;}
+            onPageContextChanged();
             void sendReportIfUrlChanged();
         };
-        const originalPush = history.pushState.bind(history);
-        const originalReplace = history.replaceState.bind(history);
-        history.pushState = ((...args: Parameters<typeof history.pushState>) => {
-            originalPush(...args);
-            emit();
-            return undefined;
-        }) as History['pushState'];
-        history.replaceState = ((...args: Parameters<typeof history.replaceState>) => {
-            originalReplace(...args);
-            emit();
-            return undefined;
-        }) as History['replaceState'];
+        const bridge = document.createElement('script');
+        bridge.src = chrome.runtime.getURL('content/url_change_bridge.js');
+        bridge.async = false;
+        bridge.setAttribute('data-rpa-snapshot-ignore', 'true');
+        bridge.addEventListener('load', () => {bridge.remove();}, {once: true});
+        bridge.addEventListener('error', () => {bridge.remove();}, {once: true});
+        const bridgeParent = document.querySelector('head') ?? document.documentElement;
+        bridgeParent.appendChild(bridge);
+        window.addEventListener('rpa:url-changed', emit);
         window.addEventListener('popstate', emit);
         window.addEventListener('hashchange', emit);
         window.addEventListener('pageshow', emit);
@@ -192,6 +285,9 @@ const loadFloatingUI = (() => {
                 }
                 if (message.type === MSG.SET_TOKEN) {
                     const tabName = typeof message.tabName === 'string' ? message.tabName : '';
+                    const workspaceName = typeof message.workspaceName === 'string'
+                        ? message.workspaceName
+                        : currentBinding?.workspaceName ?? '';
                     if (!tabName) {
                         sendResponse({ ok: false, error: 'missing tabName' });
                         return;
@@ -199,8 +295,14 @@ const loadFloatingUI = (() => {
                     sessionStorage.setItem('__rpa_tab_name', tabName);
                     sessionStorage.setItem('__rpa_tab_name_confirmed', '1');
                     window.name = `__RPA_TAB_NAME__:${tabName}`;
-                    (window as any).__rpa_tab_name = tabName;
-                    sendResponse({ ok: true, tabName, url: location.href });
+                    window.__rpa_tab_name = tabName;
+                    const changed = currentBinding?.tabName !== tabName
+                        || currentBinding.workspaceName !== workspaceName;
+                    currentBinding = {tabName, workspaceName};
+                    tokenReady = Promise.resolve(currentBinding);
+                    uiHandle?.setPageWorkspace(workspaceName);
+                    if (changed) {onPageContextChanged();}
+                    sendResponse({ ok: true, tabName, workspaceName, url: location.href });
                 }
             })().catch((error: unknown) => {
                 sendResponse({ ok: false, error: String(error) });
@@ -238,8 +340,14 @@ const loadFloatingUI = (() => {
     };
 
     // UI 注入（浮层模块）
-    let uiHandle: { scheduleRefresh: () => void } | null = null;
+    let uiHandle: {
+        scheduleRefresh: () => void;
+        onPageChanged: () => void;
+        setPageWorkspace: (workspaceName: string) => void;
+        setAnnotatorDebugState: (detail: string) => void;
+    } | null = null;
     let consumeActionEvent: ((action: ActionShape) => void) | null = null;
+    let annotatorHandle: AnnotatorHandle | null = null;
     void (async () => {
         const { mountFloatingUI } = await loadFloatingUI();
         const { MSG } = await loadProtocol();
@@ -247,13 +355,80 @@ const loadFloatingUI = (() => {
         bindReportOnUrlChange();
         void sendReportIfUrlChanged(workspaceName, true);
         startHeartbeat();
+        const dispatchAnnotator = async (type: string, payload?: Record<string, unknown>): Promise<unknown> => {
+            const { send } = await loadSend();
+            const binding = await ensureToken();
+            const request: ActionShape = {
+                v: 1,
+                id: UUIDorUnsafe(),
+                type,
+                workspaceName: binding.workspaceName,
+                payload: payload ?? {},
+            };
+            consumeActionEvent?.(request);
+            const reply = await send.action(request) as ActionShape;
+            consumeActionEvent?.(reply);
+            return reply;
+        };
+        const setAnnotatorLauncherVisible = (visible: boolean): void => {
+            const panel = document.getElementById('rpa-floating-panel');
+            if (!panel) {return;}
+            panel.style.display = '';
+            const launchers = panel.shadowRoot?.querySelectorAll('.rules-launch, .checkpoint-launch');
+            launchers?.forEach((launcher) => {
+                if (launcher instanceof HTMLElement) {launcher.hidden = !visible;}
+            });
+        };
+
+        let annotatorSessions: AnnotatorSessionController | null = null;
+
+        const ensureAnnotatorHandle = async (): Promise<AnnotatorHandle | null> => {
+            if (annotatorHandle) {return annotatorHandle;}
+            try {
+                const {startAnnotator} = await loadAnnotator();
+                annotatorHandle = startAnnotator(
+                    {
+                        onExit: () => {
+                            annotatorSessions?.close('editor');
+                        },
+                        onUndo: () => undefined,
+                        onRedo: () => undefined,
+                        onCheck: () => undefined,
+                        onSave: () => undefined,
+                        dispatch: (type, payload) => dispatchAnnotator(type, payload),
+                        onDebugState: (detail) => uiHandle?.setAnnotatorDebugState(detail),
+                    },
+                    document,
+                );
+                return annotatorHandle;
+            } catch (error) {
+                console.error('[rpa] annotator mount failed:', error);
+                return null;
+            }
+        };
+        const {createAnnotatorSessionController} = await loadAnnotatorSessionController();
+        const annotatorSessionController = createAnnotatorSessionController({
+            ensureHandle: ensureAnnotatorHandle,
+            open: async (payload) => await dispatchAnnotator(
+                'entity_rules.annotator.open',
+                {annotatorProtocol: 'canvas-v1', ...payload},
+            ) as ActionShape,
+            pageUrl: () => location.href,
+            onEditorActiveChange: (active) => {
+                setAnnotatorLauncherVisible(!active);
+            },
+            onError: (owner, error) => {
+                console.error(`[rpa] annotator session failed (${owner}):`, error);
+            },
+        });
+        annotatorSessions = annotatorSessionController;
+
         uiHandle = mountFloatingUI({
             tabName,
             workspaceName,
             onAction: async (type, payload, scope) => {
                 const { send } = await loadSend();
                 const typedScope = (scope ?? {}) as ActionScopeInput;
-                const hasExplicitScope = Boolean(typedScope.workspaceName ?? typedScope.tabName);
                 const normalizedPayload =
                     type === 'record.event'
                         ? {
@@ -277,7 +452,20 @@ const loadFloatingUI = (() => {
             onEvent: (handler) => {
                 consumeActionEvent = handler;
             },
+            onEnterAnnotation: (profileName) => {
+                void annotatorSessionController.openEditor(profileName);
+            },
+            onEntityRulePreview: async (selection) => {
+                return await annotatorSessionController.previewRule(selection);
+            },
+            onCheckpointEntityRulePreview: async (selection) => {
+                return await annotatorSessionController.previewCheckpoint(selection);
+            },
         });
+        onPageContextChanged = () => {
+            annotatorSessionController.close();
+            uiHandle?.onPageChanged();
+        };
         chrome.runtime.onMessage.addListener((message: unknown) => {
             if (!isRecord(message) || message.type !== MSG.ACTION_EVENT || !('action' in message)) {return;}
             consumeActionEvent?.(message.action as ActionShape);

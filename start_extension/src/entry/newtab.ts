@@ -2,7 +2,6 @@ const TAB_TOKEN_KEY = '__rpa_tab_token';
 const TAB_NAME_KEY = '__rpa_tab_name';
 const TAB_NAME_CONFIRMED_KEY = '__rpa_tab_name_confirmed';
 const TAB_NAME_WIN_NAME_PREFIX = '__RPA_TAB_NAME__:';
-const MSG_ENSURE_BOUND_TOKEN = 'RPA_ENSURE_BOUND_TOKEN';
 
 const wsStatusEl = document.getElementById('wsStatus');
 const tokenEl = document.getElementById('token');
@@ -17,6 +16,7 @@ declare global {
         __rpa_tab_token?: string;
         __rpa_tab_name?: string;
         __TAB_TOKEN__?: string;
+        __rpa_start_error?: string;
     }
 }
 
@@ -58,10 +58,17 @@ type WorkflowRunData = {
 };
 
 type BoundTokenData = {
-    ok: boolean;
     tabName?: string;
     workspaceName?: string;
-    error?: string;
+    stale?: boolean;
+};
+type RuntimeTabListData = {
+    workspaceName?: string;
+    tabs?: Array<{
+        tabName?: string;
+        url?: string;
+        active?: boolean;
+    }>;
 };
 type BoundScope = { tabName: string; workspaceName: string };
 type SessionConfig = { workspaceName: string; wsPort: number };
@@ -88,7 +95,7 @@ const readSessionConfig = async (): Promise<SessionConfig> => {
     await persistSessionConfig(fromUrl);
     const values = await chrome.storage.local.get(['rpaWorkspaceName', 'rpaWsPort']);
     const workspaceName = typeof values.rpaWorkspaceName === 'string' ? values.rpaWorkspaceName.trim() : '';
-    const rawWsPort = values.rpaWsPort;
+    const rawWsPort = values.rpaWsPort as unknown;
     const wsPort = typeof rawWsPort === 'number' ? rawWsPort : typeof rawWsPort === 'string' ? Number(rawWsPort) : NaN;
     if (!workspaceName || !Number.isInteger(wsPort) || wsPort <= 0) {
         throw new Error('session config unavailable');
@@ -110,7 +117,7 @@ const parseWsReply = <TData = unknown>(value: unknown): ActionResult<TData> => {
     if (!isRecord(value)) {
         return { ok: false, error: { message: 'invalid action reply' } };
     }
-    const type = asString(value.type) || '';
+    const type = asString(value.type) ?? '';
     const payload = value.payload;
     if (type.endsWith('.result')) {
         return { ok: true, data: payload as TData };
@@ -120,7 +127,7 @@ const parseWsReply = <TData = unknown>(value: unknown): ActionResult<TData> => {
         return {
             ok: false,
             error: {
-                message: asString(errorPayload.message) || 'action failed',
+                message: asString(errorPayload.message) ?? 'action failed',
             },
         };
     }
@@ -144,37 +151,73 @@ const applyTabName = (tabName: string) => {
     window.__rpa_tab_name = tabName;
 };
 
-const ensureBoundToken = async (): Promise<BoundScope> => {
-    let currentToken = sessionStorage.getItem(TAB_TOKEN_KEY) ?? '';
-    const reply = await new Promise<BoundTokenData>((resolve) => {
-        chrome.runtime.sendMessage(
-            {
-                type: MSG_ENSURE_BOUND_TOKEN,
-                source: 'start_extension',
-                tabName: currentToken,
-                url: location.href,
-                title: document.title,
-                at: Date.now(),
-            },
-            (response: unknown) => {
-                if (chrome.runtime.lastError) {
-                    resolve({ ok: false, error: chrome.runtime.lastError.message });
-                    return;
-                }
-                resolve((response ?? { ok: false }) as BoundTokenData);
-            },
-        );
-    });
-    if (!reply.ok || !reply.tabName || !reply.workspaceName) {
-        throw new Error(reply.error ?? 'bound tab reference unavailable');
+const resolvePublishedTabName = async (): Promise<string> => {
+    const deadline = Date.now() + 5000;
+    let lastError = 'workspace tab is not published yet';
+    while (Date.now() < deadline) {
+        const listed = await sendAction<RuntimeTabListData>('tab.list', {}, true);
+        if (listed.ok) {
+            const tabs = Array.isArray(listed.data?.tabs) ? listed.data.tabs : [];
+            const candidate = tabs.find((tab) => tab.active === true)
+                ?? tabs.find((tab) => {
+                    const url = tab.url ?? '';
+                    return url.startsWith('chrome://newtab') || url.includes('/newtab.html');
+                })
+                ?? (tabs.length === 1 ? tabs[0] : undefined);
+            const tabName = candidate?.tabName?.trim() ?? '';
+            if (tabName) {return tabName;}
+            lastError = `no unique active start tab in workspace (${String(tabs.length)} tabs)`;
+        } else {
+            lastError = listed.error?.message ?? 'tab.list failed';
+        }
+        await new Promise((resolve) => setTimeout(resolve, 100));
     }
-    currentToken = reply.tabName;
-    applyTabName(currentToken);
+    throw new Error(lastError);
+};
+
+const ensureBoundToken = async (): Promise<BoundScope> => {
+    const sessionConfig = await readSessionConfig();
+    const currentToken = sessionStorage.getItem(TAB_TOKEN_KEY) ?? '';
+    if (currentToken) {
+        const reported = await sendAction<BoundTokenData>('tab.report', {
+            tabName: currentToken,
+            source: 'start_extension',
+            url: location.href,
+            title: document.title,
+            at: Date.now(),
+        }, true);
+        if (reported.ok && reported.data?.stale !== true) {
+            applyTabName(currentToken);
+            return {tabName: currentToken, workspaceName: sessionConfig.workspaceName};
+        }
+    }
+
+    const tabName = await resolvePublishedTabName();
+    const reported = await sendAction<BoundTokenData>('tab.report', {
+        tabName,
+        source: 'start_extension',
+        url: location.href,
+        title: document.title,
+        at: Date.now(),
+    }, true);
+    if (!reported.ok || reported.data?.stale === true) {
+        throw new Error(reported.error?.message ?? 'published tab reference is stale');
+    }
+    applyTabName(tabName);
     return {
-        tabName: reply.tabName,
-        workspaceName: reply.workspaceName,
-        ...(reply.tabName ? { tabName: reply.tabName } : {}),
+        tabName,
+        workspaceName: reported.data?.workspaceName ?? sessionConfig.workspaceName,
     };
+};
+
+const sendHeartbeat = async (scope: BoundScope): Promise<void> => {
+    await sendAction('tab.ping', {
+        tabName: scope.tabName,
+        source: 'start_extension',
+        url: location.href,
+        title: document.title,
+        at: Date.now(),
+    }, true);
 };
 
 const sendAction = async <TData = unknown>(type: string, payload: Record<string, unknown> = {}, workspaceScoped?: boolean) =>
@@ -336,9 +379,9 @@ const refreshWorkflowList = async (workspaceScoped?: boolean) => {
         renderWorkflowList([]);
         return;
     }
-    const workflows = Array.isArray(result.data?.workflows) ? result.data?.workflows : [];
-    renderWorkflowList(workflows || [], workspaceScoped);
-    if (restoreStatusEl) {restoreStatusEl.textContent = `ready (${String((workflows || []).length)})`;}
+    const workflows = result.data && Array.isArray(result.data.workflows) ? result.data.workflows : [];
+    renderWorkflowList(workflows, workspaceScoped);
+    if (restoreStatusEl) {restoreStatusEl.textContent = `ready (${String(workflows.length)})`;}
 };
 
 void (async () => {
@@ -348,9 +391,14 @@ void (async () => {
         if (urlEl) {urlEl.textContent = location.href;}
         setStatus('connected', true);
         await refreshWorkflowList(false);
+        setInterval(() => {
+            void sendHeartbeat(bound);
+        }, 15_000);
     } catch (error) {
-        setStatus('offline');
-        log('token.init.failed', { message: error instanceof Error ? error.message : String(error) });
+        const message = error instanceof Error ? error.message : String(error);
+        window.__rpa_start_error = message;
+        setStatus(`offline: ${message}`);
+        log('token.init.failed', {message});
         throw error;
     }
 })();

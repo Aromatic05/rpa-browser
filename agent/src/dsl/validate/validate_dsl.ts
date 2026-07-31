@@ -45,10 +45,11 @@ const validateStmt = (
             validateAct(stmt, scope, diagnostics, path);
             return;
         case 'form_act':
+        case 'table_act':
             diagnostics.push(
                 createDiagnostic(
                     'ERR_DSL_NOT_NORMALIZED',
-                    'form_act must be expanded before validation',
+                    `${stmt.kind} must be expanded before validation`,
                     path,
                 ),
             );
@@ -77,14 +78,14 @@ const validateStmt = (
 
 const validateAct = (stmt: ActStmt, scope: ValidateScope, diagnostics: DslDiagnostic[], path: string): void => {
     if (stmt.action === 'fill' || stmt.action === 'type' || stmt.action === 'select') {
-        if (!stmt.target || stmt.target.kind !== 'ref') {
+        if (!stmt.target) {
             diagnostics.push(
                 createDiagnostic('ERR_DSL_BAD_ACT_ARGS', `DSL ${stmt.action} requires a ref target`, `${path}.target`),
             );
             return;
         }
         validateRef(stmt.target, scope, diagnostics, `${path}.target`);
-        if (!stmt.value || stmt.value.kind !== 'ref') {
+        if (!stmt.value) {
             diagnostics.push(
                 createDiagnostic('ERR_DSL_BAD_ACT_ARGS', `DSL ${stmt.action} requires a ref value`, `${path}.value`),
             );
@@ -95,7 +96,7 @@ const validateAct = (stmt: ActStmt, scope: ValidateScope, diagnostics: DslDiagno
     }
 
     if (stmt.action === 'click') {
-        if (!stmt.target || stmt.target.kind !== 'ref') {
+        if (!stmt.target) {
             diagnostics.push(createDiagnostic('ERR_DSL_BAD_ACT_ARGS', 'DSL click requires a ref target', `${path}.target`));
             return;
         }

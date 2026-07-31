@@ -9,7 +9,7 @@ const repoRoot = process.cwd();
 const read = (relativePath: string) => fs.readFileSync(path.join(repoRoot, relativePath), 'utf8');
 
 const stepTypesSource = read('src/runner/steps/types.ts');
-const resolveTargetSource = read('src/runner/steps/helpers/resolve_target.ts');
+const legacyResolveTargetPath = path.join(repoRoot, 'src/runner/steps/helpers/resolve_target.ts');
 const serializationSource = read('src/runner/serialization/types.ts');
 const runStepsTypesSource = read('src/runner/run_steps_types.ts');
 const runStepsSource = read('src/runner/run_steps.ts');
@@ -28,6 +28,7 @@ test('step model source keeps normalized action target shape', () => {
     assert.equal(stepTypesSource.includes('target?: Target'), false);
     assert.equal(stepTypesSource.includes('@deprecated'), false);
     assert.equal(stepTypesSource.includes('StepHintFile'), false);
+    assert.equal(stepTypesSource.includes('executors/snapshot/core/types'), false);
 
     const actionSteps = [
         'browser.take_screenshot',
@@ -61,11 +62,12 @@ test('step model source keeps normalized action target shape', () => {
     }
 });
 
-test('resolve target source and serialization source keep resolve sidecar boundary', () => {
-    assert.equal(resolveTargetSource.includes(`source: 'nodeId' | 'selector' | 'resolve'`), true);
-    assert.equal(resolveTargetSource.includes(`source: 'selector' | 'id' | 'hint'`), false);
-    assert.equal(resolveTargetSource.includes(`source: 'id'`), false);
-    assert.equal(resolveTargetSource.includes(`source: 'hint'`), false);
+test('V2 capture resolver and serialization keep the resolve sidecar boundary', () => {
+    assert.equal(fs.existsSync(legacyResolveTargetPath), false);
+    for (const forbidden of ['ruleEntityOverlay', 'businessEntityOverlay', 'executors/snapshot/core']) {
+        assert.equal(captureResolveExecutorSource.includes(forbidden), false, `capture_resolve must not use ${forbidden}`);
+    }
+    assert.equal(captureResolveExecutorSource.includes('semanticBindingsByProfile'), true);
 
     assert.equal(serializationSource.includes('StepResolveFile'), true);
     assert.equal(serializationSource.includes('SerializedStep'), true);
@@ -249,6 +251,14 @@ test('protocol lock: kind is required, kind must be valid, controlRef/searchText
     // @ts-expect-error searchText is removed from browser.select_option
     const withST: Step<'browser.select_option'> = { id: 'k3', name: 'browser.select_option', args: { values: ['x'], searchText: 'x' } };
     assert.equal(Boolean(withKind || withoutKind || withInvalidKind || withCR || withST), true);
+});
+
+test('protocol lock: browser.snapshot accepts only V2 projection modes', () => {
+    const step: Step<'browser.snapshot'> = {id: 'snapshot-mode', name: 'browser.snapshot', args: {mode: 'annotation'}};
+    // @ts-expect-error legacy mode is not a V2 projection mode
+    const invalid: Step<'browser.snapshot'> = {id: 'snapshot-mode-invalid', name: 'browser.snapshot', args: {mode: 'legacy'}};
+    assert.equal(step.args.mode, 'annotation');
+    assert.equal(Boolean(invalid), true);
 });
 
 test('protocol lock: includeA11y and focus_only removed from browser.snapshot', () => {

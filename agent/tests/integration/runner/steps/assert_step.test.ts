@@ -1,96 +1,37 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import path from 'node:path';
-import { executeBrowserAssert } from '../../../../src/runner/steps/executors/assert';
-import type { Step } from '../../../../src/runner/steps/types';
-import type { RunStepsDeps } from '../../../../src/runner/run_steps';
-import { getRunnerConfig } from '../../../../src/config';
-import { RunnerPluginHost } from '../../../../src/runner/hotreload/plugin_host';
-import { completeRunStepsDeps } from '../../../helpers/run_steps_workspace';
+import {executeBrowserAssert} from '../../../../src/runner/steps/executors/assert';
+import type {Step} from '../../../../src/runner/steps/types';
+import type {RunStepsDeps} from '../../../../src/runner/run_steps';
+import {completeRunStepsDeps} from '../../../helpers/run_steps_workspace';
+import {createV2BusinessPage} from '../../../helpers/v2_business_page';
 
-const createDeps = (options: {
+const createDeps = async (options: {
     url?: string;
     textVisibleResult?: boolean;
-    entityCount?: number;
-}): RunStepsDeps => {
-    const workspaceName = 'ws-1';
-    const tabName = 'tab-token-1';
+}): Promise<RunStepsDeps> => {
     const currentUrl = options.url || 'https://example.test/page';
+    const page = {url: () => currentUrl};
     const traceTools = {
-        'trace.page.getInfo': async () => ({ ok: true, data: { url: currentUrl } }),
-        'trace.page.evaluate': async () => ({ ok: true, data: options.textVisibleResult ?? true }),
+        'trace.page.getInfo': async () => ({ok: true, data: {url: currentUrl}}),
+        'trace.page.evaluate': async () => ({ok: true, data: options.textVisibleResult ?? true}),
     };
-
-    const minimalSnapshot = {
-        root: { id: 'root', role: 'root', children: [] },
-        nodeIndex: {},
-        entityIndex: { entities: {}, byNodeId: {} },
-        locatorIndex: {},
-        bboxIndex: {},
-        attrIndex: {},
-        contentStore: {},
-    } as any;
-
-    const entityCount = options.entityCount ?? 0;
-    const snapshotSessionStore = {
-        version: 1,
-        entries: {
-            [`${workspaceName}:${tabName}`]: {
-                pageIdentity: {
-                    workspaceName,
-                    tabName,
-                    url: currentUrl,
-                },
-                baseSnapshot: minimalSnapshot,
-                finalSnapshot: minimalSnapshot,
-                finalEntityView: {
-                    entities: Array.from({ length: entityCount }, (_, idx) => ({
-                        id: `e-${idx}`,
-                        nodeId: `node-${idx}`,
-                        kind: 'form',
-                        type: 'region',
-                        name: `Entity ${idx}`,
-                        source: 'auto',
-                    })),
-                    byNodeId: {},
-                    bindingIndex: {
-                        fieldsByEntity: {},
-                        actionsByEntity: {},
-                        columnsByEntity: {},
-                    },
-                },
-                overlays: {
-                    renamedNodes: {},
-                    addedEntities: [],
-                    deletedEntities: [],
-                },
-                diffBaselines: {},
-                dirty: false,
-                lastRefreshAt: Date.now(),
-                version: 1,
-            },
-        },
-    };
-
-    const binding = {
-        workspaceName,
-        tabName,
-        page: { url: () => currentUrl },
+    const deps = completeRunStepsDeps({pluginHost: {} as never}, {
+        workspaceName: 'ws-1',
+        tabName: 'tab-token-1',
+        page,
         traceTools,
-        traceCtx: {
-            cache: {
-                snapshotSessionStore,
-            },
-        },
-    };
-
-    return completeRunStepsDeps(
-        {
-            config: getRunnerConfig(),
-            pluginHost: new RunnerPluginHost(path.resolve(process.cwd(), 'src/runner/plugin_entry.ts')),
-        },
-        binding,
-    );
+    });
+    const fixture = createV2BusinessPage();
+    await deps.pageSession.ensureFresh({
+        pageKey: page as never,
+        pageUrl: currentUrl,
+        capture: async () => fixture.capture,
+    });
+    const currentEntry = deps.pageSession.read(page as never);
+    assert.ok(currentEntry);
+    deps.pageSession.ensureFresh = async () => currentEntry;
+    return deps;
 };
 
 const createAssertStep = (args: Step<'browser.assert'>['args']): Step<'browser.assert'> => ({
@@ -99,41 +40,64 @@ const createAssertStep = (args: Step<'browser.assert'>['args']): Step<'browser.a
     args,
 });
 
-test('assert urlIncludes success', async () => {
-    const deps = createDeps({ url: 'https://example.test/ok' });
-    const result = await executeBrowserAssert(createAssertStep({ urlIncludes: '/ok' }), deps, 'ws-1');
-    assert.equal(result.ok, true);
+test('assert urlIncludes success and failure', async () => {
+    const success = await executeBrowserAssert(
+        createAssertStep({urlIncludes: '/ok'}),
+        await createDeps({url: 'https://example.test/ok'}),
+        'ws-1',
+    );
+    assert.equal(success.ok, true);
+
+    const failure = await executeBrowserAssert(
+        createAssertStep({urlIncludes: '/ok'}),
+        await createDeps({url: 'https://example.test/nope'}),
+        'ws-1',
+    );
+    assert.equal(failure.ok, false);
+    assert.equal(failure.error?.code, 'ERR_CHECKPOINT_ASSERT_FAILED');
 });
 
-test('assert urlIncludes failure', async () => {
-    const deps = createDeps({ url: 'https://example.test/nope' });
-    const result = await executeBrowserAssert(createAssertStep({ urlIncludes: '/ok' }), deps, 'ws-1');
+test('assert textVisible success and failure', async () => {
+    const success = await executeBrowserAssert(
+        createAssertStep({textVisible: 'Hello'}),
+        await createDeps({textVisibleResult: true}),
+        'ws-1',
+    );
+    assert.equal(success.ok, true);
+
+    const failure = await executeBrowserAssert(
+        createAssertStep({textVisible: 'Hello'}),
+        await createDeps({textVisibleResult: false}),
+        'ws-1',
+    );
+    assert.equal(failure.ok, false);
+    assert.equal(failure.error?.code, 'ERR_CHECKPOINT_ASSERT_FAILED');
+});
+
+test('assert entityExists filters the V2 EntityView', async () => {
+    const deps = await createDeps({});
+    const success = await executeBrowserAssert(createAssertStep({
+        entityExists: {
+            query: 'order table',
+            kind: 'table',
+            businessTag: 'order.table.main',
+        },
+    }), deps, 'ws-1');
+    assert.equal(success.ok, true);
+
+    const failure = await executeBrowserAssert(createAssertStep({
+        entityExists: {query: 'missing entity', businessTag: 'missing.tag'},
+    }), deps, 'ws-1');
+    assert.equal(failure.ok, false);
+    assert.equal(failure.error?.code, 'ERR_CHECKPOINT_ASSERT_FAILED');
+});
+
+test('assert rejects an empty rule set', async () => {
+    const result = await executeBrowserAssert(
+        createAssertStep({}),
+        await createDeps({}),
+        'ws-1',
+    );
     assert.equal(result.ok, false);
-    assert.equal(result.error?.code, 'ERR_CHECKPOINT_ASSERT_FAILED');
-});
-
-test('assert textVisible success', async () => {
-    const deps = createDeps({ textVisibleResult: true });
-    const result = await executeBrowserAssert(createAssertStep({ textVisible: 'Hello' }), deps, 'ws-1');
-    assert.equal(result.ok, true);
-});
-
-test('assert textVisible failure', async () => {
-    const deps = createDeps({ textVisibleResult: false });
-    const result = await executeBrowserAssert(createAssertStep({ textVisible: 'Hello' }), deps, 'ws-1');
-    assert.equal(result.ok, false);
-    assert.equal(result.error?.code, 'ERR_CHECKPOINT_ASSERT_FAILED');
-});
-
-test('assert entityExists success', async () => {
-    const deps = createDeps({ entityCount: 1 });
-    const result = await executeBrowserAssert(createAssertStep({ entityExists: { query: 'Entity' } }), deps, 'ws-1');
-    assert.equal(result.ok, true);
-});
-
-test('assert entityExists failure', async () => {
-    const deps = createDeps({ entityCount: 0 });
-    const result = await executeBrowserAssert(createAssertStep({ entityExists: { query: 'Entity' } }), deps, 'ws-1');
-    assert.equal(result.ok, false);
-    assert.equal(result.error?.code, 'ERR_CHECKPOINT_ASSERT_FAILED');
+    assert.equal(result.error?.code, 'ERR_BAD_ARGS');
 });

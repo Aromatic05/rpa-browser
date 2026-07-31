@@ -2,13 +2,13 @@ type WaitablePage = {
     waitForTimeout?: (timeout: number) => Promise<unknown>;
 };
 
-export const pickDelayMs = (min: number, max: number) => {
+export const pickDelayMs = (min: number, max: number): number => {
     if (!Number.isFinite(min) || !Number.isFinite(max)) {return 0;}
     if (max <= min) {return Math.max(0, min);}
     return Math.floor(min + Math.random() * (max - min + 1));
 };
 
-export const waitForHumanDelay = async (page: WaitablePage, delayMs: number) => {
+export const waitForHumanDelay = async (page: WaitablePage, delayMs: number): Promise<void> => {
     if (delayMs <= 0) {return;}
     if (typeof page.waitForTimeout === 'function') {
         await page.waitForTimeout(delayMs);

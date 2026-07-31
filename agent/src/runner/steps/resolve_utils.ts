@@ -6,7 +6,6 @@ const hasText = (value: string | undefined): boolean => normalize(value).length 
 const isMeaningfulLocatorCandidate = (
     candidate: NonNullable<NonNullable<ResolveHint['raw']>['locatorCandidates']>[number],
 ): boolean => {
-    if (!candidate || typeof candidate !== 'object') {return false;}
     if (candidate.kind === 'css') {return hasText(candidate.selector);}
     if (candidate.kind === 'testid') {return hasText(candidate.testId);}
     if (candidate.kind === 'role') {return hasText(candidate.role) || hasText(candidate.name);}

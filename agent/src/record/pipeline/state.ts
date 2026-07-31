@@ -1,9 +1,10 @@
 import type { RecorderEvent } from '../capture/recorder';
-import type { RecordSnapshotCacheEntry } from './snapshot';
+import type { RecordingSnapshotPort } from './snapshot';
 import type { RecordingEnhancementMap } from '../types';
 import type { RecordingManifest, WorkspaceSavedSnapshot } from './manifest';
 import { flushPendingFillEvents } from './pending';
-import type { StepResolve } from '../../runner/steps/types';
+import crypto from 'node:crypto';
+import type { StepResolve, StepUnion } from '../../runner/steps/types';
 
 export type PendingCheckboxGroupSession = {
     kind: 'checkbox_group';
@@ -40,9 +41,20 @@ export type PendingSuppressedClick = {
     ts: number;
 };
 
+export type CheckpointRecordingSession = {
+    token: string;
+    previousToken: string;
+    status: 'recording' | 'review';
+    startedAt: number;
+    kind: 'procedure' | 'recovery';
+    profileName?: string;
+    businessTag?: string;
+    entityKind?: 'form' | 'table' | 'dialog' | 'list' | 'panel' | 'toolbar' | 'kv';
+};
+
 export type RecordingState = {
     recordingEnabled: Set<string>;
-    recordings: Map<string, import('../../runner/steps/types').StepUnion[]>;
+    recordings: Map<string, StepUnion[]>;
     recordingEnhancements: Map<string, RecordingEnhancementMap>;
     recordingManifests: Map<string, RecordingManifest>;
     workspaceUnsavedRecording: Map<string, string>;
@@ -51,16 +63,17 @@ export type RecordingState = {
     lastNavigateTs: Map<string, number>;
     lastClickTs: Map<string, number>;
     lastScrollY: Map<string, number>;
-    recordSnapshotCache: Map<string, RecordSnapshotCacheEntry>;
+    snapshotPort: RecordingSnapshotPort;
     pendingEnhancements: Map<string, Set<Promise<void>>>;
     replaying: Set<string>;
     replayCancel: Set<string>;
     pendingFillEvents: Map<string, Map<string, { event: RecorderEvent; tabName: string; recordSeq?: number }>>;
     pendingChoiceEvents: Map<string, Map<string, PendingChoiceSession>>;
     pendingSuppressedClicks: Map<string, PendingSuppressedClick[]>;
+    checkpointRecordings: Map<string, CheckpointRecordingSession>;
 };
 
-export const createRecordingState = (): RecordingState => ({
+export const createRecordingState = (options: {snapshotPort: RecordingSnapshotPort}): RecordingState => ({
     recordingEnabled: new Set(),
     recordings: new Map(),
     recordingEnhancements: new Map(),
@@ -71,13 +84,14 @@ export const createRecordingState = (): RecordingState => ({
     lastNavigateTs: new Map(),
     lastClickTs: new Map(),
     lastScrollY: new Map(),
-    recordSnapshotCache: new Map(),
+    snapshotPort: options.snapshotPort,
     pendingEnhancements: new Map(),
     replaying: new Set(),
     replayCancel: new Set(),
     pendingFillEvents: new Map(),
     pendingChoiceEvents: new Map(),
     pendingSuppressedClicks: new Map(),
+    checkpointRecordings: new Map(),
 });
 
 const unsavedRecordingToken = (workspaceName: string): string => `unsaved:${workspaceName}`;
@@ -85,8 +99,9 @@ const unsavedRecordingToken = (workspaceName: string): string => `unsaved:${work
 export const getWorkspaceUnsavedToken = (state: RecordingState, workspaceName: string): string =>
     state.workspaceUnsavedRecording.get(workspaceName) || unsavedRecordingToken(workspaceName);
 
-export const resetWorkspaceUnsavedRecording = (
+const resetRecordingBuffer = (
     state: RecordingState,
+    token: string,
     workspaceName: string,
     seed?: {
         entryTabRef?: string;
@@ -95,8 +110,6 @@ export const resetWorkspaceUnsavedRecording = (
         initialTabs?: RecordingManifest['initialTabs'];
     },
 ): string => {
-    const token = unsavedRecordingToken(workspaceName);
-    state.workspaceUnsavedRecording.set(workspaceName, token);
     state.recordings.set(token, []);
     state.recordingEnhancements.delete(token);
     state.recordingManifests.set(token, {
@@ -113,12 +126,113 @@ export const resetWorkspaceUnsavedRecording = (
     state.lastNavigateTs.set(token, 0);
     state.lastClickTs.set(token, 0);
     state.lastScrollY.set(token, 0);
-    state.recordSnapshotCache.delete(token);
     state.pendingEnhancements.delete(token);
     state.pendingFillEvents.delete(token);
     state.pendingChoiceEvents.delete(token);
     state.pendingSuppressedClicks.delete(token);
     return token;
+};
+
+export const resetWorkspaceUnsavedRecording = (
+    state: RecordingState,
+    workspaceName: string,
+    seed?: {
+        entryTabRef?: string;
+        activeTabRef?: string;
+        entryUrl?: string;
+        initialTabs?: RecordingManifest['initialTabs'];
+    },
+): string => {
+    const token = unsavedRecordingToken(workspaceName);
+    state.workspaceUnsavedRecording.set(workspaceName, token);
+    return resetRecordingBuffer(state, token, workspaceName, seed);
+};
+
+export const startCheckpointRecording = (
+    state: RecordingState,
+    workspaceName: string,
+    seed?: {
+        entryTabRef?: string;
+        activeTabRef?: string;
+        entryUrl?: string;
+        initialTabs?: RecordingManifest['initialTabs'];
+        kind?: 'procedure' | 'recovery';
+        profileName?: string;
+        businessTag?: string;
+        entityKind?: 'form' | 'table' | 'dialog' | 'list' | 'panel' | 'toolbar' | 'kv';
+    },
+): CheckpointRecordingSession => {
+    if (state.checkpointRecordings.has(workspaceName)) {
+        throw new Error('checkpoint recording already exists');
+    }
+    const previousToken = getWorkspaceUnsavedToken(state, workspaceName);
+    const token = `checkpoint:${workspaceName}:${crypto.randomUUID()}`;
+    resetRecordingBuffer(state, token, workspaceName, seed);
+    state.workspaceUnsavedRecording.set(workspaceName, token);
+    const session: CheckpointRecordingSession = {
+        token,
+        previousToken,
+        status: 'recording',
+        startedAt: Date.now(),
+        kind: seed?.kind ?? 'procedure',
+        profileName: seed?.profileName,
+        businessTag: seed?.businessTag,
+        entityKind: seed?.entityKind,
+    };
+    state.checkpointRecordings.set(workspaceName, session);
+    return session;
+};
+
+export const finishCheckpointRecording = (
+    state: RecordingState,
+    workspaceName: string,
+): CheckpointRecordingSession | null => {
+    const session = state.checkpointRecordings.get(workspaceName);
+    if (!session) {return null;}
+    session.status = 'review';
+    state.workspaceUnsavedRecording.set(workspaceName, session.previousToken);
+    return session;
+};
+
+export const getCheckpointRecordingSession = (
+    state: RecordingState,
+    workspaceName: string,
+): CheckpointRecordingSession | null => state.checkpointRecordings.get(workspaceName) ?? null;
+
+export const getRecordingBundle = (
+    state: RecordingState,
+    token: string,
+): {
+    recordingToken: string;
+    steps: StepUnion[];
+    manifest: RecordingManifest | undefined;
+    enrichments: RecordingEnhancementMap;
+} => ({
+    recordingToken: token,
+    steps: state.recordings.get(token) || [],
+    manifest: state.recordingManifests.get(token),
+    enrichments: state.recordingEnhancements.get(token) || {},
+});
+
+export const clearCheckpointRecording = (state: RecordingState, workspaceName: string): void => {
+    const session = state.checkpointRecordings.get(workspaceName);
+    if (!session) {return;}
+    if (state.workspaceUnsavedRecording.get(workspaceName) === session.token) {
+        state.workspaceUnsavedRecording.set(workspaceName, session.previousToken);
+    }
+    state.recordingEnabled.delete(session.token);
+    state.recordings.delete(session.token);
+    state.recordingEnhancements.delete(session.token);
+    state.recordingManifests.delete(session.token);
+    state.recordSeq.delete(session.token);
+    state.lastNavigateTs.delete(session.token);
+    state.lastClickTs.delete(session.token);
+    state.lastScrollY.delete(session.token);
+    state.pendingEnhancements.delete(session.token);
+    state.pendingFillEvents.delete(session.token);
+    state.pendingChoiceEvents.delete(session.token);
+    state.pendingSuppressedClicks.delete(session.token);
+    state.checkpointRecordings.delete(workspaceName);
 };
 
 export const isWorkspaceRecordingEnabled = (
@@ -151,7 +265,6 @@ export const clearWorkspaceUnsavedRecording = (state: RecordingState, workspaceN
     state.lastNavigateTs.set(token, 0);
     state.lastClickTs.set(token, 0);
     state.lastScrollY.set(token, 0);
-    state.recordSnapshotCache.delete(token);
     state.pendingEnhancements.delete(token);
     state.pendingFillEvents.delete(token);
     state.pendingChoiceEvents.delete(token);
@@ -161,19 +274,9 @@ export const clearWorkspaceUnsavedRecording = (state: RecordingState, workspaceN
 export const getWorkspaceUnsavedRecordingBundle = (
     state: RecordingState,
     workspaceName: string,
-): {
-    recordingToken: string;
-    steps: import('../../runner/steps/types').StepUnion[];
-    manifest: RecordingManifest | undefined;
-    enrichments: RecordingEnhancementMap;
-} => {
+): ReturnType<typeof getRecordingBundle> => {
     const token = state.workspaceUnsavedRecording.get(workspaceName) || unsavedRecordingToken(workspaceName);
-    return {
-        recordingToken: token,
-        steps: state.recordings.get(token) || [],
-        manifest: state.recordingManifests.get(token),
-        enrichments: state.recordingEnhancements.get(token) || {},
-    };
+    return getRecordingBundle(state, token);
 };
 
 export const cleanupRecording = (state: RecordingState, tabName: string): void => {

@@ -55,3 +55,26 @@ test('parseDsl throws when click form has with clause', () => {
         (error: unknown) => error instanceof DslParseError,
     );
 });
+
+test('parseDsl parses table filter and module action syntax sugar', () => {
+    const program = parseDsl(`
+        fill table "orders.table" filter "订单编号" with input.orderNo
+        click table "orders.table" action "search"
+    `);
+
+    assert.deepEqual(program.body, [
+        {
+            kind: 'table_act',
+            action: 'fill',
+            businessTag: 'orders.table',
+            target: {kind: 'filter', fieldKey: '订单编号'},
+            value: {kind: 'ref', ref: 'input.orderNo'},
+        },
+        {
+            kind: 'table_act',
+            action: 'click',
+            businessTag: 'orders.table',
+            target: {kind: 'action', actionIntent: 'search'},
+        },
+    ]);
+});

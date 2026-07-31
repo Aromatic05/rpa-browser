@@ -12,6 +12,7 @@ import { send } from '../shared/send.js';
 declare global {
     interface Window {
         __rpa_tab_name?: string;
+        __rpaTokenInjected?: boolean;
     }
 }
 
@@ -23,7 +24,8 @@ const readTokenFromWindowName = (): string | null => {
     try {
         // Popup/new-tab created via window.open can inherit opener's window.name.
         // Treat such inherited value as untrusted to avoid cross-tab token bleed.
-        if (window.opener && !window.opener.closed) {return null;}
+        const opener = window.opener as Window | null;
+        if (opener && !opener.closed) {return null;}
         const raw = window.name;
         if (!raw.startsWith(TAB_NAME_WIN_NAME_PREFIX)) {return null;}
         const token = raw.slice(TAB_NAME_WIN_NAME_PREFIX.length).trim();
@@ -57,7 +59,7 @@ export const ensureTabName = (): string => {
 };
 
 export const ensureTabNameAsync = async (): Promise<{ tabName: string; workspaceName: string }> => {
-    let tabName = ensureTabName();
+    ensureTabName();
     const preferredTabName = readTokenFromWindowName() ?? '';
     const runtimeReply = await new Promise<{ ok: boolean; tabName?: string; workspaceName?: string }>((resolve) => {
         chrome.runtime.sendMessage(
@@ -82,7 +84,7 @@ export const ensureTabNameAsync = async (): Promise<{ tabName: string; workspace
     if (!runtimeReply.ok || !runtimeReply.tabName) {
         throw new Error('bound tab token unavailable');
     }
-    tabName = runtimeReply.tabName;
+    const tabName = runtimeReply.tabName;
     const workspaceName = runtimeReply.workspaceName ?? '';
     sessionStorage.setItem(TAB_NAME_KEY, tabName);
     sessionStorage.setItem(TAB_NAME_CONFIRMED_KEY, '1');
@@ -97,25 +99,14 @@ export const bindHello = (_tabName: string, onHello?: () => void): () => void =>
         onHello?.();
     };
 
-    // 监听历史与哈希变化，保证页面切换后也能通知 SW
-    const originalPush = history.pushState.bind(history);
-    const originalReplace = history.replaceState.bind(history);
-    const wrap = (method: typeof originalPush) =>
-        (...args: Parameters<typeof history.pushState>) => {
-            method(...args);
-            sendHello();
-            return undefined;
-        };
-    history.pushState = wrap(originalPush) as History['pushState'];
-    history.replaceState = wrap(originalReplace) as History['replaceState'];
-
+    // History mutations happen in the page's main world and are forwarded by url_change_bridge.
+    window.addEventListener('rpa:url-changed', sendHello);
     window.addEventListener('popstate', sendHello);
     window.addEventListener('hashchange', sendHello);
     sendHello();
 
     return () => {
-        history.pushState = originalPush;
-        history.replaceState = originalReplace;
+        window.removeEventListener('rpa:url-changed', sendHello);
         window.removeEventListener('popstate', sendHello);
         window.removeEventListener('hashchange', sendHello);
     };

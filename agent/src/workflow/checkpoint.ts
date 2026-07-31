@@ -3,7 +3,7 @@ import type { Checkpoint } from '../runner/checkpoint';
 import type { StepResolve } from '../runner/steps/types';
 import type { CheckpointHintFile, CheckpointResolveFile, SingleCheckpointFile } from '../runner/serialization/types';
 import { validateCheckpointResolveFileForSerialization, validateSingleCheckpointFileForSerialization } from '../runner/serialization/types';
-import { listDirectories, readYamlFile, removePath, workflowRootDir, writeYamlFile } from './fs';
+import { listDirectories, readValidatedYamlFile, readYamlFile, removePath, workflowRootDir, writeYamlFile } from './fs';
 import type { WorkflowCodec } from './store';
 import type { DslCheckpointProvider } from '../dsl/emit';
 
@@ -20,28 +20,34 @@ const checkpointDir = (workflowName: string, checkpointName: string): string =>
 
 export const createCheckpointCodec = (workflowName: string): WorkflowCodec<WorkflowCheckpoint> => ({
     kind: 'checkpoint',
-    is: (value: unknown): value is WorkflowCheckpoint => {
-        const rec = value as Partial<WorkflowCheckpoint>;
-        return !!rec && rec.kind === 'checkpoint' && typeof rec.name === 'string' && !!rec.name;
-    },
+    is: (value: unknown): value is WorkflowCheckpoint =>
+        isRecord(value) && value.kind === 'checkpoint' && typeof value.name === 'string' && value.name.length > 0,
     load: (name) => {
         const dir = checkpointDir(workflowName, name);
         try {
-            const checkpointFile = readYamlFile<SingleCheckpointFile>(path.join(dir, 'checkpoint.yaml'));
-            validateSingleCheckpointFileForSerialization(checkpointFile);
+            const checkpointFile = readValidatedYamlFile<SingleCheckpointFile>(
+                path.join(dir, 'checkpoint.yaml'),
+                validateSingleCheckpointFileForSerialization,
+            );
             if (checkpointFile.checkpoint.id !== name) {
                 throw new Error(`checkpoint identity mismatch: artifact=${name} checkpoint.id=${checkpointFile.checkpoint.id}`);
             }
             let stepResolves: Record<string, StepResolve> = {};
             try {
-                const resolveFile = readYamlFile<CheckpointResolveFile>(path.join(dir, 'checkpoint_resolve.yaml'));
-                validateCheckpointResolveFileForSerialization(resolveFile);
-                stepResolves = resolveFile.resolves || {};
-            } catch {}
+                const resolveFile = readValidatedYamlFile<CheckpointResolveFile>(
+                    path.join(dir, 'checkpoint_resolve.yaml'),
+                    validateCheckpointResolveFileForSerialization,
+                );
+                stepResolves = resolveFile.resolves;
+            } catch {
+                // Optional sidecar: absence or invalid content falls back to no resolves.
+            }
             let hints: CheckpointHintFile['hints'] = {};
             try {
-                hints = readYamlFile<CheckpointHintFile>(path.join(dir, 'checkpoint_hints.yaml')).hints || {};
-            } catch {}
+                hints = parseCheckpointHints(readYamlFile(path.join(dir, 'checkpoint_hints.yaml')));
+            } catch {
+                // Optional sidecar: absence or invalid content falls back to no hints.
+            }
             return { kind: 'checkpoint', name, checkpoint: checkpointFile.checkpoint, stepResolves, hints };
         } catch {
             return null;
@@ -58,11 +64,11 @@ export const createCheckpointCodec = (workflowName: string): WorkflowCodec<Workf
         const dir = checkpointDir(workflowName, value.name);
         const checkpointFile: SingleCheckpointFile = { version: 1, checkpoint: value.checkpoint };
         validateSingleCheckpointFileForSerialization(checkpointFile);
-        const resolveFile: CheckpointResolveFile = { version: 1, resolves: value.stepResolves || {} };
+        const resolveFile: CheckpointResolveFile = { version: 1, resolves: value.stepResolves };
         validateCheckpointResolveFileForSerialization(resolveFile);
         writeYamlFile(path.join(dir, 'checkpoint.yaml'), checkpointFile);
         writeYamlFile(path.join(dir, 'checkpoint_resolve.yaml'), resolveFile);
-        writeYamlFile(path.join(dir, 'checkpoint_hints.yaml'), { version: 1, hints: value.hints || {} });
+        writeYamlFile(path.join(dir, 'checkpoint_hints.yaml'), { version: 1, hints: value.hints });
         return value;
     },
     delete: (name) => {
@@ -74,6 +80,17 @@ export const createCheckpointCodec = (workflowName: string): WorkflowCodec<Workf
 export const createWorkflowCheckpointProvider = (
     checkpoints: Map<string, WorkflowCheckpoint>,
 ): DslCheckpointProvider => ({
-    getCheckpoint: (id: string) => checkpoints.get(id)?.checkpoint || null,
-    getCheckpointResolves: (id: string) => checkpoints.get(id)?.stepResolves || null,
+    getCheckpoint: (id: string) => checkpoints.get(id)?.checkpoint ?? null,
+    getCheckpointResolves: (id: string) => checkpoints.get(id)?.stepResolves ?? null,
+    listCheckpoints: () => [...checkpoints.values()].map((item) => item.checkpoint),
 });
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const parseCheckpointHints = (value: unknown): CheckpointHintFile['hints'] => {
+    if (!isRecord(value) || value.version !== 1 || !isRecord(value.hints)) {
+        throw new Error('invalid checkpoint hints file');
+    }
+    return value.hints as CheckpointHintFile['hints'];
+};

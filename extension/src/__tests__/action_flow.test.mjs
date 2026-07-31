@@ -28,6 +28,10 @@ await log('action bus dispatches by patterns', async () => {
 
 await log('action type classifier separates command/reply/event', async () => {
     assert.equal(classifyActionType('workspace.list'), 'command');
+    assert.equal(classifyActionType('entity_rules.annotator.open'), 'command');
+    assert.equal(classifyActionType('checkpoint.record.start'), 'command');
+    assert.equal(classifyActionType('checkpoint.record.start.result'), 'reply');
+    assert.equal(classifyActionType('entity_rules.annotator.open.result'), 'reply');
     assert.equal(classifyActionType('workspace.list.result'), 'reply');
     assert.equal(classifyActionType('workspace.list.failed'), 'reply');
     assert.equal(classifyActionType('play.failed'), 'event');
@@ -170,4 +174,23 @@ await log('send.action returns failed action for transport errors', async () => 
     } finally {
         globalThis.chrome = originalChrome;
     }
+});
+
+await log('session runtime initializer retries the latest generation after stale connection failure', async () => {
+    const {createSessionRuntimeInitializer} = await import('../../dist/background/session_runtime_initializer.js');
+    const calls = [];
+    let releaseFirst;
+    const first = new Promise((resolve) => { releaseFirst = resolve; });
+    const initializer = createSessionRuntimeInitializer(async () => {
+        calls.push(calls.length + 1);
+        if (calls.length === 1) {
+            await first;
+            throw new Error('stale websocket port');
+        }
+    });
+    const initial = initializer.request();
+    const latest = initializer.request();
+    releaseFirst();
+    await Promise.all([initial, latest]);
+    assert.deepEqual(calls, [1, 2]);
 });

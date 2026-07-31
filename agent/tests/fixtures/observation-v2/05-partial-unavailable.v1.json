@@ -1,0 +1,199 @@
+{
+  "fixtureVersion": 1,
+  "id": "partial-unavailable",
+  "category": "partial-observation",
+  "source": {
+    "kind": "fixed-raw-capture",
+    "framework": "platform",
+    "frameworkVersion": "chromium-2026",
+    "capturedAt": "2026-07-28T00:00:00.000Z",
+    "origin": "fixture://partial-unavailable"
+  },
+  "truth": {
+    "minimumScopeCount": 2,
+    "expectedScopeStatuses": [
+      {
+        "kind": "iframe",
+        "status": "unavailable"
+      }
+    ],
+    "expectedDiagnosticCodes": [
+      "capture.accessibility.failed"
+    ],
+    "expectedCandidateMinimums": {
+      "latent": 1
+    },
+    "expectedOrphanCount": 0
+  },
+  "capture": {
+    "identity": {
+      "pageEpoch": "fixture:partial-unavailable",
+      "captureRevision": 1
+    },
+    "metadata": {
+      "schemaVersion": 1,
+      "source": "fixed-fixture",
+      "capturedAt": "2026-07-28T00:00:00.000Z",
+      "pageUrl": "fixture://partial-unavailable",
+      "framework": "platform",
+      "frameworkVersion": "chromium-2026"
+    },
+    "completeness": {
+      "dom": "partial",
+      "a11y": "unavailable",
+      "runtime": "partial",
+      "geometry": "partial"
+    },
+    "scopes": [
+      {
+        "id": "main",
+        "kind": "document",
+        "rootCaptureId": "html",
+        "status": "captured"
+      },
+      {
+        "id": "frame-unavailable",
+        "kind": "iframe",
+        "parentScopeId": "main",
+        "hostCaptureId": "frame-host",
+        "rootCaptureId": "frame-unavailable-root",
+        "status": "unavailable",
+        "unavailableReason": "cross-origin CDP target unavailable",
+        "transformToParent": {
+          "scaleX": 1,
+          "scaleY": 1,
+          "translateX": 100,
+          "translateY": 100
+        }
+      }
+    ],
+    "nodes": [
+      {
+        "captureId": "html",
+        "scopeId": "main",
+        "childCaptureIds": [
+          "body"
+        ],
+        "tag": "html",
+        "attributes": {},
+        "geometry": {
+          "x": 0,
+          "y": 0,
+          "width": 800,
+          "height": 600
+        },
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        }
+      },
+      {
+        "captureId": "body",
+        "scopeId": "main",
+        "parentCaptureId": "html",
+        "childCaptureIds": [
+          "hidden-form",
+          "frame-host"
+        ],
+        "tag": "body",
+        "attributes": {},
+        "geometry": {
+          "x": 0,
+          "y": 0,
+          "width": 800,
+          "height": 600
+        },
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        }
+      },
+      {
+        "captureId": "hidden-form",
+        "scopeId": "main",
+        "parentCaptureId": "body",
+        "childCaptureIds": [
+          "hidden-input"
+        ],
+        "tag": "form",
+        "attributes": {},
+        "geometry": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "activity": {
+          "hiddenByStyle": true,
+          "inert": false,
+          "selfHasBox": false,
+          "rendered": false
+        }
+      },
+      {
+        "captureId": "hidden-input",
+        "scopeId": "main",
+        "parentCaptureId": "hidden-form",
+        "childCaptureIds": [],
+        "tag": "input",
+        "attributes": {},
+        "activity": {
+          "hiddenByStyle": true,
+          "inert": false,
+          "selfHasBox": false,
+          "rendered": false
+        }
+      },
+      {
+        "captureId": "frame-host",
+        "scopeId": "main",
+        "parentCaptureId": "body",
+        "childCaptureIds": [],
+        "tag": "iframe",
+        "attributes": {},
+        "geometry": {
+          "x": 100,
+          "y": 100,
+          "width": 300,
+          "height": 200
+        },
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        }
+      },
+      {
+        "captureId": "frame-unavailable-root",
+        "scopeId": "frame-unavailable",
+        "childCaptureIds": [],
+        "tag": "#unavailable-document",
+        "attributes": {},
+        "activity": {
+          "hiddenByStyle": true,
+          "inert": false,
+          "selfHasBox": false,
+          "rendered": false
+        }
+      }
+    ],
+    "accessibility": [],
+    "runtimeState": {},
+    "diagnostics": [
+      {
+        "code": "capture.accessibility.failed",
+        "severity": "warning",
+        "stage": "capture",
+        "status": "partial",
+        "nodeIds": [],
+        "evidence": [],
+        "message": "fixture source failure"
+      }
+    ]
+  }
+}

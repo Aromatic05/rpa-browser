@@ -3,7 +3,6 @@ import { createWorkspaceTabs, createTabsControl, type WorkspaceTabs } from './ta
 import { createRecordControl, type RecordControl } from '../../record/control';
 import { createDslControl, type DslControl } from '../../dsl/control';
 import { createCheckpointControl, type CheckpointControl } from '../../checkpoint/control';
-import { createEntityRulesControl, type EntityRulesControl } from '../../entity_rules/control';
 import { createRunnerControl, type RunnerControl } from '../../runner/control';
 import { createMcpControl, type McpControl } from '../../mcp/control';
 import { createWorkspaceRouter, type WorkspaceRouter } from './router';
@@ -18,6 +17,8 @@ import { createWorkspaceMcpService } from '../../mcp/service';
 import { getLogger } from '../../logging/logger';
 import type { ExecutionBindings } from '../execution/bindings';
 import type { WorkspaceBrowserSession } from '../browser/browser_session';
+import { createEntityRulesRuntime, type EntityRulesRuntime } from '../../snapshot/rules';
+import {createRunnerAnnotatorController} from '../../runner/annotator';
 
 export type WorkspaceState = 'idle' | 'recording' | 'playing';
 
@@ -29,7 +30,7 @@ export type RuntimeWorkspace = {
     record: RecordControl;
     dsl: DslControl;
     checkpoint: CheckpointControl;
-    entityRules: EntityRulesControl;
+    entityRules: EntityRulesRuntime;
     runner: RunnerControl;
     mcp: McpControl;
     router: WorkspaceRouter;
@@ -107,7 +108,9 @@ export const createRuntimeWorkspace = (deps: CreateRuntimeWorkspaceDeps): Runtim
     });
     const dsl = createDslControl({ runStepsDeps: deps.runStepsDeps });
     const checkpoint = createCheckpointControl();
-    const entityRules = createEntityRulesControl();
+    const entityRules = createEntityRulesRuntime({
+        annotator: createRunnerAnnotatorController({runStepsDeps: deps.runStepsDeps}),
+    });
     const runner = createRunnerControl({ runnerConfig: deps.runnerConfig });
     const tabsControl = createTabsControl({
         recordingState: deps.recordingState,
@@ -127,7 +130,7 @@ export const createRuntimeWorkspace = (deps: CreateRuntimeWorkspaceDeps): Runtim
         recordControl: record,
         dslControl: dsl,
         checkpointControl: checkpoint,
-        entityRulesControl: entityRules,
+        entityRulesRuntime: entityRules,
         runnerControl: runner,
         mcpControl: mcp,
     });

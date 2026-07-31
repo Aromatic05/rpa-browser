@@ -41,16 +41,25 @@ Primary inspection tools:
 
 Important options:
 
-- `depth`: always set this first; start shallow
-- `contain`: narrow to one subtree instead of expanding the whole page
+- `mode`: choose `overview`, `interaction`, `annotation`, `debug`, or `full`
+- `depth`: start shallow; use `-1` only when exhaustive descendants are required
+- `contain`: narrow to one canonical subtree instead of expanding the whole page
 - `filter`: narrow by `role`, `text`, or `interactive`
-- `diff`: inspect the minimal changed subtree relative to the previous snapshot
-- `refresh`: force a fresh snapshot only when needed
-- `focus_only`: useful when the active area matters
+- `diff`: compare against the previous snapshot with the same mode and scope
+- `refresh`: force a fresh PageSession capture only when current facts may be stale
+
+Mode guidance:
+
+- `overview`: first inspection; compact structural and FeatureCover view
+- `interaction`: retain actionable controls for acting on the page
+- `annotation`: inspect components, semantic bindings, and geometry
+- `debug`: inspect scope, completeness, evidence, and diagnostics
+- `full`: exhaustive canonical detail; use only when narrower modes are insufficient
 
 Rules:
 
-- first snapshot should usually be shallow
+- the first snapshot should usually use `mode: 'overview'` with a shallow `depth`
+- use `mode: 'interaction'` before a form or control workflow
 - use `contain` for detail, not global deep expansion
 - use `diff` after actions to verify what changed
 - use `get_content` only when snapshot returns a content ref instead of inline text
@@ -116,23 +125,19 @@ Low-level fallback:
 
 When a tool supports multiple targeting styles, use this order:
 
-1. `nodeId` or `id`
+1. `nodeId`
 2. `selector`
-3. absolute coordinates
+3. coordinates through the tool that explicitly owns a coordinate field
 
 Rules:
 
-- prefer `nodeId` whenever available; it is the primary and more stable target
+- prefer `nodeId` whenever available; it is the canonical and more stable target
 - fall back to `selector` only when `nodeId` is unavailable or unusable
-- use coordinates only as a last resort
-- avoid `browser.mouse` unless a higher-level tool cannot express the interaction
-
-Examples:
-
-- entity tools operate on `nodeId`
-- `browser.click`, `browser.fill`, `browser.type`, `browser.select_option`, `browser.hover`, `browser.press_key` support `id` or `selector`
-- `browser.click` may also use `coord`
-- `browser.drag_and_drop` supports id or selector for source and id, selector, or coord for destination
+- direct `browser.click`, `browser.fill`, `browser.type`, `browser.select_option`, `browser.hover`, and targeted `browser.press_key` use `nodeId` or `selector`
+- use `browser.mouse` for direct coordinate-level mouse operations
+- `browser.drag_and_drop` uses `sourceNodeId` or `sourceSelector`, then `destNodeId`, `destSelector`, or `destCoord`
+- a `browser.batch` click may use its batch-specific `coord` field, but node-based targeting remains preferred
+- avoid coordinate operations unless a higher-level canonical action cannot express the interaction
 
 Interaction preferences:
 
@@ -180,7 +185,7 @@ If `browser.evaluate` must be used:
 Follow this sequence unless there is a strong reason not to:
 
 1. `browser.goto` (automatically claims the startup tab when the workspace is empty)
-2. `browser.snapshot` with small `depth`
+2. `browser.snapshot` with `mode: 'overview'` and small `depth`
 3. `browser.snapshot` with `contain` for the relevant subtree
 4. optionally use entity tools if the page is business-heavy
 5. act with `click`, `fill`, `select_option`, or `press_key`
@@ -195,7 +200,7 @@ Do not jump straight to evaluate, screenshot, console, or network.
 ### Open and inspect a page
 
 1. `browser.goto` directly
-2. shallow `browser.snapshot`
+2. shallow `browser.snapshot` with `mode: 'overview'`
 3. focused `browser.snapshot` with `contain`
 
 Use the sequence: overview first, subtree second, action third.
@@ -212,7 +217,7 @@ Use the sequence: overview first, subtree second, action third.
 ### Work on a large business page
 
 1. open page
-2. take a shallow `snapshot`
+2. take a shallow `snapshot` with `mode: 'overview'`
 3. call `browser.entity` with `op: 'list'`
 4. use `browser.entity` with `op: 'find'` or `op: 'get'`
 5. inspect only the relevant subtree
@@ -305,8 +310,8 @@ Prefer `diff` for localized changes and a normal snapshot for broader changes.
 Use this order:
 
 1. tab and navigation tools
-2. `browser.snapshot` with small `depth`
-3. `browser.snapshot` with `contain`
+2. `browser.snapshot` with `mode: 'overview'` and small `depth`
+3. `browser.snapshot` with the appropriate mode and `contain`
 4. entity tools
 5. action tools with `nodeId` first
 6. `browser.get_content`
@@ -316,7 +321,7 @@ Targeting ladder:
 
 1. `nodeId`
 2. `selector`
-3. coordinates
+3. `browser.mouse` coordinates, or `destCoord` for a drag destination
 
 ## `ERR_AMBIGUOUS` handling
 
@@ -324,12 +329,12 @@ When an action returns `ERR_AMBIGUOUS`, do not jump to `evaluate` immediately.
 
 Use this recovery sequence:
 
-1. take/refresh a shallow `snapshot` and locate the nearest stable container
-2. narrow with `contain` to the container subtree
-3. retry with `id` from the narrowed snapshot
-4. if still ambiguous, use `list_entities` or `find_entities` to lock onto the correct form/table/dialog region
-5. only then fall back to `selector` (prefer scoped selector under that container)
-6. after success, verify with `snapshot({ diff: true })` when change is local
+1. take or refresh a shallow `snapshot` and locate the nearest stable container
+2. narrow with `contain` and use `mode: 'interaction'` for actionable targets
+3. retry with the `nodeId` from the narrowed snapshot
+4. if still ambiguous, use `browser.entity` with `op: 'list'` or `op: 'find'` to lock onto the correct form/table/dialog region
+5. only then fall back to `selector`, preferably scoped under that container
+6. after success, verify with `snapshot({ diff: true })` when the change is local
 
 Heuristics:
 
@@ -342,8 +347,8 @@ Heuristics:
 
 When the goal is throughput and low token usage:
 
-1. one shallow snapshot
-2. one focused snapshot with `contain` and `filter.interactive=true`
+1. one shallow snapshot with `mode: 'overview'`
+2. one focused snapshot with `mode: 'interaction'`, `contain`, and `filter.interactive=true`
 3. one `browser.batch` call for all fill/select/click actions in that view
 4. one verification snapshot (or `diff` if local)
 

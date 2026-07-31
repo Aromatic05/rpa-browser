@@ -52,7 +52,6 @@ const createMinimalWorkspace = (name: string): RuntimeWorkspace =>
         state: 'idle',
         dsl: {} as any,
         checkpoint: {} as any,
-        entityRules: {} as any,
         runner: {} as any,
         mcp: {
             start: async () => ({ workspaceName: name, serviceName: 'mcp', port: 0, status: 'running' }),
@@ -76,7 +75,7 @@ const createRouterWithStubs = () => {
     const recordControl = createStubControl();
     const dslControl = createStubControl();
     const checkpointControl = createStubControl();
-    const entityRulesControl = createStubControl();
+    const entityRulesRuntime = createStubControl();
     const runnerControl = createStubControl();
     const mcpControl = createStubControl();
 
@@ -85,7 +84,7 @@ const createRouterWithStubs = () => {
         recordControl: recordControl as any,
         dslControl: dslControl as any,
         checkpointControl: checkpointControl as any,
-        entityRulesControl: entityRulesControl as any,
+        entityRulesRuntime: entityRulesRuntime as any,
         runnerControl: runnerControl as any,
         mcpControl: mcpControl as any
     };
@@ -98,7 +97,7 @@ const createRouterWithStubs = () => {
         recordControl: recordControl as any,
         dslControl: dslControl as any,
         checkpointControl: checkpointControl as any,
-        entityRulesControl: entityRulesControl as any,
+        entityRulesRuntime: entityRulesRuntime as any,
         runnerControl: runnerControl as any,
         mcpControl: mcpControl as any
     };
@@ -163,7 +162,7 @@ test('WorkspaceRouter does not handle tab.init', async () => {
 });
 
 test('TabsControl rejects tab.init', async () => {
-    const tabsControl = createTabsControl({ recordingState: createRecordingState(), navDedupeWindowMs: 1200 });
+    const tabsControl = createTabsControl({ recordingState: createTestRecordingState(), navDedupeWindowMs: 1200 });
     const workspace = createMinimalWorkspace('ws-1');
     const registry = createMinimalRegistry();
     const action = stubAction('tab.init', { workspaceName: 'ws-1' });
@@ -304,15 +303,6 @@ test('checkpoint.* is forwarded to checkpointControl', async () => {
     assert.equal(checkpointControl.calls.length, 1);
 });
 
-test('entity_rules.* is forwarded to entityRulesControl', async () => {
-    const { router, entityRulesControl } = createRouterWithStubs();
-    const workspace = createMinimalWorkspace('ws-1');
-    const registry = createMinimalRegistry();
-    const action = stubAction('entity_rules.list', { workspaceName: 'ws-1' });
-
-    await router.handle(action, workspace, registry);
-    assert.equal(entityRulesControl.calls.length, 1);
-});
 
 test('task.run.* is forwarded to runnerControl', async () => {
     const { router, runnerControl } = createRouterWithStubs();
@@ -339,10 +329,10 @@ test('unknown action returns unsupported action', async () => {
 // ---- TabsControl boundary tests ----
 import { createTabsControl } from '../../../src/runtime/workspace/tabs';
 import { createWorkspaceTabs } from '../../../src/runtime/workspace/tabs';
-import { createRecordingState } from '../../../src/record/recording';
+import { createTestRecordingState } from '../../helpers/recording_state';
 
 test('TabsControl handles tab.list', async () => {
-    const tabsControl = createTabsControl({ recordingState: createRecordingState(), navDedupeWindowMs: 1200 });
+    const tabsControl = createTabsControl({ recordingState: createTestRecordingState(), navDedupeWindowMs: 1200 });
     const tabs = createWorkspaceTabs({
         awaitPageBinding: async () => {throw new Error('not implemented');},
         createPageBinding: async () => {throw new Error('not implemented');},
@@ -361,7 +351,7 @@ test('TabsControl handles tab.list', async () => {
 });
 
 test('TabsControl tab.activated sets tab active', async () => {
-    const tabsControl = createTabsControl({ recordingState: createRecordingState(), navDedupeWindowMs: 1200 });
+    const tabsControl = createTabsControl({ recordingState: createTestRecordingState(), navDedupeWindowMs: 1200 });
     const tabs = createWorkspaceTabs({
         awaitPageBinding: async () => ({ url: () => 'about:blank', isClosed: () => false } as any),
         createPageBinding: async () => ({ url: () => 'about:blank', isClosed: () => false } as any),
@@ -380,7 +370,7 @@ test('TabsControl tab.activated sets tab active', async () => {
 });
 
 test('TabsControl tab.reassigned errors on unknown tab', async () => {
-    const tabsControl = createTabsControl({ recordingState: createRecordingState(), navDedupeWindowMs: 1200 });
+    const tabsControl = createTabsControl({ recordingState: createTestRecordingState(), navDedupeWindowMs: 1200 });
     const tabs = createWorkspaceTabs({
         awaitPageBinding: async () => ({ url: () => 'about:blank', isClosed: () => false } as any),
         createPageBinding: async () => ({ url: () => 'about:blank', isClosed: () => false } as any),
@@ -399,7 +389,7 @@ test('TabsControl tab.reassigned errors on unknown tab', async () => {
 });
 
 test('TabsControl unknown tab action returns unsupported', async () => {
-    const tabsControl = createTabsControl({ recordingState: createRecordingState(), navDedupeWindowMs: 1200 });
+    const tabsControl = createTabsControl({ recordingState: createTestRecordingState(), navDedupeWindowMs: 1200 });
     const workspace = createMinimalWorkspace('ws-1');
     const registry = createMinimalRegistry();
     const action = stubAction('tab.unknown', { workspaceName: 'ws-1' });
@@ -411,7 +401,7 @@ test('TabsControl unknown tab action returns unsupported', async () => {
 });
 
 test('TabsControl rejects inbound tab.bind', async () => {
-    const tabsControl = createTabsControl({ recordingState: createRecordingState(), navDedupeWindowMs: 1200 });
+    const tabsControl = createTabsControl({ recordingState: createTestRecordingState(), navDedupeWindowMs: 1200 });
     const workspace = createMinimalWorkspace('ws-1');
     const registry = createMinimalRegistry();
     const action = stubAction('tab.bind', { workspaceName: 'ws-1', payload: { tabName: 't1', chromeTabNo: 1, windowId: 1 } });

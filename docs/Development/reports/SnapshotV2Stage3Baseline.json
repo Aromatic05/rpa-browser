@@ -1,0 +1,270 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-28T15:26:01.356Z",
+  "corpusVersion": "snapshot-v2-stage3-compact-v2",
+  "corpusPolicy": {
+    "tracked": true,
+    "deterministic": true,
+    "largeLocalCapturesRequired": false,
+    "truthMode": "exact"
+  },
+  "iterations": 50,
+  "fixtureCount": 4,
+  "inputNodeCount": 47,
+  "aggregate": {
+    "formCount": 4,
+    "fieldCount": 8,
+    "compositeFieldCount": 1,
+    "actionCount": 6,
+    "ownedActionCount": 5,
+    "residualActionCount": 1,
+    "groupCount": 1,
+    "residualFieldCount": 2,
+    "ownershipEdgeCount": 22,
+    "reductionOutcomes": {
+      "formed": 4,
+      "skipped": 1,
+      "residual": 3
+    },
+    "reductionReasons": {
+      "consumed-by-explicit-form": 3,
+      "consumed-by-local-island": 1,
+      "boundary-without-fields": 1,
+      "utility-or-table-standalone": 2,
+      "actions-without-form-boundary": 1
+    },
+    "componentSuggestions": {
+      "data-entry-form": 3,
+      "dialog-form": 1
+    },
+    "actionSuggestions": {
+      "save": 3,
+      "cancel": 1
+    },
+    "boundaryKinds": {
+      "explicit-form": 3,
+      "local-island": 1
+    },
+    "formStatus": {
+      "complete": 4
+    },
+    "validationFailureCount": 0,
+    "validationDiagnosticCodes": {},
+    "truthErrorCount": 0,
+    "timing": {
+      "samples": 200,
+      "p50Ms": 0.087,
+      "p95Ms": 0.264,
+      "maxMs": 1.52
+    }
+  },
+  "fixtures": [
+    {
+      "id": "native-explicit-form",
+      "category": "native-explicit-form",
+      "source": {
+        "kind": "generated-corpus",
+        "framework": "native",
+        "frameworkVersion": "compact-v1",
+        "capturedAt": "2026-07-28T00:00:00.000Z",
+        "origin": "fixture://form/native-explicit-form"
+      },
+      "inputNodeCount": 6,
+      "formCount": 1,
+      "fieldCount": 1,
+      "compositeFieldCount": 0,
+      "actionCount": 1,
+      "ownedActionCount": 1,
+      "residualActionCount": 0,
+      "groupCount": 0,
+      "residualFieldCount": 0,
+      "reductionOutcomes": {
+        "formed": 1
+      },
+      "reductionReasons": {
+        "consumed-by-explicit-form": 1
+      },
+      "componentSuggestions": {
+        "data-entry-form": 1
+      },
+      "actionSuggestions": {
+        "save": 1
+      },
+      "boundaryKinds": {
+        "explicit-form": 1
+      },
+      "formStatus": {
+        "complete": 1
+      },
+      "ownershipEdgeCount": 3,
+      "validation": {
+        "ok": true,
+        "diagnosticCodes": {}
+      },
+      "diagnosticCodes": {},
+      "truthErrors": [],
+      "timing": {
+        "samples": 50,
+        "p50Ms": 0.067,
+        "p95Ms": 0.175,
+        "maxMs": 1.52
+      }
+    },
+    {
+      "id": "local-filter-island",
+      "category": "native-local-island",
+      "source": {
+        "kind": "generated-corpus",
+        "framework": "native",
+        "frameworkVersion": "compact-v1",
+        "capturedAt": "2026-07-28T00:00:00.000Z",
+        "origin": "fixture://form/local-filter-island"
+      },
+      "inputNodeCount": 8,
+      "formCount": 1,
+      "fieldCount": 2,
+      "compositeFieldCount": 0,
+      "actionCount": 1,
+      "ownedActionCount": 1,
+      "residualActionCount": 0,
+      "groupCount": 0,
+      "residualFieldCount": 0,
+      "reductionOutcomes": {
+        "formed": 1
+      },
+      "reductionReasons": {
+        "consumed-by-local-island": 1
+      },
+      "componentSuggestions": {},
+      "actionSuggestions": {},
+      "boundaryKinds": {
+        "local-island": 1
+      },
+      "formStatus": {
+        "complete": 1
+      },
+      "ownershipEdgeCount": 5,
+      "validation": {
+        "ok": true,
+        "diagnosticCodes": {}
+      },
+      "diagnosticCodes": {},
+      "truthErrors": [],
+      "timing": {
+        "samples": 50,
+        "p50Ms": 0.075,
+        "p95Ms": 0.207,
+        "maxMs": 0.279
+      }
+    },
+    {
+      "id": "dialog-composite-form",
+      "category": "native-dialog-composite",
+      "source": {
+        "kind": "generated-corpus",
+        "framework": "ant-design",
+        "frameworkVersion": "compact-v1",
+        "capturedAt": "2026-07-28T00:00:00.000Z",
+        "origin": "fixture://form/dialog-composite-form"
+      },
+      "inputNodeCount": 12,
+      "formCount": 1,
+      "fieldCount": 2,
+      "compositeFieldCount": 1,
+      "actionCount": 2,
+      "ownedActionCount": 2,
+      "residualActionCount": 0,
+      "groupCount": 1,
+      "residualFieldCount": 0,
+      "reductionOutcomes": {
+        "formed": 1,
+        "skipped": 1
+      },
+      "reductionReasons": {
+        "consumed-by-explicit-form": 1,
+        "boundary-without-fields": 1
+      },
+      "componentSuggestions": {
+        "dialog-form": 1,
+        "data-entry-form": 1
+      },
+      "actionSuggestions": {
+        "save": 1,
+        "cancel": 1
+      },
+      "boundaryKinds": {
+        "explicit-form": 1
+      },
+      "formStatus": {
+        "complete": 1
+      },
+      "ownershipEdgeCount": 9,
+      "validation": {
+        "ok": true,
+        "diagnosticCodes": {}
+      },
+      "diagnosticCodes": {},
+      "truthErrors": [],
+      "timing": {
+        "samples": 50,
+        "p50Ms": 0.087,
+        "p95Ms": 0.117,
+        "maxMs": 0.312
+      }
+    },
+    {
+      "id": "datatables-toolbar-utilities",
+      "category": "datatables-toolbar-utilities",
+      "source": {
+        "kind": "generated-corpus",
+        "framework": "datatables",
+        "frameworkVersion": "compact-v1",
+        "capturedAt": "2026-07-28T00:00:00.000Z",
+        "origin": "fixture://form/datatables-toolbar-utilities"
+      },
+      "inputNodeCount": 21,
+      "formCount": 1,
+      "fieldCount": 3,
+      "compositeFieldCount": 0,
+      "actionCount": 2,
+      "ownedActionCount": 1,
+      "residualActionCount": 1,
+      "groupCount": 0,
+      "residualFieldCount": 2,
+      "reductionOutcomes": {
+        "formed": 1,
+        "residual": 3
+      },
+      "reductionReasons": {
+        "consumed-by-explicit-form": 1,
+        "utility-or-table-standalone": 2,
+        "actions-without-form-boundary": 1
+      },
+      "componentSuggestions": {
+        "data-entry-form": 1
+      },
+      "actionSuggestions": {
+        "save": 1
+      },
+      "boundaryKinds": {
+        "explicit-form": 1
+      },
+      "formStatus": {
+        "complete": 1
+      },
+      "ownershipEdgeCount": 5,
+      "validation": {
+        "ok": true,
+        "diagnosticCodes": {}
+      },
+      "diagnosticCodes": {},
+      "truthErrors": [],
+      "timing": {
+        "samples": 50,
+        "p50Ms": 0.127,
+        "p95Ms": 0.272,
+        "maxMs": 0.479
+      }
+    }
+  ]
+}

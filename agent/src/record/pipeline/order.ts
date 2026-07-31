@@ -30,8 +30,6 @@ export const normalizeRecordingStepOrder = (steps: StepUnion[], _navDedupeWindow
         }
         const aTs = a.step.meta?.ts;
         const bTs = b.step.meta?.ts;
-        const aTab = a.step.meta?.tabName;
-        const bTab = b.step.meta?.tabName;
         if (typeof aTs === 'number' && typeof bTs === 'number' && aTs !== bTs) {
             return aTs - bTs;
         }

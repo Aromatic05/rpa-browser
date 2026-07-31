@@ -23,7 +23,6 @@
 2. 多 tab 录制与回放
 3. record/play 复杂场景专项
 4. workflow saveAs/load 专项
-5. entity_rules/checkpoint/dsl 专项
 6. MCP 专项能力测试
 7. agent + skill 完整真实流程测试
 

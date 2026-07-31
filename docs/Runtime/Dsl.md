@@ -156,5 +156,4 @@ snapshot
 ## 限制
 
 - `for` iterable 必须解析为数组。
-- query/entity 能力受 snapshot 与 entity_rules 质量影响。
 - DSL 仅负责编排，不直接调用 Playwright API。

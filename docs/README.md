@@ -42,10 +42,9 @@
 
 - `Architecture/Overview.md`
 - `Architecture/WorkflowLifecycle.md`
-- `Architecture/TypicalFlow.md`
+- `Architecture/RuntimeArchitecture.md`
 - `Architecture/Extension.md`
 - `Architecture/StartExtension.md`
-- `Architecture/MockApps.md`
 - `Architecture/MCPIntegration.md`
 
 ### Development
@@ -54,6 +53,7 @@
 - `Development/TestGuide.md`
 - `Development/TestGovernance.md`
 - `Development/TaskBoard.md`
+- `Development/SnapshotEntityRecognitionV2Plan.md`
 
 ## 使用建议
 

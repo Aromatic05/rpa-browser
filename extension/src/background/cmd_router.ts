@@ -3,7 +3,7 @@ import type { Action } from '../shared/types.js';
 import { ACTION_TYPES } from '../actions/action_types.js';
 import { MSG } from '../shared/protocol.js';
 import type { WsClient } from '../actions/ws_client.js';
-import { createRouterState } from './state.js';
+import { createRouterState, type RouterState } from './state.js';
 import { createLifecycleRuntime } from './life.js';
 import { dispatchActionRequest } from '../actions/dispatcher.js';
 import { projectInboundAction } from './projection.js';
@@ -15,11 +15,40 @@ export type CmdRouterOptions = {
     logger?: Logger;
 };
 
+
+type LifecycleRuntime = ReturnType<typeof createLifecycleRuntime>;
+
+export type CmdRouter = {
+    handleInboundAction: (action: Action) => void;
+    handleTabClose: (action: Action) => Promise<void>;
+    resolveActionTargetTabName: (action: Action) => number | null;
+    handleMessage: (
+        message: unknown,
+        sender: chrome.runtime.MessageSender,
+        sendResponse: (payload?: unknown) => void,
+    ) => true | undefined;
+    onActivated: (info: chrome.tabs.TabActiveInfo) => void;
+    onRemoved: LifecycleRuntime['onRemoved'];
+    onUpdated: (chromeTabNo: number, changeInfo: chrome.tabs.TabChangeInfo, tab?: chrome.tabs.Tab) => void;
+    onCreated: (tab: chrome.tabs.Tab) => void;
+    onAttached: LifecycleRuntime['onAttached'];
+    onFocusChanged: LifecycleRuntime['onFocusChanged'];
+    onWindowRemoved: LifecycleRuntime['onWindowRemoved'];
+    onStartup: LifecycleRuntime['onStartup'];
+    onInstalled: LifecycleRuntime['onInstalled'];
+    bootstrapState: () => Promise<void>;
+    snapshotState: RouterState['snapshot'];
+    restoreState: RouterState['restore'];
+};
+
 type TypedRuntimeMessage = {
     type: string;
     tabName?: string;
     url?: string;
     action?: unknown;
+    operation?: unknown;
+    key?: unknown;
+    value?: unknown;
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -47,7 +76,7 @@ const shouldRefreshAfterContentAction = (action: Record<string, unknown>): boole
         && actionType === ACTION_TYPES.RECORD_SAVE;
 };
 
-export const createCmdRouter = (options: CmdRouterOptions) => {
+export const createCmdRouter = (options: CmdRouterOptions): CmdRouter => {
     const log = options.logger ?? createLogger('sw');
     const state = createRouterState(log);
 
@@ -82,9 +111,6 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
         if (action.type === ACTION_TYPES.TAB_CLOSE) {
             void handleTabClose(action);
         }
-        if (action.type === ACTION_TYPES.WORKSPACE_SET_ACTIVE) {
-            void life.activateWorkspaceWindow();
-        }
     };
 
     const handleTabOpen = async (action: Action) => {
@@ -109,9 +135,9 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
     const handleTabClose = async (action: Action) => {
         const payload = (action.payload ?? {}) as Record<string, unknown>;
         const tabName = typeof payload.tabName === 'string' ? payload.tabName.trim() : '';
-        if (!tabName) return;
+        if (!tabName) {return;}
         const chromeTabNo = state.findChromeTabNoByBindingName(tabName);
-        if (typeof chromeTabNo !== 'number') return;
+        if (typeof chromeTabNo !== 'number') {return;}
         await chrome.tabs.remove(chromeTabNo);
     };
 
@@ -130,6 +156,37 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
         if (!isRecord(message) || typeof message.type !== 'string') {return;}
         const typedMessage = message as TypedRuntimeMessage;
 
+        if (typedMessage.type === MSG.ANNOTATOR_SESSION_STORAGE) {
+            const key = typeof typedMessage.key === 'string' ? typedMessage.key : '';
+            const operation = typedMessage.operation;
+            if (!key.startsWith('rpa.entity_rules.annotator.draft:')) {
+                sendResponse({ok: false, error: 'invalid annotator draft key'});
+                return;
+            }
+            (async () => {
+                if (operation === 'get') {
+                    const stored = await chrome.storage.session.get(key);
+                    const storedValue: unknown = stored[key];
+                    sendResponse({ok: true, value: storedValue ?? null});
+                    return;
+                }
+                if (operation === 'set') {
+                    await chrome.storage.session.set({[key]: typedMessage.value});
+                    sendResponse({ok: true});
+                    return;
+                }
+                if (operation === 'remove') {
+                    await chrome.storage.session.remove(key);
+                    sendResponse({ok: true});
+                    return;
+                }
+                sendResponse({ok: false, error: 'unsupported annotator storage operation'});
+            })().catch((error: unknown) => {
+                sendResponse({ok: false, error: error instanceof Error ? error.message : String(error)});
+            });
+            return true;
+        }
+
         if (typedMessage.type === MSG.HELLO) {
             const chromeTabNo = sender.tab?.id;
             if (typeof chromeTabNo !== 'number') {
@@ -139,20 +196,28 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
             const windowId = typeof sender.tab?.windowId === 'number' ? sender.tab.windowId : undefined;
             const url = typeof typedMessage.url === 'string' ? typedMessage.url : sender.tab?.url ?? '';
             (async () => {
-                let bindingName = state.getTabState(chromeTabNo)?.bindingName?.trim() ?? '';
+                let bindingName = state.getTabState(chromeTabNo)?.bindingName.trim() ?? '';
                 if (!bindingName) {
                     const preferredBindingName = typeof typedMessage.tabName === 'string' ? typedMessage.tabName.trim() : '';
                     const inflight = life.getOpenedAndBoundInflight(chromeTabNo);
                     const ensured = inflight ? await inflight : await life.ensureBoundTabRef(chromeTabNo, windowId, preferredBindingName);
-                    bindingName = ensured?.bindingName?.trim() ?? '';
+                    bindingName = ensured?.bindingName.trim() ?? '';
                 }
                 if (bindingName) {
                     state.upsertTab(chromeTabNo, bindingName, url, windowId);
-                    chrome.tabs.sendMessage(chromeTabNo, { type: MSG.SET_TOKEN, tabName: bindingName }, () => {
+                    const mapped = state.getBindingWorkspaceTab(bindingName);
+                    const workspaceName = mapped?.workspaceName ?? options.sessionWorkspaceName;
+                    chrome.tabs.sendMessage(chromeTabNo, {
+                        type: MSG.SET_TOKEN,
+                        tabName: mapped?.tabName ?? bindingName,
+                        workspaceName,
+                    }, () => {
                         void chrome.runtime.lastError;
                     });
+                    sendResponse({ ok: true, tabName: mapped?.tabName ?? bindingName, workspaceName });
+                    return;
                 }
-                sendResponse({ ok: true, tabName: bindingName });
+                sendResponse({ ok: true, tabName: bindingName, workspaceName: options.sessionWorkspaceName });
             })().catch((error: unknown) => {
                 sendResponse({ ok: false, error: error instanceof Error ? error.message : String(error) });
             });
@@ -175,12 +240,35 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                         sendResponse({
                             ok: true,
                             bindingName,
-                            workspaceName: options.sessionWorkspaceName,
+                            workspaceName: mapped.workspaceName,
                             tabName: mapped.tabName,
                             windowId: tabState.windowId,
                         });
                         return;
                     }
+                }
+
+                const preferredBindingName = typeof typedMessage.tabName === 'string'
+                    ? typedMessage.tabName.trim()
+                    : '';
+                const preferredMapped = preferredBindingName
+                    ? state.getBindingWorkspaceTab(preferredBindingName)
+                    : null;
+                if (preferredMapped) {
+                    state.upsertTab(
+                        chromeTabNo,
+                        preferredBindingName,
+                        typedMessage.url ?? sender.tab?.url ?? '',
+                        sender.tab?.windowId,
+                    );
+                    sendResponse({
+                        ok: true,
+                        bindingName: preferredBindingName,
+                        workspaceName: preferredMapped.workspaceName,
+                        tabName: preferredMapped.tabName,
+                        windowId: sender.tab?.windowId,
+                    });
+                    return;
                 }
 
                 const inflight = life.getOpenedAndBoundInflight(chromeTabNo);
@@ -190,7 +278,7 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                         sendResponse({
                             ok: true,
                             bindingName: bound.bindingName,
-                            workspaceName: options.sessionWorkspaceName,
+                            workspaceName: bound.workspaceName,
                             tabName: bound.tabName,
                             windowId: bound.windowId,
                         });
@@ -198,7 +286,6 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                     }
                 }
 
-                const preferredBindingName = typeof typedMessage.tabName === 'string' ? typedMessage.tabName.trim() : '';
                 const ensured = await life.ensureBoundTabRef(chromeTabNo, sender.tab?.windowId, preferredBindingName);
                 if (ensured) {
                     state.upsertBindingWorkspaceTab(ensured.bindingName, options.sessionWorkspaceName, ensured.tabName);
@@ -206,7 +293,7 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                     sendResponse({
                         ok: true,
                         bindingName: ensured.bindingName,
-                        workspaceName: options.sessionWorkspaceName,
+                        workspaceName: ensured.workspaceName,
                         tabName: ensured.tabName,
                         windowId: ensured.windowId,
                     });
@@ -219,7 +306,7 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                         sendResponse({
                             ok: true,
                             bindingName: opened.bindingName,
-                            workspaceName: options.sessionWorkspaceName,
+                            workspaceName: opened.workspaceName,
                             tabName: opened.tabName,
                             windowId: opened.windowId,
                         });
@@ -257,11 +344,10 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
                     const tabState = state.getTabState(chromeTabNo);
                     const bindingName = tabState?.bindingName;
                     if (bindingName && isRecord(action) && shouldAttachWorkspaceFromSender(action)) {
-                        if (!action.workspaceName || typeof action.workspaceName !== 'string') {
-                            action.workspaceName = options.sessionWorkspaceName;
-                        }
+                        const mapped = state.getBindingWorkspaceTab(bindingName);
+                        action.workspaceName = mapped?.workspaceName ?? options.sessionWorkspaceName;
                         if (isRecord(action.payload)) {
-                            action.payload.tabName = bindingName;
+                            action.payload.tabName = mapped?.tabName ?? bindingName;
                         }
                     }
                 }
@@ -309,5 +395,7 @@ export const createCmdRouter = (options: CmdRouterOptions) => {
         onStartup: life.onStartup,
         onInstalled: life.onInstalled,
         bootstrapState,
+        snapshotState: state.snapshot,
+        restoreState: state.restore,
     };
 };

@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import type { RunStepsDeps } from '../../run_steps';
+import type { RunStepsDeps } from '../../run_steps_types';
 import type { ExecutionBinding } from '../../../runtime/execution/bindings';
 import type { RuntimeWorkspace } from '../../../runtime/workspace/workspace';
 
@@ -68,6 +68,5 @@ export const awaitPageBoundBinding = async (
         timeoutMs: deps.config.waitPolicy.pageReadyTimeoutMs,
     });
     const binding = await deps.runtime.resolveBinding(workspaceName, resolvedTabName);
-    await binding.page.bringToFront().catch(() => undefined);
     return binding;
 };

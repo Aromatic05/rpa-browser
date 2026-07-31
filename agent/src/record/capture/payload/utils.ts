@@ -186,9 +186,9 @@ export const buildTargetAttrs = (el: Element): Record<string, string> | undefine
         ['data-qa', 'dataQa'],
     ];
     for (const [attr, key] of pairs) {
-        const value = el.getAttribute(attr);
-        if (value && value.trim()) {
-            out[key] = value.trim();
+        const value = el.getAttribute(attr)?.trim();
+        if (value) {
+            out[key] = value;
         }
     }
     return Object.keys(out).length ? out : undefined;
@@ -215,14 +215,14 @@ export const buildTargetState = (el: Element): {
         ariaDisabled?: string;
     } = {};
     if (el instanceof HTMLInputElement) {
-        out.checked = Boolean(el.checked);
+        out.checked = el.checked;
     }
     out.focused = document.activeElement === el;
     if ('disabled' in el) {
-        out.disabled = Boolean((el as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement).disabled);
+        out.disabled = (el as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement).disabled;
     }
     if ('readOnly' in el) {
-        out.readonly = Boolean((el as HTMLInputElement | HTMLTextAreaElement).readOnly);
+        out.readonly = (el as HTMLInputElement | HTMLTextAreaElement).readOnly;
     }
     const ariaPairs: Array<[string, 'ariaChecked' | 'ariaSelected' | 'ariaExpanded' | 'ariaDisabled']> = [
         ['aria-checked', 'ariaChecked'],
@@ -231,9 +231,9 @@ export const buildTargetState = (el: Element): {
         ['aria-disabled', 'ariaDisabled'],
     ];
     for (const [attr, key] of ariaPairs) {
-        const value = el.getAttribute(attr);
-        if (value && value.trim()) {
-            out[key] = value.trim();
+        const value = el.getAttribute(attr)?.trim();
+        if (value) {
+            out[key] = value;
         }
     }
     return Object.keys(out).length ? out : undefined;
@@ -300,13 +300,10 @@ export const pickClickTarget = (element: Element): Element => {
         }
 
         if (!candidate) {
-            const classList = (node as HTMLElement).classList;
-            if (classList) {
-                for (const cls of Array.from(classList)) {
-                    if (FRAMEWORK_BUTTON_CLASSES.has(cls)) {
-                        candidate = node;
-                        break;
-                    }
+            for (const cls of Array.from(node.classList)) {
+                if (FRAMEWORK_BUTTON_CLASSES.has(cls)) {
+                    candidate = node;
+                    break;
                 }
             }
         }
@@ -364,3 +361,60 @@ export const findCheckboxInput = (target: Element | null): HTMLInputElement | nu
     }
     return null;
 };
+
+export type RecordedSemanticHint = {
+    profileName: string;
+    businessTag: string;
+    entityKind: 'form' | 'table' | 'dialog' | 'list' | 'panel' | 'toolbar' | 'kv';
+    fieldKey?: string;
+    actionIntent?: string;
+    actionRole?: 'row';
+    rowPrimaryKey?: {fieldKey: string; value: string};
+};
+
+const RECORD_SEMANTIC_ATTRIBUTE = 'data-rpa-record-semantic';
+
+export const buildRecordedSemanticHint = (element: Element): RecordedSemanticHint | undefined => {
+    const marked = element.closest(`[${RECORD_SEMANTIC_ATTRIBUTE}]`);
+    const raw = marked?.getAttribute(RECORD_SEMANTIC_ATTRIBUTE);
+    if (!raw) {return undefined;}
+    try {
+        const parsed = JSON.parse(raw) as Record<string, unknown>;
+        const profileName = typeof parsed.profileName === 'string' ? parsed.profileName.trim() : '';
+        const businessTag = typeof parsed.businessTag === 'string' ? parsed.businessTag.trim() : '';
+        const entityKinds = new Set(['form', 'table', 'dialog', 'list', 'panel', 'toolbar', 'kv']);
+        const entityKind = typeof parsed.entityKind === 'string' && entityKinds.has(parsed.entityKind)
+            ? parsed.entityKind as RecordedSemanticHint['entityKind']
+            : undefined;
+        if (!profileName || !businessTag || !entityKind) {return undefined;}
+        const fieldKey = typeof parsed.fieldKey === 'string' && parsed.fieldKey.trim()
+            ? parsed.fieldKey.trim()
+            : undefined;
+        const actionIntent = typeof parsed.actionIntent === 'string' && parsed.actionIntent.trim()
+            ? parsed.actionIntent.trim()
+            : undefined;
+        const actionRole = parsed.actionRole === 'row' ? 'row' : undefined;
+        const rowPrimaryKey = isRecord(parsed.rowPrimaryKey)
+            && typeof parsed.rowPrimaryKey.fieldKey === 'string'
+            && typeof parsed.rowPrimaryKey.value === 'string'
+            ? {
+                fieldKey: parsed.rowPrimaryKey.fieldKey.trim(),
+                value: parsed.rowPrimaryKey.value.trim(),
+            }
+            : undefined;
+        return {
+            profileName,
+            businessTag,
+            entityKind,
+            ...(fieldKey ? {fieldKey} : {}),
+            ...(actionIntent ? {actionIntent} : {}),
+            ...(actionRole ? {actionRole} : {}),
+            ...(rowPrimaryKey?.fieldKey && rowPrimaryKey.value ? {rowPrimaryKey} : {}),
+        };
+    } catch {
+        return undefined;
+    }
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === 'object' && value !== null && !Array.isArray(value);

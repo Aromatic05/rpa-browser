@@ -14,9 +14,9 @@ const keyOf = (workspaceName: string, serviceName: string) => `${workspaceName}:
 const isPortAvailable = (port: number, host?: string): Promise<boolean> =>
     new Promise((resolve) => {
         const server = net.createServer();
-        server.once('error', () => resolve(false));
+        server.once('error', () => { resolve(false); });
         server.listen(port, host || '127.0.0.1', () => {
-            server.close(() => resolve(true));
+            server.close(() => { resolve(true); });
         });
     });
 

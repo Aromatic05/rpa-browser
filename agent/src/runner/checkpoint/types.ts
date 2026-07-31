@@ -1,8 +1,8 @@
 import type { RunStatus, RunStepsDeps } from '../run_steps_types';
 import type { FailedCtx } from '../failed_ctx';
-import type { StepArgsMap, StepName, StepResult, StepUnion } from '../steps/types';
-import type { EntityKind } from '../steps/executors/snapshot/core/types';
+import type { EntityKind, StepArgsMap, StepName, StepResult, StepUnion } from '../steps/types';
 import type { SerializedStepUnion } from '../serialization/types';
+import type { StepEntityRulesControl } from '../../snapshot/rules/model';
 
 export type MatchRule =
     | { errorCode: string }
@@ -18,6 +18,7 @@ export type Checkpoint = {
     input?: Record<string, unknown>;
     trigger?: {
         matchRules: MatchRule[];
+        entityRules?: StepEntityRulesControl;
     };
     prepare?: CheckpointAction[];
     content?: Array<SerializedStepUnion | CheckpointAction>;
@@ -41,14 +42,17 @@ export type CheckpointAction =
     | (CheckpointActionBase & {
           type: 'snapshot';
           args?: StepArgsMap['browser.snapshot'];
+          entityRules?: StepEntityRulesControl;
       })
     | (CheckpointActionBase & {
           type: 'query';
           args: StepArgsMap['browser.query'];
+          entityRules?: StepEntityRulesControl;
       })
     | (CheckpointActionBase & {
           type: 'compute';
           args: StepArgsMap['browser.compute'];
+          entityRules?: StepEntityRulesControl;
       })
     | (CheckpointActionBase & {
           type: 'act';

@@ -76,7 +76,7 @@ const executeAction = async (
     stepId: string,
 ): Promise<CheckpointProcedureOutput> => {
     if (action.type === 'wait') {
-        const ms = Number(action.args?.ms || 0);
+        const ms = action.args.ms;
         if (!Number.isFinite(ms) || ms < 0) {
             return { ok: false, error: { code: 'ERR_BAD_ARGS', message: 'wait ms must be >= 0' } };
         }
@@ -115,6 +115,7 @@ const buildActionStep = (
                 id: stepId,
                 name: 'browser.snapshot',
                 args: resolved.value as Step<'browser.snapshot'>['args'],
+                entityRules: action.entityRules,
             },
         };
     }
@@ -127,6 +128,7 @@ const buildActionStep = (
                 id: stepId,
                 name: action.step.name,
                 args: resolved.value as never,
+                entityRules: action.step.entityRules,
             } as StepUnion,
         };
     }
@@ -139,6 +141,7 @@ const buildActionStep = (
                 id: stepId,
                 name: 'browser.query',
                 args: resolved.value as Step<'browser.query'>['args'],
+                entityRules: action.entityRules,
             },
         };
     }
@@ -151,6 +154,7 @@ const buildActionStep = (
                 id: stepId,
                 name: 'browser.compute',
                 args: resolved.value as Step<'browser.compute'>['args'],
+                entityRules: action.entityRules,
             },
         };
     }
@@ -222,7 +226,7 @@ export const resolveCheckpointValue = (
 };
 
 const isCheckpointAction = (value: SerializedStepUnion | CheckpointAction): value is CheckpointAction => {
-    return Boolean(value && typeof value === 'object' && 'type' in value);
+    return 'type' in value;
 };
 
 const isRefObject = (value: unknown): value is { ref: string } => {

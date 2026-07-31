@@ -13,6 +13,7 @@
 
 import type { Locator, Page } from 'playwright';
 import type { A11yNodeInfo, ToolResult, TraceCache } from '../types';
+import { isPlaywrightAriaRole } from './roles';
 
 export type A11ySnapshotNode = {
     id: string;
@@ -121,8 +122,8 @@ export const adoptA11yNode = async (
 };
 
 const buildLocatorFromNode = (page: Page, info: A11yNodeInfo): Locator | null => {
-    if (info.role && info.name) {
-        return (page as any).getByRole(info.role as any, { name: info.name });
+    if (info.role && info.name && isPlaywrightAriaRole(info.role)) {
+        return page.getByRole(info.role, { name: info.name });
     }
     if (info.name) {
         return page.getByText(info.name, { exact: true });
@@ -133,7 +134,7 @@ const buildLocatorFromNode = (page: Page, info: A11yNodeInfo): Locator | null =>
     return null;
 };
 
-const summarizeCandidates = async (locator: Locator) => {
+const summarizeCandidates = async (locator: Locator): Promise<{ count: number | null; items: Array<{ tag: string; text: string }> }> => {
     try {
         const items = await locator.evaluateAll((nodes) =>
             nodes.slice(0, 10).map((node) => {

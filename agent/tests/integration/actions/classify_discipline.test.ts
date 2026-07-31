@@ -106,10 +106,6 @@ test('checkpoint.list with workspaceName routes to workspace', () => {
     assert.equal(classifyActionRoute(action), 'workspace');
 });
 
-test('entity_rules.list with workspaceName routes to workspace', () => {
-    const action = stubAction('entity_rules.list', { workspaceName: 'ws-1' });
-    assert.equal(classifyActionRoute(action), 'workspace');
-});
 
 test('task.run.start with workspaceName routes to workspace', () => {
     const action = stubAction('task.run.start', { workspaceName: 'ws-1' });
@@ -230,7 +226,8 @@ test('agent and extension classify workspace routing is consistent', async () =>
         'task.run.checkpoint', 'task.run.halt', 'task.run.suspend',
         'task.run.continue', 'task.run.flush', 'task.run.resume',
         'checkpoint.list', 'checkpoint.get', 'checkpoint.save', 'checkpoint.delete',
-        'entity_rules.list', 'entity_rules.get', 'entity_rules.save', 'entity_rules.delete',
+        'checkpoint.record.start', 'checkpoint.record.stop', 'checkpoint.record.get',
+        'checkpoint.record.save', 'checkpoint.record.cancel',
         'mcp.start', 'mcp.stop', 'mcp.status',
     ];
     for (const type of workspaceCases) {

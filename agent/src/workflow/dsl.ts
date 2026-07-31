@@ -15,10 +15,9 @@ const dslPath = (workflowName: string, dslName: string): string =>
 
 export const createDslCodec = (workflowName: string): WorkflowCodec<WorkflowDsl> => ({
     kind: 'dsl',
-    is: (value: unknown): value is WorkflowDsl => {
-        const rec = value as Partial<WorkflowDsl>;
-        return !!rec && rec.kind === 'dsl' && typeof rec.name === 'string' && !!rec.name && typeof rec.content === 'string';
-    },
+    is: (value: unknown): value is WorkflowDsl =>
+        isRecord(value) && value.kind === 'dsl' && typeof value.name === 'string'
+        && value.name.length > 0 && typeof value.content === 'string',
     load: (name) => {
         try {
             const content = readTextFile(dslPath(workflowName, name));
@@ -47,3 +46,6 @@ export const createDslCodec = (workflowName: string): WorkflowCodec<WorkflowDsl>
         return true;
     },
 });
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === 'object' && value !== null && !Array.isArray(value);

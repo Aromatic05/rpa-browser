@@ -24,14 +24,13 @@ export const executeBrowserSwitchTab = async (
             error: { code: 'ERR_TAB_NOT_FOUND', message: `browser.switch_tab target tab not found: ${tabName}` },
         };
     }
-    const timeoutMs = deps.config?.waitPolicy?.pageReadyTimeoutMs || 3000;
-    const binding = await deps.runtime.awaitExecutableTab({
+    const timeoutMs = deps.config.waitPolicy.pageReadyTimeoutMs || 3000;
+    await deps.runtime.awaitExecutableTab({
         workspace,
         pageRegistry: workspace.browserSession.pageRegistry,
         tabName,
         timeoutMs,
     });
-    await binding.page.bringToFront();
     workspace.tabs.setActiveTab(tabName);
     const activated = await deps.dispatchAction({
         v: 1,

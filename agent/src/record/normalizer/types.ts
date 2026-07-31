@@ -1,8 +1,8 @@
 import type { Page } from 'playwright';
 import type { RecorderEvent } from '../capture/recorder';
-import type { RecordSnapshotCacheEntry } from '../pipeline/snapshot';
 import type { RecordingState } from '../pipeline/state';
-import type { SnapshotResult } from '../../runner/steps/executors/snapshot/core/types';
+import type { RecordPageSnapshot } from '../pipeline/snapshot';
+import type { RecordSnapshotResolver } from '../pipeline/target_binding';
 import type {
     Step,
     StepArgsMap,
@@ -18,8 +18,7 @@ export type NormalizeContext = {
     workspaceName: string;
     tabName: string;
     page?: Page;
-    snapshotCache: Map<string, RecordSnapshotCacheEntry>;
-    cacheKey: string;
+    resolveSnapshot?: RecordSnapshotResolver;
     createStep: <TName extends StepName>(
         name: TName,
         args: StepArgsMap[TName],
@@ -50,4 +49,4 @@ export type RecordNormalizerResult =
     | NormalizeHandledResult
     | NormalizePendingResult;
 
-export type NormalizeSnapshotResult = SnapshotResult | undefined;
+export type NormalizeSnapshotResult = RecordPageSnapshot | undefined;

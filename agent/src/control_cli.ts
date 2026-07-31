@@ -16,7 +16,10 @@ const parseJson = (label: string, raw?: string): unknown => {
     try {
         return JSON.parse(raw);
     } catch (error) {
-        throw new Error(`${label} must be valid json: ${error instanceof Error ? error.message : String(error)}`);
+        throw new Error(
+            `${label} must be valid json: ${error instanceof Error ? error.message : 'unknown error'}`,
+            {cause: error},
+        );
     }
 };
 
@@ -84,14 +87,14 @@ export const parseControlEvalCli = async (argv: string[]): Promise<ParsedControl
 const main = async () => {
     const parsed = await parseControlEvalCli(process.argv.slice(2));
     if (parsed.help) {
-        console.log(usage);
+        process.stdout.write(`${usage}\n`);
         return;
     }
 
     const response = await sendControlEval(parsed.request, parsed.options);
     const output = JSON.stringify(response, null, 2);
     if (response.ok) {
-        console.log(output);
+        process.stdout.write(`${output}\n`);
         return;
     }
     console.error(output);

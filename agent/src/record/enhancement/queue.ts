@@ -1,7 +1,7 @@
 import type { Page } from 'playwright';
 import { getLogger } from '../../logging/logger';
 import type { StepName } from '../../runner/steps/types';
-import { enrichRecordedStepWithSnapshot, type RecordSnapshotCacheEntry } from './build';
+import { enrichRecordedStepWithSnapshot } from './build';
 import type { RecorderEvent } from '../capture/recorder';
 import type { RecordingState } from '../pipeline/state';
 import type { RecordedStepEnhancement, RecordingEnhancementMap } from '../types';
@@ -18,7 +18,7 @@ export const setStepEnhancement = (
     recordingToken: string,
     stepId: string,
     enhancement: RecordedStepEnhancement,
-) => {
+): void => {
     const current = state.recordingEnhancements.get(recordingToken) || {};
     current[stepId] = enhancement;
     state.recordingEnhancements.set(recordingToken, current);
@@ -43,8 +43,6 @@ type StartRecordedStepEnrichmentInput = {
     stepId: string;
     event: RecorderEvent;
     page?: Page;
-    snapshotCache: Map<string, RecordSnapshotCacheEntry>;
-    cacheKey: string;
     workspaceName: string;
     stepName: StepName;
     ts?: number;
@@ -58,8 +56,9 @@ export const startRecordedStepEnrichment = (input: StartRecordedStepEnrichmentIn
         const enriched = await recordedStepEnricher({
             event: input.event,
             page: input.page,
-            snapshotCache: input.snapshotCache,
-            cacheKey: input.cacheKey,
+            state: input.state,
+            workspaceName: input.workspaceName,
+            tabName: input.tabName,
         });
         setStepEnhancement(input.state, input.recordingToken, input.stepId, enriched);
         recordLog('enrichment_done', {
@@ -90,6 +89,15 @@ export const startRecordedStepEnrichment = (input: StartRecordedStepEnrichmentIn
     pending.add(promise);
 };
 
+export const awaitRecordingEnhancementsForToken = async (
+    state: RecordingState,
+    token: string,
+): Promise<void> => {
+    const pending = state.pendingEnhancements.get(token);
+    if (!pending?.size) {return;}
+    await Promise.allSettled(Array.from(pending));
+};
+
 export const awaitRecordingEnhancements = async (
     state: RecordingState,
     workspaceName: string,
@@ -97,6 +105,6 @@ export const awaitRecordingEnhancements = async (
 ): Promise<void> => {
     const token = getWorkspaceUnsavedToken(state, workspaceName);
     const pending = state.pendingEnhancements.get(token);
-    if (!pending || !pending.size) {return;}
+    if (!pending?.size) {return;}
     await Promise.allSettled(Array.from(pending));
 };

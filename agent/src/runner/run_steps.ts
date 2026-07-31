@@ -1,13 +1,10 @@
 import crypto from 'node:crypto';
-import type { StepResult as ExecStepResult, StepUnion } from './steps/types';
+import type { StepName, StepResult as ExecStepResult, StepUnion } from './steps/types';
 import { resolveStepArgsRefs } from './step_refs';
-import { runCheckpoint, setCheckpoints } from './checkpoint';
+import { runCheckpoint, setCheckpoints, type Checkpoint as RunnerCheckpoint } from './checkpoint';
 import { getFailedCtx } from './failed_ctx';
 import { getLogger } from '../logging/logger';
-import {
-    markSnapshotSessionDirty,
-    shouldMarkSnapshotDirtyByStep,
-} from './steps/executors/snapshot/core/session_store';
+import {shouldMarkPageSessionDirtyByStep} from './session';
 import type {
     Checkpoint,
     ResultPipe,
@@ -23,6 +20,7 @@ import type {
 } from './run_steps_types';
 import type { StepResolve } from './steps/types';
 import { isValidStepResolve } from './steps/resolve_utils';
+import { resolveStepEntityRulesExecution } from '../snapshot/rules/runtime';
 
 export type {
     Checkpoint,
@@ -94,13 +92,18 @@ export type RunLocalStepResults = Record<
     }
 >;
 
-const executeOne = async (
+export type ExecuteStepRuntimeOptions = {
+    runLocalStepResults?: RunLocalStepResults;
+    stepResolves?: Record<string, StepResolve>;
+};
+
+export const executeStepWithRuntimeContracts = async (
     step: StepUnion,
     workspaceName: string,
-    runLocalStepResults: RunLocalStepResults,
     deps: RunStepsDeps,
-    stepResolves?: Record<string, StepResolve>,
+    options: ExecuteStepRuntimeOptions = {},
 ): Promise<ExecStepResult> => {
+    const runLocalStepResults = options.runLocalStepResults ?? {};
     const executors = deps.pluginHost.getExecutors();
     if (!Object.prototype.hasOwnProperty.call(executors, step.name)) {
         stepLogger('[runner] missing executor', step.name);
@@ -126,7 +129,7 @@ const executeOne = async (
         };
     }
 
-    const runtimeStep = injectStepResolve(resolvedStep.step, stepResolves);
+    const runtimeStep = injectStepResolve(resolvedStep.step, options.stepResolves);
     if (!runtimeStep.ok) {
         return {
             stepId: step.id,
@@ -135,11 +138,87 @@ const executeOne = async (
         };
     }
 
+    const entityRules = resolveStepEntityRulesExecution(
+        runtimeStep.step.entityRules,
+        deps.config.entityRules,
+        deps.resolveEntityRulesProvider?.(workspaceName),
+    );
+    if (entityRules.status === 'invalid') {
+        return {
+            stepId: step.id,
+            ok: false,
+            error: {
+                code: 'ERR_BAD_ARGS',
+                message: `step ${step.id} has invalid entityRules control`,
+                details: { stepId: step.id, reason: entityRules.reason },
+            },
+        };
+    }
+    if (entityRules.status === 'unavailable') {
+        return {
+            stepId: step.id,
+            ok: false,
+            error: {
+                code: 'ERR_NOT_FOUND',
+                message: `entity_rules provider is unavailable for step ${step.id}`,
+                details: {
+                    stepId: step.id,
+                    stepName: step.name,
+                    selection: entityRules.selection,
+                    profiles: entityRules.profiles,
+                    strict: entityRules.strict,
+                    reason: entityRules.reason,
+                },
+            },
+        };
+    }
+
     const fn = executors[step.name];
-    return await fn(runtimeStep.step, deps, workspaceName);
+    const result = await fn(runtimeStep.step, deps, workspaceName);
+    if (result.ok && shouldMarkPageSessionDirtyByStep(runtimeStep.step.name, runtimeStep.step.args)) {
+        await markPageSessionDirtyAfterStep(deps, workspaceName, runtimeStep.step);
+    }
+    return result;
 };
 
-const STEP_RESOLVE_STEP_NAMES = new Set([
+const executeOne = async (
+    step: StepUnion,
+    workspaceName: string,
+    runLocalStepResults: RunLocalStepResults,
+    deps: RunStepsDeps,
+    stepResolves?: Record<string, StepResolve>,
+): Promise<ExecStepResult> => await executeStepWithRuntimeContracts(step, workspaceName, deps, {
+    runLocalStepResults,
+    stepResolves,
+});
+
+const markPageSessionDirtyAfterStep = async (
+    deps: RunStepsDeps,
+    workspaceName: string,
+    step: StepUnion,
+): Promise<void> => {
+    try {
+        const workspace = deps.resolveWorkspace(workspaceName);
+        const tabName = workspace.tabs.getActiveTab()?.name;
+        if (!tabName) {
+            throw new Error(`active tab not found: ${workspaceName}`);
+        }
+        const binding = await deps.runtime.awaitExecutableTab({
+            workspace,
+            pageRegistry: workspace.browserSession.pageRegistry,
+            tabName,
+            timeoutMs: deps.config.waitPolicy.pageReadyTimeoutMs,
+        });
+        deps.pageSession.markDirty(binding.page, 'interaction');
+    } catch (error) {
+        stepLogger('[runner] snapshot dirty mark failed', {
+            step: step.name,
+            error: error instanceof Error ? error.message : String(error),
+        });
+    }
+};
+
+const STEP_RESOLVE_STEP_NAMES: ReadonlySet<StepName> = new Set<StepName>([
     'browser.take_screenshot',
     'browser.click',
     'browser.fill',
@@ -149,14 +228,19 @@ const STEP_RESOLVE_STEP_NAMES = new Set([
     'browser.scroll',
     'browser.press_key',
     'browser.drag_and_drop',
-] as const);
+]);
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === 'object' && value !== null;
 
 const injectStepResolve = (
     step: StepUnion,
     stepResolves?: Record<string, StepResolve>,
 ): { ok: true; step: StepUnion } | { ok: false; error: ExecStepResult['error'] } => {
-    const argsRecord = step.args as Record<string, unknown>;
-    const resolveId = typeof argsRecord.resolveId === 'string' ? argsRecord.resolveId : undefined;
+    const argsRecord: unknown = step.args;
+    const resolveId = isRecord(argsRecord) && typeof argsRecord.resolveId === 'string'
+        ? argsRecord.resolveId
+        : undefined;
 
     if (!resolveId) {
         if (step.resolve && !isValidStepResolve(step.resolve)) {
@@ -180,7 +264,7 @@ const injectStepResolve = (
             },
         };
     }
-    if (!STEP_RESOLVE_STEP_NAMES.has(step.name as any)) {
+    if (!STEP_RESOLVE_STEP_NAMES.has(step.name)) {
         return {
             ok: false,
             error: {
@@ -200,7 +284,8 @@ const injectStepResolve = (
             },
         };
     }
-    if (!isValidStepResolve(stepResolves[resolveId])) {
+    const resolve = stepResolves[resolveId];
+    if (!isValidStepResolve(resolve)) {
         return {
             ok: false,
             error: {
@@ -213,13 +298,7 @@ const injectStepResolve = (
 
     return {
         ok: true,
-        step: {
-            id: step.id,
-            name: step.name,
-            args: step.args,
-            meta: step.meta,
-            resolve: stepResolves[resolveId],
-        } as StepUnion,
+        step: { ...step, resolve },
     };
 };
 
@@ -309,9 +388,9 @@ export const pushResultPipe = (pipe: ResultPipe, result: StepResult): void => {
 };
 
 export const waitForResultPipe = async (pipe: ResultPipe): Promise<void> =>
-    await new Promise<void>((resolve) => {
+    { await new Promise<void>((resolve) => {
         pipe.waiters.add(resolve);
-    });
+    }); };
 
 export const createSignalChannel = (): SignalChannel => ({ items: [], cursor: 0 });
 
@@ -342,6 +421,33 @@ export const setRunStepsDeps = (deps: RunStepsDeps): void => {
     defaultDeps = deps;
 };
 
+const resolveRunCheckpoints = (
+    req: RunStepsRequest,
+    deps: RunStepsDeps,
+): {checkpoints: RunnerCheckpoint[]; stepResolves: Record<string, Record<string, StepResolve>>} => {
+    if (req.checkpoints !== undefined) {
+        return {
+            checkpoints: req.checkpoints,
+            stepResolves: req.checkpointStepResolves ?? {},
+        };
+    }
+    try {
+        const workspace = deps.resolveWorkspace(req.workspaceName);
+        const provider = workspace.checkpoint.getProvider(workspace.workflow);
+        const checkpoints = (provider.listCheckpoints?.() ?? [])
+            .filter((checkpoint) => checkpoint.kind === undefined || checkpoint.kind === 'recovery');
+        return {
+            checkpoints,
+            stepResolves: Object.fromEntries(checkpoints.map((checkpoint) => [
+                checkpoint.id,
+                provider.getCheckpointResolves?.(checkpoint.id) ?? {},
+            ])),
+        };
+    } catch {
+        return {checkpoints: [], stepResolves: {}};
+    }
+};
+
 export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promise<Checkpoint> => {
     const resolvedDeps = deps || defaultDeps;
     if (!resolvedDeps) {
@@ -354,7 +460,8 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
     const checkpointAttempts = new Map<string, number>();
     const runLocalStepResults: RunLocalStepResults = {};
     let status: RunStatus = 'running';
-    setCheckpoints(req.checkpoints || []);
+    const checkpointRuntime = resolveRunCheckpoints(req, resolvedDeps);
+    setCheckpoints(checkpointRuntime.checkpoints);
 
     while (true) {
         while (req.signalChannel.cursor < req.signalChannel.items.length) {
@@ -400,27 +507,6 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
             });
 
             const result = await executeOne(step, req.workspaceName, runLocalStepResults, resolvedDeps, req.stepResolves);
-            if (result.ok && shouldMarkSnapshotDirtyByStep(step.name, step.args)) {
-                try {
-                    const workspace = resolvedDeps.resolveWorkspace(req.workspaceName);
-                    const tabName = workspace.tabs.getActiveTab()?.name;
-                    if (!tabName) {
-                        throw new Error(`active tab not found: ${req.workspaceName}`);
-                    }
-                    const binding = await resolvedDeps.runtime.awaitExecutableTab({
-                        workspace,
-                        pageRegistry: workspace.browserSession.pageRegistry,
-                        tabName,
-                        timeoutMs: resolvedDeps.config.waitPolicy.pageReadyTimeoutMs,
-                    });
-                    markSnapshotSessionDirty(binding, `step:${step.name}`);
-                } catch (error) {
-                    stepLogger('[runner] snapshot dirty mark failed', {
-                        step: step.name,
-                        error: error instanceof Error ? error.message : String(error),
-                    });
-                }
-            }
 
             await writeStepEvent(resolvedDeps.stepSinks, {
                 type: 'step.end',
@@ -449,8 +535,15 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
                     checkpointMaxAttempts,
                     inCheckpointFlow: false,
                     deps: resolvedDeps,
-                    executeStep: (nestedStep) => executeOne(nestedStep, req.workspaceName, runLocalStepResults, resolvedDeps, req.stepResolves),
-                    checkpoints: req.checkpoints,
+                    executeStep: (nestedStep, stepResolves) => executeOne(
+                        nestedStep,
+                        req.workspaceName,
+                        runLocalStepResults,
+                        resolvedDeps,
+                        stepResolves ?? req.stepResolves,
+                    ),
+                    checkpoints: checkpointRuntime.checkpoints,
+                    checkpointStepResolves: checkpointRuntime.stepResolves,
                 });
                 const checkpointOutput = await runCheckpoint(failedCtx);
                 finalResult = checkpointOutput.finalResult;
@@ -504,7 +597,14 @@ export const runStepList = async (
     workspaceName: string,
     steps: StepUnion[],
     deps?: RunStepsDeps,
-    opts?: { stopOnError?: boolean; runId?: string; stepResolves?: Record<string, StepResolve> },
+    opts?: {
+        stopOnError?: boolean;
+        runId?: string;
+        stepResolves?: Record<string, StepResolve>;
+        checkpoints?: RunnerCheckpoint[];
+        checkpointEnabled?: boolean;
+        checkpointMaxAttempts?: number;
+    },
 ): Promise<{ checkpoint: Checkpoint; pipe: ResultPipe }> => {
     const queue = createStepsQueue(steps, { closed: true });
     const pipe = createResultPipe();
@@ -517,6 +617,9 @@ export const runStepList = async (
             resultPipe: pipe,
             signalChannel: signals,
             stepResolves: opts?.stepResolves,
+            checkpoints: opts?.checkpoints,
+            checkpointEnabled: opts?.checkpointEnabled,
+            checkpointMaxAttempts: opts?.checkpointMaxAttempts,
             stopOnError: opts?.stopOnError,
         },
         deps,

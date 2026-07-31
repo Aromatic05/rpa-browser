@@ -170,7 +170,7 @@ await log('window remove keeps router stable', async () => {
     assert.equal(Array.isArray(sent), true);
 });
 
-await log('inbound tab.setActive activates mapped chrome tab and window', async () => {
+await log('inbound tab.setActive activates the mapped tab without focusing its desktop window', async () => {
     const calls = [];
     globalThis.chrome = createChromeMock();
     chrome.tabs.update = async (tabId, updateInfo) => {
@@ -204,13 +204,10 @@ await log('inbound tab.setActive activates mapped chrome tab and window', async 
     });
     await new Promise((resolve) => setTimeout(resolve, 20));
 
-    assert.deepEqual(calls, [
-        ['tabs.update', 11, { active: true }],
-        ['windows.update', 7, { focused: true }],
-    ]);
+    assert.deepEqual(calls, [['tabs.update', 11, { active: true }]]);
 });
 
-await log('inbound workspace.setActive focuses current workspace window', async () => {
+await log('inbound workspace.setActive never focuses a desktop window', async () => {
     const calls = [];
     globalThis.chrome = createChromeMock();
     chrome.windows.update = async (windowId, updateInfo) => {
@@ -234,7 +231,7 @@ await log('inbound workspace.setActive focuses current workspace window', async 
     });
     await new Promise((resolve) => setTimeout(resolve, 20));
 
-    assert.equal(calls.some((call) => call[0] === 'windows.update' && call[1] === 7 && call[2]?.focused === true), true);
+    assert.deepEqual(calls, []);
 });
 
 await log('workspace.create returns workspace shell without opening window', async () => {
@@ -428,6 +425,29 @@ await log('tabs.onCreated emits tab.opened binding action', async () => {
     assert.equal(sent.some((action) => action.type === ACTION_TYPES.TAB_OPENED), true);
 });
 
+await log('runtime bootstrap tab is never published as a workspace tab', async () => {
+    globalThis.chrome = createChromeMock();
+    const sent = [];
+    const router = createCmdRouter({
+        sessionWorkspaceName: 'ws-bound',
+        wsClient: withActionReplies(async (action) => {
+            sent.push(action);
+            return {ok: true, data: {}};
+        }),
+        onRefresh: () => undefined,
+    });
+
+    router.onCreated({
+        id: 23,
+        windowId: 7,
+        url: 'http://127.0.0.1:17600/rpa-start?rpaRuntimeBootstrap=1',
+        title: 'RPA bootstrap',
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    assert.equal(sent.some((action) => action.type === ACTION_TYPES.TAB_OPENED), false);
+});
+
 await log('tabs.onCreated emits tab.opened once for pre-bound URL mapping', async () => {
     globalThis.chrome = createChromeMock();
     const sent = [];
@@ -523,7 +543,7 @@ await log('agent-created window binds from preferred content tabName', async () 
 
     assert.equal(tokenReply?.ok, true);
     assert.equal(tokenReply?.tabName, 'tab-agent');
-    assert.equal(tokenReply?.workspaceName, 'ws-bound');
+    assert.equal(tokenReply?.workspaceName, 'ws-agent');
     assert.equal(sent.some((action) => action.type === ACTION_TYPES.TAB_OPENED), false);
 
     let actionReply = null;
@@ -534,6 +554,7 @@ await log('agent-created window binds from preferred content tabName', async () 
                 v: 1,
                 id: 'agent-record-event',
                 type: ACTION_TYPES.RECORD_EVENT,
+                workspaceName: 'stale-default',
                 payload: { id: 's-agent', name: 'browser.click', args: { selector: '#submit' } },
             },
         },
@@ -546,7 +567,7 @@ await log('agent-created window binds from preferred content tabName', async () 
 
     const recordAction = sent.find((action) => action.type === ACTION_TYPES.RECORD_EVENT);
     assert.equal(actionReply?.type, `${ACTION_TYPES.RECORD_EVENT}.result`, JSON.stringify(actionReply));
-    assert.equal(recordAction?.workspaceName, 'ws-bound');
+    assert.equal(recordAction?.workspaceName, 'ws-agent');
     assert.equal(recordAction?.payload?.tabName, 'tab-agent');
 });
 
@@ -635,10 +656,55 @@ await log('router rejects non-request action type from panel ingress', async () 
     assert.equal(reply?.payload?.code, 'ERR_BAD_ARGS');
 });
 
-await log('source guard: content/start_extension do not directly issue tab.init/tab.opened', async () => {
+await log('router snapshot restores tab identity without reopening existing tabs', async () => {
+    globalThis.chrome = createChromeMock();
+    const firstSent = [];
+    const first = createCmdRouter({
+        sessionWorkspaceName: 'ws-bound',
+        wsClient: withActionReplies(async (action) => {
+            firstSent.push(action);
+            if (action.type === ACTION_TYPES.TAB_OPENED) {
+                return {ok: true, data: {tabName: 'tab-preserved'}};
+            }
+            return {ok: true, data: {}};
+        }),
+        onRefresh: () => undefined,
+    });
+    first.onCreated({id: 11, windowId: 7, url: 'https://example.com'});
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    const snapshot = first.snapshotState();
+    assert.equal(snapshot.tabs[0]?.bindingName, 'tab-preserved');
+    assert.equal(snapshot.bindings[0]?.tabName, 'tab-preserved');
+
+    const secondSent = [];
+    const second = createCmdRouter({
+        sessionWorkspaceName: 'ws-bound',
+        wsClient: withActionReplies(async (action) => {
+            secondSent.push(action);
+            return {ok: true, data: {}};
+        }),
+        onRefresh: () => undefined,
+    });
+    second.restoreState(snapshot);
+    await second.bootstrapState();
+    assert.deepEqual(second.snapshotState(), snapshot);
+    assert.equal(secondSent.some((action) => action.type === ACTION_TYPES.TAB_OPENED), false);
+});
+
+await log('source guard: content avoids legacy tab.init while start_extension owns new-tab binding', async () => {
     const contentSrc = fs.readFileSync(new URL('../content/token_bridge.ts', import.meta.url), 'utf8');
+    const contentEntrySrc = fs.readFileSync(new URL('../entry/content.ts', import.meta.url), 'utf8');
     const startSrc = fs.readFileSync(new URL('../../../start_extension/src/entry/newtab.ts', import.meta.url), 'utf8');
+    const startManifest = JSON.parse(
+        fs.readFileSync(new URL('../../../start_extension/manifest.json', import.meta.url), 'utf8'),
+    );
     assert.equal(contentSrc.includes("type: 'tab.init'"), false);
+    assert.equal(contentEntrySrc.includes("searchParams.get('rpaRuntimeBootstrap') === '1'"), true);
+    assert.equal(contentEntrySrc.includes("type: 'RPA_RUNTIME_BOOTSTRAP_WAKE'"), true);
     assert.equal(startSrc.includes("'tab.init'"), false);
-    assert.equal(startSrc.includes("'tab.opened'"), false);
+    assert.equal(startSrc.includes("sendAction<BoundTokenData>('tab.opened'"), false);
+    assert.equal(startSrc.includes("sendAction<RuntimeTabListData>('tab.list'"), true);
+    assert.equal(startSrc.includes('chrome.runtime.sendMessage'), false);
+    assert.equal(startManifest.content_security_policy.extension_pages.includes('ws://127.0.0.1:*'), true);
+    assert.equal(startManifest.content_security_policy.extension_pages.includes(':17333'), false);
 });

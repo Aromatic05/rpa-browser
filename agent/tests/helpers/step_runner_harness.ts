@@ -10,6 +10,8 @@ import { runStepList } from '../../src/runner/run_steps';
 import { getRunnerConfig } from '../../src/config';
 import type { StepArgsMap, StepName, StepUnion } from '../../src/runner/steps/types';
 import { RunnerPluginHost } from '../../src/runner/hotreload/plugin_host';
+import {PageSnapshotSessionStore} from '../../src/snapshot/session';
+import {SnapshotProjectionBaselineStore} from '../../src/runner/session';
 
 export const createStep = <TName extends StepName>(name: TName, args: StepArgsMap[TName]): StepUnion => ({
     id: crypto.randomUUID(),
@@ -50,6 +52,8 @@ export const createStepExecutionHarness = async (page: Page, tabName = `test-${c
 
     const deps = {
         runtime,
+        pageSession: new PageSnapshotSessionStore(),
+        snapshotProjection: new SnapshotProjectionBaselineStore(),
         config: getRunnerConfig(),
         pluginHost,
         resolveWorkspace: (name: string) => {
@@ -57,10 +61,6 @@ export const createStepExecutionHarness = async (page: Page, tabName = `test-${c
             return runtimeWorkspace;
         },
         dispatchAction: async (action: any) => ({ ...action, id: crypto.randomUUID(), type: `${action.type}.result`, replyTo: action.id }),
-        resolveEntityRulesProvider: (name: string) => {
-            if (name !== workspaceName) {return null;}
-            return runtimeWorkspace.entityRules.getProvider(runtimeWorkspace.workflow);
-        },
     };
 
     const run = async (steps: StepUnion[]) => {

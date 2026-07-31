@@ -1,0 +1,3662 @@
+{
+  "fixtureVersion": 1,
+  "id": "ant-design-browser",
+  "category": "real-framework-browser-capture",
+  "source": {
+    "kind": "browser-capture",
+    "framework": "ant-design",
+    "frameworkVersion": "5.29.3",
+    "capturedAt": "2026-07-28T08:00:00.000Z",
+    "origin": "package://antd@5.29.3"
+  },
+  "truth": {
+    "minimumScopeCount": 1,
+    "expectedCandidateMinimums": {
+      "host": 1,
+      "part": 3
+    },
+    "expectedOrphanCount": 0
+  },
+  "capture": {
+    "identity": {
+      "pageEpoch": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f",
+      "captureRevision": 1
+    },
+    "metadata": {
+      "schemaVersion": 1,
+      "source": "browser-live",
+      "capturedAt": "2026-07-28T08:00:00.000Z",
+      "pageUrl": "about:blank",
+      "framework": "ant-design",
+      "frameworkVersion": "5.29.3"
+    },
+    "completeness": {
+      "dom": "complete",
+      "a11y": "complete",
+      "runtime": "complete",
+      "geometry": "complete"
+    },
+    "scopes": [
+      {
+        "id": "scope:frame:0:document",
+        "kind": "document",
+        "rootCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:1",
+        "status": "captured",
+        "viewport": {
+          "width": 1280,
+          "height": 800
+        },
+        "completeness": {
+          "dom": "complete",
+          "a11y": "complete",
+          "runtime": "complete",
+          "geometry": "complete"
+        }
+      }
+    ],
+    "nodes": [
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:1",
+        "scopeId": "scope:frame:0:document",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:2",
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:3"
+        ],
+        "tag": "html",
+        "attributes": {},
+        "geometry": {
+          "x": 0,
+          "y": 0,
+          "width": 1280,
+          "height": 800
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "4"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:2",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:1",
+        "childCaptureIds": [],
+        "tag": "head",
+        "attributes": {},
+        "geometry": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": true,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": false,
+          "rendered": false
+        },
+        "backendNodeId": "5"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:3",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:1",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:4"
+        ],
+        "tag": "body",
+        "attributes": {},
+        "geometry": {
+          "x": 0,
+          "y": 0,
+          "width": 1280,
+          "height": 800
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "2"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:4",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:3",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:5"
+        ],
+        "tag": "div",
+        "attributes": {
+          "id": "app"
+        },
+        "geometry": {
+          "x": 0,
+          "y": 0,
+          "width": 1280,
+          "height": 349
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "64"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:5",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:4",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:6",
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:22"
+        ],
+        "tag": "div",
+        "attributes": {
+          "style": "padding: 24px;"
+        },
+        "geometry": {
+          "x": 0,
+          "y": 0,
+          "width": 1280,
+          "height": 349
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "65"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:6",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:5",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:7",
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:15"
+        ],
+        "tag": "form",
+        "attributes": {
+          "aria-label": "User filters",
+          "class": "ant-form ant-form-inline css-mncuj7"
+        },
+        "geometry": {
+          "x": 24,
+          "y": 24,
+          "width": 1232,
+          "height": 32
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "66"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:7",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:6",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:8"
+        ],
+        "tag": "div",
+        "attributes": {
+          "class": "ant-form-item css-mncuj7 ant-form-item-inline"
+        },
+        "geometry": {
+          "x": 24,
+          "y": 24,
+          "width": 256.25,
+          "height": 32
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "67"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:8",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:7",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:9",
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:11"
+        ],
+        "tag": "div",
+        "attributes": {
+          "class": "ant-row ant-form-item-row css-mncuj7"
+        },
+        "geometry": {
+          "x": 24,
+          "y": 24,
+          "width": 256.25,
+          "height": 32
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "68"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:9",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:8",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:10"
+        ],
+        "tag": "div",
+        "attributes": {
+          "class": "ant-col ant-form-item-label css-mncuj7"
+        },
+        "geometry": {
+          "x": 24,
+          "y": 24,
+          "width": 51.25,
+          "height": 32
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "69"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:10",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:9",
+        "childCaptureIds": [],
+        "tag": "label",
+        "attributes": {
+          "class": "",
+          "title": "Name"
+        },
+        "ownText": "Name",
+        "geometry": {
+          "x": 24,
+          "y": 24,
+          "width": 51.25,
+          "height": 32
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "70"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:11",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:8",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:12"
+        ],
+        "tag": "div",
+        "attributes": {
+          "class": "ant-col ant-form-item-control css-mncuj7"
+        },
+        "geometry": {
+          "x": 75.25,
+          "y": 24,
+          "width": 205,
+          "height": 32
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "73"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:12",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:11",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:13"
+        ],
+        "tag": "div",
+        "attributes": {
+          "class": "ant-form-item-control-input"
+        },
+        "geometry": {
+          "x": 75.25,
+          "y": 24,
+          "width": 205,
+          "height": 32
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "74"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:13",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:12",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:14"
+        ],
+        "tag": "div",
+        "attributes": {
+          "class": "ant-form-item-control-input-content"
+        },
+        "geometry": {
+          "x": 75.25,
+          "y": 24,
+          "width": 205,
+          "height": 32
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "75"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:14",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:13",
+        "childCaptureIds": [],
+        "tag": "input",
+        "attributes": {
+          "class": "ant-input css-mncuj7 ant-input-outlined",
+          "type": "text",
+          "value": ""
+        },
+        "runtimeStateToken": "rpa-state-ms4e4no8-e8u0inktoyo-1",
+        "geometry": {
+          "x": 75.25,
+          "y": 24,
+          "width": 205,
+          "height": 32
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "76"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:15",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:6",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:16"
+        ],
+        "tag": "div",
+        "attributes": {
+          "class": "ant-form-item css-mncuj7 ant-form-item-inline"
+        },
+        "geometry": {
+          "x": 296.25,
+          "y": 24,
+          "width": 76.359375,
+          "height": 32
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "77"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:16",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:15",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:17"
+        ],
+        "tag": "div",
+        "attributes": {
+          "class": "ant-row ant-form-item-row css-mncuj7"
+        },
+        "geometry": {
+          "x": 296.25,
+          "y": 24,
+          "width": 76.359375,
+          "height": 32
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "78"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:17",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:16",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:18"
+        ],
+        "tag": "div",
+        "attributes": {
+          "class": "ant-col ant-form-item-control css-mncuj7"
+        },
+        "geometry": {
+          "x": 296.25,
+          "y": 24,
+          "width": 76.359375,
+          "height": 32
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "79"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:18",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:17",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:19"
+        ],
+        "tag": "div",
+        "attributes": {
+          "class": "ant-form-item-control-input"
+        },
+        "geometry": {
+          "x": 296.25,
+          "y": 24,
+          "width": 76.359375,
+          "height": 32
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "80"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:19",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:18",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:20"
+        ],
+        "tag": "div",
+        "attributes": {
+          "class": "ant-form-item-control-input-content"
+        },
+        "geometry": {
+          "x": 296.25,
+          "y": 24,
+          "width": 76.359375,
+          "height": 32
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "81"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:20",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:19",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:21"
+        ],
+        "tag": "button",
+        "attributes": {
+          "type": "button",
+          "class": "ant-btn css-mncuj7 ant-btn-primary ant-btn-color-primary ant-btn-variant-solid"
+        },
+        "runtimeStateToken": "rpa-state-ms4e4no8-e8u0inktoyo-2",
+        "geometry": {
+          "x": 296.25,
+          "y": 24,
+          "width": 76.359375,
+          "height": 32
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "82"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:21",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:20",
+        "childCaptureIds": [],
+        "tag": "span",
+        "attributes": {},
+        "ownText": "Search",
+        "geometry": {
+          "x": 312.25,
+          "y": 29,
+          "width": 44.359375,
+          "height": 22
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "83"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:22",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:5",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:23"
+        ],
+        "tag": "div",
+        "attributes": {
+          "class": "ant-table-wrapper css-mncuj7",
+          "style": "width: 780px; margin-top: 20px;"
+        },
+        "geometry": {
+          "x": 24,
+          "y": 76,
+          "width": 780,
+          "height": 249
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "85"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:23",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:22",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:24"
+        ],
+        "tag": "div",
+        "attributes": {
+          "class": "ant-spin-nested-loading css-mncuj7"
+        },
+        "geometry": {
+          "x": 24,
+          "y": 76,
+          "width": 780,
+          "height": 233
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "88"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:24",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:23",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:25",
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:78"
+        ],
+        "tag": "div",
+        "attributes": {
+          "class": "ant-spin-container"
+        },
+        "geometry": {
+          "x": 24,
+          "y": 76,
+          "width": 780,
+          "height": 233
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "89"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:25",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:24",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:26"
+        ],
+        "tag": "div",
+        "attributes": {
+          "class": "ant-table css-mncuj7 ant-table-ping-right ant-table-fixed-header ant-table-fixed-column ant-table-scroll-horizontal ant-table-has-fix-left ant-table-has-fix-right"
+        },
+        "geometry": {
+          "x": 24,
+          "y": 76,
+          "width": 780,
+          "height": 185
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "91"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:26",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:25",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:27",
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:42"
+        ],
+        "tag": "div",
+        "attributes": {
+          "class": "ant-table-container"
+        },
+        "geometry": {
+          "x": 24,
+          "y": 76,
+          "width": 780,
+          "height": 185
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "92"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:27",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:26",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:28"
+        ],
+        "tag": "div",
+        "attributes": {
+          "class": "ant-table-header",
+          "style": "overflow: hidden;"
+        },
+        "geometry": {
+          "x": 24,
+          "y": 76,
+          "width": 780,
+          "height": 55
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "95"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:28",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:27",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:29",
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:35"
+        ],
+        "tag": "table",
+        "attributes": {
+          "style": "table-layout: fixed; min-width: 100%; width: 840px;"
+        },
+        "geometry": {
+          "x": 24,
+          "y": 76,
+          "width": 840,
+          "height": 55
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "96"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:29",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:28",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:30",
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:31",
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:32",
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:33",
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:34"
+        ],
+        "tag": "colgroup",
+        "attributes": {},
+        "geometry": {
+          "x": 24,
+          "y": 76,
+          "width": 840,
+          "height": 55
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "97"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:30",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:29",
+        "childCaptureIds": [],
+        "tag": "col",
+        "attributes": {
+          "style": "width: 160px;"
+        },
+        "geometry": {
+          "x": 24,
+          "y": 76,
+          "width": 160,
+          "height": 55
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "98"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:31",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:29",
+        "childCaptureIds": [],
+        "tag": "col",
+        "attributes": {
+          "style": "width: 180px;"
+        },
+        "geometry": {
+          "x": 184,
+          "y": 76,
+          "width": 180,
+          "height": 55
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "99"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:32",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:29",
+        "childCaptureIds": [],
+        "tag": "col",
+        "attributes": {
+          "style": "width: 180px;"
+        },
+        "geometry": {
+          "x": 364,
+          "y": 76,
+          "width": 180,
+          "height": 55
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "100"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:33",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:29",
+        "childCaptureIds": [],
+        "tag": "col",
+        "attributes": {
+          "style": "width: 180px;"
+        },
+        "geometry": {
+          "x": 544,
+          "y": 76,
+          "width": 180,
+          "height": 55
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "101"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:34",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:29",
+        "childCaptureIds": [],
+        "tag": "col",
+        "attributes": {
+          "style": "width: 140px;"
+        },
+        "geometry": {
+          "x": 724,
+          "y": 76,
+          "width": 140,
+          "height": 55
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "102"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:35",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:28",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:36"
+        ],
+        "tag": "thead",
+        "attributes": {
+          "class": "ant-table-thead"
+        },
+        "geometry": {
+          "x": 24,
+          "y": 76,
+          "width": 840,
+          "height": 55
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "103"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:36",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:35",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:37",
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:38",
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:39",
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:40",
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:41"
+        ],
+        "tag": "tr",
+        "attributes": {},
+        "geometry": {
+          "x": 24,
+          "y": 76,
+          "width": 840,
+          "height": 55
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "104"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:37",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:36",
+        "childCaptureIds": [],
+        "tag": "th",
+        "attributes": {
+          "class": "ant-table-cell ant-table-cell-fix-left ant-table-cell-fix-left-last",
+          "scope": "col",
+          "style": "position: sticky; left: 0px;"
+        },
+        "ownText": "Name",
+        "geometry": {
+          "x": 24,
+          "y": 76,
+          "width": 160,
+          "height": 55
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "105"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:38",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:36",
+        "childCaptureIds": [],
+        "tag": "th",
+        "attributes": {
+          "class": "ant-table-cell",
+          "scope": "col"
+        },
+        "ownText": "Department",
+        "geometry": {
+          "x": 184,
+          "y": 76,
+          "width": 180,
+          "height": 55
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "109"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:39",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:36",
+        "childCaptureIds": [],
+        "tag": "th",
+        "attributes": {
+          "class": "ant-table-cell",
+          "scope": "col"
+        },
+        "ownText": "Status",
+        "geometry": {
+          "x": 364,
+          "y": 76,
+          "width": 180,
+          "height": 55
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "112"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:40",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:36",
+        "childCaptureIds": [],
+        "tag": "th",
+        "attributes": {
+          "class": "ant-table-cell",
+          "scope": "col"
+        },
+        "ownText": "City",
+        "geometry": {
+          "x": 544,
+          "y": 76,
+          "width": 180,
+          "height": 55
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "115"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:41",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:36",
+        "childCaptureIds": [],
+        "tag": "th",
+        "attributes": {
+          "class": "ant-table-cell ant-table-cell-fix-right ant-table-cell-fix-right-first",
+          "scope": "col",
+          "style": "position: sticky; right: 0px;"
+        },
+        "ownText": "Actions",
+        "geometry": {
+          "x": 664,
+          "y": 76,
+          "width": 140,
+          "height": 55
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "118"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:42",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:26",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:43"
+        ],
+        "tag": "div",
+        "attributes": {
+          "class": "ant-table-body",
+          "style": "overflow: auto scroll; max-height: 260px;"
+        },
+        "geometry": {
+          "x": 24,
+          "y": 131,
+          "width": 780,
+          "height": 130
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "121"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:43",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:42",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:44",
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:50"
+        ],
+        "tag": "table",
+        "attributes": {
+          "style": "width: 840px; min-width: 100%; table-layout: fixed;"
+        },
+        "geometry": {
+          "x": 24,
+          "y": 131,
+          "width": 840,
+          "height": 130
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "122"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:44",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:43",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:45",
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:46",
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:47",
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:48",
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:49"
+        ],
+        "tag": "colgroup",
+        "attributes": {},
+        "geometry": {
+          "x": 24,
+          "y": 131,
+          "width": 840,
+          "height": 130
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "123"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:45",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:44",
+        "childCaptureIds": [],
+        "tag": "col",
+        "attributes": {
+          "style": "width: 160px;"
+        },
+        "geometry": {
+          "x": 24,
+          "y": 131,
+          "width": 160,
+          "height": 130
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "124"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:46",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:44",
+        "childCaptureIds": [],
+        "tag": "col",
+        "attributes": {
+          "style": "width: 180px;"
+        },
+        "geometry": {
+          "x": 184,
+          "y": 131,
+          "width": 180,
+          "height": 130
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "125"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:47",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:44",
+        "childCaptureIds": [],
+        "tag": "col",
+        "attributes": {
+          "style": "width: 180px;"
+        },
+        "geometry": {
+          "x": 364,
+          "y": 131,
+          "width": 180,
+          "height": 130
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "126"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:48",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:44",
+        "childCaptureIds": [],
+        "tag": "col",
+        "attributes": {
+          "style": "width: 180px;"
+        },
+        "geometry": {
+          "x": 544,
+          "y": 131,
+          "width": 180,
+          "height": 130
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "127"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:49",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:44",
+        "childCaptureIds": [],
+        "tag": "col",
+        "attributes": {
+          "style": "width: 140px;"
+        },
+        "geometry": {
+          "x": 724,
+          "y": 131,
+          "width": 140,
+          "height": 130
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "128"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:50",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:43",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:51",
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:62",
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:70"
+        ],
+        "tag": "tbody",
+        "attributes": {
+          "class": "ant-table-tbody"
+        },
+        "geometry": {
+          "x": 24,
+          "y": 131,
+          "width": 840,
+          "height": 130
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "129"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:51",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:50",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:52",
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:54",
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:56",
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:58",
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:60"
+        ],
+        "tag": "tr",
+        "attributes": {
+          "aria-hidden": "true",
+          "class": "ant-table-measure-row",
+          "tabindex": "-1"
+        },
+        "geometry": {
+          "x": 24,
+          "y": 131,
+          "width": 840,
+          "height": 0
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": false,
+          "selfHasBox": false,
+          "rendered": true
+        },
+        "backendNodeId": "130"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:52",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:51",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:53"
+        ],
+        "tag": "th",
+        "attributes": {
+          "class": "ant-table-measure-cell"
+        },
+        "geometry": {
+          "x": 24,
+          "y": 131,
+          "width": 160,
+          "height": 0
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": false,
+          "selfHasBox": false,
+          "rendered": true
+        },
+        "backendNodeId": "131"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:53",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:52",
+        "childCaptureIds": [],
+        "tag": "div",
+        "attributes": {
+          "class": "ant-table-measure-cell-content"
+        },
+        "ownText": "Name",
+        "geometry": {
+          "x": 40,
+          "y": 131,
+          "width": 128,
+          "height": 0
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": false,
+          "selfHasBox": false,
+          "rendered": true
+        },
+        "backendNodeId": "132"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:54",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:51",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:55"
+        ],
+        "tag": "th",
+        "attributes": {
+          "class": "ant-table-measure-cell"
+        },
+        "geometry": {
+          "x": 184,
+          "y": 131,
+          "width": 180,
+          "height": 0
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": false,
+          "selfHasBox": false,
+          "rendered": true
+        },
+        "backendNodeId": "134"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:55",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:54",
+        "childCaptureIds": [],
+        "tag": "div",
+        "attributes": {
+          "class": "ant-table-measure-cell-content"
+        },
+        "ownText": "Department",
+        "geometry": {
+          "x": 200,
+          "y": 131,
+          "width": 148,
+          "height": 0
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": false,
+          "selfHasBox": false,
+          "rendered": true
+        },
+        "backendNodeId": "135"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:56",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:51",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:57"
+        ],
+        "tag": "th",
+        "attributes": {
+          "class": "ant-table-measure-cell"
+        },
+        "geometry": {
+          "x": 364,
+          "y": 131,
+          "width": 180,
+          "height": 0
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": false,
+          "selfHasBox": false,
+          "rendered": true
+        },
+        "backendNodeId": "137"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:57",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:56",
+        "childCaptureIds": [],
+        "tag": "div",
+        "attributes": {
+          "class": "ant-table-measure-cell-content"
+        },
+        "ownText": "Status",
+        "geometry": {
+          "x": 380,
+          "y": 131,
+          "width": 148,
+          "height": 0
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": false,
+          "selfHasBox": false,
+          "rendered": true
+        },
+        "backendNodeId": "138"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:58",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:51",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:59"
+        ],
+        "tag": "th",
+        "attributes": {
+          "class": "ant-table-measure-cell"
+        },
+        "geometry": {
+          "x": 544,
+          "y": 131,
+          "width": 180,
+          "height": 0
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": false,
+          "selfHasBox": false,
+          "rendered": true
+        },
+        "backendNodeId": "140"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:59",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:58",
+        "childCaptureIds": [],
+        "tag": "div",
+        "attributes": {
+          "class": "ant-table-measure-cell-content"
+        },
+        "ownText": "City",
+        "geometry": {
+          "x": 560,
+          "y": 131,
+          "width": 148,
+          "height": 0
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": false,
+          "selfHasBox": false,
+          "rendered": true
+        },
+        "backendNodeId": "141"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:60",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:51",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:61"
+        ],
+        "tag": "th",
+        "attributes": {
+          "class": "ant-table-measure-cell"
+        },
+        "geometry": {
+          "x": 724,
+          "y": 131,
+          "width": 140,
+          "height": 0
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": false,
+          "selfHasBox": false,
+          "rendered": true
+        },
+        "backendNodeId": "143"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:61",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:60",
+        "childCaptureIds": [],
+        "tag": "div",
+        "attributes": {
+          "class": "ant-table-measure-cell-content"
+        },
+        "ownText": "Actions",
+        "geometry": {
+          "x": 740,
+          "y": 131,
+          "width": 108,
+          "height": 0
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": false,
+          "selfHasBox": false,
+          "rendered": true
+        },
+        "backendNodeId": "144"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:62",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:50",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:63",
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:64",
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:65",
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:66",
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:67"
+        ],
+        "tag": "tr",
+        "attributes": {
+          "class": "ant-table-row ant-table-row-level-0",
+          "data-row-key": "1"
+        },
+        "geometry": {
+          "x": 24,
+          "y": 131,
+          "width": 840,
+          "height": 65
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "146"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:63",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:62",
+        "childCaptureIds": [],
+        "tag": "td",
+        "attributes": {
+          "class": "ant-table-cell ant-table-cell-fix-left ant-table-cell-fix-left-last",
+          "style": "position: sticky; left: 0px;"
+        },
+        "ownText": "Alice",
+        "geometry": {
+          "x": 24,
+          "y": 131,
+          "width": 160,
+          "height": 65
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "147"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:64",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:62",
+        "childCaptureIds": [],
+        "tag": "td",
+        "attributes": {
+          "class": "ant-table-cell"
+        },
+        "ownText": "Platform",
+        "geometry": {
+          "x": 184,
+          "y": 131,
+          "width": 180,
+          "height": 65
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "150"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:65",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:62",
+        "childCaptureIds": [],
+        "tag": "td",
+        "attributes": {
+          "class": "ant-table-cell"
+        },
+        "ownText": "Active",
+        "geometry": {
+          "x": 364,
+          "y": 131,
+          "width": 180,
+          "height": 65
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "152"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:66",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:62",
+        "childCaptureIds": [],
+        "tag": "td",
+        "attributes": {
+          "class": "ant-table-cell"
+        },
+        "ownText": "Tokyo",
+        "geometry": {
+          "x": 544,
+          "y": 131,
+          "width": 180,
+          "height": 65
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "154"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:67",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:62",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:68"
+        ],
+        "tag": "td",
+        "attributes": {
+          "class": "ant-table-cell ant-table-cell-fix-right ant-table-cell-fix-right-first",
+          "style": "position: sticky; right: 0px;"
+        },
+        "geometry": {
+          "x": 664,
+          "y": 131,
+          "width": 140,
+          "height": 65
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "156"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:68",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:67",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:69"
+        ],
+        "tag": "button",
+        "attributes": {
+          "type": "button",
+          "class": "ant-btn css-mncuj7 ant-btn-link ant-btn-color-link ant-btn-variant-link"
+        },
+        "runtimeStateToken": "rpa-state-ms4e4no8-e8u0inktoyo-3",
+        "geometry": {
+          "x": 680,
+          "y": 147,
+          "width": 56.125,
+          "height": 32
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "158"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:69",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:68",
+        "childCaptureIds": [],
+        "tag": "span",
+        "attributes": {},
+        "ownText": "Edit",
+        "geometry": {
+          "x": 696,
+          "y": 152,
+          "width": 24.125,
+          "height": 22
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "159"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:70",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:50",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:71",
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:72",
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:73",
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:74",
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:75"
+        ],
+        "tag": "tr",
+        "attributes": {
+          "class": "ant-table-row ant-table-row-level-0",
+          "data-row-key": "2"
+        },
+        "geometry": {
+          "x": 24,
+          "y": 196,
+          "width": 840,
+          "height": 65
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "161"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:71",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:70",
+        "childCaptureIds": [],
+        "tag": "td",
+        "attributes": {
+          "class": "ant-table-cell ant-table-cell-fix-left ant-table-cell-fix-left-last",
+          "style": "position: sticky; left: 0px;"
+        },
+        "ownText": "Bob",
+        "geometry": {
+          "x": 24,
+          "y": 196,
+          "width": 160,
+          "height": 65
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "162"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:72",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:70",
+        "childCaptureIds": [],
+        "tag": "td",
+        "attributes": {
+          "class": "ant-table-cell"
+        },
+        "ownText": "Security",
+        "geometry": {
+          "x": 184,
+          "y": 196,
+          "width": 180,
+          "height": 65
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "165"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:73",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:70",
+        "childCaptureIds": [],
+        "tag": "td",
+        "attributes": {
+          "class": "ant-table-cell"
+        },
+        "ownText": "Pending",
+        "geometry": {
+          "x": 364,
+          "y": 196,
+          "width": 180,
+          "height": 65
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "167"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:74",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:70",
+        "childCaptureIds": [],
+        "tag": "td",
+        "attributes": {
+          "class": "ant-table-cell"
+        },
+        "ownText": "Osaka",
+        "geometry": {
+          "x": 544,
+          "y": 196,
+          "width": 180,
+          "height": 65
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "169"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:75",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:70",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:76"
+        ],
+        "tag": "td",
+        "attributes": {
+          "class": "ant-table-cell ant-table-cell-fix-right ant-table-cell-fix-right-first",
+          "style": "position: sticky; right: 0px;"
+        },
+        "geometry": {
+          "x": 664,
+          "y": 196,
+          "width": 140,
+          "height": 65
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "171"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:76",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:75",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:77"
+        ],
+        "tag": "button",
+        "attributes": {
+          "type": "button",
+          "class": "ant-btn css-mncuj7 ant-btn-link ant-btn-color-link ant-btn-variant-link"
+        },
+        "runtimeStateToken": "rpa-state-ms4e4no8-e8u0inktoyo-4",
+        "geometry": {
+          "x": 680,
+          "y": 212,
+          "width": 56.125,
+          "height": 32
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "173"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:77",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:76",
+        "childCaptureIds": [],
+        "tag": "span",
+        "attributes": {},
+        "ownText": "Edit",
+        "geometry": {
+          "x": 696,
+          "y": 217,
+          "width": 24.125,
+          "height": 22
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "174"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:78",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:24",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:79",
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:84",
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:86",
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:88",
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:93"
+        ],
+        "tag": "ul",
+        "attributes": {
+          "class": "ant-pagination ant-pagination-end ant-table-pagination css-mncuj7"
+        },
+        "geometry": {
+          "x": 24,
+          "y": 277,
+          "width": 780,
+          "height": 32
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "176"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:79",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:78",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:80"
+        ],
+        "tag": "li",
+        "attributes": {
+          "title": "Previous Page",
+          "class": "ant-pagination-prev ant-pagination-disabled",
+          "aria-disabled": "true"
+        },
+        "geometry": {
+          "x": 543.390625,
+          "y": 277,
+          "width": 32,
+          "height": 32
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "178"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:80",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:79",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:81"
+        ],
+        "tag": "button",
+        "attributes": {
+          "class": "ant-pagination-item-link",
+          "type": "button",
+          "tabindex": "-1",
+          "disabled": ""
+        },
+        "runtimeStateToken": "rpa-state-ms4e4no8-e8u0inktoyo-5",
+        "geometry": {
+          "x": 543.390625,
+          "y": 277,
+          "width": 32,
+          "height": 32
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "179"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:81",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:80",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:82"
+        ],
+        "tag": "span",
+        "attributes": {
+          "role": "img",
+          "aria-label": "left",
+          "class": "anticon anticon-left"
+        },
+        "geometry": {
+          "x": 553.390625,
+          "y": 287.5,
+          "width": 12,
+          "height": 12
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "180"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:82",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:81",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:83"
+        ],
+        "tag": "svg",
+        "attributes": {
+          "viewbox": "64 64 896 896",
+          "focusable": "false",
+          "data-icon": "left",
+          "width": "1em",
+          "height": "1em",
+          "fill": "currentColor",
+          "aria-hidden": "true"
+        },
+        "geometry": {
+          "x": 553.390625,
+          "y": 287.5,
+          "width": 12,
+          "height": 12
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": false,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "181"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:83",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:82",
+        "childCaptureIds": [],
+        "tag": "path",
+        "attributes": {
+          "d": "M724 218.3V141c0-6.7-7.7-10.4-12.9-6.3L260.3 486.8a31.86 31.86 0 000 50.3l450.8 352.1c5.3 4.1 12.9.4 12.9-6.3v-77.3c0-4.9-2.3-9.6-6.1-12.6l-360-281 360-281.1c3.8-3 6.1-7.7 6.1-12.6z"
+        },
+        "geometry": {
+          "x": 555.8549194335938,
+          "y": 288.42388916015625,
+          "width": 6.375,
+          "height": 10.15087890625
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": false,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "182"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:84",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:78",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:85"
+        ],
+        "tag": "li",
+        "attributes": {
+          "title": "1",
+          "class": "ant-pagination-item ant-pagination-item-1 ant-pagination-item-active",
+          "tabindex": "0"
+        },
+        "geometry": {
+          "x": 583.390625,
+          "y": 277,
+          "width": 32,
+          "height": 32
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "183"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:85",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:84",
+        "childCaptureIds": [],
+        "tag": "a",
+        "attributes": {
+          "rel": "nofollow"
+        },
+        "ownText": "1",
+        "geometry": {
+          "x": 584.390625,
+          "y": 278,
+          "width": 30,
+          "height": 30
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "184"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:86",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:78",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:87"
+        ],
+        "tag": "li",
+        "attributes": {
+          "title": "2",
+          "class": "ant-pagination-item ant-pagination-item-2",
+          "tabindex": "0"
+        },
+        "geometry": {
+          "x": 623.390625,
+          "y": 277,
+          "width": 32,
+          "height": 32
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "186"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:87",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:86",
+        "childCaptureIds": [],
+        "tag": "a",
+        "attributes": {
+          "rel": "nofollow"
+        },
+        "ownText": "2",
+        "geometry": {
+          "x": 624.390625,
+          "y": 278,
+          "width": 30,
+          "height": 30
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "187"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:88",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:78",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:89"
+        ],
+        "tag": "li",
+        "attributes": {
+          "title": "Next Page",
+          "tabindex": "0",
+          "class": "ant-pagination-next",
+          "aria-disabled": "false"
+        },
+        "geometry": {
+          "x": 663.390625,
+          "y": 277,
+          "width": 32,
+          "height": 32
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "189"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:89",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:88",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:90"
+        ],
+        "tag": "button",
+        "attributes": {
+          "class": "ant-pagination-item-link",
+          "type": "button",
+          "tabindex": "-1"
+        },
+        "runtimeStateToken": "rpa-state-ms4e4no8-e8u0inktoyo-6",
+        "geometry": {
+          "x": 663.390625,
+          "y": 277,
+          "width": 32,
+          "height": 32
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "190"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:90",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:89",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:91"
+        ],
+        "tag": "span",
+        "attributes": {
+          "role": "img",
+          "aria-label": "right",
+          "class": "anticon anticon-right"
+        },
+        "geometry": {
+          "x": 673.390625,
+          "y": 287.5,
+          "width": 12,
+          "height": 12
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "191"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:91",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:90",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:92"
+        ],
+        "tag": "svg",
+        "attributes": {
+          "viewbox": "64 64 896 896",
+          "focusable": "false",
+          "data-icon": "right",
+          "width": "1em",
+          "height": "1em",
+          "fill": "currentColor",
+          "aria-hidden": "true"
+        },
+        "geometry": {
+          "x": 673.390625,
+          "y": 287.5,
+          "width": 12,
+          "height": 12
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": false,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "192"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:92",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:91",
+        "childCaptureIds": [],
+        "tag": "path",
+        "attributes": {
+          "d": "M765.7 486.8L314.9 134.7A7.97 7.97 0 00302 141v77.3c0 4.9 2.3 9.6 6.1 12.6l360 281.1-360 281.1c-3.9 3-6.1 7.7-6.1 12.6V883c0 6.7 7.7 10.4 12.9 6.3l450.8-352.1a31.96 31.96 0 000-50.4z"
+        },
+        "geometry": {
+          "x": 676.578125,
+          "y": 288.42401123046875,
+          "width": 6.37506103515625,
+          "height": 10.152099609375
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": false,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "193"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:93",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:78",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:94"
+        ],
+        "tag": "li",
+        "attributes": {
+          "class": "ant-pagination-options"
+        },
+        "geometry": {
+          "x": 711.390625,
+          "y": 277,
+          "width": 92.609375,
+          "height": 32
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "194"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:94",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:93",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:95",
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:100"
+        ],
+        "tag": "div",
+        "attributes": {
+          "class": "ant-select ant-select-outlined ant-pagination-options-size-changer css-mncuj7 ant-select-single ant-select-show-arrow ant-select-show-search",
+          "aria-label": "Page Size"
+        },
+        "geometry": {
+          "x": 711.390625,
+          "y": 277,
+          "width": 92.609375,
+          "height": 32
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "195"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:95",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:94",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:96"
+        ],
+        "tag": "div",
+        "attributes": {
+          "class": "ant-select-selector"
+        },
+        "geometry": {
+          "x": 711.390625,
+          "y": 277,
+          "width": 92.609375,
+          "height": 32
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "196"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:96",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:95",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:97",
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:99"
+        ],
+        "tag": "span",
+        "attributes": {
+          "class": "ant-select-selection-wrap"
+        },
+        "geometry": {
+          "x": 723.390625,
+          "y": 278,
+          "width": 68.609375,
+          "height": 30
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "198"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:97",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:96",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:98"
+        ],
+        "tag": "span",
+        "attributes": {
+          "class": "ant-select-selection-search"
+        },
+        "geometry": {
+          "x": 723.390625,
+          "y": 278,
+          "width": 68.609375,
+          "height": 30
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "200"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:98",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:97",
+        "childCaptureIds": [],
+        "tag": "input",
+        "attributes": {
+          "autocomplete": "off",
+          "class": "ant-select-selection-search-input",
+          "role": "combobox",
+          "aria-expanded": "false",
+          "aria-haspopup": "listbox",
+          "aria-owns": "rc_select_0_list",
+          "aria-autocomplete": "list",
+          "aria-controls": "rc_select_0_list",
+          "aria-label": "Page Size",
+          "type": "search",
+          "value": "",
+          "id": "rc_select_0"
+        },
+        "runtimeStateToken": "rpa-state-ms4e4no8-e8u0inktoyo-7",
+        "geometry": {
+          "x": 723.390625,
+          "y": 278,
+          "width": 50.609375,
+          "height": 30
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "201"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:99",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:96",
+        "childCaptureIds": [],
+        "tag": "span",
+        "attributes": {
+          "class": "ant-select-selection-item",
+          "title": "2 / page"
+        },
+        "ownText": "2 / page",
+        "geometry": {
+          "x": 723.390625,
+          "y": 278,
+          "width": 68.609375,
+          "height": 30
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": true,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "202"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:100",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:94",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:101"
+        ],
+        "tag": "span",
+        "attributes": {
+          "class": "ant-select-arrow",
+          "unselectable": "on",
+          "aria-hidden": "true",
+          "style": "user-select: none;"
+        },
+        "geometry": {
+          "x": 781,
+          "y": 287,
+          "width": 12,
+          "height": 12
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": false,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "204"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:101",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:100",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:102"
+        ],
+        "tag": "span",
+        "attributes": {
+          "role": "img",
+          "aria-label": "down",
+          "class": "anticon anticon-down ant-select-suffix"
+        },
+        "geometry": {
+          "x": 781,
+          "y": 287,
+          "width": 12,
+          "height": 12
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": false,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "205"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:102",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:101",
+        "childCaptureIds": [
+          "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:103"
+        ],
+        "tag": "svg",
+        "attributes": {
+          "viewbox": "64 64 896 896",
+          "focusable": "false",
+          "data-icon": "down",
+          "width": "1em",
+          "height": "1em",
+          "fill": "currentColor",
+          "aria-hidden": "true"
+        },
+        "geometry": {
+          "x": 781,
+          "y": 287,
+          "width": 12,
+          "height": 12
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": false,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "206"
+      },
+      {
+        "captureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:103",
+        "scopeId": "scope:frame:0:document",
+        "parentCaptureId": "a2cccf9a-6caf-4b0e-a4d5-c20f7bc80f7f:1:frame:0:node:102",
+        "childCaptureIds": [],
+        "tag": "path",
+        "attributes": {
+          "d": "M884 256h-75c-5.1 0-9.9 2.5-12.9 6.6L512 654.2 227.9 262.6c-3-4.1-7.8-6.6-12.9-6.6h-75c-6.5 0-10.3 7.4-6.5 12.7l352.6 486.1c12.8 17.6 39 17.6 51.7 0l352.6-486.1c3.9-5.3.1-12.7-6.4-12.7z"
+        },
+        "geometry": {
+          "x": 781.9105224609375,
+          "y": 289.5714416503906,
+          "width": 10.17840576171875,
+          "height": 6.85711669921875
+        },
+        "geometrySource": "live-dom",
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "ariaExposed": false,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "backendNodeId": "207"
+      }
+    ],
+    "accessibility": [
+      {
+        "axNodeId": "1",
+        "backendNodeId": "1",
+        "role": "RootWebArea",
+        "focused": "true"
+      },
+      {
+        "axNodeId": "4",
+        "backendNodeId": "4",
+        "role": "none"
+      },
+      {
+        "axNodeId": "2",
+        "backendNodeId": "2",
+        "role": "none"
+      },
+      {
+        "axNodeId": "64",
+        "backendNodeId": "64",
+        "role": "generic"
+      },
+      {
+        "axNodeId": "65",
+        "backendNodeId": "65",
+        "role": "none"
+      },
+      {
+        "axNodeId": "66",
+        "backendNodeId": "66",
+        "role": "form",
+        "name": "User filters"
+      },
+      {
+        "axNodeId": "85",
+        "backendNodeId": "85",
+        "role": "none"
+      },
+      {
+        "axNodeId": "88",
+        "backendNodeId": "88",
+        "role": "generic"
+      },
+      {
+        "axNodeId": "67",
+        "backendNodeId": "67",
+        "role": "none"
+      },
+      {
+        "axNodeId": "68",
+        "backendNodeId": "68",
+        "role": "none"
+      },
+      {
+        "axNodeId": "69",
+        "backendNodeId": "69",
+        "role": "generic"
+      },
+      {
+        "axNodeId": "73",
+        "backendNodeId": "73",
+        "role": "generic"
+      },
+      {
+        "axNodeId": "77",
+        "backendNodeId": "77",
+        "role": "none"
+      },
+      {
+        "axNodeId": "78",
+        "backendNodeId": "78",
+        "role": "none"
+      },
+      {
+        "axNodeId": "79",
+        "backendNodeId": "79",
+        "role": "generic"
+      },
+      {
+        "axNodeId": "89",
+        "backendNodeId": "89",
+        "role": "generic"
+      },
+      {
+        "axNodeId": "70",
+        "backendNodeId": "70",
+        "role": "LabelText"
+      },
+      {
+        "axNodeId": "74",
+        "backendNodeId": "74",
+        "role": "generic"
+      },
+      {
+        "axNodeId": "80",
+        "backendNodeId": "80",
+        "role": "generic"
+      },
+      {
+        "axNodeId": "91",
+        "backendNodeId": "91",
+        "role": "none"
+      },
+      {
+        "axNodeId": "92",
+        "backendNodeId": "92",
+        "role": "generic"
+      },
+      {
+        "axNodeId": "176",
+        "backendNodeId": "176",
+        "role": "list"
+      },
+      {
+        "axNodeId": "72",
+        "backendNodeId": "72",
+        "role": "StaticText",
+        "name": "Name"
+      },
+      {
+        "axNodeId": "71",
+        "backendNodeId": "71",
+        "role": "generic"
+      },
+      {
+        "axNodeId": "75",
+        "backendNodeId": "75",
+        "role": "generic"
+      },
+      {
+        "axNodeId": "81",
+        "backendNodeId": "81",
+        "role": "generic"
+      },
+      {
+        "axNodeId": "95",
+        "backendNodeId": "95",
+        "role": "generic"
+      },
+      {
+        "axNodeId": "121",
+        "backendNodeId": "121",
+        "role": "generic"
+      },
+      {
+        "axNodeId": "178",
+        "backendNodeId": "178",
+        "role": "listitem",
+        "name": "Previous Page",
+        "disabled": "true"
+      },
+      {
+        "axNodeId": "183",
+        "backendNodeId": "183",
+        "role": "listitem"
+      },
+      {
+        "axNodeId": "186",
+        "backendNodeId": "186",
+        "role": "listitem"
+      },
+      {
+        "axNodeId": "189",
+        "backendNodeId": "189",
+        "role": "listitem",
+        "name": "Next Page"
+      },
+      {
+        "axNodeId": "194",
+        "backendNodeId": "194",
+        "role": "listitem"
+      },
+      {
+        "axNodeId": "-1000000002",
+        "role": "InlineTextBox",
+        "name": "Name"
+      },
+      {
+        "axNodeId": "-1000000003",
+        "role": "StaticText",
+        "name": ":"
+      },
+      {
+        "axNodeId": "-1000000004",
+        "role": "InlineTextBox",
+        "name": ":"
+      },
+      {
+        "axNodeId": "76",
+        "backendNodeId": "76",
+        "role": "textbox",
+        "readonly": "false",
+        "invalid": "false"
+      },
+      {
+        "axNodeId": "82",
+        "backendNodeId": "82",
+        "role": "button",
+        "name": "Search",
+        "invalid": "false"
+      },
+      {
+        "axNodeId": "96",
+        "backendNodeId": "96",
+        "role": "table"
+      },
+      {
+        "axNodeId": "122",
+        "backendNodeId": "122",
+        "role": "table"
+      },
+      {
+        "axNodeId": "179",
+        "backendNodeId": "179",
+        "role": "button",
+        "name": "left",
+        "disabled": "true",
+        "invalid": "false"
+      },
+      {
+        "axNodeId": "184",
+        "backendNodeId": "184",
+        "role": "generic"
+      },
+      {
+        "axNodeId": "187",
+        "backendNodeId": "187",
+        "role": "generic"
+      },
+      {
+        "axNodeId": "190",
+        "backendNodeId": "190",
+        "role": "button",
+        "name": "right",
+        "invalid": "false"
+      },
+      {
+        "axNodeId": "195",
+        "backendNodeId": "195",
+        "role": "generic",
+        "name": "Page Size"
+      },
+      {
+        "axNodeId": "-1000000004",
+        "role": "InlineTextBox",
+        "name": ":"
+      },
+      {
+        "axNodeId": "208",
+        "backendNodeId": "208",
+        "role": "generic"
+      },
+      {
+        "axNodeId": "83",
+        "backendNodeId": "83",
+        "role": "none"
+      },
+      {
+        "axNodeId": "84",
+        "backendNodeId": "84",
+        "role": "StaticText",
+        "name": "Search"
+      },
+      {
+        "axNodeId": "103",
+        "backendNodeId": "103",
+        "role": "rowgroup"
+      },
+      {
+        "axNodeId": "129",
+        "backendNodeId": "129",
+        "role": "none"
+      },
+      {
+        "axNodeId": "130",
+        "backendNodeId": "130",
+        "role": "none"
+      },
+      {
+        "axNodeId": "131",
+        "backendNodeId": "131",
+        "role": "none"
+      },
+      {
+        "axNodeId": "134",
+        "backendNodeId": "134",
+        "role": "none"
+      },
+      {
+        "axNodeId": "137",
+        "backendNodeId": "137",
+        "role": "none"
+      },
+      {
+        "axNodeId": "140",
+        "backendNodeId": "140",
+        "role": "none"
+      },
+      {
+        "axNodeId": "143",
+        "backendNodeId": "143",
+        "role": "none"
+      },
+      {
+        "axNodeId": "146",
+        "backendNodeId": "146",
+        "role": "row"
+      },
+      {
+        "axNodeId": "161",
+        "backendNodeId": "161",
+        "role": "row"
+      },
+      {
+        "axNodeId": "180",
+        "backendNodeId": "180",
+        "role": "image",
+        "name": "left"
+      },
+      {
+        "axNodeId": "185",
+        "backendNodeId": "185",
+        "role": "StaticText",
+        "name": "1"
+      },
+      {
+        "axNodeId": "188",
+        "backendNodeId": "188",
+        "role": "StaticText",
+        "name": "2"
+      },
+      {
+        "axNodeId": "191",
+        "backendNodeId": "191",
+        "role": "image",
+        "name": "right"
+      },
+      {
+        "axNodeId": "196",
+        "backendNodeId": "196",
+        "role": "generic"
+      },
+      {
+        "axNodeId": "-1000000005",
+        "role": "InlineTextBox",
+        "name": "Search"
+      },
+      {
+        "axNodeId": "104",
+        "backendNodeId": "104",
+        "role": "row"
+      },
+      {
+        "axNodeId": "147",
+        "backendNodeId": "147",
+        "role": "cell",
+        "name": "Alice"
+      },
+      {
+        "axNodeId": "150",
+        "backendNodeId": "150",
+        "role": "cell",
+        "name": "Platform"
+      },
+      {
+        "axNodeId": "152",
+        "backendNodeId": "152",
+        "role": "cell",
+        "name": "Active"
+      },
+      {
+        "axNodeId": "154",
+        "backendNodeId": "154",
+        "role": "cell",
+        "name": "Tokyo"
+      },
+      {
+        "axNodeId": "156",
+        "backendNodeId": "156",
+        "role": "cell",
+        "name": "Edit"
+      },
+      {
+        "axNodeId": "162",
+        "backendNodeId": "162",
+        "role": "cell",
+        "name": "Bob"
+      },
+      {
+        "axNodeId": "165",
+        "backendNodeId": "165",
+        "role": "cell",
+        "name": "Security"
+      },
+      {
+        "axNodeId": "167",
+        "backendNodeId": "167",
+        "role": "cell",
+        "name": "Pending"
+      },
+      {
+        "axNodeId": "169",
+        "backendNodeId": "169",
+        "role": "cell",
+        "name": "Osaka"
+      },
+      {
+        "axNodeId": "171",
+        "backendNodeId": "171",
+        "role": "cell",
+        "name": "Edit"
+      },
+      {
+        "axNodeId": "-1000000021",
+        "role": "InlineTextBox",
+        "name": "1"
+      },
+      {
+        "axNodeId": "-1000000022",
+        "role": "InlineTextBox",
+        "name": "2"
+      },
+      {
+        "axNodeId": "198",
+        "backendNodeId": "198",
+        "role": "none"
+      },
+      {
+        "axNodeId": "200",
+        "backendNodeId": "200",
+        "role": "none"
+      },
+      {
+        "axNodeId": "201",
+        "backendNodeId": "201",
+        "role": "combobox",
+        "name": "Page Size",
+        "expanded": "false",
+        "invalid": "false"
+      },
+      {
+        "axNodeId": "202",
+        "backendNodeId": "202",
+        "role": "generic"
+      },
+      {
+        "axNodeId": "199",
+        "backendNodeId": "199",
+        "role": "generic"
+      },
+      {
+        "axNodeId": "197",
+        "backendNodeId": "197",
+        "role": "none"
+      },
+      {
+        "axNodeId": "105",
+        "backendNodeId": "105",
+        "role": "columnheader",
+        "name": "Name",
+        "readonly": "false"
+      },
+      {
+        "axNodeId": "109",
+        "backendNodeId": "109",
+        "role": "columnheader",
+        "name": "Department",
+        "readonly": "false"
+      },
+      {
+        "axNodeId": "112",
+        "backendNodeId": "112",
+        "role": "columnheader",
+        "name": "Status",
+        "readonly": "false"
+      },
+      {
+        "axNodeId": "115",
+        "backendNodeId": "115",
+        "role": "columnheader",
+        "name": "City",
+        "readonly": "false"
+      },
+      {
+        "axNodeId": "118",
+        "backendNodeId": "118",
+        "role": "columnheader",
+        "name": "Actions",
+        "readonly": "false"
+      },
+      {
+        "axNodeId": "149",
+        "backendNodeId": "149",
+        "role": "StaticText",
+        "name": "Alice"
+      },
+      {
+        "axNodeId": "151",
+        "backendNodeId": "151",
+        "role": "StaticText",
+        "name": "Platform"
+      },
+      {
+        "axNodeId": "153",
+        "backendNodeId": "153",
+        "role": "StaticText",
+        "name": "Active"
+      },
+      {
+        "axNodeId": "155",
+        "backendNodeId": "155",
+        "role": "StaticText",
+        "name": "Tokyo"
+      },
+      {
+        "axNodeId": "158",
+        "backendNodeId": "158",
+        "role": "button",
+        "name": "Edit",
+        "invalid": "false"
+      },
+      {
+        "axNodeId": "164",
+        "backendNodeId": "164",
+        "role": "StaticText",
+        "name": "Bob"
+      },
+      {
+        "axNodeId": "166",
+        "backendNodeId": "166",
+        "role": "StaticText",
+        "name": "Security"
+      },
+      {
+        "axNodeId": "168",
+        "backendNodeId": "168",
+        "role": "StaticText",
+        "name": "Pending"
+      },
+      {
+        "axNodeId": "170",
+        "backendNodeId": "170",
+        "role": "StaticText",
+        "name": "Osaka"
+      },
+      {
+        "axNodeId": "173",
+        "backendNodeId": "173",
+        "role": "button",
+        "name": "Edit",
+        "invalid": "false"
+      },
+      {
+        "axNodeId": "209",
+        "backendNodeId": "209",
+        "role": "none"
+      },
+      {
+        "axNodeId": "211",
+        "backendNodeId": "211",
+        "role": "generic"
+      },
+      {
+        "axNodeId": "203",
+        "backendNodeId": "203",
+        "role": "StaticText",
+        "name": "2 / page"
+      },
+      {
+        "axNodeId": "-1000000024",
+        "role": "StaticText"
+      },
+      {
+        "axNodeId": "-1000000025",
+        "role": "InlineTextBox"
+      },
+      {
+        "axNodeId": "108",
+        "backendNodeId": "108",
+        "role": "StaticText",
+        "name": "Name"
+      },
+      {
+        "axNodeId": "111",
+        "backendNodeId": "111",
+        "role": "StaticText",
+        "name": "Department"
+      },
+      {
+        "axNodeId": "114",
+        "backendNodeId": "114",
+        "role": "StaticText",
+        "name": "Status"
+      },
+      {
+        "axNodeId": "117",
+        "backendNodeId": "117",
+        "role": "StaticText",
+        "name": "City"
+      },
+      {
+        "axNodeId": "120",
+        "backendNodeId": "120",
+        "role": "StaticText",
+        "name": "Actions"
+      },
+      {
+        "axNodeId": "-1000000011",
+        "role": "InlineTextBox",
+        "name": "Alice"
+      },
+      {
+        "axNodeId": "-1000000012",
+        "role": "InlineTextBox",
+        "name": "Platform"
+      },
+      {
+        "axNodeId": "-1000000013",
+        "role": "InlineTextBox",
+        "name": "Active"
+      },
+      {
+        "axNodeId": "-1000000014",
+        "role": "InlineTextBox",
+        "name": "Tokyo"
+      },
+      {
+        "axNodeId": "159",
+        "backendNodeId": "159",
+        "role": "none"
+      },
+      {
+        "axNodeId": "160",
+        "backendNodeId": "160",
+        "role": "StaticText",
+        "name": "Edit"
+      },
+      {
+        "axNodeId": "-1000000016",
+        "role": "InlineTextBox",
+        "name": "Bob"
+      },
+      {
+        "axNodeId": "-1000000017",
+        "role": "InlineTextBox",
+        "name": "Security"
+      },
+      {
+        "axNodeId": "-1000000018",
+        "role": "InlineTextBox",
+        "name": "Pending"
+      },
+      {
+        "axNodeId": "-1000000019",
+        "role": "InlineTextBox",
+        "name": "Osaka"
+      },
+      {
+        "axNodeId": "174",
+        "backendNodeId": "174",
+        "role": "none"
+      },
+      {
+        "axNodeId": "175",
+        "backendNodeId": "175",
+        "role": "StaticText",
+        "name": "Edit"
+      },
+      {
+        "axNodeId": "-1000000023",
+        "role": "InlineTextBox",
+        "name": "2 / page"
+      },
+      {
+        "axNodeId": "-1000000025",
+        "role": "InlineTextBox"
+      },
+      {
+        "axNodeId": "-1000000006",
+        "role": "InlineTextBox",
+        "name": "Name"
+      },
+      {
+        "axNodeId": "-1000000007",
+        "role": "InlineTextBox",
+        "name": "Department"
+      },
+      {
+        "axNodeId": "-1000000008",
+        "role": "InlineTextBox",
+        "name": "Status"
+      },
+      {
+        "axNodeId": "-1000000009",
+        "role": "InlineTextBox",
+        "name": "City"
+      },
+      {
+        "axNodeId": "-1000000010",
+        "role": "InlineTextBox",
+        "name": "Actions"
+      },
+      {
+        "axNodeId": "-1000000015",
+        "role": "InlineTextBox",
+        "name": "Edit"
+      },
+      {
+        "axNodeId": "-1000000020",
+        "role": "InlineTextBox",
+        "name": "Edit"
+      }
+    ],
+    "runtimeState": {
+      "rpa-state-ms4e4no8-e8u0inktoyo-1": {
+        "stateId": "rpa-state-ms4e4no8-e8u0inktoyo-1",
+        "tag": "input",
+        "type": "text",
+        "checked": "false",
+        "disabled": "false",
+        "readonly": "false",
+        "focused": "false"
+      },
+      "rpa-state-ms4e4no8-e8u0inktoyo-2": {
+        "stateId": "rpa-state-ms4e4no8-e8u0inktoyo-2",
+        "tag": "button",
+        "disabled": "false",
+        "readonly": "false",
+        "focused": "false"
+      },
+      "rpa-state-ms4e4no8-e8u0inktoyo-3": {
+        "stateId": "rpa-state-ms4e4no8-e8u0inktoyo-3",
+        "tag": "button",
+        "disabled": "false",
+        "readonly": "false",
+        "focused": "false"
+      },
+      "rpa-state-ms4e4no8-e8u0inktoyo-4": {
+        "stateId": "rpa-state-ms4e4no8-e8u0inktoyo-4",
+        "tag": "button",
+        "disabled": "false",
+        "readonly": "false",
+        "focused": "false"
+      },
+      "rpa-state-ms4e4no8-e8u0inktoyo-5": {
+        "stateId": "rpa-state-ms4e4no8-e8u0inktoyo-5",
+        "tag": "button",
+        "disabled": "true",
+        "readonly": "false",
+        "focused": "false"
+      },
+      "rpa-state-ms4e4no8-e8u0inktoyo-6": {
+        "stateId": "rpa-state-ms4e4no8-e8u0inktoyo-6",
+        "tag": "button",
+        "disabled": "false",
+        "readonly": "false",
+        "focused": "false"
+      },
+      "rpa-state-ms4e4no8-e8u0inktoyo-7": {
+        "stateId": "rpa-state-ms4e4no8-e8u0inktoyo-7",
+        "tag": "input",
+        "type": "search",
+        "role": "combobox",
+        "checked": "false",
+        "ariaExpanded": "false",
+        "disabled": "false",
+        "readonly": "false",
+        "focused": "false"
+      }
+    },
+    "diagnostics": []
+  }
+}

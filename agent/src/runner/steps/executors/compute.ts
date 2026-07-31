@@ -18,8 +18,8 @@ export const executeBrowserCompute = async (
     const binding = await awaitPageBoundBinding(deps, workspaceName);
     const cache = binding.traceCtx.cache as { computeScope?: unknown; runnerStepResults?: unknown };
     const scope: EvalScope = {
-        steps: asRecord<RunLocalStepResults>(cache.runnerStepResults),
-        ...(asRecord<EvalScope>(cache.computeScope) || {}),
+        ...readEvalScope(cache.computeScope),
+        steps: readRunLocalStepResults(cache.runnerStepResults),
     };
 
     try {
@@ -162,7 +162,28 @@ const assertArity = (op: string, args: unknown[], expected: number) => {
     }
 };
 
-const asRecord = <T extends Record<string, unknown>>(value: unknown): T | undefined => {
-    if (!value || typeof value !== 'object') {return undefined;}
-    return value as T;
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === 'object' && value !== null;
+
+const readRunLocalStepResults = (value: unknown): RunLocalStepResults | undefined => {
+    if (!isRecord(value)) {return undefined;}
+    const results: RunLocalStepResults = {};
+    for (const [stepId, rawResult] of Object.entries(value)) {
+        if (!isRecord(rawResult) || typeof rawResult.ok !== 'boolean') {continue;}
+        results[stepId] = {
+            ok: rawResult.ok,
+            data: rawResult.data,
+            error: rawResult.error,
+        };
+    }
+    return results;
+};
+
+const readEvalScope = (value: unknown): EvalScope => {
+    if (!isRecord(value)) {return {};}
+    return {
+        input: isRecord(value.input) ? value.input : undefined,
+        local: isRecord(value.local) ? value.local : undefined,
+        output: isRecord(value.output) ? value.output : undefined,
+    };
 };

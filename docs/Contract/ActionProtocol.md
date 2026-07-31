@@ -83,9 +83,9 @@ Action routing 由两层判定：
 - `record.*` / `play.*` 转发给 `RecordControl.handle`。
 - `dsl.*` 转发给 `DslControl.handle`。
 - `checkpoint.*` 转发给 `CheckpointControl.handle`。
-- `entity_rules.*` 转发给 `EntityRulesControl.handle`。
 - `task.run.*` 转发给 `RunnerControl.handle`。
 - `mcp.*` 转发给 `McpControl.handle`。
+
 
 ## Control 命名
 

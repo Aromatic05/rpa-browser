@@ -9,7 +9,6 @@
 - `defaults.ts`：提供默认配置。
 - `loader.ts`：加载 `.rpa/runner_config.json` 并应用环境变量覆盖。
 - `config_schema.ts`：类型约束。
-- `entity_rules.ts`：entity rules 相关默认路径与策略。
 
 ## 覆盖优先级
 
@@ -85,19 +84,6 @@
 - `actionLogLevel` / `recordLogLevel` / `traceLogLevel` / `stepLogLevel`
 
 环境变量同名映射为 `RUNNER_TRACE_*`、`RUNNER_ACTION_*`、`RUNNER_RECORD_*`、`RUNNER_STEP_LOG_LEVEL`。
-
-## confidencePolicy
-
-用于目标解析评分：
-
-- `enabled`
-- `minScore`
-- `roleWeight`
-- `nameWeight`
-- `textWeight`
-- `selectorBonus`
-
-环境变量：`RUNNER_CONFIDENCE_*`。
 
 ## checkpointPolicy
 

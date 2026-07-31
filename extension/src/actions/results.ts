@@ -5,6 +5,7 @@ export const ERROR_CODES = {
     ERR_NOT_FOUND: 'ERR_NOT_FOUND',
     ERR_STALE: 'ERR_STALE',
     ERR_UNSUPPORTED: 'ERR_UNSUPPORTED',
+    ERR_NOT_IMPLEMENTED: 'ERR_NOT_IMPLEMENTED',
     ERR_ASSERTION_FAILED: 'ERR_ASSERTION_FAILED',
     ERR_DIALOG_BLOCKED: 'ERR_DIALOG_BLOCKED',
     ERR_POPUP_BLOCKED: 'ERR_POPUP_BLOCKED',
@@ -36,7 +37,7 @@ export const mkActionDispatchFailed = (replyTo: string | undefined, code: string
 });
 
 export const mkRequestFailedReply = (requestType: string, requestId: string | undefined, code: string, message: string): Action =>
-    failedAction({ id: requestId || crypto.randomUUID(), type: requestType }, code, message);
+    failedAction({ id: requestId ?? crypto.randomUUID(), type: requestType }, code, message);
 
 export type ErrorResult = {
     ok: false;

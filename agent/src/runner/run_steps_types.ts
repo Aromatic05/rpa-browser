@@ -3,9 +3,12 @@ import type { Checkpoint as RunnerCheckpoint } from './checkpoint/types';
 import type { ExecutionBindings } from '../runtime/execution/bindings';
 import type { RunnerPluginHost } from './hotreload/plugin_host';
 import type { RunnerConfig } from '../config';
-import type { WorkspaceEntityRulesProvider } from '../entity_rules/provider';
 import type { RuntimeWorkspace } from '../runtime/workspace/workspace';
 import type { Action } from '../actions/action_protocol';
+import type { Page } from 'playwright';
+import type { WorkspaceEntityRulesProvider } from '../snapshot/rules';
+import type { PageSnapshotSessionPort } from '../snapshot/session';
+import type { SnapshotProjectionBaselinePort } from '../snapshot/projection';
 
 export type StepEvent =
     | {
@@ -70,12 +73,14 @@ export type Checkpoint = {
 
 export type RunStepsDeps = {
     runtime: ExecutionBindings;
+    pageSession: PageSnapshotSessionPort<Page>;
+    snapshotProjection: SnapshotProjectionBaselinePort<Page>;
     resolveWorkspace: (workspaceName: string) => RuntimeWorkspace;
     dispatchAction: (action: Action) => Promise<Action>;
+    resolveEntityRulesProvider?: (workspaceName: string) => WorkspaceEntityRulesProvider | null;
     stepSinks?: StepSink[];
     config: RunnerConfig;
     pluginHost: RunnerPluginHost;
-    resolveEntityRulesProvider?: (workspaceName: string) => WorkspaceEntityRulesProvider | null;
 };
 
 export type RunStepsRequest = {
@@ -88,6 +93,7 @@ export type RunStepsRequest = {
     stopOnError?: boolean;
     onCheckpoint?: (checkpoint: Checkpoint) => void | Promise<void>;
     checkpoints?: RunnerCheckpoint[];
+    checkpointStepResolves?: Record<string, Record<string, StepResolve>>;
     checkpointEnabled?: boolean;
     checkpointMaxAttempts?: number;
 };

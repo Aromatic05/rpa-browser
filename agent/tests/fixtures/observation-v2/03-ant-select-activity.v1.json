@@ -1,0 +1,224 @@
+{
+  "fixtureVersion": 1,
+  "id": "ant-select-activity",
+  "category": "typed-idref-and-activity-mismatch",
+  "source": {
+    "kind": "fixed-raw-capture",
+    "framework": "ant-design",
+    "frameworkVersion": "5.27.0",
+    "capturedAt": "2026-07-28T00:00:00.000Z",
+    "origin": "fixture://ant-select-activity"
+  },
+  "truth": {
+    "expectedDiagnosticCodes": [
+      "activity.controller-state-mismatch"
+    ],
+    "expectedCandidateMinimums": {
+      "host": 1
+    },
+    "expectedOrphanCount": 0
+  },
+  "capture": {
+    "identity": {
+      "pageEpoch": "fixture:ant-select-activity",
+      "captureRevision": 1
+    },
+    "metadata": {
+      "schemaVersion": 1,
+      "source": "fixed-fixture",
+      "capturedAt": "2026-07-28T00:00:00.000Z",
+      "pageUrl": "fixture://ant-select-activity",
+      "framework": "ant-design",
+      "frameworkVersion": "5.27.0"
+    },
+    "completeness": {
+      "dom": "complete",
+      "a11y": "complete",
+      "runtime": "complete",
+      "geometry": "complete"
+    },
+    "scopes": [
+      {
+        "id": "main",
+        "kind": "document",
+        "rootCaptureId": "html",
+        "status": "captured"
+      }
+    ],
+    "nodes": [
+      {
+        "captureId": "html",
+        "scopeId": "main",
+        "childCaptureIds": [
+          "body"
+        ],
+        "tag": "html",
+        "attributes": {},
+        "geometry": {
+          "x": 0,
+          "y": 0,
+          "width": 1000,
+          "height": 700
+        },
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        }
+      },
+      {
+        "captureId": "body",
+        "scopeId": "main",
+        "parentCaptureId": "html",
+        "childCaptureIds": [
+          "form",
+          "popup"
+        ],
+        "tag": "body",
+        "attributes": {},
+        "geometry": {
+          "x": 0,
+          "y": 0,
+          "width": 1000,
+          "height": 700
+        },
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        }
+      },
+      {
+        "captureId": "form",
+        "scopeId": "main",
+        "parentCaptureId": "body",
+        "childCaptureIds": [
+          "wrapper"
+        ],
+        "tag": "div",
+        "attributes": {
+          "class": "ant-form"
+        },
+        "geometry": {
+          "x": 30,
+          "y": 30,
+          "width": 420,
+          "height": 220
+        },
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        }
+      },
+      {
+        "captureId": "wrapper",
+        "scopeId": "main",
+        "parentCaptureId": "form",
+        "childCaptureIds": [
+          "trigger"
+        ],
+        "tag": "div",
+        "attributes": {},
+        "geometry": {
+          "x": 40,
+          "y": 50,
+          "width": 260,
+          "height": 36
+        },
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        }
+      },
+      {
+        "captureId": "trigger",
+        "scopeId": "main",
+        "parentCaptureId": "wrapper",
+        "childCaptureIds": [],
+        "tag": "button",
+        "attributes": {
+          "aria-controls": "city-popup",
+          "aria-expanded": "false"
+        },
+        "ownText": "Choose city",
+        "geometry": {
+          "x": 40,
+          "y": 50,
+          "width": 260,
+          "height": 36
+        },
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        }
+      },
+      {
+        "captureId": "popup",
+        "scopeId": "main",
+        "parentCaptureId": "body",
+        "childCaptureIds": [
+          "option"
+        ],
+        "tag": "div",
+        "attributes": {
+          "id": "city-popup",
+          "role": "listbox"
+        },
+        "backendNodeId": "306",
+        "geometry": {
+          "x": 40,
+          "y": 90,
+          "width": 260,
+          "height": 160
+        },
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        }
+      },
+      {
+        "captureId": "option",
+        "scopeId": "main",
+        "parentCaptureId": "popup",
+        "childCaptureIds": [],
+        "tag": "div",
+        "attributes": {
+          "role": "option"
+        },
+        "ownText": "Tokyo",
+        "geometry": {
+          "x": 50,
+          "y": 100,
+          "width": 240,
+          "height": 30
+        },
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        }
+      }
+    ],
+    "accessibility": [
+      {
+        "axNodeId": "ax-popup",
+        "backendNodeId": "306",
+        "role": "listbox",
+        "name": "Cities"
+      }
+    ],
+    "runtimeState": {},
+    "diagnostics": []
+  }
+}

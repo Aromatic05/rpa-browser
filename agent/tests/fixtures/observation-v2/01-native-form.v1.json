@@ -1,0 +1,227 @@
+{
+  "fixtureVersion": 1,
+  "id": "native-form",
+  "category": "native-form",
+  "source": {
+    "kind": "fixed-raw-capture",
+    "framework": "native",
+    "frameworkVersion": "html-2026",
+    "capturedAt": "2026-07-28T00:00:00.000Z",
+    "origin": "fixture://native-form"
+  },
+  "truth": {
+    "minimumScopeCount": 1,
+    "expectedCandidateMinimums": {
+      "structural": 1,
+      "rejected": 1
+    },
+    "expectedOrphanCount": 0
+  },
+  "capture": {
+    "identity": {
+      "pageEpoch": "fixture:native-form",
+      "captureRevision": 1
+    },
+    "metadata": {
+      "schemaVersion": 1,
+      "source": "fixed-fixture",
+      "capturedAt": "2026-07-28T00:00:00.000Z",
+      "pageUrl": "fixture://native-form",
+      "framework": "native",
+      "frameworkVersion": "html-2026"
+    },
+    "completeness": {
+      "dom": "complete",
+      "a11y": "complete",
+      "runtime": "complete",
+      "geometry": "complete"
+    },
+    "scopes": [
+      {
+        "id": "main",
+        "kind": "document",
+        "rootCaptureId": "html",
+        "status": "captured"
+      }
+    ],
+    "nodes": [
+      {
+        "captureId": "html",
+        "scopeId": "main",
+        "childCaptureIds": [
+          "body"
+        ],
+        "tag": "html",
+        "attributes": {},
+        "geometry": {
+          "x": 0,
+          "y": 0,
+          "width": 800,
+          "height": 600
+        },
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        }
+      },
+      {
+        "captureId": "body",
+        "scopeId": "main",
+        "parentCaptureId": "html",
+        "childCaptureIds": [
+          "form"
+        ],
+        "tag": "body",
+        "attributes": {},
+        "geometry": {
+          "x": 0,
+          "y": 0,
+          "width": 800,
+          "height": 600
+        },
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        }
+      },
+      {
+        "captureId": "form",
+        "scopeId": "main",
+        "parentCaptureId": "body",
+        "childCaptureIds": [
+          "label",
+          "input",
+          "submit"
+        ],
+        "tag": "form",
+        "attributes": {
+          "id": "profile-form"
+        },
+        "backendNodeId": "103",
+        "geometry": {
+          "x": 20,
+          "y": 20,
+          "width": 320,
+          "height": 180
+        },
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        }
+      },
+      {
+        "captureId": "label",
+        "scopeId": "main",
+        "parentCaptureId": "form",
+        "childCaptureIds": [],
+        "tag": "label",
+        "attributes": {
+          "for": "name"
+        },
+        "ownText": "Name",
+        "backendNodeId": "104",
+        "geometry": {
+          "x": 30,
+          "y": 40,
+          "width": 60,
+          "height": 24
+        },
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        }
+      },
+      {
+        "captureId": "input",
+        "scopeId": "main",
+        "parentCaptureId": "form",
+        "childCaptureIds": [],
+        "tag": "input",
+        "attributes": {
+          "id": "name",
+          "type": "text"
+        },
+        "backendNodeId": "105",
+        "geometry": {
+          "x": 100,
+          "y": 40,
+          "width": 180,
+          "height": 28
+        },
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        },
+        "runtimeStateToken": "state-name"
+      },
+      {
+        "captureId": "submit",
+        "scopeId": "main",
+        "parentCaptureId": "form",
+        "childCaptureIds": [],
+        "tag": "button",
+        "attributes": {
+          "type": "submit"
+        },
+        "ownText": "Save",
+        "backendNodeId": "106",
+        "geometry": {
+          "x": 100,
+          "y": 90,
+          "width": 80,
+          "height": 30
+        },
+        "activity": {
+          "hiddenByStyle": false,
+          "inert": false,
+          "selfHasBox": true,
+          "rendered": true
+        }
+      }
+    ],
+    "accessibility": [
+      {
+        "axNodeId": "ax-form",
+        "backendNodeId": "103",
+        "role": "form",
+        "name": "Profile"
+      },
+      {
+        "axNodeId": "ax-label",
+        "backendNodeId": "104",
+        "role": "label",
+        "name": "Name"
+      },
+      {
+        "axNodeId": "ax-input",
+        "backendNodeId": "105",
+        "role": "textbox",
+        "name": "Name"
+      },
+      {
+        "axNodeId": "ax-submit",
+        "backendNodeId": "106",
+        "role": "button",
+        "name": "Save"
+      }
+    ],
+    "runtimeState": {
+      "state-name": {
+        "stateId": "state-name",
+        "value": "Alice",
+        "focused": "true"
+      }
+    },
+    "diagnostics": []
+  }
+}

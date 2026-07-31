@@ -9,14 +9,14 @@ export type ControlClientOptions = {
 };
 
 const parseResponse = (line: string): ControlEvalResponse => {
-    const parsed = JSON.parse(line) as ControlEvalResponse;
-    if (!parsed || typeof parsed !== 'object' || typeof parsed.id !== 'string' || typeof parsed.ok !== 'boolean') {
+    const parsed: unknown = JSON.parse(line);
+    if (!isRecord(parsed) || typeof parsed.id !== 'string' || typeof parsed.ok !== 'boolean') {
         throw new Error('invalid control eval response');
     }
-    if (!Array.isArray(parsed.logs)) {
+    if (!Array.isArray(parsed.logs) || !parsed.logs.every((item) => typeof item === 'string')) {
         throw new Error('invalid control eval response logs');
     }
-    return parsed;
+    return parsed as ControlEvalResponse;
 };
 
 export const sendControlEval = async (
@@ -49,10 +49,14 @@ export const sendControlEval = async (
 
         socket.setEncoding('utf8');
         socket.setTimeout(timeoutMs, () => {
-            finish(() => reject(new Error(`control eval timeout after ${timeoutMs}ms`)));
+            finish(() => {
+                reject(new Error(`control eval timeout after ${timeoutMs}ms`));
+            });
         });
         socket.once('error', (error) => {
-            finish(() => reject(error));
+            finish(() => {
+                reject(error instanceof Error ? error : new Error('control response parsing failed', {cause: error}));
+            });
         });
         socket.on('data', (chunk: string) => {
             buffer += chunk;
@@ -65,7 +69,7 @@ export const sendControlEval = async (
                 try {
                     resolve(parseResponse(line));
                 } catch (error) {
-                    reject(error);
+                    reject(error instanceof Error ? error : new Error('control response parsing failed', {cause: error}));
                 }
             });
         });
@@ -74,3 +78,6 @@ export const sendControlEval = async (
         });
     });
 };
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === 'object' && value !== null && !Array.isArray(value);

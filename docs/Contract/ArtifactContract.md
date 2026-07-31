@@ -31,7 +31,6 @@ agent/.artifacts/workflows/<scene>/
 │     ├─ checkpoint.yaml
 │     ├─ checkpoint_resolve.yaml         # 可选
 │     └─ checkpoint_hints.yaml           # 可选
-└─ entity_rules/
    └─ <rule-pack>/
       ├─ match.yaml
       └─ annotation.yaml
@@ -86,16 +85,10 @@ agent/.artifacts/workflows/<scene>/
 - `checkpoint_hints.yaml` 为提示信息文件。
 - `workflow.checkpoints[]` 声明的每个目录必须包含 `checkpoint.yaml`。
 
-### 7. entity_rules 规则
-
-- workflow 级主路径：`workflows/<scene>/entity_rules/<rule-pack>/`
-- 文件要求：`match.yaml` 与 `annotation.yaml` 成对存在。
-- 规则加载优先 workflow 级；缺失时回退 legacy profiles。
 
 ### 8. legacy fallback
 
 - `workflows/<scene>/steps/<recording-name>/`：仅 legacy 读兼容。
-- `agent/.artifacts/entity_rules/profiles/<profile>/`：仅规则回退。
 
 禁止将 fallback 作为主写路径。
 
@@ -107,7 +100,6 @@ agent/.artifacts/workflows/<scene>/
 - `records/*/steps.yaml`：可执行步骤。
 - `records/*/manifest.yaml`：录制上下文快照。
 - `checkpoints/*/checkpoint.yaml`：checkpoint 过程定义。
-- `entity_rules/*`：业务实体语义规则。
 
 ## 示例
 
@@ -134,10 +126,8 @@ workspace:
 version: 1
 workspace:
   strategy: restoreOrCreate
-  entryUrl: http://127.0.0.1:5173/entity-rules
   expectedTabs:
     - ref: main
-      urlIncludes: /entity-rules
 ```
 
 ### records/<recording-name>/manifest.yaml
@@ -145,10 +135,8 @@ workspace:
 ```yaml
 version: 1
 workspaceName: workflow:order_scene
-entryUrl: http://127.0.0.1:5173/entity-rules
 tabs:
   - tabName: tab-1
-    url: http://127.0.0.1:5173/entity-rules
     title: Entity Rules
     active: true
 ```

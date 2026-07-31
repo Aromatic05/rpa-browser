@@ -2,71 +2,65 @@
 
 ## 概述
 
-本文档描述本地开发、联调、回归验证的标准流程。
+本文档描述本地开发、联调和回归验证的当前流程。
 
-## 规范
-
-### 1. 安装与初始化
+## 安装
 
 ```bash
 pnpm install
+pnpm pw:install
 ```
 
-可选：首次浏览器依赖安装按项目既有脚本执行。
-
-### 2. 主链路开发命令
+## 主链路
 
 ```bash
 pnpm dev
-pnpm mock:dev
-pnpm mock:dev:ant
+pnpm dev:cdp
 pnpm mcp
+pnpm mcp:hot
 ```
 
-说明：
+- `pnpm dev`：构建扩展并启动受管的 extension 开发运行时。
+- `pnpm dev:cdp`：启动受管的 CDP 开发运行时。
+- `pnpm mcp`：启动 MCP HTTP 服务。
+- `pnpm mcp:hot`：MCP 与 runner bundle 热重载。
 
-- `pnpm dev`：extension + agent 主联调。
-- `pnpm mock:dev`：启动 mock 双应用。
-- `pnpm mock:dev:ant`：仅 Ant mock。
-- `pnpm mcp`：MCP 入口调试。
+仓库已经移除独立 `mock/` 应用。页面识别开发应使用：
 
-### 3. 测试命令
+- `agent/tests/fixtures/observation-v2/` 浏览器采集 fixture；
+- `agent/tests/fixtures/form-v2/` 组件 replay corpus；
+- `agent/tests/e2e/` 中由 Playwright 创建的真实页面；
+- 必要时新增可重复采集脚本，而不是恢复未维护的静态 mock 站点。
+
+## 测试
 
 ```bash
-pnpm -C agent test
+pnpm test:repo-contract
+pnpm typecheck
+pnpm lint
+pnpm test:agent:snapshot
+pnpm test:agent:entity-rules
 pnpm test:extension
+pnpm test:dev-cdp
 pnpm test
 ```
 
-### 4. workflow artifact 本地验证流程
+`pnpm test` 是非发布合并门禁，会执行仓库契约、类型、lint、Agent CI 套件、Extension 测试和开发运行时契约测试。
+
+## Workflow artifact 验证
 
 1. 准备 `agent/.artifacts/workflows/<scene>/workflow.yaml`。
-2. 调用 `workflow.open`，确认绑定返回。
-3. 调用 `workflow.dsl.get/save` 验证读写链路。
-4. 调用 `workflow.dsl.test` 验证开发态运行。
-5. 调用 `workflow.releaseRun` 验证正式执行。
-6. 按需 `record.start/stop + workflow.record.save` 验证录制落盘。
+2. 调用 `workflow.open`，确认 workspace 和 tab 绑定。
+3. 调用 `workflow.dsl.get/save/test` 验证开发态读写和执行。
+4. 使用普通 Step/Checkpoint 路径验证同一 runtime contract。
+5. 按需执行 `record.start/stop + workflow.record.save` 验证录制落盘。
 
-### 5. extension/start_extension 联调要点
+发布运行和发布构建不属于日常开发门禁，未经明确授权不得执行。
 
-- 内容页与 start_extension 必须先确保 bound tab reference。
-- WS 回复必须按 `<action>.result/.failed` 处理。
+## 常见问题
 
-### 6. 常见问题排查
-
-- `workflow.open` 失败：检查 manifest 与 workspace binding schema。
-- `dsl.test` 失败：检查 DSL 缩进、变量引用、checkpoint 声明。
-- `record.save` 失败：检查 scope.workspaceName 是否为 `workflow:<scene>`。
-- `tab.ping` 异常：检查 token 映射与 watchdog stale 清理日志。
-
-## 示例
-
-```text
-pnpm dev
-pnpm mock:dev
-# 在 start_extension 执行 workflow.open -> workflow.dsl.test -> workflow.releaseRun
-```
-
-## 限制
-
-- 本文档不重复 Step/Trace/Action 字段契约，详情见 `Contract/`。
+- Snapshot 或业务实体异常：先读 `Runtime/Snapshot.md` 和 `Runtime/EntityRules.md`。
+- `workflow.open` 失败：检查 manifest 与 workspace binding。
+- `dsl.test` 失败：检查 DSL diagnostics、变量引用和 checkpoint 声明。
+- `tab.ping` 异常：检查 token 映射与 stale 清理日志。
+- Control RPC：见 `Contract/ControlRPCProtocol.md`。

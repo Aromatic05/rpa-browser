@@ -8,6 +8,20 @@ import type { ExecutorFn } from '../steps/executors';
 
 const log = getLogger('action');
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === 'object' && value !== null;
+
+type RunnerPluginFactory = () => RunnerPlugin | Promise<RunnerPlugin>;
+
+const isRunnerPluginFactory = (value: unknown): value is RunnerPluginFactory =>
+    typeof value === 'function';
+
+const isRunnerPlugin = (value: unknown): value is RunnerPlugin =>
+    isRecord(value)
+    && isRecord(value.executors)
+    && Object.values(value.executors).every((executor) => typeof executor === 'function')
+    && typeof value.createTraceTools === 'function';
+
 export class RunnerPluginHost {
     private entryFile: string;
     private plugin: RunnerPlugin | null = null;
@@ -59,13 +73,16 @@ export class RunnerPluginHost {
 
     private async importPlugin(): Promise<RunnerPlugin> {
         const specifier = await this.resolveImportSpecifier();
-        const mod = await import(specifier);
-        const factory = (mod.default ?? mod.createRunnerPlugin) as (() => RunnerPlugin) | undefined;
-        if (!factory) {
+        const imported: unknown = await import(specifier);
+        if (!isRecord(imported)) {
+            throw new Error('Runner plugin module is invalid');
+        }
+        const factory = imported.default ?? imported.createRunnerPlugin;
+        if (!isRunnerPluginFactory(factory)) {
             throw new Error('Runner plugin entry missing createRunnerPlugin export');
         }
-        const plugin = await factory();
-        if (!plugin || typeof plugin !== 'object' || !plugin.executors) {
+        const plugin: unknown = await factory();
+        if (!isRunnerPlugin(plugin)) {
             throw new Error('Runner plugin is invalid');
         }
         return plugin;

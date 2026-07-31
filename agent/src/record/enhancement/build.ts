@@ -1,53 +1,75 @@
-import type { Page } from 'playwright';
-import { getLogger } from '../../logging/logger';
-import type { RecorderEvent } from '../capture/recorder';
-import { getNodeSemanticHints } from '../../runner/steps/executors/snapshot/core/runtime_store';
-import type { SnapshotResult, UnifiedNode } from '../../runner/steps/executors/snapshot/core/types';
-import type { ResolveHint } from '../../runner/steps/types';
-import type { RecordedEntityBinding, RecordedStepEnhancement, RecordedTargetFingerprint } from '../types';
-import { buildResolveFromSnapshotCandidate } from '../../runner/steps/resolve_builder';
-import { normalizeResolveHint } from '../../runner/steps/resolve_utils';
-import { resolveRecordTargetBinding } from '../pipeline/target_binding';
-import { resolveRecordSnapshotForEvent, type RecordSnapshotCacheEntry } from '../pipeline/snapshot';
+import type {Page} from 'playwright';
+import {getLogger} from '../../logging/logger';
+import {
+    resolveSemanticRole,
+    type ObservationNodeId,
+    type RuntimeStateRecord,
+} from '../../snapshot';
+import type {ResolveHint} from '../../runner/steps/types';
+import {normalizeResolveHint} from '../../runner/steps/resolve_utils';
+import type {RecorderEvent} from '../capture/recorder';
+import type {RecordingState} from '../pipeline/state';
+import type {
+    RecordedEntityBinding,
+    RecordedSemanticHints,
+    RecordedStepEnhancement,
+    RecordedTargetFingerprint,
+} from '../types';
+import {resolveRecordNodeBinding, type RecordSnapshotResolver} from '../pipeline/target_binding';
+import {
+    recordSnapshotId,
+    resolveRecordSnapshotForEvent,
+    type RecordPageSnapshot,
+} from '../pipeline/snapshot';
+import {buildRecordResolveFromSnapshotCandidate} from './resolve';
 
-export type { RecordSnapshotCacheEntry } from '../pipeline/snapshot';
 
 export const enrichRecordedStepWithSnapshot = async (input: {
     event: RecorderEvent;
     page?: Page;
-    snapshotCache: Map<string, RecordSnapshotCacheEntry>;
-    cacheKey: string;
+    state: RecordingState;
+    workspaceName?: string;
+    tabName?: string;
+    resolveSnapshot?: RecordSnapshotResolver;
 }): Promise<RecordedStepEnhancement> => {
     const recordLog = getLogger('record');
-    const { event, page, snapshotCache, cacheKey } = input;
+    const {event, page, state} = input;
+    const checkpointSession = input.workspaceName
+        ? input.state.checkpointRecordings.get(input.workspaceName)
+        : undefined;
+    const capturedSemanticHints = semanticHintsFromEvent(event, checkpointSession);
     if (isPageLevelEvent(event)) {
-        const snapshot = await resolveRecordSnapshotForEvent({ event, page, snapshotCache, cacheKey });
-        if (!snapshot) {
-            return withRawContext(event, buildLowConfidenceRawOnlyResolve(event));
-        }
-        return withRawContext(event, {
-            version: 1,
-            eventType: event.type,
-            snapshot: {
-                mode: snapshot.snapshotMeta?.mode,
-                snapshotId: snapshot.snapshotMeta?.snapshotId,
-                pageIdentity: snapshot.snapshotMeta?.pageIdentity,
-                capturedAt: Date.now(),
-            },
+        const snapshot = await (input.resolveSnapshot ?? resolveRecordSnapshotForEvent)({
+            event,
+            page,
+            state,
+            workspaceName: input.workspaceName || '',
         });
+        return snapshot
+            ? withRawContext(event, {
+                version: 1,
+                eventType: event.type,
+                snapshot: buildSnapshotMetadata(snapshot, input),
+            })
+            : withRawContext(event, buildLowConfidenceRawOnlyResolve(event));
     }
     if (requiresTargetSelector(event) && !event.selector) {
-        return withRawContext(event, buildLowConfidenceRawOnlyResolve(event, {
-            reason: ['missing_selector_for_target_event'],
-            warnings: ['MISSING_SELECTOR_FOR_TARGET_EVENT', 'LOW_CONFIDENCE_RAW_ONLY'],
-            confidence: 0.2,
-        }));
+        return withRawContext(event, {
+            ...buildLowConfidenceRawOnlyResolve(event, {
+                reason: ['missing_selector_for_target_event'],
+                warnings: ['MISSING_SELECTOR_FOR_TARGET_EVENT', 'LOW_CONFIDENCE_RAW_ONLY'],
+                confidence: 0.2,
+            }),
+            ...(capturedSemanticHints ? {semanticHints: capturedSemanticHints} : {}),
+        });
     }
-    const binding = await resolveRecordTargetBinding({
+
+    const binding = await resolveRecordNodeBinding({
         event,
         page,
-        snapshotCache,
-        cacheKey,
+        state,
+        workspaceName: input.workspaceName || '',
+        resolveSnapshot: input.resolveSnapshot,
     });
     if (!binding) {
         recordLog('record_enhancement_binding', {
@@ -56,24 +78,28 @@ export const enrichRecordedStepWithSnapshot = async (input: {
             selector: event.selector,
             reason: 'binding_missing',
         });
-        return withRawContext(event, buildLowConfidenceRawOnlyResolve(event));
+        return withRawContext(event, {
+            ...buildLowConfidenceRawOnlyResolve(event),
+            ...(capturedSemanticHints ? {semanticHints: capturedSemanticHints} : {}),
+        });
     }
-    recordLog('record_enhancement_binding', {
-        result: 'bound',
-        eventType: event.type,
-        selector: event.selector,
-        targetNodeId: binding.targetNodeId,
-        componentKind: binding.componentKind,
-    });
-    const snapshot = binding.snapshot;
-    const targetNodeId = binding.targetNodeId;
-    const node = snapshot.nodeIndex[targetNodeId];
-    const locator = snapshot.locatorIndex[targetNodeId];
-    const target = buildTargetFingerprint(snapshot, node, targetNodeId, locator?.origin);
-    const entityBindings = buildEntityBindings(snapshot, targetNodeId);
-    const confidenceInfo = computeRecordConfidence(event, snapshot, targetNodeId);
-    const resolveDraft = buildResolveFromSnapshotCandidate({
-        snapshot,
+
+    const target = buildTargetFingerprint(
+        binding.snapshot,
+        binding.targetNodeId,
+        checkpointSession,
+        capturedSemanticHints,
+    );
+    if (!target) {
+        return withRawContext(event, {
+            ...buildLowConfidenceRawOnlyResolve(event),
+            ...(capturedSemanticHints ? {semanticHints: capturedSemanticHints} : {}),
+        });
+    }
+    const entityBindings = buildEntityBindings(binding.snapshot, binding.targetNodeId);
+    const confidenceInfo = computeRecordConfidence(event, binding.snapshot, binding.targetNodeId);
+    const resolveDraft = buildRecordResolveFromSnapshotCandidate({
+        snapshot: binding.snapshot,
         candidate: {
             nodeId: target.nodeId,
             selector: event.selector,
@@ -84,53 +110,84 @@ export const enrichRecordedStepWithSnapshot = async (input: {
             reason: confidenceInfo.reason,
         },
         rawSelector: event.selector,
-        rawLocatorCandidates: event.locatorCandidates?.map((candidate) => ({ ...candidate })),
-        source: 'record_enrichment',
+        rawLocatorCandidates: event.locatorCandidates?.map((candidate) => ({...candidate})),
         warnings: confidenceInfo.warnings,
     });
-    const enhancement: RecordedStepEnhancement = {
+
+    recordLog('record_enhancement_binding', {
+        result: 'bound',
+        eventType: event.type,
+        selector: event.selector,
+        targetNodeId: binding.targetNodeId,
+    });
+    return withRawContext(event, {
         version: 1,
         eventType: event.type,
-        snapshot: {
-            mode: snapshot.snapshotMeta?.mode,
-            snapshotId: snapshot.snapshotMeta?.snapshotId,
-            pageIdentity: snapshot.snapshotMeta?.pageIdentity,
-            capturedAt: Date.now(),
-        },
+        snapshot: buildSnapshotMetadata(binding.snapshot, input),
         target,
+        ...(target.semanticHints ? {semanticHints: target.semanticHints} : {}),
         entityBindings,
         resolveHint: resolveDraft.hint,
         resolvePolicy: resolveDraft.policy,
-    };
+    });
+};
 
-    return withRawContext(event, enhancement);
+const buildSnapshotMetadata = (
+    snapshot: RecordPageSnapshot,
+    input: {event: RecorderEvent; page?: Page; workspaceName?: string; tabName?: string},
+): NonNullable<RecordedStepEnhancement['snapshot']> => {
+    const identity = snapshot.control.observation.identity;
+    const pageIdentity = input.workspaceName
+        ? {
+            workspaceName: input.workspaceName,
+            tabName: input.tabName || input.event.tabName,
+            url: readPageUrl(input.event, input.page),
+        }
+        : undefined;
+    return {
+        mode: 'full',
+        snapshotId: recordSnapshotId(snapshot),
+        pageIdentity,
+        pageEpoch: identity.pageEpoch,
+        captureRevision: identity.captureRevision,
+        capturedAt: Date.now(),
+    };
+};
+
+const readPageUrl = (event: RecorderEvent, page?: Page): string => {
+    if (event.pageUrl || event.url) {return event.pageUrl || event.url || '';}
+    try {
+        return page?.url() || '';
+    } catch {
+        return '';
+    }
 };
 
 const isPageLevelEvent = (event: RecorderEvent): boolean => event.type === 'navigate' || event.type === 'scroll';
 
-const requiresTargetSelector = (event: RecorderEvent): boolean => {
-    return event.type === 'click'
-        || event.type === 'input'
-        || event.type === 'change'
-        || event.type === 'date'
-        || event.type === 'select'
-        || event.type === 'check'
-        || event.type === 'paste'
-        || event.type === 'copy'
-        || event.type === 'keydown';
-};
+const requiresTargetSelector = (event: RecorderEvent): boolean => [
+    'click',
+    'input',
+    'change',
+    'date',
+    'select',
+    'check',
+    'paste',
+    'copy',
+    'keydown',
+].includes(event.type);
 
 const withRawContext = (event: RecorderEvent, enhancement?: RecordedStepEnhancement): RecordedStepEnhancement => {
     const existingHint = enhancement?.resolveHint;
     const mergedRaw: ResolveHint['raw'] = {
         ...(existingHint?.raw || {}),
         selector: event.selector,
-        locatorCandidates: event.locatorCandidates?.map((candidate) => ({ ...candidate })),
+        locatorCandidates: event.locatorCandidates?.map((candidate) => ({...candidate})),
         scopeHint: event.scopeHint || undefined,
         targetHint: event.targetHint,
     };
     const next: RecordedStepEnhancement = {
-        ...(enhancement || { version: 1 }),
+        ...(enhancement || {version: 1}),
         version: 1,
         eventType: event.type,
         resolveHint: {
@@ -155,89 +212,336 @@ const withRawContext = (event: RecorderEvent, enhancement?: RecordedStepEnhancem
 };
 
 const buildTargetFingerprint = (
-    snapshot: SnapshotResult,
-    node: UnifiedNode,
-    nodeId: string,
-    origin?: { primaryDomId: string; sourceDomIds?: string[] },
-): RecordedTargetFingerprint => {
-    const attrs = snapshot.attrIndex[nodeId] || {};
-    const semanticHints = getNodeSemanticHints(node);
+    snapshot: RecordPageSnapshot,
+    nodeId: ObservationNodeId,
+    checkpointSession?: {profileName?: string; businessTag?: string; entityKind?: 'form' | 'table' | 'dialog' | 'list' | 'panel' | 'toolbar' | 'kv'},
+    capturedSemanticHints?: RecordedSemanticHints,
+): RecordedTargetFingerprint | undefined => {
+    const observation = snapshot.control.observation;
+    const node = new Map(Object.entries(observation.nodes)).get(nodeId);
+    if (!node) {return undefined;}
+    const attrs = {...(new Map(Object.entries(observation.attributes)).get(nodeId) ?? {})};
+    const identity = new Map(Object.entries(observation.domIdentity)).get(nodeId);
+    const geometryRecords = new Map(Object.entries(observation.geometry)).get(nodeId) ?? [];
+    const geometry = geometryRecords.find((item) => item.space === 'top-css-viewport') ?? geometryRecords.at(0);
     return {
         nodeId,
-        primaryDomId: origin?.primaryDomId,
-        sourceDomIds: origin?.sourceDomIds,
-        role: node.role,
-        tag: attrs.tag || attrs.tagName,
-        name: normalizeText(node.name),
-        content: normalizeText(resolveNodeContent(snapshot, node)),
-        attrs,
-        bbox: snapshot.bboxIndex[nodeId],
-        runtimeState: pickRuntimeState(attrs),
-        semanticHints,
+        primaryDomId: identity?.backendNodeId,
+        sourceDomIds: identity?.backendNodeId ? [identity.backendNodeId] : undefined,
+        role: normalizeText(resolveSemanticRole(observation, nodeId).value),
+        tag: node.tag,
+        name: normalizeText(new Map(Object.entries(observation.accessibility)).get(nodeId)?.name),
+        content: normalizeText(observation.text[nodeId]),
+        attrs: Object.keys(attrs).length > 0 ? attrs : undefined,
+        bbox: geometry ? {...geometry.rect} : undefined,
+        runtimeState: cloneRuntimeState(observation.runtimeState[nodeId]),
+        semanticHints: buildRecordedSemanticHints(snapshot, nodeId, checkpointSession, capturedSemanticHints),
     };
 };
 
-const buildEntityBindings = (snapshot: SnapshotResult, nodeId: string): RecordedEntityBinding[] | undefined => {
-    const refs = snapshot.entityIndex.byNodeId[nodeId] || [];
-    if (!refs.length) {return undefined;}
+const buildEntityBindings = (
+    snapshot: RecordPageSnapshot,
+    nodeId: ObservationNodeId,
+): RecordedEntityBinding[] | undefined => {
     const bindings: RecordedEntityBinding[] = [];
-    for (const ref of refs) {
-        const entity = snapshot.entityIndex.entities[ref.entityId];
-        bindings.push({
-            entityId: ref.entityId,
-            type: ref.type,
-            role: ref.role,
-            kind: entity.kind,
-            itemId: ref.itemId,
-            slotIndex: ref.slotIndex,
+    const seen = new Set<string>();
+    const add = (binding: RecordedEntityBinding) => {
+        const key = [binding.entityId, binding.type, binding.role, binding.itemId || '', binding.slotIndex ?? ''].join('|');
+        if (seen.has(key)) {return;}
+        seen.add(key);
+        bindings.push(binding);
+    };
+
+    const formIndex = snapshot.form.forms;
+    const formIds = new Set<string>();
+    for (const id of formIndex.byNodeId[nodeId] ?? []) {
+        if (new Map(Object.entries(formIndex.forms)).has(id)) {formIds.add(id);}
+        for (const form of Object.values(formIndex.forms)) {
+            if (form.fields.some((field) => field.id === id)
+                || form.actions.some((action) => action.id === id)
+                || form.groups.some((group) => group.id === id)) {
+                formIds.add(form.id);
+            }
+        }
+    }
+    for (const formId of formIds) {
+        const form = new Map(Object.entries(formIndex.forms)).get(formId);
+        if (!form) {continue;}
+        add({
+            entityId: form.id,
+            type: 'region',
+            role: form.location.structuralRootNodeId === nodeId ? 'container' : 'descendant',
+            kind: 'form',
         });
     }
-    return bindings;
+
+    const tableIndex = snapshot.table.tables;
+    const tableIds = new Set<string>();
+    for (const id of tableIndex.byNodeId[nodeId] ?? []) {
+        const table = new Map(Object.entries(tableIndex.tables)).get(id);
+        if (table) {tableIds.add(table.id);}
+        const row = new Map(Object.entries(tableIndex.rows)).get(id);
+        if (row) {
+            tableIds.add(row.tableId);
+            add({entityId: row.tableId, type: 'group', role: 'item', kind: 'table', itemId: row.id});
+        }
+        const cell = new Map(Object.entries(tableIndex.cells)).get(id);
+        if (cell) {
+            const ownerRow = new Map(Object.entries(tableIndex.rows)).get(cell.rowId);
+            if (ownerRow) {tableIds.add(ownerRow.tableId);}
+        }
+        const column = new Map(Object.entries(tableIndex.columns)).get(id);
+        if (column) {
+            const owner = Object.values(tableIndex.tables).find((candidate) =>
+                candidate.columns.some((item) => item.id === column.id));
+            if (owner) {tableIds.add(owner.id);}
+        }
+    }
+    for (const tableId of tableIds) {
+        const table = new Map(Object.entries(tableIndex.tables)).get(tableId);
+        if (!table) {continue;}
+        add({
+            entityId: table.id,
+            type: 'region',
+            role: table.location.structuralRootNodeId === nodeId ? 'container' : 'descendant',
+            kind: 'table',
+        });
+    }
+    return bindings.length > 0 ? bindings : undefined;
 };
 
-const resolveNodeContent = (snapshot: SnapshotResult, node: UnifiedNode): string | undefined => {
-    if (typeof node.content === 'string') {return node.content;}
-    if (node.content && typeof node.content === 'object' && node.content.ref) {
-        return snapshot.contentStore[node.content.ref];
+const buildRecordedSemanticHints = (
+    snapshot: RecordPageSnapshot,
+    nodeId: ObservationNodeId,
+    checkpointSession?: {profileName?: string; businessTag?: string; entityKind?: 'form' | 'table' | 'dialog' | 'list' | 'panel' | 'toolbar' | 'kv'},
+    capturedSemanticHints?: RecordedSemanticHints,
+): RecordedTargetFingerprint['semanticHints'] => {
+    const structural = buildStructuralSemanticHints(snapshot, nodeId);
+    const profileName = checkpointSession?.profileName;
+    if (!profileName) {
+        return capturedSemanticHints
+            ? {...(structural || {}), ...capturedSemanticHints}
+            : structural;
+    }
+    const profile = snapshot.entityRules?.profiles[profileName];
+    const bindings = profile ? Object.values(profile.semanticBindings.byId) : [];
+    const formMemberIds = new Set(snapshot.form.forms.byNodeId[nodeId] ?? []);
+    const tableMemberIds = new Set(snapshot.table.tables.byNodeId[nodeId] ?? []);
+    const targetMatches = (binding: (typeof bindings)[number]): boolean =>
+        binding.target.nodeIds.includes(nodeId)
+        || binding.target.fieldIds.some((id) => formMemberIds.has(id))
+        || binding.target.actionIds.some((id) => formMemberIds.has(id))
+        || binding.target.rowIds.some((id) => tableMemberIds.has(id))
+        || binding.target.columnIds.some((id) => tableMemberIds.has(id))
+        || binding.target.componentIds.some((id) => formMemberIds.has(id) || tableMemberIds.has(id));
+    const matched = bindings.filter((binding) =>
+        binding.status === 'active'
+        && binding.disposition === 'active'
+        && targetMatches(binding));
+    const field = matched.find((binding) => typeof binding.annotation.fieldKey === 'string');
+    const action = matched.find((binding) => typeof binding.annotation.actionIntent === 'string');
+    const fieldKey = readAnnotationText(field?.annotation.fieldKey);
+    const actionIntent = readAnnotationText(action?.annotation.actionIntent);
+    const actionRole = action?.annotation.actionRole === 'row' ? 'row' : undefined;
+    const rowPrimaryKey = actionRole
+        ? resolveRecordedRowPrimaryKey(snapshot, nodeId, bindings, checkpointSession.businessTag)
+        : undefined;
+    return {
+        ...(structural || {}),
+        profileName,
+        businessTag: checkpointSession.businessTag,
+        entityKind: checkpointSession.entityKind ?? structural?.entityKind,
+        ...(fieldKey ? {
+            fieldKey,
+            fieldLabel: readAnnotationText(field?.annotation.fieldName) ?? structural?.fieldLabel,
+        } : {}),
+        ...(actionIntent ? {
+            actionIntent,
+            actionTargetNodeId: nodeId,
+        } : {}),
+        ...(actionRole ? {actionRole} : {}),
+        ...(rowPrimaryKey ? {rowPrimaryKey} : {}),
+        ...(capturedSemanticHints || {}),
+    };
+};
+
+const semanticHintsFromEvent = (
+    event: RecorderEvent,
+    checkpointSession?: {profileName?: string; businessTag?: string; entityKind?: 'form' | 'table' | 'dialog' | 'list' | 'panel' | 'toolbar' | 'kv'},
+): RecordedSemanticHints | undefined => {
+    const hint = event.semanticHint;
+    if (!hint || !checkpointSession?.profileName || !checkpointSession.businessTag) {return undefined;}
+    if (hint.profileName !== checkpointSession.profileName || hint.businessTag !== checkpointSession.businessTag) {
+        return undefined;
+    }
+    return {
+        profileName: hint.profileName,
+        businessTag: hint.businessTag,
+        entityKind: checkpointSession.entityKind ?? hint.entityKind,
+        ...(hint.fieldKey ? {fieldKey: hint.fieldKey} : {}),
+        ...(hint.actionIntent ? {actionIntent: hint.actionIntent} : {}),
+        ...(hint.actionRole === 'row' ? {actionRole: 'row' as const} : {}),
+        ...(hint.rowPrimaryKey ? {rowPrimaryKey: {...hint.rowPrimaryKey}} : {}),
+    };
+};
+
+const resolveRecordedRowPrimaryKey = (
+    snapshot: RecordPageSnapshot,
+    nodeId: ObservationNodeId,
+    bindings: readonly {
+        status: string;
+        disposition: string;
+        annotation: Record<string, unknown>;
+        target: {componentIds: readonly string[]};
+    }[],
+    businessTag: string | undefined,
+): {fieldKey: string; value: string} | undefined => {
+    const root = bindings.find((binding) =>
+        binding.status === 'active'
+        && binding.disposition === 'active'
+        && binding.annotation.businessTag === businessTag);
+    const primaryKey = isRecord(root?.annotation.primaryKey) ? root.annotation.primaryKey : undefined;
+    const fieldKey = readAnnotationText(primaryKey?.fieldKey);
+    if (!root || !fieldKey) {return undefined;}
+    const columns = Array.isArray(root.annotation.columns)
+        ? root.annotation.columns.filter(isRecord)
+        : [];
+    const columnName = readAnnotationText(columns.find((column) => column.fieldKey === fieldKey)?.name)
+        ?? (Array.isArray(primaryKey?.columns)
+            ? primaryKey.columns.map(readAnnotationText).find((value): value is string => Boolean(value))
+            : undefined);
+    if (!columnName) {return undefined;}
+    const table = root.target.componentIds
+        .map((componentId) => snapshot.table.tables.tables[componentId])
+        .find(Boolean);
+    if (!table) {return undefined;}
+    const row = table.body.visibleRows.find((candidate) =>
+        isDescendantOrSelf(snapshot, nodeId, candidate.nodeId));
+    if (!row) {return undefined;}
+    const column = table.columns.find((candidate) =>
+        normalizeText(candidate.name).toLocaleLowerCase() === normalizeText(columnName).toLocaleLowerCase());
+    if (!column) {return undefined;}
+    const cell = row.cellIds
+        .map((cellId) => snapshot.table.tables.cells[cellId])
+        .find((candidate) => candidate.columnId === column.id);
+    const value = cell ? normalizeText(cell.text) : '';
+    return value ? {fieldKey, value} : undefined;
+};
+
+const isDescendantOrSelf = (
+    snapshot: RecordPageSnapshot,
+    nodeId: ObservationNodeId,
+    ancestorNodeId: ObservationNodeId,
+): boolean => {
+    let current: ObservationNodeId | undefined = nodeId;
+    const visited = new Set<ObservationNodeId>();
+    while (current && !visited.has(current)) {
+        if (current === ancestorNodeId) {return true;}
+        visited.add(current);
+        current = snapshot.control.observation.parents[current];
+    }
+    return false;
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const readAnnotationText = (value: unknown): string | undefined =>
+    typeof value === 'string' && value.trim() ? value.trim() : undefined;
+
+const buildStructuralSemanticHints = (
+    snapshot: RecordPageSnapshot,
+    nodeId: ObservationNodeId,
+): RecordedTargetFingerprint['semanticHints'] => {
+    const bindings = buildEntityBindings(snapshot, nodeId) ?? [];
+    const structural = bindings.find((binding) => binding.type === 'region');
+    if (!structural) {return undefined;}
+    return {
+        entityNodeId: structural.entityId,
+        entityKind: structural.kind,
+        fieldLabel: readFieldLabel(snapshot, nodeId),
+    };
+};
+
+const readFieldLabel = (snapshot: RecordPageSnapshot, nodeId: ObservationNodeId): string | undefined => {
+    const formIndex = snapshot.form.forms;
+    const fieldIds = new Set((formIndex.byNodeId[nodeId] ?? []).filter((id) =>
+        new Map(Object.entries(formIndex.fields)).has(id)));
+    for (const fieldId of fieldIds) {
+        const field = new Map(Object.entries(formIndex.fields)).get(fieldId);
+        if (!field) {continue;}
+        const label = field.labelNodeIds
+            .map((labelNodeId) => snapshot.control.observation.text[labelNodeId])
+            .filter((value): value is string => Boolean(value))
+            .join(' ');
+        if (label) {return normalizeText(label);}
     }
     return undefined;
 };
 
-
-const pickRuntimeState = (attrs: Record<string, string> | undefined): Record<string, string> | undefined => {
-    if (!attrs) {return undefined;}
-    const keys = [
-        'value',
-        'checked',
-        'selected',
-        'ariaChecked',
-        'ariaSelected',
-        'ariaExpanded',
-        'ariaPressed',
-        'disabled',
-        'readonly',
-        'invalid',
-        'focused',
-        'popupSelectedText',
-        'ariaValueText',
-        'ariaLabelledBy',
-        'ariaDescribedBy',
-        'contentEditableText',
-    ];
-    const state: Record<string, string> = {};
-    for (const key of keys) {
-        if (!attrs[key]) {continue;}
-        state[key] = attrs[key];
-    }
-    if (!Object.keys(state).length) {return undefined;}
-    return state;
+const cloneRuntimeState = (state: RuntimeStateRecord | undefined): Record<string, string> | undefined => {
+    if (!state) {return undefined;}
+    const values = Object.fromEntries(Object.entries(state).filter((entry): entry is [string, string] =>
+        typeof entry[1] === 'string'));
+    return Object.keys(values).length > 0 ? values : undefined;
 };
 
-const normalizeText = (value: string | undefined): string => (value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+const computeRecordConfidence = (
+    event: RecorderEvent,
+    snapshot: RecordPageSnapshot,
+    nodeId: ObservationNodeId,
+): {confidence: number; reason: string[]; warnings: string[]} => {
+    const observation = snapshot.control.observation;
+    const role = normalizeText(resolveSemanticRole(observation, nodeId).value);
+    const name = normalizeText(
+        new Map(Object.entries(observation.accessibility)).get(nodeId)?.name || observation.text[nodeId],
+    );
+    const selector = event.selector;
+    const reasons: string[] = [];
+    const warnings: string[] = [];
+    let confidence: number;
+    if (selector && selectorMatchesNode(snapshot, nodeId, selector)) {
+        confidence = 0.95;
+        reasons.push('direct_selector_exact_match');
+    } else if (event.a11yHint?.role && event.a11yHint.name
+        && normalizeText(event.a11yHint.role) === role
+        && name.includes(normalizeText(event.a11yHint.name))) {
+        confidence = 0.8;
+        reasons.push('role_and_name_match');
+    } else if (selector) {
+        confidence = 0.5;
+        reasons.push('raw_selector_only');
+    } else {
+        confidence = 0.35;
+        reasons.push('text_or_a11y_only');
+    }
+    if ((event.locatorCandidates ?? []).length > 1) {
+        confidence = Math.max(0.2, confidence - 0.15);
+        warnings.push('AMBIGUOUS_TARGET');
+    }
+    if (confidence < 0.55) {warnings.push('LOW_CONFIDENCE_RAW_ONLY');}
+    return {confidence, reason: reasons, warnings};
+};
+
+const selectorMatchesNode = (snapshot: RecordPageSnapshot, nodeId: ObservationNodeId, selector: string): boolean => {
+    const normalized = selector.trim();
+    const locators = snapshot.control.locators;
+    if ((locators.byNodeId[nodeId] ?? [])
+        .map((locatorId) => new Map(Object.entries(locators.locators)).get(locatorId))
+        .some((locator) => locator?.status === 'resolved' && locator.selector === normalized)) {
+        return true;
+    }
+    const attrs = snapshot.control.observation.attributes[nodeId] ?? {};
+    if (attrs.id && (`#${attrs.id}` === normalized || `[id="${attrs.id}"]` === normalized)) {return true;}
+    return Boolean(attrs['data-testid'] && `[data-testid="${attrs['data-testid']}"]` === normalized);
+};
+
+const normalizeText = (value: string | undefined): string =>
+    (value || '').replace(/\s+/g, ' ').trim().toLowerCase();
 
 const buildLowConfidenceRawOnlyResolve = (
     event: RecorderEvent,
-    overrides?: { reason?: string[]; warnings?: string[]; confidence?: number },
+    overrides?: {reason?: string[]; warnings?: string[]; confidence?: number},
 ): RecordedStepEnhancement => ({
     version: 1,
     resolveHint: {
@@ -249,7 +553,7 @@ const buildLowConfidenceRawOnlyResolve = (
         },
         raw: {
             selector: event.selector,
-            locatorCandidates: event.locatorCandidates?.map((candidate) => ({ ...candidate })),
+            locatorCandidates: event.locatorCandidates?.map((candidate) => ({...candidate})),
             scopeHint: event.scopeHint || undefined,
             targetHint: event.targetHint,
         },
@@ -267,37 +571,3 @@ const buildLowConfidenceRawOnlyResolve = (
         allowIndexDrift: true,
     },
 });
-
-const computeRecordConfidence = (
-    event: RecorderEvent,
-    snapshot: SnapshotResult,
-    nodeId: string,
-): { confidence: number; reason: string[]; warnings: string[] } => {
-    const locator = snapshot.locatorIndex[nodeId];
-    const role = normalizeText(snapshot.nodeIndex[nodeId]?.role);
-    const name = normalizeText(snapshot.nodeIndex[nodeId]?.name);
-    const reasons: string[] = [];
-    const warnings: string[] = [];
-    let confidence = 0.45;
-    if (event.selector && locator?.direct?.query && normalizeText(event.selector) === normalizeText(locator.direct.query)) {
-        confidence = 0.95;
-        reasons.push('direct_selector_exact_match');
-    } else if (event.a11yHint?.role && event.a11yHint?.name && normalizeText(event.a11yHint.role) === role && name.includes(normalizeText(event.a11yHint.name))) {
-        confidence = 0.8;
-        reasons.push('role_and_name_match');
-    } else if (event.selector) {
-        confidence = 0.5;
-        reasons.push('raw_selector_only');
-    } else {
-        confidence = 0.35;
-        reasons.push('text_or_a11y_only');
-    }
-    if ((event.locatorCandidates || []).length > 1) {
-        confidence = Math.max(0.2, confidence - 0.15);
-        warnings.push('AMBIGUOUS_TARGET');
-    }
-    if (confidence < 0.55) {
-        warnings.push('LOW_CONFIDENCE_RAW_ONLY');
-    }
-    return { confidence, reason: reasons, warnings };
-};

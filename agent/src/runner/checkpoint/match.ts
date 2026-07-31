@@ -1,8 +1,9 @@
 import { getLogger } from '../../logging/logger';
-import { ensureFreshSnapshot } from '../steps/executors/snapshot/core/session_store';
-import { generateSemanticSnapshot } from '../steps/executors/snapshot/pipeline/snapshot';
-import { filterFinalEntities } from '../steps/executors/snapshot/core/entity_query';
-import type { EntityKind } from '../steps/executors/snapshot/core/types';
+import { ensureFreshPageSession } from '../session/capture';
+import { buildPageSessionEntityView, filterPageSessionEntities } from '../session/entity_view';
+import type { EntityKind } from '../steps/types';
+import type {StepEntityRulesControl} from '../../snapshot/rules/model';
+import {visibleTextEvaluation} from '../page/visible_text';
 import { getCheckpointMatchRules, type Checkpoint, type CheckpointCtx, type MatchRule } from './types';
 
 const log = getLogger('step');
@@ -26,11 +27,12 @@ const FATAL_ERROR_CODES = new Set(['ERR_BAD_ARGS', 'ERR_INTERNAL']);
 
 let checkpointStore: Checkpoint[] = [];
 
-export const setCheckpoints = (checkpoints: Checkpoint[]) => {
+export const setCheckpoints = (checkpoints: Checkpoint[]): void => {
     checkpointStore = [...checkpoints];
 };
 
-export const listCheckpoints = (injected?: Checkpoint[]) => (injected ? [...injected] : [...checkpointStore]);
+export const listCheckpoints = (injected?: Checkpoint[]): Checkpoint[] =>
+    injected ? [...injected] : [...checkpointStore];
 
 const firstRuleStepName = (checkpoint: Checkpoint) => {
     const matched = getCheckpointMatchRules(checkpoint).find((rule) => 'stepName' in rule);
@@ -76,11 +78,17 @@ export const maybePickCheckpoint = async (ctx: CheckpointCtx): Promise<Checkpoin
         })
         .sort((a, b) => (b.priority || 0) - (a.priority || 0));
 
+    log.info('checkpoint.candidates', {
+        stepId: ctx.failedCtx.step.id,
+        count: candidates.length,
+        checkpointIds: candidates.map((candidate) => candidate.id),
+    });
+
     for (const candidate of candidates) {
         let hit = true;
         const rules = getCheckpointMatchRules(candidate);
         for (const rule of rules) {
-            if (!(await evalMatchRule(rule, ctx))) {
+            if (!(await evalMatchRule(rule, ctx, candidate.trigger?.entityRules))) {
                 hit = false;
                 break;
             }
@@ -104,50 +112,41 @@ const evalUrlIncludesRule = async (needle: string, ctx: CheckpointCtx): Promise<
 
 const evalTextVisibleRule = async (needle: string, ctx: CheckpointCtx): Promise<boolean> => {
     const binding = await getCheckpointBinding(ctx);
-    const evaluated = await binding.traceTools['trace.page.evaluate']({
-        expression: `({ needle }) => {
-            const text = String(needle || '').trim();
-            if (!text) return false;
-            const isVisible = (el) => {
-                if (!(el instanceof Element)) return false;
-                const style = window.getComputedStyle(el);
-                if (!style) return false;
-                if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity || '1') <= 0) return false;
-                const rect = el.getBoundingClientRect();
-                return rect.width > 0 && rect.height > 0;
-            };
-            const elements = Array.from(document.querySelectorAll('body *'));
-            return elements.some((el) => isVisible(el) && (el.textContent || '').includes(text));
-        }`,
-        arg: { needle },
-    });
+    const evaluated = await binding.traceTools['trace.page.evaluate'](visibleTextEvaluation(needle));
     return evaluated.ok && evaluated.data === true;
 };
 
 const evalEntityExistsRule = async (
     args: { query: string; kind?: EntityKind | EntityKind[]; businessTag?: string | string[] },
     ctx: CheckpointCtx,
+    entityRules?: StepEntityRulesControl,
 ): Promise<boolean> => {
-    const binding = await getCheckpointBinding(ctx);
-    const ensured = await ensureFreshSnapshot(binding, {
-        refreshReason: 'checkpoint.match.entityExists',
-        collectBaseSnapshot: async (context) =>
-            await generateSemanticSnapshot(binding.page, {
-                captureRuntimeState: context.fromDirty,
-                entityRulesProvider: ctx.failedCtx.deps.resolveEntityRulesProvider?.(ctx.failedCtx.workspaceName) || undefined,
-            }),
-    });
-
-    const finalEntities = ensured.entry.finalEntityView?.entities || [];
-    const filtered = filterFinalEntities(finalEntities, {
+    const {entry} = await ensureFreshPageSession(
+        ctx.failedCtx.deps,
+        ctx.failedCtx.workspaceName,
+        {explicit: true, entityRules},
+    );
+    const entities = buildPageSessionEntityView(entry).entities;
+    const matched = filterPageSessionEntities(entities, {
         kind: args.kind,
         businessTag: args.businessTag,
         query: args.query,
     });
-    return filtered.length > 0;
+    log.info('checkpoint.entity_exists', {
+        args,
+        executionStatus: entry.capture.entityRules?.status,
+        selectedProfiles: entry.capture.entityRules?.selectedProfiles,
+        entityCount: entities.length,
+        matchedCount: matched.length,
+    });
+    return matched.length > 0;
 };
 
-export const evalMatchRule = async (rule: MatchRule, ctx: CheckpointCtx): Promise<boolean> => {
+export const evalMatchRule = async (
+    rule: MatchRule,
+    ctx: CheckpointCtx,
+    entityRules?: StepEntityRulesControl,
+): Promise<boolean> => {
     if ('errorCode' in rule) {
         return ctx.failedCtx.rawResult.error?.code === rule.errorCode;
     }
@@ -161,7 +160,7 @@ export const evalMatchRule = async (rule: MatchRule, ctx: CheckpointCtx): Promis
         return await evalTextVisibleRule(rule.textVisible, ctx);
     }
     if ('entityExists' in rule) {
-        return await evalEntityExistsRule(rule.entityExists, ctx);
+        return await evalEntityExistsRule(rule.entityExists, ctx, entityRules);
     }
     return false;
 };

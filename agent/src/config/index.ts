@@ -7,18 +7,17 @@ import { loadRunnerConfig } from './loader';
 
 let cachedConfig: RunnerConfig | null = null;
 
-export const getRunnerConfig = () => {
+export const getRunnerConfig = (): RunnerConfig => {
     if (!cachedConfig) {
         cachedConfig = loadRunnerConfig();
     }
     return cachedConfig;
 };
 
-export const resolveRunnerConfig = (overrides?: Partial<RunnerConfig>) => {
+export const resolveRunnerConfig = (overrides?: Partial<RunnerConfig>): RunnerConfig => {
     const base = loadRunnerConfig();
     return { ...base, ...overrides };
 };
 
-export type { RunnerConfig, McpToolGroup, McpPolicy } from './config_schema';
-export type { EntityRuleConfig } from './entity_rules';
+export type { RunnerConfig, McpToolGroup, McpPolicy, EntityRuleConfig } from './config_schema';
 export { defaultEntityRuleConfig, defaultEntityRuleRootDir, selectEntityRuleProfiles } from './entity_rules';

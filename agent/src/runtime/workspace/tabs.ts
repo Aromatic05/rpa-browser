@@ -112,7 +112,7 @@ export const createWorkspaceTabs = (deps: WorkspaceTabsDeps): WorkspaceTabs => {
                 await tab.page.close({ runBeforeUnload: true });
             } catch (error) {
                 const message = error instanceof Error ? error.message : String(error);
-                throw new Error(`failed to close tab page: ${tabName}: ${message}`);
+                throw new Error(`failed to close tab page: ${tabName}: ${message}`, { cause: error });
             }
         }
         tabs.delete(tabName);
@@ -141,7 +141,7 @@ export const createWorkspaceTabs = (deps: WorkspaceTabsDeps): WorkspaceTabs => {
         return tab;
     };
 
-    const reassignTab: WorkspaceTabs['reassignTab'] = (tabName, input) => {
+    const reassignTab: WorkspaceTabs['reassignTab'] = (tabName, _input) => {
         if (!tabs.has(tabName)) {
             throw new Error(`tab not found: ${tabName}`);
         }

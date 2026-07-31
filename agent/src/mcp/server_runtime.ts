@@ -78,8 +78,7 @@ const createMcpServer = (handlers: Record<string, McpToolHandler>, tools: ToolSp
         const args = (params.arguments && isRecord(params.arguments))
             ? params.arguments
             : {};
-        const handler = handlers[name];
-        if (!handler) {
+        if (!Object.hasOwn(handlers, name)) {
             const error = errorResult('', ERROR_CODES.ERR_UNSUPPORTED, `unknown tool: ${name}`);
             const compact = { ok: false, error: compactError(error.error) };
             return {
@@ -88,7 +87,7 @@ const createMcpServer = (handlers: Record<string, McpToolHandler>, tools: ToolSp
             };
         }
         try {
-            const result = await handler(args);
+            const result = await handlers[name](args);
             const compact = compactToolResult(name, result);
             return {
                 content: [{ type: 'text', text: JSON.stringify(compact) }],

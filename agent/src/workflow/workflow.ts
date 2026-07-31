@@ -4,9 +4,9 @@ import { DslRuntimeError } from '../dsl/diagnostics/errors';
 import { createCheckpointCodec, type WorkflowCheckpoint } from './checkpoint';
 import { createDslCodec, type WorkflowDsl } from './dsl';
 import { ensureDir, existsDir, listDirectories, readYamlFile, removePath, workflowManifestPath, workflowRootDir, workflowsRootDir, writeYamlFile } from './fs';
-import { createEntityRulesCodec, type WorkflowEntityRules } from './entity_rules';
 import { createRecordingCodec, type WorkflowRecording } from './recording';
-import { createNamedStore, type NamedStore, type WorkflowCodec } from './store';
+import { createEntityRulesCodec, type WorkflowEntityRules } from './entity_rules';
+import { createNamedStore, type NamedStore } from './store';
 
 export type WorkflowArtifactKind = 'recording' | 'checkpoint' | 'dsl' | 'entity_rules';
 export type WorkflowDummy = { kind: WorkflowArtifactKind };
@@ -28,16 +28,11 @@ export type WorkflowCheckpointCatalogItem = WorkflowCatalogItemBase & {
     priority?: number;
 };
 
-export type WorkflowEntityRulesCatalogItem = WorkflowCatalogItemBase & {
-    kind: 'entity_rules';
-    enabled?: boolean;
-};
-
 export type WorkflowCatalogItem =
     | (WorkflowCatalogItemBase & { kind: 'recording' })
     | WorkflowCheckpointCatalogItem
     | (WorkflowCatalogItemBase & { kind: 'dsl' })
-    | WorkflowEntityRulesCatalogItem;
+    | (WorkflowCatalogItemBase & { kind: 'entity_rules'; enabled?: boolean });
 
 export type WorkflowManifest = {
     version: 1;
@@ -60,8 +55,7 @@ type WorkflowInternal = {
     recordingStore: NamedStore<WorkflowRecording>;
     checkpointStore: NamedStore<WorkflowCheckpoint>;
     dslStore: NamedStore<WorkflowDsl>;
-    entityRuleStore: NamedStore<WorkflowEntityRules>;
-    codecs: WorkflowCodec<WorkflowArtifact>[];
+    entityRulesStore: NamedStore<WorkflowEntityRules>;
 };
 
 const defaultManifest = (name: string, now = Date.now()): WorkflowManifest => ({
@@ -75,17 +69,17 @@ const defaultManifest = (name: string, now = Date.now()): WorkflowManifest => ({
 
 const readManifest = (workflowName: string): WorkflowManifest => {
     const filePath = workflowManifestPath(workflowName);
-    const parsed = readYamlFile<WorkflowManifest>(filePath);
-    if (!parsed || typeof parsed !== 'object' || parsed.version !== 1 || typeof parsed.name !== 'string') {
+    const parsed = readYamlFile(filePath);
+    if (!isRecord(parsed) || parsed.version !== 1 || typeof parsed.name !== 'string') {
         throw new DslRuntimeError(`invalid workflow manifest: ${workflowName}`, 'ERR_WORKFLOW_INVALID_MANIFEST');
     }
-    if (!parsed.entry || typeof parsed.entry !== 'object' || typeof parsed.entry.dsl !== 'string') {
+    if (!isRecord(parsed.entry) || typeof parsed.entry.dsl !== 'string') {
         throw new DslRuntimeError(`invalid workflow manifest entry: ${workflowName}`, 'ERR_WORKFLOW_INVALID_MANIFEST');
     }
     if (!Array.isArray(parsed.catalog)) {
         throw new DslRuntimeError(`invalid workflow manifest catalog: ${workflowName}`, 'ERR_WORKFLOW_INVALID_MANIFEST');
     }
-    return parsed;
+    return parsed as WorkflowManifest;
 };
 
 const writeManifest = (manifest: WorkflowManifest): void => {
@@ -97,14 +91,8 @@ const createInternal = (workflowName: string): WorkflowInternal => {
     const recordingStore = createNamedStore(createRecordingCodec(workflowName));
     const checkpointStore = createNamedStore(createCheckpointCodec(workflowName));
     const dslStore = createNamedStore(createDslCodec(workflowName));
-    const entityRuleStore = createNamedStore(createEntityRulesCodec(workflowName));
-    const codecs: WorkflowCodec<WorkflowArtifact>[] = [
-        createRecordingCodec(workflowName) as WorkflowCodec<WorkflowArtifact>,
-        createCheckpointCodec(workflowName) as WorkflowCodec<WorkflowArtifact>,
-        createDslCodec(workflowName) as WorkflowCodec<WorkflowArtifact>,
-        createEntityRulesCodec(workflowName) as WorkflowCodec<WorkflowArtifact>,
-    ];
-    return { recordingStore, checkpointStore, dslStore, entityRuleStore, codecs };
+    const entityRulesStore = createNamedStore(createEntityRulesCodec(workflowName));
+    return { recordingStore, checkpointStore, dslStore, entityRulesStore };
 };
 
 const toCatalogItem = (artifact: WorkflowArtifact, existing?: WorkflowCatalogItem): WorkflowCatalogItem => {
@@ -130,12 +118,22 @@ const toCatalogItem = (artifact: WorkflowArtifact, existing?: WorkflowCatalogIte
             ...base,
             kind: 'entity_rules',
             enabled: true,
+            summary: `rules=${artifact.match.rules.length}, bindings=${artifact.annotation.bindings.length}`,
         };
     }
     if (artifact.kind === 'recording') {
         return { ...base, kind: 'recording', summary: `steps=${artifact.steps.length}` };
     }
     return { ...base, kind: 'dsl', summary: `bytes=${artifact.content.length}` };
+};
+
+const saveArtifact = (internal: WorkflowInternal, value: WorkflowArtifact): WorkflowArtifact => {
+    switch (value.kind) {
+        case 'recording': return internal.recordingStore.save(value);
+        case 'checkpoint': return internal.checkpointStore.save(value);
+        case 'dsl': return internal.dslStore.save(value);
+        case 'entity_rules': return internal.entityRulesStore.save(value);
+    }
 };
 
 const resolveStore = (internal: WorkflowInternal, kind: WorkflowArtifactKind): NamedStore<WorkflowArtifact> => {
@@ -148,7 +146,7 @@ const resolveStore = (internal: WorkflowInternal, kind: WorkflowArtifactKind): N
     if (kind === 'dsl') {
         return internal.dslStore as NamedStore<WorkflowArtifact>;
     }
-    return internal.entityRuleStore as NamedStore<WorkflowArtifact>;
+    return internal.entityRulesStore as NamedStore<WorkflowArtifact>;
 };
 
 const hasCatalog = (manifest: WorkflowManifest, kind: WorkflowArtifactKind, name: string): boolean =>
@@ -164,11 +162,7 @@ export const loadWorkflowFromFs = (workflowName: string): Workflow => {
     return {
         name: workflowName,
         save: (value) => {
-            const codec = internal.codecs.find((item) => item.is(value));
-            if (!codec) {
-                throw new DslRuntimeError('unsupported workflow artifact type', 'ERR_WORKFLOW_BAD_ARGS');
-            }
-            const saved = codec.save(value as never) as WorkflowArtifact;
+            const saved = saveArtifact(internal, value);
             const idx = manifest.catalog.findIndex((item) => item.kind === saved.kind && item.name === saved.name);
             const nextItem = toCatalogItem(saved, idx >= 0 ? manifest.catalog[idx] : undefined);
             if (idx >= 0) {
@@ -230,11 +224,8 @@ export const renameWorkflowOnFs = (fromName: string, toName: string): void => {
     }
     fs.renameSync(fromDir, toDir);
     const renamedManifestPath = workflowManifestPath(toName);
-    const manifest = readYamlFile<WorkflowManifest>(renamedManifestPath);
-    if (!manifest || typeof manifest !== 'object' || manifest.version !== 1) {
-        throw new DslRuntimeError(`invalid workflow manifest after rename: ${toName}`, 'ERR_WORKFLOW_INVALID_MANIFEST');
-    }
-    writeYamlFile(renamedManifestPath, {
+    const manifest = parseWorkflowManifest(readYamlFile(renamedManifestPath), toName);
+writeYamlFile(renamedManifestPath, {
         ...manifest,
         name: toName,
         updatedAt: Date.now(),
@@ -252,11 +243,8 @@ export const copyWorkflowOnFs = (sourceName: string, targetName: string): void =
     }
     fs.cpSync(sourceDir, targetDir, { recursive: true });
     const copiedManifestPath = workflowManifestPath(targetName);
-    const manifest = readYamlFile<WorkflowManifest>(copiedManifestPath);
-    if (!manifest || typeof manifest !== 'object' || manifest.version !== 1) {
-        throw new DslRuntimeError(`invalid workflow manifest after copy: ${targetName}`, 'ERR_WORKFLOW_INVALID_MANIFEST');
-    }
-    writeYamlFile(copiedManifestPath, {
+    const manifest = parseWorkflowManifest(readYamlFile(copiedManifestPath), targetName);
+writeYamlFile(copiedManifestPath, {
         ...manifest,
         name: targetName,
         updatedAt: Date.now(),
@@ -264,4 +252,21 @@ export const copyWorkflowOnFs = (sourceName: string, targetName: string): void =
 };
 
 export const listWorkflowNames = (): string[] => listDirectories(workflowsRootDir());
-export const deleteWorkflowFromFs = (workflowName: string): void => removePath(workflowRootDir(workflowName));
+export const deleteWorkflowFromFs = (workflowName: string): void => {
+    removePath(workflowRootDir(workflowName));
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const parseWorkflowManifest = (value: unknown, workflowName: string): WorkflowManifest => {
+    if (!isRecord(value) || value.version !== 1 || typeof value.name !== 'string'
+        || !isRecord(value.entry) || typeof value.entry.dsl !== 'string' || !Array.isArray(value.catalog)
+        || typeof value.createdAt !== 'number' || typeof value.updatedAt !== 'number') {
+        throw new DslRuntimeError(
+            `invalid workflow manifest: ${workflowName}`,
+            'ERR_WORKFLOW_INVALID_MANIFEST',
+        );
+    }
+    return value as WorkflowManifest;
+};

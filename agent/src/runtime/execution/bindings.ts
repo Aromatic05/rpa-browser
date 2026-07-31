@@ -66,7 +66,7 @@ export const createExecutionBindings = (options: ExecutionBindingsOptions): Exec
                     dispatchAction: options.dispatchAction,
                     sinks: options.traceSinks,
                     hooks: options.traceHooks,
-                    tags: { workspaceName: binding.workspaceName, tabName: binding.tabName } as any,
+                    tags: { workspaceName: binding.workspaceName, tabName: binding.tabName },
                 });
                 binding.traceTools = tools;
                 binding.traceCtx = ctx;
@@ -79,11 +79,11 @@ export const createExecutionBindings = (options: ExecutionBindingsOptions): Exec
             page,
             context: page.context(),
             pageRegistry,
-            workspaceName: workspaceName,
+            workspaceName,
             dispatchAction: options.dispatchAction,
             sinks: options.traceSinks,
             hooks: options.traceHooks,
-            tags: { workspaceName, tabName } as any,
+            tags: { workspaceName, tabName },
         });
         const binding: ExecutionBinding = { workspaceName, tabName, pageRegistry, page, traceTools: tools, traceCtx: ctx };
         const key = keyOf(workspaceName, tabName);
@@ -96,7 +96,7 @@ export const createExecutionBindings = (options: ExecutionBindingsOptions): Exec
             bindings.delete(key);
             const tabsForWorkspace = workspaceTabs.get(workspaceName);
             tabsForWorkspace?.delete(tabName);
-            if (tabsForWorkspace && tabsForWorkspace.size === 0) {
+            if (tabsForWorkspace?.size === 0) {
                 workspaceTabs.delete(workspaceName);
             }
             if (activeTabs.get(workspaceName) === tabName) {

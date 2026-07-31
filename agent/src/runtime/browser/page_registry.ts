@@ -39,6 +39,9 @@ export type PageRegistry = {
     claimPendingBinding: (bindingName: string) => Promise<boolean>;
 };
 
+const isContentHeartbeatExemptUrl = (url: string): boolean =>
+    url.startsWith('chrome://') || url.startsWith('chrome-extension://');
+
 export const createPageRegistry = (options: PageRegistryOptions): PageRegistry => {
     const confirmedKey = options.tabNameConfirmedKey ?? '__rpa_tab_name_confirmed';
     const tabNameWinNamePrefix = '__RPA_TAB_NAME__:';
@@ -60,7 +63,8 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
                         }
                         // window.open-ed page can inherit opener sessionStorage;
                         // never trust sessionStorage token while opener is present.
-                        if (window.opener && !window.opener.closed) {return null;}
+                        const opener = window.opener as Window | null;
+                        if (opener && !opener.closed) {return null;}
                         const confirmed = sessionStorage.getItem(keys.confirmedKey);
                         if (!confirmed) {return null;}
                         return sessionStorage.getItem(keys.tabNameKey);
@@ -68,7 +72,9 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
                     { tabNameKey: options.tabNameKey, confirmedKey, winNamePrefix: tabNameWinNamePrefix },
                 );
                 if (value) {return value;}
-            } catch {}
+            } catch {
+                // Page evaluation can fail during navigation; retry until the deadline.
+            }
             try {
                 await page.waitForTimeout(delayMs);
             } catch {
@@ -91,14 +97,22 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
                 (args: { name: string; key: string; confirmedKey: string; winNamePrefix: string }) => {
                     sessionStorage.setItem(args.key, args.name);
                     sessionStorage.setItem(args.confirmedKey, '1');
-                    try { window.name = `${args.winNamePrefix}${args.name}`; } catch {}
                     try {
-                        (window as any).__rpa_tab_name = args.name;
-                    } catch {}
+                        window.name = `${args.winNamePrefix}${args.name}`;
+                    } catch {
+                        // Some page contexts reject window.name writes.
+                    }
+                    try {
+                        (window as Window & { __rpa_tab_name?: string }).__rpa_tab_name = args.name;
+                    } catch {
+                        // Debug-only window property; sessionStorage remains authoritative.
+                    }
                 },
                 { name: bindingName, key: options.tabNameKey, confirmedKey, winNamePrefix: tabNameWinNamePrefix },
             );
-        } catch {}
+        } catch {
+            // The init script will apply after navigation when immediate evaluation is unavailable.
+        }
     };
 
     const resolveKnownPage = (bindingName: string): Page | null => {
@@ -287,6 +301,8 @@ export const createPageRegistry = (options: PageRegistryOptions): PageRegistry =
         listStaleBindings: (timeoutMs: number, now = Date.now()) => {
             const stale: Array<{ bindingName: string; lastSeenAt: number }> = [];
             for (const [bindingName, lastSeenAt] of bindingUpdatedAt.entries()) {
+                const page = resolveKnownPage(bindingName);
+                if (page && isContentHeartbeatExemptUrl(page.url())) {continue;}
                 if (now - lastSeenAt > timeoutMs) {
                     stale.push({ bindingName, lastSeenAt });
                 }

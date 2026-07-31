@@ -51,10 +51,22 @@ export const REQUEST_ACTION_TYPES = {
     CHECKPOINT_GET: 'checkpoint.get',
     CHECKPOINT_SAVE: 'checkpoint.save',
     CHECKPOINT_DELETE: 'checkpoint.delete',
+    CHECKPOINT_RECORD_START: 'checkpoint.record.start',
+    CHECKPOINT_RECORD_STOP: 'checkpoint.record.stop',
+    CHECKPOINT_RECORD_GET: 'checkpoint.record.get',
+    CHECKPOINT_RECORD_SAVE: 'checkpoint.record.save',
+    CHECKPOINT_RECORD_CANCEL: 'checkpoint.record.cancel',
     ENTITY_RULE_LIST: 'entity_rules.list',
     ENTITY_RULE_GET: 'entity_rules.get',
     ENTITY_RULE_SAVE: 'entity_rules.save',
     ENTITY_RULE_DELETE: 'entity_rules.delete',
+    ENTITY_RULE_ANNOTATOR_OPEN: 'entity_rules.annotator.open',
+    ENTITY_RULE_ANNOTATOR_PICK: 'entity_rules.annotator.pick',
+    ENTITY_RULE_ANNOTATOR_RECOGNIZE: 'entity_rules.annotator.recognize',
+    ENTITY_RULE_ANNOTATOR_VISUALIZE: 'entity_rules.annotator.visualize',
+    ENTITY_RULE_ANNOTATOR_APPLY: 'entity_rules.annotator.apply',
+    ENTITY_RULE_ANNOTATOR_CHECK: 'entity_rules.annotator.check',
+    ENTITY_RULE_ANNOTATOR_SAVE: 'entity_rules.annotator.save',
     MCP_START: 'mcp.start',
     MCP_STOP: 'mcp.stop',
     MCP_STATUS: 'mcp.status',
@@ -87,10 +99,10 @@ const domainPrefixes = new Set<string>([
     ...Object.values(REQUEST_ACTION_TYPES).map((type) => type.split('.')[0]),
     'action',
 ]);
-const SEGMENT_RE = /^[a-z][a-zA-Z0-9]*$/;
-const resultOrFailureTypeRe = /^([a-z][a-zA-Z0-9]*(?:\.[a-z][a-zA-Z0-9]*)+)\.(result|failed)$/;
-const eventTypeRe = /^([a-z][a-zA-Z0-9]*(?:\.[a-z][a-zA-Z0-9]*)*)\.(started|progress|completed|canceled|event)$/;
-const stepEventTypeRe = /^([a-z][a-zA-Z0-9]*(?:\.[a-z][a-zA-Z0-9]*)*)\.step\.(started|finished)$/;
+const SEGMENT_RE = /^[a-z][a-zA-Z0-9_]*$/;
+const resultOrFailureTypeRe = /^([a-z][a-zA-Z0-9_]*(?:\.[a-z][a-zA-Z0-9_]*)+)\.(result|failed)$/;
+const eventTypeRe = /^([a-z][a-zA-Z0-9_]*(?:\.[a-z][a-zA-Z0-9_]*)*)\.(started|progress|completed|canceled|event)$/;
+const stepEventTypeRe = /^([a-z][a-zA-Z0-9_]*(?:\.[a-z][a-zA-Z0-9_]*)*)\.step\.(started|finished)$/;
 
 const hasAllowedPrefix = (domain: string) => {
     const first = domain.split('.')[0] || '';

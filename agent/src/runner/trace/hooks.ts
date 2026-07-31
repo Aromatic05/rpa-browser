@@ -37,9 +37,9 @@ export const createLoggingHooks = (opts: LoggingHookOptions = {}): TraceHooks =>
     const maxStringLength = opts.maxStringLength ?? 160;
     const maxJsonLength = opts.maxJsonLength ?? 1000;
 
-    const formatArgs = (args: unknown) => safeJson(args, maxStringLength, maxJsonLength);
+    const formatArgs = (args: unknown): string => safeJson(args, maxStringLength, maxJsonLength);
 
-    const formatResult = (event: TraceEvent) => {
+    const formatResult = (event: TraceEvent): string => {
         if (event.type !== 'op.end') {return 'null';}
         if (!event.ok) {
             return `error=${safeJson(event.error, maxStringLength, maxJsonLength)}`;
@@ -47,7 +47,7 @@ export const createLoggingHooks = (opts: LoggingHookOptions = {}): TraceHooks =>
         return `result=${safeJson(event.result ?? null, maxStringLength, maxJsonLength)}`;
     };
 
-    const formatTags = (event: TraceEvent) => {
+    const formatTags = (event: TraceEvent): string => {
         if (!event.tags) {return '';}
         const ws = event.tags.workspaceName ? ` ws=${event.tags.workspaceName}` : '';
         const tab = event.tags.tabName ? ` tab=${event.tags.tabName}` : '';
@@ -81,13 +81,13 @@ export const createLoggingHooks = (opts: LoggingHookOptions = {}): TraceHooks =>
     };
 };
 
-const safeJson = (value: unknown, maxStringLength: number, maxJsonLength: number) => {
+const safeJson = (value: unknown, maxStringLength: number, maxJsonLength: number): string => {
     try {
-        const json = JSON.stringify(value, (_key, v) => {
-            if (typeof v === 'string') {
-                return truncateString(v, maxStringLength);
+        const json = JSON.stringify(value, (_key: string, current: unknown): unknown => {
+            if (typeof current === 'string') {
+                return truncateString(current, maxStringLength);
             }
-            return v;
+            return current;
         });
         if (!json) {return 'null';}
         if (json.length > maxJsonLength) {
@@ -105,7 +105,7 @@ const safeJson = (value: unknown, maxStringLength: number, maxJsonLength: number
     }
 };
 
-const truncateString = (value: string, maxLen: number) => {
+const truncateString = (value: string, maxLen: number): string => {
     if (value.length <= maxLen) {return value;}
     return `${value.slice(0, maxLen)}...`;
 };

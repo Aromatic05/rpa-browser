@@ -237,12 +237,6 @@ test('RuntimeWorkspace directly holds checkpoint', () => {
     assert.ok(ws.checkpoint);
 });
 
-test('RuntimeWorkspace directly holds entityRules', () => {
-    const { registry } = createWorkspaceHarness();
-    const wfName = `wf-${crypto.randomUUID()}`;
-    const ws = registry.createWorkspace(wfName, createWorkflowOnFs(wfName));
-    assert.ok(ws.entityRules);
-});
 
 test('RuntimeWorkspace directly holds runner', () => {
     const { registry } = createWorkspaceHarness();

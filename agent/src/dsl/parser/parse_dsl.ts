@@ -193,6 +193,40 @@ const parseStatement = (statement: string): DslStmt => {
     if (statement.startsWith('let ')) {
         return parseLet(statement);
     }
+    if (statement.startsWith('fill table ')) {
+        const match = statement.match(/^fill\s+table\s+"([^"]+)"\s+filter\s+"([^"]+)"\s+with\s+([A-Za-z0-9_.]+)$/);
+        if (!match) {
+            throw new DslParseError(`invalid fill table statement: ${statement}`);
+        }
+        return {
+            kind: 'table_act',
+            action: 'fill',
+            businessTag: match[1],
+            target: {
+                kind: 'filter',
+                fieldKey: match[2],
+            },
+            value: toRef(match[3]),
+        };
+    }
+    if (statement.startsWith('click table ')) {
+        if (/\s+with\s+/.test(statement)) {
+            throw new DslParseError(`invalid click table statement: ${statement}`);
+        }
+        const match = statement.match(/^click\s+table\s+"([^"]+)"\s+action\s+"([^"]+)"$/);
+        if (!match) {
+            throw new DslParseError(`invalid click table statement: ${statement}`);
+        }
+        return {
+            kind: 'table_act',
+            action: 'click',
+            businessTag: match[1],
+            target: {
+                kind: 'action',
+                actionIntent: match[2],
+            },
+        };
+    }
     if (statement.startsWith('fill form ')) {
         const match = statement.match(/^fill\s+form\s+"([^"]+)"\s+field\s+"([^"]+)"\s+with\s+([A-Za-z0-9_.]+)$/);
         if (!match) {

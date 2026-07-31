@@ -18,12 +18,12 @@ export const createWorkspaceCheckpointRuntime = (workflow: Workflow): WorkspaceC
         return workflow
             .list(CHECKPOINT_DUMMY)
             .map((item) => workflow.get(item.name, CHECKPOINT_DUMMY))
-            .filter((item): item is WorkflowCheckpoint => item?.kind === 'checkpoint');
+            .filter((item): item is WorkflowCheckpoint => item !== null && item.kind === 'checkpoint');
     };
 
     const get = (checkpointId: string): WorkflowCheckpoint | null => {
         const artifact = workflow.get(checkpointId, CHECKPOINT_DUMMY);
-        if (!artifact || artifact.kind !== 'checkpoint') {
+        if (artifact?.kind !== 'checkpoint') {
             return null;
         }
         return artifact;

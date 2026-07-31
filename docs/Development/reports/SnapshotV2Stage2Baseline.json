@@ -1,0 +1,648 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-28T15:26:00.726Z",
+  "corpusVersion": "snapshot-v2-stage2-v1",
+  "iterations": 50,
+  "fixtureCount": 10,
+  "inputNodeCount": 267,
+  "aggregate": {
+    "controlCount": 28,
+    "executableControlCount": 23,
+    "executableWithoutResolvedLocator": 0,
+    "duplicateRefCount": 1,
+    "controlKinds": {
+      "input": 9,
+      "button": 16,
+      "popup": 1,
+      "option": 1,
+      "custom_select": 1
+    },
+    "controlStatus": {
+      "complete": 24,
+      "partial": 2,
+      "ambiguous": 2
+    },
+    "capabilities": {
+      "focus": 21,
+      "click": 22,
+      "fill": 6,
+      "open_popup": 1
+    },
+    "locatorCount": 265,
+    "locatorStatus": {
+      "resolved": 264,
+      "unresolved": 1
+    },
+    "locatorStrategy": {
+      "structural": 252,
+      "id": 12,
+      "none": 1
+    },
+    "validationFailureCount": 0,
+    "validationDiagnosticCodes": {},
+    "timing": {
+      "locator": {
+        "samples": 500,
+        "p50Ms": 0.035,
+        "p95Ms": 0.571,
+        "maxMs": 1.162
+      },
+      "control": {
+        "samples": 500,
+        "p50Ms": 0.025,
+        "p95Ms": 0.133,
+        "maxMs": 1.357
+      }
+    }
+  },
+  "fixtures": [
+    {
+      "id": "native-form",
+      "category": "native-form",
+      "source": {
+        "kind": "fixed-raw-capture",
+        "framework": "native",
+        "frameworkVersion": "html-2026",
+        "capturedAt": "2026-07-28T00:00:00.000Z",
+        "origin": "fixture://native-form"
+      },
+      "inputNodeCount": 6,
+      "controlCount": 2,
+      "controlKinds": {
+        "input": 1,
+        "button": 1
+      },
+      "controlStatus": {
+        "complete": 2
+      },
+      "capabilities": {
+        "focus": 2,
+        "click": 2,
+        "fill": 1
+      },
+      "executableControlCount": 2,
+      "executableWithoutResolvedLocator": 0,
+      "duplicateRefCount": 0,
+      "customSelect": {
+        "total": 0,
+        "complete": 0,
+        "partial": 0,
+        "ambiguous": 0
+      },
+      "locatorCount": 6,
+      "locatorStatus": {
+        "resolved": 6
+      },
+      "locatorStrategy": {
+        "structural": 4,
+        "id": 2
+      },
+      "validation": {
+        "ok": true,
+        "diagnosticCodes": {}
+      },
+      "diagnosticCodes": {},
+      "timing": {
+        "locator": {
+          "samples": 50,
+          "p50Ms": 0.037,
+          "p95Ms": 0.059,
+          "maxMs": 0.436
+        },
+        "control": {
+          "samples": 50,
+          "p50Ms": 0.036,
+          "p95Ms": 0.095,
+          "maxMs": 1.195
+        }
+      }
+    },
+    {
+      "id": "element-table",
+      "category": "framework-host-and-parts",
+      "source": {
+        "kind": "fixed-raw-capture",
+        "framework": "element-plus",
+        "frameworkVersion": "2.11.0",
+        "capturedAt": "2026-07-28T00:00:00.000Z",
+        "origin": "fixture://element-table"
+      },
+      "inputNodeCount": 11,
+      "controlCount": 0,
+      "controlKinds": {},
+      "controlStatus": {},
+      "capabilities": {},
+      "executableControlCount": 0,
+      "executableWithoutResolvedLocator": 0,
+      "duplicateRefCount": 0,
+      "customSelect": {
+        "total": 0,
+        "complete": 0,
+        "partial": 0,
+        "ambiguous": 0
+      },
+      "locatorCount": 11,
+      "locatorStatus": {
+        "resolved": 11
+      },
+      "locatorStrategy": {
+        "structural": 11
+      },
+      "validation": {
+        "ok": true,
+        "diagnosticCodes": {}
+      },
+      "diagnosticCodes": {},
+      "timing": {
+        "locator": {
+          "samples": 50,
+          "p50Ms": 0.044,
+          "p95Ms": 0.091,
+          "maxMs": 0.149
+        },
+        "control": {
+          "samples": 50,
+          "p50Ms": 0.012,
+          "p95Ms": 0.033,
+          "maxMs": 0.166
+        }
+      }
+    },
+    {
+      "id": "ant-select-activity",
+      "category": "typed-idref-and-activity-mismatch",
+      "source": {
+        "kind": "fixed-raw-capture",
+        "framework": "ant-design",
+        "frameworkVersion": "5.27.0",
+        "capturedAt": "2026-07-28T00:00:00.000Z",
+        "origin": "fixture://ant-select-activity"
+      },
+      "inputNodeCount": 7,
+      "controlCount": 3,
+      "controlKinds": {
+        "popup": 1,
+        "option": 1,
+        "button": 1
+      },
+      "controlStatus": {
+        "complete": 3
+      },
+      "capabilities": {
+        "click": 2,
+        "focus": 1
+      },
+      "executableControlCount": 2,
+      "executableWithoutResolvedLocator": 0,
+      "duplicateRefCount": 0,
+      "customSelect": {
+        "total": 0,
+        "complete": 0,
+        "partial": 0,
+        "ambiguous": 0
+      },
+      "locatorCount": 7,
+      "locatorStatus": {
+        "resolved": 7
+      },
+      "locatorStrategy": {
+        "structural": 6,
+        "id": 1
+      },
+      "validation": {
+        "ok": true,
+        "diagnosticCodes": {}
+      },
+      "diagnosticCodes": {},
+      "timing": {
+        "locator": {
+          "samples": 50,
+          "p50Ms": 0.022,
+          "p95Ms": 0.037,
+          "maxMs": 0.151
+        },
+        "control": {
+          "samples": 50,
+          "p50Ms": 0.025,
+          "p95Ms": 0.05,
+          "maxMs": 0.22
+        }
+      }
+    },
+    {
+      "id": "shadow-duplicate-id",
+      "category": "scope-local-idref",
+      "source": {
+        "kind": "fixed-raw-capture",
+        "framework": "platform",
+        "frameworkVersion": "chromium-2026",
+        "capturedAt": "2026-07-28T00:00:00.000Z",
+        "origin": "fixture://shadow-duplicate-id"
+      },
+      "inputNodeCount": 10,
+      "controlCount": 2,
+      "controlKinds": {
+        "button": 2
+      },
+      "controlStatus": {
+        "complete": 2
+      },
+      "capabilities": {
+        "focus": 2,
+        "click": 2
+      },
+      "executableControlCount": 2,
+      "executableWithoutResolvedLocator": 0,
+      "duplicateRefCount": 0,
+      "customSelect": {
+        "total": 0,
+        "complete": 0,
+        "partial": 0,
+        "ambiguous": 0
+      },
+      "locatorCount": 8,
+      "locatorStatus": {
+        "resolved": 8
+      },
+      "locatorStrategy": {
+        "structural": 4,
+        "id": 4
+      },
+      "validation": {
+        "ok": true,
+        "diagnosticCodes": {}
+      },
+      "diagnosticCodes": {},
+      "timing": {
+        "locator": {
+          "samples": 50,
+          "p50Ms": 0.028,
+          "p95Ms": 0.042,
+          "maxMs": 0.085
+        },
+        "control": {
+          "samples": 50,
+          "p50Ms": 0.022,
+          "p95Ms": 0.031,
+          "maxMs": 0.08
+        }
+      }
+    },
+    {
+      "id": "partial-unavailable",
+      "category": "partial-observation",
+      "source": {
+        "kind": "fixed-raw-capture",
+        "framework": "platform",
+        "frameworkVersion": "chromium-2026",
+        "capturedAt": "2026-07-28T00:00:00.000Z",
+        "origin": "fixture://partial-unavailable"
+      },
+      "inputNodeCount": 6,
+      "controlCount": 1,
+      "controlKinds": {
+        "input": 1
+      },
+      "controlStatus": {
+        "partial": 1
+      },
+      "capabilities": {},
+      "executableControlCount": 0,
+      "executableWithoutResolvedLocator": 0,
+      "duplicateRefCount": 0,
+      "customSelect": {
+        "total": 0,
+        "complete": 0,
+        "partial": 0,
+        "ambiguous": 0
+      },
+      "locatorCount": 6,
+      "locatorStatus": {
+        "resolved": 5,
+        "unresolved": 1
+      },
+      "locatorStrategy": {
+        "structural": 5,
+        "none": 1
+      },
+      "validation": {
+        "ok": true,
+        "diagnosticCodes": {}
+      },
+      "diagnosticCodes": {
+        "locator.scope.unresolved": 1
+      },
+      "timing": {
+        "locator": {
+          "samples": 50,
+          "p50Ms": 0.019,
+          "p95Ms": 0.026,
+          "maxMs": 0.064
+        },
+        "control": {
+          "samples": 50,
+          "p50Ms": 0.013,
+          "p95Ms": 0.023,
+          "maxMs": 0.045
+        }
+      }
+    },
+    {
+      "id": "frame-geometry",
+      "category": "scope-geometry",
+      "source": {
+        "kind": "fixed-raw-capture",
+        "framework": "platform",
+        "frameworkVersion": "chromium-2026",
+        "capturedAt": "2026-07-28T00:00:00.000Z",
+        "origin": "fixture://frame-geometry"
+      },
+      "inputNodeCount": 6,
+      "controlCount": 0,
+      "controlKinds": {},
+      "controlStatus": {},
+      "capabilities": {},
+      "executableControlCount": 0,
+      "executableWithoutResolvedLocator": 0,
+      "duplicateRefCount": 0,
+      "customSelect": {
+        "total": 0,
+        "complete": 0,
+        "partial": 0,
+        "ambiguous": 0
+      },
+      "locatorCount": 6,
+      "locatorStatus": {
+        "resolved": 6
+      },
+      "locatorStrategy": {
+        "structural": 6
+      },
+      "validation": {
+        "ok": true,
+        "diagnosticCodes": {}
+      },
+      "diagnosticCodes": {},
+      "timing": {
+        "locator": {
+          "samples": 50,
+          "p50Ms": 0.021,
+          "p95Ms": 0.028,
+          "maxMs": 0.043
+        },
+        "control": {
+          "samples": 50,
+          "p50Ms": 0.008,
+          "p95Ms": 0.012,
+          "maxMs": 0.021
+        }
+      }
+    },
+    {
+      "id": "captured-without-candidate-zero-box",
+      "category": "captured-without-candidate-and-zero-box",
+      "source": {
+        "kind": "fixed-raw-capture",
+        "framework": "platform",
+        "frameworkVersion": "chromium-2026",
+        "capturedAt": "2026-07-28T00:00:00.000Z",
+        "origin": "fixture://captured-without-candidate-zero-box"
+      },
+      "inputNodeCount": 7,
+      "controlCount": 1,
+      "controlKinds": {
+        "button": 1
+      },
+      "controlStatus": {
+        "complete": 1
+      },
+      "capabilities": {
+        "focus": 1,
+        "click": 1
+      },
+      "executableControlCount": 1,
+      "executableWithoutResolvedLocator": 0,
+      "duplicateRefCount": 0,
+      "customSelect": {
+        "total": 0,
+        "complete": 0,
+        "partial": 0,
+        "ambiguous": 0
+      },
+      "locatorCount": 7,
+      "locatorStatus": {
+        "resolved": 7
+      },
+      "locatorStrategy": {
+        "structural": 7
+      },
+      "validation": {
+        "ok": true,
+        "diagnosticCodes": {}
+      },
+      "diagnosticCodes": {},
+      "timing": {
+        "locator": {
+          "samples": 50,
+          "p50Ms": 0.022,
+          "p95Ms": 0.031,
+          "maxMs": 0.127
+        },
+        "control": {
+          "samples": 50,
+          "p50Ms": 0.012,
+          "p95Ms": 0.023,
+          "maxMs": 0.043
+        }
+      }
+    },
+    {
+      "id": "join-resolution",
+      "category": "join-and-relation-resolution",
+      "source": {
+        "kind": "fixed-raw-capture",
+        "framework": "platform",
+        "frameworkVersion": "snapshot-v2-stage1-v1",
+        "capturedAt": "2026-07-28T00:00:00.000Z",
+        "origin": "fixture://join-resolution"
+      },
+      "inputNodeCount": 11,
+      "controlCount": 7,
+      "controlKinds": {
+        "button": 2,
+        "input": 5
+      },
+      "controlStatus": {
+        "complete": 5,
+        "ambiguous": 2
+      },
+      "capabilities": {
+        "focus": 5,
+        "click": 5,
+        "fill": 3
+      },
+      "executableControlCount": 5,
+      "executableWithoutResolvedLocator": 0,
+      "duplicateRefCount": 1,
+      "customSelect": {
+        "total": 0,
+        "complete": 0,
+        "partial": 0,
+        "ambiguous": 0
+      },
+      "locatorCount": 11,
+      "locatorStatus": {
+        "resolved": 11
+      },
+      "locatorStrategy": {
+        "structural": 11
+      },
+      "validation": {
+        "ok": true,
+        "diagnosticCodes": {}
+      },
+      "diagnosticCodes": {
+        "control.ref.duplicate": 1
+      },
+      "timing": {
+        "locator": {
+          "samples": 50,
+          "p50Ms": 0.035,
+          "p95Ms": 0.043,
+          "maxMs": 0.067
+        },
+        "control": {
+          "samples": 50,
+          "p50Ms": 0.043,
+          "p95Ms": 0.066,
+          "maxMs": 0.182
+        }
+      }
+    },
+    {
+      "id": "element-plus-browser",
+      "category": "real-framework-browser-capture",
+      "source": {
+        "kind": "browser-capture",
+        "framework": "element-plus",
+        "frameworkVersion": "2.13.7",
+        "capturedAt": "2026-07-28T08:00:00.000Z",
+        "origin": "package://element-plus@2.13.7"
+      },
+      "inputNodeCount": 100,
+      "controlCount": 5,
+      "controlKinds": {
+        "input": 1,
+        "button": 4
+      },
+      "controlStatus": {
+        "complete": 5
+      },
+      "capabilities": {
+        "focus": 5,
+        "click": 5,
+        "fill": 1
+      },
+      "executableControlCount": 5,
+      "executableWithoutResolvedLocator": 0,
+      "duplicateRefCount": 0,
+      "customSelect": {
+        "total": 0,
+        "complete": 0,
+        "partial": 0,
+        "ambiguous": 0
+      },
+      "locatorCount": 100,
+      "locatorStatus": {
+        "resolved": 100
+      },
+      "locatorStrategy": {
+        "structural": 97,
+        "id": 3
+      },
+      "validation": {
+        "ok": true,
+        "diagnosticCodes": {}
+      },
+      "diagnosticCodes": {},
+      "timing": {
+        "locator": {
+          "samples": 50,
+          "p50Ms": 0.489,
+          "p95Ms": 0.924,
+          "maxMs": 1.162
+        },
+        "control": {
+          "samples": 50,
+          "p50Ms": 0.083,
+          "p95Ms": 0.123,
+          "maxMs": 0.174
+        }
+      }
+    },
+    {
+      "id": "ant-design-browser",
+      "category": "real-framework-browser-capture",
+      "source": {
+        "kind": "browser-capture",
+        "framework": "ant-design",
+        "frameworkVersion": "5.29.3",
+        "capturedAt": "2026-07-28T08:00:00.000Z",
+        "origin": "package://antd@5.29.3"
+      },
+      "inputNodeCount": 103,
+      "controlCount": 7,
+      "controlKinds": {
+        "custom_select": 1,
+        "input": 1,
+        "button": 5
+      },
+      "controlStatus": {
+        "partial": 1,
+        "complete": 6
+      },
+      "capabilities": {
+        "open_popup": 1,
+        "focus": 5,
+        "click": 5,
+        "fill": 1
+      },
+      "executableControlCount": 6,
+      "executableWithoutResolvedLocator": 0,
+      "duplicateRefCount": 0,
+      "customSelect": {
+        "total": 1,
+        "complete": 0,
+        "partial": 1,
+        "ambiguous": 0
+      },
+      "locatorCount": 103,
+      "locatorStatus": {
+        "resolved": 103
+      },
+      "locatorStrategy": {
+        "structural": 101,
+        "id": 2
+      },
+      "validation": {
+        "ok": true,
+        "diagnosticCodes": {}
+      },
+      "diagnosticCodes": {},
+      "timing": {
+        "locator": {
+          "samples": 50,
+          "p50Ms": 0.495,
+          "p95Ms": 0.877,
+          "maxMs": 0.959
+        },
+        "control": {
+          "samples": 50,
+          "p50Ms": 0.116,
+          "p95Ms": 0.2,
+          "maxMs": 1.357
+        }
+      }
+    }
+  ]
+}

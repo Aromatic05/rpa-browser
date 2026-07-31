@@ -2,7 +2,7 @@ export type DslProgram = {
     body: DslStmt[];
 };
 
-export type DslStmt = LetStmt | ActStmt | FormActStmt | CheckpointStmt | IfStmt | ForStmt;
+export type DslStmt = LetStmt | ActStmt | FormActStmt | TableActStmt | CheckpointStmt | IfStmt | ForStmt;
 
 export type LetStmt = {
     kind: 'let';
@@ -53,6 +53,22 @@ export type FormActStmt = {
     target:
         | {
               kind: 'field';
+              fieldKey: string;
+          }
+        | {
+              kind: 'action';
+              actionIntent: string;
+          };
+    value?: RefExpr;
+};
+
+export type TableActStmt = {
+    kind: 'table_act';
+    action: 'fill' | 'click';
+    businessTag: string;
+    target:
+        | {
+              kind: 'filter';
               fieldKey: string;
           }
         | {

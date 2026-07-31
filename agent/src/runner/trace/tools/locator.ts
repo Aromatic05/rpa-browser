@@ -4,6 +4,7 @@ import { findA11yCandidates, type A11yCandidate } from '../a11y/find';
 import { getA11yTree } from '../a11y/getA11yTree';
 import type { Locator } from 'playwright';
 import type { ToolsBuildContext } from './context';
+import { isPlaywrightAriaRole } from '../a11y/roles';
 
 type TraceA11yHint = { role?: string; name?: string; text?: string };
 
@@ -14,7 +15,7 @@ type LocatorTarget = {
     name?: string;
 };
 
-export const createLocatorTools = (base: ToolsBuildContext) => ({
+const buildLocatorTools = (base: ToolsBuildContext) => ({
     'trace.a11y.findByA11yHint': async (args: { hint: TraceA11yHint }) =>
         await base.run('trace.a11y.findByA11yHint', args, async (): Promise<A11yCandidate[]> => {
             const tree = await getA11yTree(base.getCurrentPage(), base.ctx.cache);
@@ -67,7 +68,7 @@ export const createLocatorTools = (base: ToolsBuildContext) => ({
                 element.style.outlineOffset = '2px';
                 element.style.boxShadow = '0 0 0 4px rgba(255,122,0,0.32)';
                 await new Promise<void>((resolve) => {
-                    window.setTimeout(() => resolve(), Math.max(0, Math.floor(ms)));
+                    window.setTimeout(() => { resolve(); }, Math.max(0, Math.floor(ms)));
                 });
                 element.style.outline = prevOutline;
                 element.style.outlineOffset = prevOutlineOffset;
@@ -133,15 +134,15 @@ export const createLocatorTools = (base: ToolsBuildContext) => ({
                 if (!select || !('selectedOptions' in select)) {
                     return { selectedValues: [] as string[], selectedLabels: [] as string[] };
                 }
-                const selectedOptions = Array.from(select.selectedOptions || []);
+                const selectedOptions = Array.from(select.selectedOptions);
                 return {
                     selectedValues: selectedOptions.map((opt) => (opt.value || '').trim()).filter(Boolean),
                     selectedLabels: selectedOptions.map((opt) => (opt.textContent || '').trim()).filter(Boolean),
                 };
             });
             return {
-                selectedValues: Array.isArray(state?.selectedValues) ? state.selectedValues : [],
-                selectedLabels: Array.isArray(state?.selectedLabels) ? state.selectedLabels : [],
+                selectedValues: state.selectedValues,
+                selectedLabels: state.selectedLabels,
             };
         }),
 
@@ -206,12 +207,10 @@ export const createLocatorTools = (base: ToolsBuildContext) => ({
                 await currentPage.mouse.wheel(0, args.deltaY || 0);
                 return;
             }
-            if (args.action === 'click' || args.action === 'dblclick') {
-                await currentPage.mouse.click(args.x, args.y, {
-                    button: args.button,
-                    clickCount: args.action === 'dblclick' ? 2 : 1,
-                });
-            }
+            await currentPage.mouse.click(args.x, args.y, {
+                button: args.button,
+                clickCount: args.action === 'dblclick' ? 2 : 1,
+            });
         });
         if (result.ok && (args.action === 'down' || args.action === 'up' || args.action === 'click' || args.action === 'dblclick')) {
             invalidateA11yCache(base.ctx.cache, 'mouse', base.ctx.tags);
@@ -243,7 +242,10 @@ const resolveLocator = async (
     await base.ensureA11yCache();
     const adopted = await adoptA11yNode(base.getCurrentPage(), args.a11yNodeId, base.ctx.cache);
     if (!adopted.ok) {throw adopted.error;}
-    return adopted.data!;
+    if (!adopted.data) {
+        throw { code: 'ERR_NOT_FOUND', message: 'a11y node did not produce a locator', phase: 'trace' };
+    }
+    return adopted.data;
 };
 
 const resolveRoleLocator = async (
@@ -251,7 +253,15 @@ const resolveRoleLocator = async (
     role: string,
     name?: string,
 ): Promise<Locator> => {
-    const locator = base.getCurrentPage().getByRole(role as any, name ? { name } : undefined);
+    if (!isPlaywrightAriaRole(role)) {
+        throw {
+            code: 'ERR_BAD_ARGS',
+            message: `unsupported aria role: ${role}`,
+            phase: 'trace',
+            details: { role, name },
+        };
+    }
+    const locator = base.getCurrentPage().getByRole(role, name ? { name } : undefined);
     const count = await locator.count();
     if (count === 0) {
         throw {
@@ -271,3 +281,7 @@ const resolveRoleLocator = async (
     }
     return locator.first();
 };
+
+export type LocatorTools = ReturnType<typeof buildLocatorTools>;
+
+export const createLocatorTools = (base: ToolsBuildContext): LocatorTools => buildLocatorTools(base);

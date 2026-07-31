@@ -11,6 +11,7 @@ import { resolveDslValue } from '../runtime/refs';
 export type DslCheckpointProvider = {
     getCheckpoint(id: string): Checkpoint | null;
     getCheckpointResolves?: (id: string) => Record<string, StepResolve> | null;
+    listCheckpoints?: () => Checkpoint[];
 };
 
 export type RunDslCheckpointOptions = {
@@ -41,15 +42,19 @@ export const runDslCheckpointCall = async (
         input,
         stepIdPrefix: `dsl:checkpoint:${options.stmt.id}:${crypto.randomUUID()}`,
         executeStep: async (step) => {
-            const args = step.args as Record<string, unknown>;
-            const resolveId = typeof args.resolveId === 'string' ? args.resolveId : '';
-            if (!resolveId || !stepResolves[resolveId]) {
+            const resolveId = 'resolveId' in step.args && typeof step.args.resolveId === 'string'
+                ? step.args.resolveId
+                : '';
+            if (!resolveId || !Object.hasOwn(stepResolves, resolveId)) {
                 return await options.executeStep(step);
             }
-            const runtimeStep: StepUnion = {
+            const runtimeStep = {
                 ...step,
+                args: Object.fromEntries(
+                    Object.entries(step.args).filter(([key]) => key !== 'resolveId'),
+                ),
                 resolve: stepResolves[resolveId],
-            };
+            } as StepUnion;
             return await options.executeStep(runtimeStep);
         },
     });

@@ -1,5 +1,7 @@
 import type { Action } from '../../src/actions/action_protocol';
 import type { RunStepsDeps } from '../../src/runner/run_steps';
+import {PageSnapshotSessionStore} from '../../src/snapshot/session';
+import {SnapshotProjectionBaselineStore} from '../../src/runner/session';
 import type { ExecutionBinding } from '../../src/runtime/execution/bindings';
 import type { PageRegistry } from '../../src/runtime/browser/page_registry';
 import type { RuntimeWorkspace } from '../../src/runtime/workspace/workspace';
@@ -73,14 +75,6 @@ export const completeRunStepsDeps = (
     } as ExecutionBinding;
     const pageRegistry = input.pageRegistry || createPageRegistryStub(provisional);
     const binding: ExecutionBinding = { ...provisional, pageRegistry };
-    const latestSnapshot = (binding.traceCtx.cache as any)?.latestSnapshot;
-    if (latestSnapshot && !latestSnapshot.snapshotMeta) {
-        latestSnapshot.snapshotMeta = {
-            snapshotId: 'test-snapshot',
-            pageIdentity: { workspaceName, tabName, url: page.url?.() || '' },
-        };
-    }
-
     const normalizeBinding = (value?: Partial<ExecutionBinding>): ExecutionBinding => ({
         ...binding,
         ...value,
@@ -142,6 +136,8 @@ export const completeRunStepsDeps = (
         ...partial,
         config,
         runtime,
+        pageSession: partial.pageSession || new PageSnapshotSessionStore(),
+        snapshotProjection: partial.snapshotProjection || new SnapshotProjectionBaselineStore(),
         resolveWorkspace: partial.resolveWorkspace || ((name: string) => {
             if (name !== workspaceName) {
                 throw new Error(`workspace not found: ${name}`);

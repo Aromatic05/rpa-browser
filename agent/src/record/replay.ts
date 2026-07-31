@@ -300,7 +300,7 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
             stepLogger.info('[RPA:replay:tab-binding]', { recordedTabName, before, after: next });
         }
     };
-    if (req.recordingManifest?.initialTabs?.length) {
+    if (req.recordingManifest?.initialTabs.length) {
         for (const initialTab of req.recordingManifest.initialTabs) {
             const runtimeTabName = initialTab.tabRef;
             let initStatus: ReplayTabBinding['status'] = 'reused';
@@ -463,7 +463,7 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
         const response = syntheticResponse || await runOne(remappedStep);
         if (recordedTabName && remappedStep.name === 'browser.create_tab' && response.ok) {
             const createResult = response.results[response.results.length - 1];
-            const data = asRecord(createResult?.data);
+            const data = asRecord(createResult.data);
             const createdTabName =
                 (typeof data.tabName === 'string' ? data.tabName : undefined)
                 || (typeof data.tab_id === 'string' ? data.tab_id : undefined);
@@ -486,7 +486,7 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
         if (!isLifecycleStep) {
             const hasNewTabs = [...runtimeTabsAfterStep].some((name) => !runtimeTabsBeforeStep.has(name));
             if (!hasNewTabs) {
-                const nextStep = req.steps[index + 1];
+                const nextStep = req.steps.at(index + 1);
                 if (nextStep?.name === 'browser.create_tab') {
                     runtimeTabsAfterStep = await waitForNewTabEffect(req.workspace, runtimeTabsBeforeStep, 2000);
                 }

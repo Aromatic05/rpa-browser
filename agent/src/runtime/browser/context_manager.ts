@@ -126,7 +126,6 @@ const createCdpContextProvider = (options: ContextManagerOptions): ContextProvid
             if (primary.url() !== startUrl) {
                 await primary.goto(startUrl, { waitUntil: 'domcontentloaded' });
             }
-            await primary.bringToFront();
             const toClose = context.pages().filter((page) => page !== primary);
             for (const page of toClose) {
                 if (!page.isClosed()) {
@@ -268,7 +267,6 @@ const createExtensionContextProvider = (options: ContextManagerOptions): Context
             if (primary.url() !== startUrl) {
                 await primary.goto(startUrl, { waitUntil: 'domcontentloaded' });
             }
-            await primary.bringToFront();
             const toClose = context.pages().filter((page) => page !== primary);
             for (const page of toClose) {
                 if (!page.isClosed()) {
@@ -390,10 +388,28 @@ export const createContextManager = (options: ContextManagerOptions): ContextPro
  * 使用相对路径，便于 monorepo 下的运行与打包。
  */
 export const resolvePaths = (): { extensionPaths: string[]; userDataRoot: string } => {
-    const extensionPaths = [
+    const stampPath = path.resolve(__dirname, '../../../../.dev/extension-build.json');
+    let extensionPaths = [
         path.resolve(__dirname, '../../../../extension/dist'),
         path.resolve(__dirname, '../../../../start_extension/dist'),
     ];
+    try {
+        const stamp = JSON.parse(fs.readFileSync(stampPath, 'utf8')) as {
+            mainExtensionPath?: unknown;
+            startExtensionPath?: unknown;
+        };
+        if (typeof stamp.mainExtensionPath === 'string'
+            && typeof stamp.startExtensionPath === 'string'
+            && fs.existsSync(stamp.mainExtensionPath)
+            && fs.existsSync(stamp.startExtensionPath)) {
+            extensionPaths = [
+                path.resolve(stamp.mainExtensionPath),
+                path.resolve(stamp.startExtensionPath),
+            ];
+        }
+    } catch {
+        // Direct agent runs fall back to the fixed dist directories.
+    }
     const userDataRoot = process.env.RPA_USER_DATA_DIR?.trim() || path.resolve(__dirname, '../../../.user-data');
     return { extensionPaths, userDataRoot };
 };

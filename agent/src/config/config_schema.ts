@@ -115,21 +115,6 @@ export type Observability = {
     screenshotOnError: boolean;
 };
 
-export type ConfidencePolicy = {
-    /** 是否启用置信度判定 */
-    enabled: boolean;
-    /** 置信度阈值（0-1） */
-    minScore: number;
-    /** role 匹配权重 */
-    roleWeight: number;
-    /** name 匹配权重 */
-    nameWeight: number;
-    /** text 匹配权重 */
-    textWeight: number;
-    /** selector 命中加分 */
-    selectorBonus: number;
-};
-
 export type CheckpointPolicy = {
     /** 是否启用 task.run checkpoint 持久化 */
     enabled: boolean;
@@ -163,7 +148,6 @@ export type RunnerConfig = {
     retryPolicy: RetryPolicy;
     humanPolicy: HumanPolicy;
     observability: Observability;
-    confidencePolicy: ConfidencePolicy;
     checkpointPolicy: CheckpointPolicy;
     mcpPolicy: McpPolicy;
     entityRules: EntityRuleConfig;
