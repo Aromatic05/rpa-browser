@@ -9,7 +9,7 @@ export type DslImport = {
     alias: string;
 };
 
-export type DslStmt = LetStmt | ActStmt | EntityActStmt | FormActStmt | TableActStmt | CheckpointStmt | IfStmt | ForStmt;
+export type DslStmt = LetStmt | ActStmt | EntityActStmt | LinkedEntityActStmt | FormActStmt | TableActStmt | CheckpointStmt | IfStmt | ForStmt;
 
 export type LetStmt = {
     kind: 'let';
@@ -72,6 +72,13 @@ export type EntityActStmt = {
     kind: 'entity_act';
     action: 'fill' | 'click' | 'type' | 'select';
     target: EntityReference;
+    value?: RefExpr;
+};
+
+export type LinkedEntityActStmt = {
+    kind: 'linked_entity_act';
+    action: 'fill' | 'click' | 'type' | 'select';
+    targetQuery: QueryExpr;
     value?: RefExpr;
 };
 

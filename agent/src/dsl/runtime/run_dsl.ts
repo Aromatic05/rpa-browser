@@ -126,6 +126,26 @@ const executeStmt = async (
             await emitStepAndWait(step, taskRunner, logger, stmtIndex);
             return;
         }
+        case 'linked_entity_act': {
+            const queryStep = buildQueryStep(stmt.targetQuery, (ref) => resolveDslValue(ref, scope));
+            const queryResult = await emitStepAndWait(queryStep, taskRunner, logger, stmtIndex);
+            const target = adaptDslQueryResult(
+                queryResult as import('../../runner/steps/types').BrowserQueryResult,
+            );
+            const profileName = stmt.targetQuery.profileName;
+            if (stmt.action === 'click') {
+                await emitStepAndWait(buildClickStep(target, profileName), taskRunner, logger, stmtIndex);
+                return;
+            }
+            const value = resolveDslValue(stmt.value, scope);
+            const step = stmt.action === 'fill'
+                ? buildFillStep(target, value, profileName)
+                : stmt.action === 'type'
+                    ? buildTypeStep(target, value, profileName)
+                    : buildSelectStep(target, value, profileName);
+            await emitStepAndWait(step, taskRunner, logger, stmtIndex);
+            return;
+        }
         case 'form_act':
         case 'table_act': {
             throw new DslRuntimeError(`${stmt.kind} must be expanded before runtime`, 'ERR_DSL_NOT_NORMALIZED');
@@ -212,14 +232,17 @@ const sleep = async (durationMs: number): Promise<void> => {
 
 const previewValue = (value: unknown): unknown => {
     if (typeof value === 'string') {
-        return value.length > 100 ? `${value.slice(0, 100)}...` : value;
+        return {type: 'string', length: value.length};
     }
-    if (!value || typeof value !== 'object') {
-        return value;
+    if (value === null || value === undefined) {
+        return {type: value === null ? 'null' : 'undefined'};
+    }
+    if (typeof value !== 'object') {
+        return {type: typeof value};
     }
     return {
         type: Array.isArray(value) ? 'array' : 'object',
-        keys: Object.keys(value),
+        ...(Array.isArray(value) ? {length: value.length} : {keys: Object.keys(value)}),
     };
 };
 
