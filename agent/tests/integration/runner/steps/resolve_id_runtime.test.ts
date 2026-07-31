@@ -15,6 +15,7 @@ import { completeRunStepsDeps } from '../../../helpers/run_steps_workspace';
 import type { Checkpoint } from '../../../../src/runner/checkpoint';
 import type { RunStepsDeps } from '../../../../src/runner/run_steps';
 import type { StepResolve, StepUnion } from '../../../../src/runner/steps/types';
+import {executeBrowserCheckpoint} from '../../../../src/runner/steps/executors/checkpoint';
 
 const createRuntime = () => ({
     ensureActivePage: async () => ({
@@ -360,6 +361,53 @@ test('runSteps traverses and freezes a referenced preloaded nested procedure bod
     }, deps);
     assert.equal(checkpoint.status, 'completed');
     assert.deepEqual(observed, ['#frozen']);
+});
+
+test('runSteps snapshots imports for queued procedure calls without parsing unrelated bodies', async () => {
+    const observed: StepUnion[] = [];
+    const deps = createDeps({
+        'browser.checkpoint': executeBrowserCheckpoint as any,
+        'browser.query': async (step) => ({stepId: step.id, ok: true, data: {kind: 'nodeId', nodeId: 'query-button'}}),
+        'browser.click': async (step) => {
+            observed.push(structuredClone(step));
+            return {stepId: step.id, ok: true};
+        },
+    });
+    deps.resolveEntityRulesProvider = () => ({
+        workflowName: 'ws-1', availability: 'ready', listProfiles: () => ['orders'], getProfile: (name: string) => name === 'orders' ? {} as any : null,
+        resolveExports: (name: string) => name === 'orders' ? {
+            index: {
+                profileName: 'orders',
+                entities: [{
+                    profileName: 'orders', entityKey: 'ordersQuery', businessTag: 'orders.query', kind: 'form',
+                    fields: [], actions: [{actionIntent: 'query', targetKind: 'form.action'}], columns: [], rowActions: [],
+                    supportedQueries: ['form.fields', 'form.actions'], members: [{kind: 'action', symbol: 'query'}],
+                }],
+                resolve: () => undefined,
+            },
+            diagnostics: [],
+        } : {index: null, diagnostics: [{code: 'entity_rule_exports.profile_not_found', message: `missing: ${name}`}]},
+    } as any);
+    const queue = createStepsQueue([{
+        id: 'call-procedure', name: 'browser.checkpoint', args: {checkpointId: 'called-procedure'},
+    } as StepUnion]);
+    closeStepsQueue(queue);
+    const pipe = createResultPipe();
+    const completed = await runSteps({
+        runId: 'queued-procedure', workspaceName: 'ws-1', stepsQueue: queue,
+        resultPipe: pipe, signalChannel: createSignalChannel(), stopOnError: true,
+        checkpoints: [
+            {id: 'called-procedure', kind: 'procedure', body: {language: 'dsl', source: 'body.dsl'}},
+            {id: 'unrelated-procedure', kind: 'procedure', body: {language: 'dsl', source: 'body.dsl'}},
+        ],
+        checkpointBodies: {
+            'called-procedure': 'use entity_rules "orders" as entity\nclick entity.ordersQuery.query',
+            'unrelated-procedure': 'this is invalid DSL',
+        },
+    }, deps);
+
+    assert.equal(completed.status, 'completed', JSON.stringify(pipe.items));
+    assert.deepEqual(observed.map((step) => step.args), [{nodeId: 'query-button'}]);
 });
 
 test('runSteps executes an injected checkpoint DSL body without a checkpoint provider', async () => {

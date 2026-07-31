@@ -101,12 +101,31 @@ const materializeEntityRulesResolver = (
     provider: WorkspaceEntityRulesProvider,
     profileNames: ReadonlySet<string>,
 ): DslEntityRulesResolver => {
-    const resolutions = new Map([...profileNames].map((name) => [name, cloneFrozen(provider.resolveExports(name))]));
+    const resolutions = new Map([...profileNames].map((name) => [name, snapshotEntityRuleResolution(provider.resolveExports(name))]));
     return createDslEntityRulesResolver({
         availability: 'ready', workflowName: provider.workflowName,
         listProfiles: () => [...resolutions.keys()], getProfile: () => null,
         resolveExports: (name) => resolutions.get(name) ?? {index: null, diagnostics: [{code: 'entity_rule_exports.profile_not_found', message: `profile not found: ${name}`}]},
     });
+};
+
+const snapshotEntityRuleResolution = (
+    resolution: ReturnType<WorkspaceEntityRulesProvider['resolveExports']>,
+): ReturnType<WorkspaceEntityRulesProvider['resolveExports']> => {
+    const diagnostics = cloneFrozen(resolution.diagnostics);
+    if (!resolution.index) {return {index: null, diagnostics};}
+    const profileName = resolution.index.profileName;
+    const entities = cloneFrozen(resolution.index.entities);
+    const byKey = new Map(entities.map((entity) => [entity.entityKey, entity]));
+    return {
+        index: Object.freeze({
+            profileName,
+            entities,
+            resolve: (entityKey: string, symbol: string) =>
+                byKey.get(entityKey)?.members.find((member) => member.symbol === symbol),
+        }),
+        diagnostics,
+    };
 };
 
 const materializeResolveResolver = (workflow: Workflow, bundleNames: ReadonlySet<string>): DslResolveResolver => {
