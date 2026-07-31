@@ -347,6 +347,23 @@ test('recorded snapshots compile to DSL without a resolve sidecar', () => {
     assert.equal(recovery.bodyDsl, 'use entity_rules "expired-session-rule" as entity\nsnapshot');
 });
 
+test('unmapped scroll noise does not poison mapped business checkpoint steps', () => {
+    const steps = [
+        recordedSteps[0],
+        {id: 'incidental-scroll', name: 'browser.scroll', args: {deltaY: 480}} as StepUnion,
+        recordedSteps[1],
+        recordedSteps[2],
+    ];
+    const artifact = buildRecordedCheckpoint(workspace, steps, recordedEnhancements, savePayload);
+
+    assert.equal(artifact.bodyDsl, [
+        'use entity_rules "order-query-rule" as entity',
+        'fill entity.ordersQuery.orderNo with input.orderNo',
+        'fill entity.ordersQuery.buyer with input.buyer',
+        'click entity.ordersQuery.query',
+    ].join('\n'));
+});
+
 test('unsupported legacy recorder steps remain explicit bad-argument errors', () => {
     for (const name of ['browser.hover', 'browser.scroll', 'browser.press_key', 'browser.take_screenshot'] as const) {
         assert.throws(

@@ -41,6 +41,7 @@ export const buildRecordedProcedureCheckpoint = (
             operations.push({kind: 'row_action', actionIntent: mapping.actionIntent, primaryKey: `input.${mapping.inputKey}`});
             return;
         }
+        if (step.name === 'browser.scroll' && mappings.size > 0) {return;}
         operations.push(fallbackOperation(step, index, enrichments, stepResolves, input));
     });
 

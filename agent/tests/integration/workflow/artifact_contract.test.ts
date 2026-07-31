@@ -253,6 +253,43 @@ test('dsl.save preserves omitted sidecars and rejects invalid candidates before 
     }
 });
 
+test('checkpoint.get exposes persisted body DSL without bloating checkpoint.list', async () => {
+    const name = uniqueName('checkpoint-get-body');
+    cleanup(name);
+    try {
+        const workflow = createWorkflowOnFs(name);
+        workflow.save({
+            kind: 'checkpoint',
+            name: 'procedure-body',
+            checkpoint: {
+                id: 'procedure-body',
+                kind: 'procedure',
+                trigger: {matchRules: [{errorCode: 'ERR_UNUSED'}]},
+                body: {language: 'dsl', source: 'body.dsl'},
+            },
+            stepResolves: {},
+            hints: {},
+            bodyDsl: 'wait 1',
+        });
+        const {registry} = createWorkspaceHarness();
+        const workspace = registry.createWorkspace(name, workflow);
+
+        const listed = await workspace.router.handle({
+            v: 1, id: 'checkpoint-list', type: 'checkpoint.list', workspaceName: name,
+        } as any, workspace as any, registry as any);
+        const listItem = (listed.reply.payload as {checkpoints: Array<Record<string, unknown>>}).checkpoints[0];
+        assert.equal(Object.hasOwn(listItem, 'bodyDsl'), false);
+
+        const got = await workspace.router.handle({
+            v: 1, id: 'checkpoint-get', type: 'checkpoint.get', workspaceName: name,
+            payload: {checkpointId: 'procedure-body'},
+        } as any, workspace as any, registry as any);
+        assert.equal((got.reply.payload as {bodyDsl?: string}).bodyDsl, 'wait 1');
+    } finally {
+        cleanup(name);
+    }
+});
+
 test('persisted recordings retain resolveId associations through production load and replay execution', async () => {
     const name = uniqueName('recording-resolve');
     cleanup(name);
