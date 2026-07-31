@@ -100,6 +100,8 @@ export type ExecuteStepRuntimeOptions = {
     runLocalStepResults?: RunLocalStepResults;
     stepResolves?: Record<string, StepResolve>;
     checkpointProvider?: DslCheckpointProvider;
+    entityRulesResolver?: import('../dsl/link').DslEntityRulesResolver;
+    resolveResolver?: import('../dsl/link').DslResolveResolver;
 };
 
 export const executeStepWithRuntimeContracts = async (
@@ -181,6 +183,8 @@ export const executeStepWithRuntimeContracts = async (
     const fn = executors[step.name];
     const result = await fn(runtimeStep.step, deps, workspaceName, {
         checkpointProvider: options.checkpointProvider,
+        entityRulesResolver: options.entityRulesResolver,
+        resolveResolver: options.resolveResolver,
     });
     if (result.ok && shouldMarkPageSessionDirtyByStep(runtimeStep.step.name, runtimeStep.step.args)) {
         await markPageSessionDirtyAfterStep(deps, workspaceName, runtimeStep.step);
@@ -195,10 +199,14 @@ const executeOne = async (
     deps: RunStepsDeps,
     stepResolves?: Record<string, StepResolve>,
     checkpointProvider?: DslCheckpointProvider,
+    entityRulesResolver?: import('../dsl/link').DslEntityRulesResolver,
+    resolveResolver?: import('../dsl/link').DslResolveResolver,
 ): Promise<ExecStepResult> => await executeStepWithRuntimeContracts(step, workspaceName, deps, {
     runLocalStepResults,
     stepResolves,
     checkpointProvider,
+    entityRulesResolver,
+    resolveResolver,
 });
 
 const markPageSessionDirtyAfterStep = async (
@@ -505,6 +513,8 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
                 resolvedDeps,
                 req.stepResolves,
                 checkpointRuntime.provider,
+                checkpointRuntime.entityRulesResolver,
+                checkpointRuntime.resolveResolver,
             );
 
             await writeStepEvent(resolvedDeps.stepSinks, {
@@ -541,6 +551,8 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
                         resolvedDeps,
                         stepResolves ?? req.stepResolves,
                         checkpointRuntime!.provider,
+                        checkpointRuntime!.entityRulesResolver,
+                        checkpointRuntime!.resolveResolver,
                     ),
                     checkpoints: checkpointRuntime.checkpoints,
                     checkpointStepResolves: checkpointRuntime.stepResolves,

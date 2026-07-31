@@ -10,6 +10,7 @@ import type { WorkspaceEntityRulesProvider } from '../snapshot/rules';
 import type { PageSnapshotSessionPort } from '../snapshot/session';
 import type { SnapshotProjectionBaselinePort } from '../snapshot/projection';
 import type { DslCheckpointProvider } from '../dsl/emit';
+import type { DslEntityRulesResolver, DslResolveResolver } from '../dsl/link';
 
 export type StepEvent =
     | {
@@ -87,6 +88,8 @@ export type RunStepsDeps = {
 
 export type RunStepsExecutionContext = {
     checkpointProvider?: DslCheckpointProvider;
+    entityRulesResolver?: DslEntityRulesResolver;
+    resolveResolver?: DslResolveResolver;
 };
 
 export type RunStepsRequest = {
