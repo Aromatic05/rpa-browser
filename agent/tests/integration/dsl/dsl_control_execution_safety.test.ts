@@ -15,6 +15,7 @@ const createInput = (content: string, state: { value: 'idle' | 'executing' }) =>
         updatedAt: 0,
         workflow: {
             name: 'ws-dsl-control',
+            entryDslName: () => 'main',
             list: () => [{ kind: 'dsl', name: 'main' }],
             get: () => ({ kind: 'dsl', name: 'main', content }),
         },
