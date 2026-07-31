@@ -7,6 +7,7 @@ import {
     enqueueSteps,
     readResultPipe,
     runSteps,
+    sendSignal,
     waitForResultPipe,
     type Checkpoint,
     type RunStepsDeps,
@@ -19,6 +20,8 @@ const DEFAULT_POLL_LIMIT = 100;
 export type DslTaskRunner = {
     start(): Promise<{ runId: string }>;
     runStep(step: StepUnion): Promise<StepResult>;
+    suspend(): Promise<void>;
+    cancel(): Promise<void>;
     close(): Promise<void>;
 };
 
@@ -36,6 +39,7 @@ export const createDslTaskRunner = (options: CreateDslTaskRunnerOptions): DslTas
 
     let readCursor = 0;
     let started = false;
+    let closing: Promise<void> | null = null;
     let latestCheckpoint: Checkpoint = {
         runId,
         workspaceName: options.workspaceName,
@@ -74,8 +78,27 @@ export const createDslTaskRunner = (options: CreateDslTaskRunnerOptions): DslTas
     };
 
     const close = async (): Promise<void> => {
-        closeStepsQueue(queue);
-        await runPromise;
+        if (!closing) {
+            closing = (async () => {
+                sendSignal(signals, 'continue');
+                closeStepsQueue(queue);
+                await runPromise;
+            })();
+        }
+        await closing;
+    };
+
+    const suspend = async (): Promise<void> => { sendSignal(signals, 'suspend'); };
+
+    const cancel = async (): Promise<void> => {
+        if (!closing) {
+            closing = (async () => {
+                sendSignal(signals, 'halt');
+                closeStepsQueue(queue);
+                await runPromise;
+            })();
+        }
+        await closing;
     };
 
     const waitForStepResult = async (stepId: string): Promise<StepResult> => {
@@ -112,6 +135,8 @@ export const createDslTaskRunner = (options: CreateDslTaskRunnerOptions): DslTas
     return {
         start,
         runStep,
+        suspend,
+        cancel,
         close,
     };
 };

@@ -8,6 +8,7 @@ import type { DslProgram, DslStmt } from '../ast/types';
 import { createDslTaskRunner } from './task_runner';
 import { createDslScope, setDslValue, type DslScope } from './scope';
 import { resolveDslValue } from './refs';
+import { adaptDslQueryResult } from './value_adapter';
 
 export type RunDslContext = {
     workspaceName: string;
@@ -73,8 +74,9 @@ const executeStmt = async (
             if (stmt.expr.kind === 'query') {
                 const step = buildQueryStep(stmt.expr);
                 const result = await emitStepAndWait(step, taskRunner, logger, stmtIndex);
-                setDslValue(scope, `vars.${stmt.name}`, result);
-                safeLog(logger, 'debug', 'dsl.scope.write', { key: `vars.${stmt.name}`, valuePreview: previewValue(result) });
+                const value = adaptDslQueryResult(result as import('../../runner/steps/types').BrowserQueryResult);
+                setDslValue(scope, `vars.${stmt.name}`, value);
+                safeLog(logger, 'debug', 'dsl.scope.write', { key: `vars.${stmt.name}`, valuePreview: previewValue(value) });
                 return;
             }
             if (stmt.expr.kind === 'querySugar') {

@@ -3,7 +3,8 @@ import { ActionError } from '../actions/results';
 import { ERROR_CODES } from '../actions/results';
 import type { WorkspaceRouterInput } from '../runtime/workspace/router';
 import type { ControlPlaneResult } from '../runtime/control_plane';
-import { runDslSource } from './runtime';
+import { runDslSource, validateDslSource } from './runtime';
+import { runWorkspaceExecution } from '../runtime/workspace/execution_coordinator';
 import type { RunStepsDeps } from '../runner/run_steps';
 import type { Workflow, WorkflowDsl, WorkflowDummy } from '../workflow';
 
@@ -45,7 +46,7 @@ export const createDslControl = (services: DslControlServices): DslControl => ({
     handle: async (input) => {
         const { action, workspace } = input;
 
-        if (action.type !== 'dsl.get' && action.type !== 'dsl.save' && action.type !== 'dsl.test' && action.type !== 'dsl.run') {
+        if (action.type !== 'dsl.get' && action.type !== 'dsl.save' && action.type !== 'dsl.test' && action.type !== 'dsl.validate' && action.type !== 'dsl.run') {
             throw new ActionError(ERROR_CODES.ERR_UNSUPPORTED, `unsupported action: ${action.type}`);
         }
 
@@ -69,24 +70,25 @@ export const createDslControl = (services: DslControlServices): DslControl => ({
 
         const dslName = payload.dslName || resolveDefaultDslName(workflow);
         const dsl = requireDsl(workflow, dslName);
-        const runResult = await runDslSource(dsl.content, {
-            workspaceName: workspace.name,
-            deps: services.runStepsDeps,
-            input: payload.input || {},
-            checkpointProvider: workspace.checkpoint.getProvider(workflow),
-        });
-
-        if (action.type === 'dsl.test') {
+        if (action.type === 'dsl.validate' || action.type === 'dsl.test') {
+            const validation = validateDslSource(dsl.content);
             return {
                 reply: replyAction(action, {
-                    ok: true,
-                    output: runResult.scope.output,
-                    diagnostics: runResult.diagnostics,
+                    ok: validation.diagnostics.length === 0,
+                    diagnostics: validation.diagnostics,
                     workspaceName: workspace.name,
+                    ...(action.type === 'dsl.test' ? { deprecated: 'dsl.test validates only; use dsl.run to execute' } : {}),
                 }),
                 events: [],
             };
         }
+
+        const runResult = await runWorkspaceExecution(workspace, action.type, async () => await runDslSource(dsl.content, {
+            workspaceName: workspace.name,
+            deps: services.runStepsDeps,
+            input: payload.input || {},
+            checkpointProvider: workspace.checkpoint.getProvider(workflow),
+        }));
 
         return {
             reply: replyAction(action, {

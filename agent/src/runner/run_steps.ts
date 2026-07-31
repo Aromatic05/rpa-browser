@@ -369,7 +369,14 @@ export const closeStepsQueue = (queue: StepsQueue): void => {
     notifyAll(getWaiters(queueWaiters, queue));
 };
 
-export const createResultPipe = (): ResultPipe => ({ items: [], waiters: new Set() });
+export const createResultPipe = (): ResultPipe => ({ items: [], waiters: new Set(), closed: false });
+
+export const closeResultPipe = (pipe: ResultPipe): void => {
+    pipe.closed = true;
+    const waiters = [...pipe.waiters];
+    pipe.waiters.clear();
+    for (const wake of waiters) {wake();}
+};
 
 export const readResultPipe = (pipe: ResultPipe, cursor = 0, limit = 100): { items: StepResult[]; nextCursor: number } => {
     const start = cursor >= 0 ? cursor : 0;
@@ -388,7 +395,7 @@ export const pushResultPipe = (pipe: ResultPipe, result: StepResult): void => {
 };
 
 export const waitForResultPipe = async (pipe: ResultPipe): Promise<void> =>
-    { await new Promise<void>((resolve) => {
+    { if (pipe.closed) {return;} await new Promise<void>((resolve) => {
         pipe.waiters.add(resolve);
     }); };
 
@@ -460,17 +467,42 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
     const checkpointAttempts = new Map<string, number>();
     const runLocalStepResults: RunLocalStepResults = {};
     let status: RunStatus = 'running';
+    let activeStep: StepUnion | undefined;
+    let activeCursor = req.stepsQueue.cursor;
     const checkpointRuntime = resolveRunCheckpoints(req, resolvedDeps);
     setCheckpoints(checkpointRuntime.checkpoints);
 
-    while (true) {
+    const finish = async (finalStatus: RunStatus): Promise<Checkpoint> => {
+        const checkpoint = checkpointOf(req.runId, req.workspaceName, finalStatus, req.stepsQueue.cursor);
+        await req.onCheckpoint?.(checkpoint);
+        closeStepsQueue(req.stepsQueue);
+        closeResultPipe(req.resultPipe);
+        return checkpoint;
+    };
+
+    const fail = async (error: unknown): Promise<Checkpoint> => {
+        const message = error instanceof Error ? error.message : String(error);
+        if (activeStep) {
+            pushResultPipe(req.resultPipe, {
+                runId: req.runId,
+                cursor: activeCursor,
+                stepId: activeStep.id,
+                ok: false,
+                error: { code: 'ERR_RUNNER_UNEXPECTED', message },
+                ts: Date.now(),
+            });
+        }
+        closeStepsQueue(req.stepsQueue);
+        closeResultPipe(req.resultPipe);
+        return checkpointOf(req.runId, req.workspaceName, 'failed', req.stepsQueue.cursor);
+    };
+
+    try { while (true) {
         while (req.signalChannel.cursor < req.signalChannel.items.length) {
             const event = req.signalChannel.items[req.signalChannel.cursor++];
             if (event.signal === 'halt') {
                 status = 'halted';
-                const checkpoint = checkpointOf(req.runId, req.workspaceName, status, req.stepsQueue.cursor);
-                await req.onCheckpoint?.(checkpoint);
-                return checkpoint;
+                return await finish(status);
             }
             if (event.signal === 'flush') {
                 req.stepsQueue.items.length = req.stepsQueue.cursor;
@@ -495,6 +527,8 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
             const stepIndex = req.stepsQueue.cursor;
             const step = req.stepsQueue.items[stepIndex];
             req.stepsQueue.cursor += 1;
+            activeStep = step;
+            activeCursor = stepIndex;
 
             const startedAt = Date.now();
             await writeStepEvent(resolvedDeps.stepSinks, {
@@ -577,6 +611,8 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
             const checkpoint = checkpointOf(req.runId, req.workspaceName, status, req.stepsQueue.cursor);
             await req.onCheckpoint?.(checkpoint);
             if (status === 'failed') {
+                closeStepsQueue(req.stepsQueue);
+                closeResultPipe(req.resultPipe);
                 return checkpoint;
             }
             continue;
@@ -584,12 +620,13 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
 
         if (req.stepsQueue.closed) {
             status = 'completed';
-            const checkpoint = checkpointOf(req.runId, req.workspaceName, status, req.stepsQueue.cursor);
-            await req.onCheckpoint?.(checkpoint);
-            return checkpoint;
+            return await finish(status);
         }
 
         await waitForInput(req.stepsQueue, req.signalChannel);
+    }
+    } catch (error) {
+        return await fail(error);
     }
 };
 

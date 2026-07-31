@@ -8,6 +8,7 @@ export const REQUEST_ACTION_TYPES = {
     DSL_GET: 'dsl.get',
     DSL_SAVE: 'dsl.save',
     DSL_TEST: 'dsl.test',
+    DSL_VALIDATE: 'dsl.validate',
     DSL_RUN: 'dsl.run',
 
     WORKSPACE_LIST: 'workspace.list',

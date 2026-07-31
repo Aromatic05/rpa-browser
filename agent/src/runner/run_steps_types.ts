@@ -56,6 +56,7 @@ export type StepResult = {
 export type ResultPipe = {
     items: StepResult[];
     waiters: Set<() => void>;
+    closed: boolean;
 };
 
 export type SignalChannel = {

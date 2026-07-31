@@ -9,6 +9,16 @@ export type RunDslSourceResult = RunDslResult & {
     diagnostics: DslDiagnostic[];
 };
 
+export type ValidateDslSourceResult = {
+    diagnostics: DslDiagnostic[];
+};
+
+export const validateDslSource = (source: string): ValidateDslSourceResult => {
+    const parsed = parseDsl(source);
+    const normalized = normalizeDsl(parsed);
+    return { diagnostics: validateDsl(normalized) };
+};
+
 export const runDslSource = async (
     source: string,
     ctx: RunDslContext,

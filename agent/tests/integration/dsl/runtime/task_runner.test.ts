@@ -170,6 +170,51 @@ test('task_runner close waits for runSteps completion', async () => {
     assert.equal(calls.length, 1);
 });
 
+test('task_runner cancel and close terminalize a suspended runner', async () => {
+    const runner = createDslTaskRunner({
+        workspaceName: 'ws-dsl-task',
+        deps: createDeps([]),
+    });
+
+    await runner.start();
+    await runner.suspend();
+    await Promise.race([
+        runner.cancel(),
+        delay(100).then(() => { throw new Error('cancel hung while suspended'); }),
+    ]);
+    await runner.close();
+});
+
+test('task_runner converts an executor throw into a failed terminal step result', async () => {
+    const runner = createDslTaskRunner({
+        workspaceName: 'ws-dsl-task',
+        deps: completeRunStepsDeps({
+            runtime: {
+                ensureActivePage: async () => ({
+                    workspaceName: 'ws-dsl-task', tabName: 'tk-dsl-task', traceCtx: { cache: {} },
+                }),
+            },
+            config: {} as any,
+            pluginHost: {
+                getExecutors: () => ({
+                    'browser.query': async () => { throw new Error('executor exploded'); },
+                }) as any,
+            } as any,
+        }),
+    });
+
+    const result = await runner.runStep({
+        id: 'step-query-throw',
+        name: 'browser.query',
+        args: { op: 'entity', businessTag: 'order.list', query: 'table.currentRows' },
+    } as StepUnion);
+    await runner.close();
+
+    assert.equal(result.ok, false);
+    assert.equal(result.error?.code, 'ERR_RUNNER_UNEXPECTED');
+    assert.match(result.error?.message || '', /executor exploded/);
+});
+
 const delay = async (ms: number): Promise<void> =>
     await new Promise((resolve) => {
         setTimeout(resolve, ms);
