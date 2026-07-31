@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import type { StepResult as ExecStepResult, StepUnion } from './steps/types';
 import { resolveStepArgsRefs } from './step_refs';
-import { runCheckpoint, setCheckpoints, materializeReferencedCheckpointRuntimeSnapshot, type Checkpoint as RunnerCheckpoint } from './checkpoint';
+import { runCheckpoint, materializeReferencedCheckpointRuntimeSnapshot, type Checkpoint as RunnerCheckpoint } from './checkpoint';
 import { getFailedCtx } from './failed_ctx';
 import { getLogger } from '../logging/logger';
 import {shouldMarkPageSessionDirtyByStep} from './session';
@@ -11,6 +11,7 @@ import type {
     RunSignal,
     RunStatus,
     RunStepsDeps,
+    RunStepsExecutionContext,
     RunStepsRequest,
     SignalChannel,
     StepEvent,
@@ -30,6 +31,7 @@ export type {
     RunSignal,
     RunStatus,
     RunStepsDeps,
+    RunStepsExecutionContext,
     RunStepsRequest,
     SignalChannel,
     StepEvent,
@@ -97,6 +99,7 @@ export type RunLocalStepResults = Record<
 export type ExecuteStepRuntimeOptions = {
     runLocalStepResults?: RunLocalStepResults;
     stepResolves?: Record<string, StepResolve>;
+    checkpointProvider?: DslCheckpointProvider;
 };
 
 export const executeStepWithRuntimeContracts = async (
@@ -176,7 +179,9 @@ export const executeStepWithRuntimeContracts = async (
     }
 
     const fn = executors[step.name];
-    const result = await fn(runtimeStep.step, deps, workspaceName);
+    const result = await fn(runtimeStep.step, deps, workspaceName, {
+        checkpointProvider: options.checkpointProvider,
+    });
     if (result.ok && shouldMarkPageSessionDirtyByStep(runtimeStep.step.name, runtimeStep.step.args)) {
         await markPageSessionDirtyAfterStep(deps, workspaceName, runtimeStep.step);
     }
@@ -189,9 +194,11 @@ const executeOne = async (
     runLocalStepResults: RunLocalStepResults,
     deps: RunStepsDeps,
     stepResolves?: Record<string, StepResolve>,
+    checkpointProvider?: DslCheckpointProvider,
 ): Promise<ExecStepResult> => await executeStepWithRuntimeContracts(step, workspaceName, deps, {
     runLocalStepResults,
     stepResolves,
+    checkpointProvider,
 });
 
 const markPageSessionDirtyAfterStep = async (
@@ -447,7 +454,6 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
             throw new Error('runSteps deps not initialized');
         }
         checkpointRuntime = resolveRunCheckpoints(req, resolvedDeps);
-        setCheckpoints(checkpointRuntime.provider.listCheckpoints!());
         while (true) {
         while (req.signalChannel.cursor < req.signalChannel.items.length) {
             const event = req.signalChannel.items[req.signalChannel.cursor++];
@@ -492,7 +498,14 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
                 argsSummary: summarizeStepArgs(step),
             });
 
-            const result = await executeOne(step, req.workspaceName, runLocalStepResults, resolvedDeps, req.stepResolves);
+            const result = await executeOne(
+                step,
+                req.workspaceName,
+                runLocalStepResults,
+                resolvedDeps,
+                req.stepResolves,
+                checkpointRuntime.provider,
+            );
 
             await writeStepEvent(resolvedDeps.stepSinks, {
                 type: 'step.end',
@@ -527,6 +540,7 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
                         runLocalStepResults,
                         resolvedDeps,
                         stepResolves ?? req.stepResolves,
+                        checkpointRuntime!.provider,
                     ),
                     checkpoints: checkpointRuntime.checkpoints,
                     checkpointStepResolves: checkpointRuntime.stepResolves,

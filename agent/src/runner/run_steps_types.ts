@@ -9,6 +9,7 @@ import type { Page } from 'playwright';
 import type { WorkspaceEntityRulesProvider } from '../snapshot/rules';
 import type { PageSnapshotSessionPort } from '../snapshot/session';
 import type { SnapshotProjectionBaselinePort } from '../snapshot/projection';
+import type { DslCheckpointProvider } from '../dsl/emit';
 
 export type StepEvent =
     | {
@@ -82,6 +83,10 @@ export type RunStepsDeps = {
     stepSinks?: StepSink[];
     config: RunnerConfig;
     pluginHost: RunnerPluginHost;
+};
+
+export type RunStepsExecutionContext = {
+    checkpointProvider?: DslCheckpointProvider;
 };
 
 export type RunStepsRequest = {
