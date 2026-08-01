@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>DSL Order Workflow Fixture</title>
+  <style>
+    body { margin: 0; padding: 48px; font-family: system-ui, sans-serif; background: #f1f5f9; color: #0f172a; }
+    main { max-width: 920px; margin: auto; }
+    section, form { background: white; border: 1px solid #cbd5e1; border-radius: 14px; padding: 24px; box-shadow: 0 10px 30px rgba(15,23,42,.08); }
+    form { display: grid; gap: 14px; max-width: 420px; margin: 80px auto; }
+    label { display: grid; gap: 6px; font-weight: 650; }
+    input { height: 38px; padding: 0 10px; border: 1px solid #94a3b8; border-radius: 8px; }
+    button { min-height: 38px; padding: 0 16px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    th, td { padding: 11px 12px; border: 1px solid #cbd5e1; text-align: left; }
+    .approved { color: #047857; font-weight: 700; }
+    #session-expired { display: none; position: fixed; inset: 0; z-index: 10; align-items: center; justify-content: center; background: rgba(15,23,42,.45); }
+    #session-expired .dialog { width: 360px; background: white; border-radius: 14px; padding: 24px; box-shadow: 0 20px 60px rgba(15,23,42,.3); }
+    #login-error { min-height: 20px; color: #b91c1c; }
+  </style>
+</head>
+<body>
+  <main>
+    <form id="login-form" aria-label="系统登录">
+      <h1>订单系统登录</h1>
+      <label for="username">用户名<input id="username" name="username" autocomplete="off"></label>
+      <label for="password">密码<input id="password" name="password" type="password" autocomplete="off"></label>
+      <button id="login-submit" type="submit">登录</button>
+      <output id="login-error"></output>
+    </form>
+
+    <section id="orders-workbench" hidden>
+      <header>
+        <h1>待审批订单</h1>
+        <p>当前用户：<strong id="current-user"></strong></p>
+      </header>
+      <table id="orders-table" aria-label="待审批订单">
+        <thead><tr><th>订单编号</th><th>申请人</th><th>状态</th><th>操作</th></tr></thead>
+        <tbody>
+          <tr data-order-no="PO-101"><td>PO-101</td><td>张三</td><td class="order-status">待审批</td><td><button class="approve-order" type="button">批准</button></td></tr>
+          <tr data-order-no="PO-102"><td>PO-102</td><td>李雷</td><td class="order-status">待审批</td><td><button class="approve-order" type="button">批准</button></td></tr>
+          <tr data-order-no="PO-103"><td>PO-103</td><td>王小虎</td><td class="order-status">待审批</td><td><button class="approve-order" type="button">批准</button></td></tr>
+        </tbody>
+      </table>
+      <output id="workflow-summary"></output>
+    </section>
+  </main>
+
+  <section id="session-expired" aria-label="会话失效">
+    <div class="dialog">
+      <h2>登录会话已失效</h2>
+      <p>续期后可以继续当前审批任务。</p>
+      <button id="renew-session" type="button">续期并继续</button>
+    </div>
+  </section>
+
+  <script>
+    const state = {
+      authenticated: false,
+      sessionValid: false,
+      expiryInjected: false,
+      loginCount: 0,
+      renewalCount: 0,
+      approvedOrders: [],
+      events: [],
+    };
+
+    const publishState = () => {
+      document.body.dataset.workflowState = JSON.stringify(state);
+      document.querySelector('#workflow-summary').textContent = state.approvedOrders.join(',');
+    };
+
+    const setApprovalAvailability = (enabled) => {
+      for (const button of document.querySelectorAll('.approve-order')) {
+        const row = button.closest('tr');
+        button.disabled = !enabled || row?.dataset.approved === 'true';
+      }
+    };
+
+    const expireSession = () => {
+      state.sessionValid = false;
+      state.expiryInjected = true;
+      state.events.push('session-expired');
+      document.querySelector('#session-expired').style.display = 'flex';
+      setApprovalAvailability(false);
+      publishState();
+    };
+
+    document.querySelector('#login-form').addEventListener('submit', (event) => {
+      event.preventDefault();
+      const username = document.querySelector('#username').value;
+      const password = document.querySelector('#password').value;
+      if (username !== 'operator' || password !== 'correct-horse') {
+        document.querySelector('#login-error').textContent = '用户名或密码错误';
+        return;
+      }
+      state.authenticated = true;
+      state.sessionValid = true;
+      state.loginCount += 1;
+      state.events.push(`login:${username}`);
+      document.querySelector('#current-user').textContent = username;
+      document.querySelector('#login-form').hidden = true;
+      document.querySelector('#orders-workbench').hidden = false;
+      setApprovalAvailability(true);
+      publishState();
+    });
+
+    for (const button of document.querySelectorAll('.approve-order')) {
+      button.addEventListener('click', () => {
+        const row = button.closest('tr');
+        if (!row || !state.authenticated || !state.sessionValid || button.disabled) return;
+        const orderNo = row.dataset.orderNo;
+        row.dataset.approved = 'true';
+        row.querySelector('.order-status').textContent = '已批准';
+        row.querySelector('.order-status').classList.add('approved');
+        button.disabled = true;
+        state.approvedOrders.push(orderNo);
+        state.events.push(`approve:${orderNo}`);
+        publishState();
+        if (!state.expiryInjected) expireSession();
+      });
+    }
+
+    document.querySelector('#renew-session').addEventListener('click', () => {
+      state.sessionValid = true;
+      state.renewalCount += 1;
+      state.events.push('session-renewed');
+      document.querySelector('#session-expired').style.display = 'none';
+      setApprovalAvailability(true);
+      publishState();
+    });
+
+    publishState();
+  </script>
+</body>
+</html>
