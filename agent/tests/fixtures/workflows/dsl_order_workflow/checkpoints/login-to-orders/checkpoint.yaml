@@ -1,0 +1,8 @@
+version: 1
+checkpoint:
+  id: login-to-orders
+  kind: procedure
+  name: 登录订单系统
+  body:
+    language: dsl
+    source: body.dsl

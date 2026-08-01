@@ -1,0 +1,19 @@
+version: 2
+bindings:
+  - ruleId: login-root
+    entityKey: loginForm
+    businessTag: auth.login
+    entityKind: form
+    displayName: 系统登录
+  - ruleId: username
+    fieldKey: username
+    fieldRole: field
+    fieldName: 用户名
+  - ruleId: password
+    fieldKey: password
+    fieldRole: field
+    fieldName: 密码
+  - ruleId: submit
+    actionIntent: submit
+    actionRole: form
+    actionText: 登录

@@ -1,0 +1,25 @@
+version: 1
+checkpoint:
+  id: renew-expired-session
+  kind: recovery
+  name: 续期登录会话
+  enabled: true
+  priority: 100
+  trigger:
+    matchRules:
+      - errorCode: ERR_UNRESOLVED
+      - entityExists:
+          query: ""
+          kind: panel
+          businessTag: auth.expired
+    entityRules:
+      selection: explicit
+      profiles:
+        - dsl-session-rule
+      strict: true
+  policy:
+    maxAttempts: 1
+    retryOriginal: true
+  body:
+    language: dsl
+    source: body.dsl

@@ -19,17 +19,25 @@ const resolveStepDelayMs = () => {
   return process.env.RPA_E2E_HEADED === '1' ? 600 : 0;
 };
 
-export const startAgent = async (opts?: { headed?: boolean }): Promise<AgentHandle> => {
+export const startAgent = async (opts?: { headed?: boolean; workflowFixtureDir?: string }): Promise<AgentHandle> => {
   const headed = opts?.headed ?? envHeaded();
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'rpa-e2e-'));
   const userDataDir = path.join(tempRoot, 'user-data');
+  const workflowRoot = path.join(tempRoot, 'workflow');
   await fs.mkdir(userDataDir, { recursive: true });
+  if (opts?.workflowFixtureDir) {
+    await fs.mkdir(workflowRoot, { recursive: true });
+    await fs.cp(path.resolve(process.cwd(), opts.workflowFixtureDir), path.join(workflowRoot, 'default'), {
+      recursive: true,
+      errorOnExist: true,
+    });
+  }
   const endpoint = path.join(tempRoot, 'agent.sock');
   const keepTemp = process.env.RPA_E2E_KEEP_TEMP === '1';
 
   const proc = spawn('pnpm', [headed ? 'dev' : 'dev:headless'], {
     cwd: path.resolve(process.cwd()),
-    env: { ...process.env, RPA_CONTROL_EVAL: '1', RPA_CONTROL_ENDPOINT: endpoint, RPA_USER_DATA_DIR: userDataDir, RPA_WORKFLOW_ROOT: path.join(tempRoot, 'workflow') },
+    env: { ...process.env, RPA_CONTROL_EVAL: '1', RPA_CONTROL_ENDPOINT: endpoint, RPA_USER_DATA_DIR: userDataDir, RPA_WORKFLOW_ROOT: workflowRoot },
     stdio: 'pipe',
   });
 

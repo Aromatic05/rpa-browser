@@ -1,0 +1,11 @@
+version: 2
+bindings:
+  - ruleId: expired-root
+    entityKey: expiredSession
+    businessTag: auth.expired
+    entityKind: panel
+    displayName: 会话失效
+  - ruleId: renew
+    actionIntent: renew
+    actionRole: form
+    actionText: 续期并继续

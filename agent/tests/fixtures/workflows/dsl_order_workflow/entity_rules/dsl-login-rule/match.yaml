@@ -1,0 +1,26 @@
+version: 2
+rules:
+  - ruleId: login-root
+    source: region
+    expect: unique
+    match:
+      kind: form
+      idEquals: login-form
+  - ruleId: username
+    source: node
+    expect: unique
+    within: login-root
+    match:
+      idEquals: username
+  - ruleId: password
+    source: node
+    expect: unique
+    within: login-root
+    match:
+      idEquals: password
+  - ruleId: submit
+    source: node
+    expect: unique
+    within: login-root
+    match:
+      idEquals: login-submit

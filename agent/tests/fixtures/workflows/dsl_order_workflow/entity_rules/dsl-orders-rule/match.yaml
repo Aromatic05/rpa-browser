@@ -1,0 +1,14 @@
+version: 2
+rules:
+  - ruleId: orders-root
+    source: region
+    expect: unique
+    match:
+      kind: table
+      idEquals: orders-table
+  - ruleId: approve
+    source: node
+    expect: one_or_more
+    within: orders-root
+    match:
+      classContains: approve-order

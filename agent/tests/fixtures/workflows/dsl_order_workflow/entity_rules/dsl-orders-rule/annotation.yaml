@@ -1,0 +1,34 @@
+version: 2
+bindings:
+  - ruleId: orders-root
+    entityKey: ordersTable
+    businessTag: orders.pending
+    entityKind: table
+    displayName: 待审批订单
+    primaryKey:
+      fieldKey: orderNo
+      columns:
+        - 订单编号
+      source: annotation
+    columns:
+      - fieldKey: orderNo
+        name: 订单编号
+        source: annotation
+      - fieldKey: applicant
+        name: 申请人
+        source: annotation
+      - fieldKey: status
+        name: 状态
+        source: annotation
+      - fieldKey: actions
+        name: 操作
+        kind: action_column
+        source: annotation
+        actions:
+          - actionIntent: approve
+            text: 批准
+  - ruleId: approve
+    actionIntent: approve
+    actionRole: row
+    actionText: 批准
+    columnFieldKey: actions
