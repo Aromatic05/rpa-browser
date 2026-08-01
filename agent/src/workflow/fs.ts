@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import YAML from 'yaml';
 import { WorkflowError } from './errors';
 
@@ -70,7 +71,17 @@ export const ensureDir = (dirPath: string): void => {
 export const readTextFile = (filePath: string): string => fs.readFileSync(filePath, 'utf8');
 export const writeTextFile = (filePath: string, content: string): void => {
     ensureDir(path.dirname(filePath));
-    fs.writeFileSync(filePath, content, 'utf8');
+    const temporaryPath = path.join(
+        path.dirname(filePath),
+        `.${path.basename(filePath)}.${process.pid}.${crypto.randomUUID()}.tmp`,
+    );
+    try {
+        fs.writeFileSync(temporaryPath, content, 'utf8');
+        fs.renameSync(temporaryPath, filePath);
+    } catch (error) {
+        fs.rmSync(temporaryPath, {force: true});
+        throw error;
+    }
 };
 
 export const readYamlFile = (filePath: string): unknown => YAML.parse(readTextFile(filePath));

@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import YAML from 'yaml';
 import { createWorkspaceHarness } from '../../helpers/workspace_harness';
-import { createWorkflowOnFs, deleteWorkflowFromFs, loadWorkflowFromFs } from '../../../src/workflow';
+import { copyWorkflowOnFs, createWorkflowOnFs, deleteWorkflowFromFs, loadWorkflowFromFs, renameWorkflowOnFs } from '../../../src/workflow';
 import { createDslCodec } from '../../../src/workflow/dsl';
 import { workflowRootDir, workflowsRootDir } from '../../../src/workflow/fs';
 import { runStepList, type RunStepsDeps } from '../../../src/runner/run_steps';
@@ -96,7 +96,7 @@ test('workflow manifest entry.dsl is authoritative for default DSL actions and m
         fs.rmSync(path.join(workflowRootDir(name), 'dsls', 'chosen.dsl'));
         await assert.rejects(
             () => workspace.router.handle({ v: 1, id: 'missing-entry', type: 'dsl.get', workspaceName: name } as any, workspace as any, registry as any),
-            (error: any) => error?.code === 'ERR_NOT_FOUND',
+            (error: any) => error?.code === 'ERR_WORKFLOW_INVALID_ARTIFACT',
         );
         fs.writeFileSync(manifestPath, YAML.stringify({ ...manifest, entry: {} }), 'utf8');
         assert.throws(() => loadWorkflowFromFs(name), (error: any) => error?.code === 'ERR_WORKFLOW_INVALID_MANIFEST');
@@ -201,6 +201,152 @@ test('missing required recording and checkpoint files are reported as corrupt ar
         );
     } finally {
         cleanup(name);
+    }
+});
+
+test('manifest catalog entries with missing artifact roots are reported as corrupt', () => {
+    const name = uniqueName('missing-catalog-artifact');
+    cleanup(name);
+    try {
+        const workflow = createWorkflowOnFs(name);
+        workflow.save({kind: 'dsl', name: 'secondary', content: 'wait 1', stepResolves: {}});
+        workflow.save(recording('recording-gone'));
+        workflow.save({
+            kind: 'checkpoint',
+            name: 'procedure-gone',
+            checkpoint: {id: 'procedure-gone', kind: 'procedure', content: []},
+            stepResolves: {},
+            hints: {},
+        });
+        workflow.save(entityRules('rules-gone'));
+
+        fs.rmSync(path.join(workflowRootDir(name), 'dsls', 'secondary.dsl'));
+        fs.rmSync(path.join(workflowRootDir(name), 'recordings', 'recording-gone'), {recursive: true});
+        fs.rmSync(path.join(workflowRootDir(name), 'checkpoints', 'procedure-gone'), {recursive: true});
+        fs.rmSync(path.join(workflowRootDir(name), 'entity_rules', 'rules-gone'), {recursive: true});
+
+        const reloaded = loadWorkflowFromFs(name);
+        const missing = [
+            {kind: 'dsl' as const, name: 'secondary'},
+            {kind: 'recording' as const, name: 'recording-gone'},
+            {kind: 'checkpoint' as const, name: 'procedure-gone'},
+            {kind: 'entity_rules' as const, name: 'rules-gone'},
+        ];
+        for (const artifact of missing) {
+            assert.throws(
+                () => reloaded.get(artifact.name, {kind: artifact.kind}),
+                (error: any) => error?.code === 'ERR_WORKFLOW_INVALID_ARTIFACT',
+            );
+            assert.throws(
+                () => reloaded.list({kind: artifact.kind}),
+                (error: any) => error?.code === 'ERR_WORKFLOW_INVALID_ARTIFACT',
+            );
+        }
+    } finally {
+        cleanup(name);
+    }
+});
+
+test('workflow save and delete roll back artifacts when the manifest cannot be written', () => {
+    const name = uniqueName('manifest-write-rollback');
+    cleanup(name);
+    try {
+        const workflow = createWorkflowOnFs(name);
+        workflow.save({kind: 'dsl', name: 'existing', content: 'wait 1', stepResolves: {}});
+        const manifestPath = path.join(workflowRootDir(name), 'workflow.yaml');
+        const manifestSource = fs.readFileSync(manifestPath, 'utf8');
+        fs.rmSync(manifestPath);
+        fs.mkdirSync(manifestPath);
+
+        assert.throws(() => workflow.save({
+            kind: 'dsl',
+            name: 'new-artifact',
+            content: 'wait 2',
+            stepResolves: {},
+        }));
+        assert.equal(
+            fs.existsSync(path.join(workflowRootDir(name), 'dsls', 'new-artifact.dsl')),
+            false,
+        );
+        assert.equal(workflow.get('new-artifact', {kind: 'dsl'}), null);
+
+        assert.throws(() => workflow.delete('existing', {kind: 'dsl'}));
+        assert.equal(
+            fs.readFileSync(path.join(workflowRootDir(name), 'dsls', 'existing.dsl'), 'utf8'),
+            'wait 1',
+        );
+        assert.equal(workflow.get('existing', {kind: 'dsl'})?.kind, 'dsl');
+
+        fs.rmSync(manifestPath, {recursive: true});
+        fs.writeFileSync(manifestPath, manifestSource, 'utf8');
+        const reloaded = loadWorkflowFromFs(name);
+        assert.equal(reloaded.get('new-artifact', {kind: 'dsl'}), null);
+        assert.equal(reloaded.get('existing', {kind: 'dsl'})?.kind, 'dsl');
+    } finally {
+        cleanup(name);
+    }
+});
+
+test('workflow rename and copy validate the source manifest before mutating directories', () => {
+    const renameSource = uniqueName('rename-invalid-source');
+    const renameTarget = uniqueName('rename-invalid-target');
+    const copySource = uniqueName('copy-invalid-source');
+    const copyTarget = uniqueName('copy-invalid-target');
+    for (const name of [renameSource, renameTarget, copySource, copyTarget]) {cleanup(name);}
+    try {
+        createWorkflowOnFs(renameSource);
+        createWorkflowOnFs(copySource);
+        fs.writeFileSync(path.join(workflowRootDir(renameSource), 'workflow.yaml'), 'version: invalid\n', 'utf8');
+        fs.writeFileSync(path.join(workflowRootDir(copySource), 'workflow.yaml'), 'version: invalid\n', 'utf8');
+
+        assert.throws(
+            () => renameWorkflowOnFs(renameSource, renameTarget),
+            (error: any) => error?.code === 'ERR_WORKFLOW_INVALID_MANIFEST',
+        );
+        assert.equal(fs.existsSync(workflowRootDir(renameSource)), true);
+        assert.equal(fs.existsSync(workflowRootDir(renameTarget)), false);
+
+        assert.throws(
+            () => copyWorkflowOnFs(copySource, copyTarget),
+            (error: any) => error?.code === 'ERR_WORKFLOW_INVALID_MANIFEST',
+        );
+        assert.equal(fs.existsSync(workflowRootDir(copySource)), true);
+        assert.equal(fs.existsSync(workflowRootDir(copyTarget)), false);
+    } finally {
+        for (const name of [renameSource, renameTarget, copySource, copyTarget]) {cleanup(name);}
+    }
+});
+
+test('workflow rename and copy reject catalog corruption before mutating directories', () => {
+    const renameSource = uniqueName('rename-corrupt-source');
+    const renameTarget = uniqueName('rename-corrupt-target');
+    const copySource = uniqueName('copy-corrupt-source');
+    const copyTarget = uniqueName('copy-corrupt-target');
+    for (const name of [renameSource, renameTarget, copySource, copyTarget]) {cleanup(name);}
+    try {
+        const renameWorkflow = createWorkflowOnFs(renameSource);
+        renameWorkflow.save({kind: 'dsl', name: 'secondary', content: 'wait 1', stepResolves: {}});
+        fs.rmSync(path.join(workflowRootDir(renameSource), 'dsls', 'secondary.dsl'));
+
+        const copyWorkflow = createWorkflowOnFs(copySource);
+        copyWorkflow.save(entityRules('broken-rules'));
+        fs.rmSync(path.join(workflowRootDir(copySource), 'entity_rules', 'broken-rules', 'match.yaml'));
+
+        assert.throws(
+            () => renameWorkflowOnFs(renameSource, renameTarget),
+            (error: any) => error?.code === 'ERR_WORKFLOW_INVALID_ARTIFACT',
+        );
+        assert.equal(fs.existsSync(workflowRootDir(renameSource)), true);
+        assert.equal(fs.existsSync(workflowRootDir(renameTarget)), false);
+
+        assert.throws(
+            () => copyWorkflowOnFs(copySource, copyTarget),
+            (error: any) => error?.code === 'ERR_WORKFLOW_INVALID_ARTIFACT',
+        );
+        assert.equal(fs.existsSync(workflowRootDir(copySource)), true);
+        assert.equal(fs.existsSync(workflowRootDir(copyTarget)), false);
+    } finally {
+        for (const name of [renameSource, renameTarget, copySource, copyTarget]) {cleanup(name);}
     }
 });
 
