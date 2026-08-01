@@ -496,10 +496,22 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
             }
             if (event.signal === 'suspend') {
                 status = 'suspended';
+                await req.onCheckpoint?.(checkpointOf(
+                    req.runId,
+                    req.workspaceName,
+                    status,
+                    req.stepsQueue.cursor,
+                ));
                 continue;
             }
             if (event.signal === 'continue' && status === 'suspended') {
                 status = 'running';
+                await req.onCheckpoint?.(checkpointOf(
+                    req.runId,
+                    req.workspaceName,
+                    status,
+                    req.stepsQueue.cursor,
+                ));
                 continue;
             }
         }

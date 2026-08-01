@@ -213,3 +213,12 @@ test('formal action failures preserve DSL error codes and diagnostics', () => {
         }],
     });
 });
+
+test('unexpected action failures are classified as internal errors', () => {
+    const request = {v: 1, id: 'unexpected-error', type: 'dsl.run', workspaceName: 'ws-dsl-control'} as const;
+    const errorFailure = toFailedAction(request, new Error('unexpected executor failure'));
+    const unknownFailure = toFailedAction(request, 'unexpected rejection');
+
+    assert.equal((errorFailure.payload as {code: string}).code, 'ERR_INTERNAL');
+    assert.equal((unknownFailure.payload as {code: string}).code, 'ERR_INTERNAL');
+});

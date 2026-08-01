@@ -24,6 +24,15 @@ import type { StepResolve, StepUnion } from './steps/types';
 import type {Checkpoint as RunnerCheckpoint} from './checkpoint';
 import { createTaskCheckpointStore, type TaskRunCheckpoint } from './checkpoint_store';
 import { getRunnerConfig, type RunnerConfig } from '../config';
+import {
+    readCheckpointBodies,
+    readCheckpoints,
+    readCheckpointStepResolves,
+    readPollCursor,
+    readPollLimit,
+    readStepResolves,
+    readSteps,
+} from './control_input';
 
 type TaskRunState = {
     runId: string;
@@ -49,36 +58,11 @@ export type RunnerControl = {
 
 
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-    Boolean(value) && typeof value === 'object' && !Array.isArray(value);
-
-const readStepResolves = (value: unknown): Record<string, StepResolve> => {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) {return {};}
-    return {...value as Record<string, StepResolve>};
-};
-
-const readCheckpointStepResolves = (value: unknown): Record<string, Record<string, StepResolve>> => {
-    if (!isRecord(value)) {return {};}
-    return Object.fromEntries(Object.entries(value)
-        .filter(([, resolves]) => isRecord(resolves))
-        .map(([checkpointId, resolves]) => [checkpointId, readStepResolves(resolves)]));
-};
-
-const readCheckpointBodies = (value: unknown): Record<string, string> => {
-    if (!isRecord(value)) {return {};}
-    const bodies: Record<string, string> = {};
-    for (const [checkpointId, body] of Object.entries(value)) {
-        if (typeof body === 'string') {bodies[checkpointId] = body;}
+const assertRunAcceptsPush = (run: TaskRunState): void => {
+    if (run.queue.closed || (run.status !== 'running' && run.status !== 'suspended')) {
+        throw new ActionError(ERROR_CODES.ERR_BAD_STATE, `run is not accepting steps: ${run.runId}`);
     }
-    return bodies;
 };
-
-const readCheckpoints = (value: unknown): RunnerCheckpoint[] =>
-    Array.isArray(value)
-        ? value.filter((item): item is RunnerCheckpoint => Boolean(item)
-            && typeof item === 'object'
-            && typeof (item as {id?: unknown}).id === 'string')
-        : [];
 
 export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => {
     const runnerConfig = deps?.runnerConfig || getRunnerConfig();
@@ -115,17 +99,42 @@ export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => 
 
     const persistCheckpoint = async (checkpoint: TaskRunCheckpoint) => {
         if (!runtime.checkpointEnabled) {return;}
+        const previous = runtime.checkpointStore.checkpoints.get(checkpoint.runId);
         runtime.checkpointStore.checkpoints.set(checkpoint.runId, checkpoint);
-        await runtime.checkpointStore.flush();
+        try {
+            await runtime.checkpointStore.flush();
+        } catch (error) {
+            if (previous) {
+                runtime.checkpointStore.checkpoints.set(checkpoint.runId, previous);
+            } else {
+                runtime.checkpointStore.checkpoints.delete(checkpoint.runId);
+            }
+            throw error;
+        }
     };
 
     const getRun = (runId: string) => runtime.runs.get(runId) || null;
 
-    const requireRunId = (payload: { runId?: string }): string => {
-        if (!payload.runId) {
+    const requireRunId = (payload: {runId?: unknown}): string => {
+        if (typeof payload.runId !== 'string') {
             throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'missing runId');
         }
+        if (payload.runId.length === 0 || payload.runId !== payload.runId.trim() || payload.runId.length > 128) {
+            throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'invalid runId');
+        }
         return payload.runId;
+    };
+
+    const requireOwnedRun = (
+        payload: {runId?: unknown},
+        workspaceName: string,
+    ): TaskRunState => {
+        const run = getRun(requireRunId(payload));
+        if (!run) {throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'run not found');}
+        if (run.workspaceName !== workspaceName) {
+            throw new ActionError(ERROR_CODES.ERR_CONFLICT, 'run belongs to another workspace');
+        }
+        return run;
     };
 
     return {
@@ -146,7 +155,10 @@ export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => 
                     checkpointBodies?: Record<string, string>;
                 };
                 const workspaceName = workspace.name;
-                const runId = payload.runId || crypto.randomUUID();
+                const runId = payload.runId === undefined ? crypto.randomUUID() : requireRunId(payload);
+                if (getRun(runId) || runtime.checkpointStore.checkpoints.has(runId)) {
+                    throw new ActionError(ERROR_CODES.ERR_CONFLICT, `run identity already exists: ${runId}`);
+                }
                 const queue = createStepsQueue();
                 const pipe = createResultPipe();
                 const signals = createSignalChannel();
@@ -164,7 +176,12 @@ export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => 
                     checkpointBodies: readCheckpointBodies(payload.checkpointBodies),
                 };
                 runtime.runs.set(runId, state);
-                await persistCheckpoint(toTaskRunCheckpoint(runId, workspaceName, 'running', 0));
+                try {
+                    await persistCheckpoint(toTaskRunCheckpoint(runId, workspaceName, 'running', 0));
+                } catch (error) {
+                    runtime.runs.delete(runId);
+                    throw error;
+                }
 
                 void runSteps({
                     runId,
@@ -181,9 +198,6 @@ export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => 
                         state.checkpoint = checkpoint;
                         state.status = checkpoint.status;
                         await persistCheckpoint(toTaskRunCheckpoint(runId, workspaceName, checkpoint.status, checkpoint.cursor));
-                        if (checkpoint.status === 'completed' || checkpoint.status === 'failed' || checkpoint.status === 'halted') {
-                            runtime.runs.delete(runId);
-                        }
                     },
                 })
                     .then((checkpoint) => {
@@ -215,8 +229,7 @@ export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => 
                     checkpointBodies?: Record<string, string>;
                     close?: boolean;
                 };
-                const run = getRun(requireRunId(payload));
-                if (!run) {throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'run not found');}
+                const run = requireOwnedRun(payload, workspace.name);
                 if (payload.checkpoints !== undefined
                     || payload.checkpointStepResolves !== undefined
                     || payload.checkpointBodies !== undefined) {
@@ -225,7 +238,8 @@ export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => 
                         'checkpoint assets must be provided by task.run.start or task.run.resume',
                     );
                 }
-                const steps = Array.isArray(payload.steps) ? payload.steps : [];
+                const steps = readSteps(payload.steps);
+                assertRunAcceptsPush(run);
                 Object.assign(run.stepResolves, readStepResolves(payload.stepResolves));
                 if (steps.length > 0) {enqueueSteps(run.queue, steps);}
                 if (payload.close === true) {closeStepsQueue(run.queue);}
@@ -234,10 +248,12 @@ export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => 
 
             if (action.type === 'task.run.poll') {
                 const payload = (action.payload || {}) as { runId?: string; cursor?: number; limit?: number };
-                const run = getRun(requireRunId(payload));
-                if (!run) {throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'run not found');}
-                const { items, nextCursor } = readResultPipe(run.pipe, payload.cursor, payload.limit);
+                const run = requireOwnedRun(payload, workspace.name);
+                const cursor = readPollCursor(payload.cursor, run.pipe.items.length);
+                const limit = readPollLimit(payload.limit);
+                const { items, nextCursor } = readResultPipe(run.pipe, cursor, limit);
                 const done = run.status !== 'running' && run.status !== 'suspended' && nextCursor >= run.pipe.items.length;
+                if (done) {runtime.runs.delete(run.runId);}
                 return { reply: replyAction(action, { runId: run.runId, items, cursor: nextCursor, done }), events: [] };
             }
 
@@ -247,8 +263,7 @@ export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => 
                     stepResolves?: Record<string, StepResolve>;
                     checkpoints?: RunnerCheckpoint[];
                 };
-                const run = getRun(requireRunId(payload));
-                if (!run) {throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'run not found');}
+                const run = requireOwnedRun(payload, workspace.name);
                 sendSignal(run.signals, 'checkpoint');
                 run.checkpoint = { runId: run.runId, workspaceName: run.workspaceName, status: run.status, cursor: run.queue.cursor, updatedAt: Date.now() };
                 await persistCheckpoint(toTaskRunCheckpoint(run.runId, run.workspaceName, run.status, run.queue.cursor));
@@ -261,13 +276,13 @@ export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => 
                     stepResolves?: Record<string, StepResolve>;
                     checkpoints?: RunnerCheckpoint[];
                 };
-                const run = getRun(requireRunId(payload));
-                if (!run) {throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'run not found');}
-                sendSignal(run.signals, 'halt');
-                run.status = 'halted';
-                runtime.runs.delete(run.runId);
+                const run = requireOwnedRun(payload, workspace.name);
                 const checkpoint = { runId: run.runId, workspaceName: run.workspaceName, status: 'halted' as const, cursor: run.queue.cursor, updatedAt: Date.now() };
                 await persistCheckpoint(toTaskRunCheckpoint(run.runId, run.workspaceName, 'halted', run.queue.cursor));
+                sendSignal(run.signals, 'halt');
+                run.status = 'halted';
+                run.checkpoint = checkpoint;
+                runtime.runs.delete(run.runId);
                 return { reply: replyAction(action, { checkpoint }), events: [] };
             }
 
@@ -277,8 +292,7 @@ export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => 
                     stepResolves?: Record<string, StepResolve>;
                     checkpoints?: RunnerCheckpoint[];
                 };
-                const run = getRun(requireRunId(payload));
-                if (!run) {throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'run not found');}
+                const run = requireOwnedRun(payload, workspace.name);
                 sendSignal(run.signals, 'suspend');
                 return { reply: replyAction(action, { runId: run.runId }), events: [] };
             }
@@ -289,8 +303,7 @@ export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => 
                     stepResolves?: Record<string, StepResolve>;
                     checkpoints?: RunnerCheckpoint[];
                 };
-                const run = getRun(requireRunId(payload));
-                if (!run) {throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'run not found');}
+                const run = requireOwnedRun(payload, workspace.name);
                 sendSignal(run.signals, 'continue');
                 return { reply: replyAction(action, { runId: run.runId }), events: [] };
             }
@@ -301,8 +314,7 @@ export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => 
                     stepResolves?: Record<string, StepResolve>;
                     checkpoints?: RunnerCheckpoint[];
                 };
-                const run = getRun(requireRunId(payload));
-                if (!run) {throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'run not found');}
+                const run = requireOwnedRun(payload, workspace.name);
                 sendSignal(run.signals, 'flush');
                 return { reply: replyAction(action, { runId: run.runId, cursor: run.queue.cursor }), events: [] };
             }
@@ -325,9 +337,21 @@ export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => 
                 if (!checkpoint) {
                     throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'checkpoint not found');
                 }
-                const steps = Array.isArray(payload.steps) ? payload.steps : [];
-                if (steps.length > 0 && checkpoint.cursor > steps.length) {
-                    throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'checkpoint cursor exceeds provided steps');
+                if (checkpoint.workspaceName !== workspace.name) {
+                    throw new ActionError(ERROR_CODES.ERR_CONFLICT, 'run belongs to another workspace');
+                }
+                if (checkpoint.status === 'completed' || checkpoint.status === 'halted') {
+                    throw new ActionError(
+                        ERROR_CODES.ERR_BAD_STATE,
+                        `terminal run cannot be resumed: ${runId} (${checkpoint.status})`,
+                    );
+                }
+                const steps = readSteps(payload.steps);
+                if (payload.close === true && checkpoint.cursor > steps.length) {
+                    throw new ActionError(
+                        ERROR_CODES.ERR_BAD_ARGS,
+                        'closed resume does not include enough step history for the checkpoint cursor',
+                    );
                 }
 
                 const queue = createStepsQueue(steps, { closed: payload.close === true });
@@ -348,7 +372,12 @@ export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => 
                     checkpointBodies: readCheckpointBodies(payload.checkpointBodies),
                 };
                 runtime.runs.set(checkpoint.runId, state);
-                await persistCheckpoint(toTaskRunCheckpoint(checkpoint.runId, checkpoint.workspaceName, 'running', checkpoint.cursor));
+                try {
+                    await persistCheckpoint(toTaskRunCheckpoint(checkpoint.runId, checkpoint.workspaceName, 'running', checkpoint.cursor));
+                } catch (error) {
+                    runtime.runs.delete(checkpoint.runId);
+                    throw error;
+                }
 
                 void runSteps({
                     runId: checkpoint.runId,
@@ -365,9 +394,6 @@ export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => 
                         state.checkpoint = next;
                         state.status = next.status;
                         await persistCheckpoint(toTaskRunCheckpoint(checkpoint.runId, checkpoint.workspaceName, next.status, next.cursor));
-                        if (next.status === 'completed' || next.status === 'failed' || next.status === 'halted') {
-                            runtime.runs.delete(checkpoint.runId);
-                        }
                     },
                 })
                     .then((finalCheckpoint) => {

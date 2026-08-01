@@ -47,9 +47,9 @@ export const toFailedAction = (request: Action, error: unknown): Action => {
         if (error.name === 'TimeoutError') {
             return failedAction(request, ERROR_CODES.ERR_TIMEOUT, error.message);
         }
-        return failedAction(request, ERROR_CODES.ERR_BAD_ARGS, error.message);
+        return failedAction(request, ERROR_CODES.ERR_INTERNAL, error.message);
     }
-    return failedAction(request, ERROR_CODES.ERR_BAD_ARGS, String(error));
+    return failedAction(request, ERROR_CODES.ERR_INTERNAL, String(error));
 };
 
 export const unsupportedActionFailure = (request: Action): Action =>
