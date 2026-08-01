@@ -117,6 +117,16 @@ test('task.run.poll retains terminal results until the client drains them', asyn
         }),
         (error: unknown) => error instanceof ActionError && error.code === ERROR_CODES.ERR_BAD_STATE,
     );
+    for (const type of ['task.run.halt', 'task.run.suspend', 'task.run.continue', 'task.run.flush']) {
+        await assert.rejects(
+            () => control.handle({
+                action: action(type, {runId}),
+                workspace,
+                workspaceRegistry,
+            }),
+            (error: unknown) => error instanceof ActionError && error.code === ERROR_CODES.ERR_BAD_STATE,
+        );
+    }
 
     await assert.rejects(
         () => control.handle({
@@ -554,6 +564,93 @@ test('closed resume requires enough step history to reach the persisted cursor',
             workspace,
             workspaceRegistry,
         });
+    } finally {
+        fs.rmSync(root, {recursive: true, force: true});
+    }
+});
+
+test('runner control stop waits until active runs persist a halted terminal state', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rpa-run-stop-terminal-'));
+    const checkpointPath = path.join(root, 'checkpoints.json');
+    const runId = 'stop-terminal-run';
+    try {
+        const baseConfig = getRunnerConfig();
+        const deps = completeRunStepsDeps({}, {workspaceName: 'ws-1'});
+        setRunStepsDeps(deps);
+        const control = createRunnerControl({
+            runnerConfig: {
+                ...baseConfig,
+                checkpointPolicy: {
+                    ...baseConfig.checkpointPolicy,
+                    enabled: true,
+                    filePath: checkpointPath,
+                    flushIntervalMs: 60_000,
+                },
+            },
+        });
+        const workspace = deps.resolveWorkspace('ws-1');
+        const workspaceRegistry = {} as never;
+
+        await control.handle({action: action('task.run.start', {runId}), workspace, workspaceRegistry});
+        await control.handle({action: action('task.run.suspend', {runId}), workspace, workspaceRegistry});
+        for (let attempt = 0; attempt < 50; attempt += 1) {
+            const state = await control.handle({
+                action: action('task.run.checkpoint', {runId}),
+                workspace,
+                workspaceRegistry,
+            });
+            if ((state.reply.payload as {checkpoint: {status: string}}).checkpoint.status === 'suspended') {break;}
+            await new Promise((resolve) => setTimeout(resolve, 5));
+        }
+
+        await control.stop();
+
+        const persisted = JSON.parse(fs.readFileSync(checkpointPath, 'utf8')) as {
+            checkpoints: Record<string, {status: string}>;
+        };
+        assert.equal(persisted.checkpoints[runId].status, 'halted');
+    } finally {
+        fs.rmSync(root, {recursive: true, force: true});
+    }
+});
+
+test('runner control stop leaves active runs untouched when terminal persistence fails', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rpa-run-stop-rollback-'));
+    const checkpointPath = path.join(root, 'checkpoints.json');
+    const runId = 'stop-rollback-run';
+    try {
+        const baseConfig = getRunnerConfig();
+        const deps = completeRunStepsDeps({}, {workspaceName: 'ws-1'});
+        setRunStepsDeps(deps);
+        const control = createRunnerControl({
+            runnerConfig: {
+                ...baseConfig,
+                checkpointPolicy: {
+                    ...baseConfig.checkpointPolicy,
+                    enabled: true,
+                    filePath: checkpointPath,
+                    flushIntervalMs: 60_000,
+                },
+            },
+        });
+        const workspace = deps.resolveWorkspace('ws-1');
+        const workspaceRegistry = {} as never;
+
+        await control.handle({action: action('task.run.start', {runId}), workspace, workspaceRegistry});
+        fs.rmSync(checkpointPath);
+        fs.mkdirSync(checkpointPath);
+
+        await assert.rejects(() => control.stop());
+
+        fs.rmSync(checkpointPath, {recursive: true});
+        const pushed = await control.handle({
+            action: action('task.run.push', {runId, steps: []}),
+            workspace,
+            workspaceRegistry,
+        });
+        assert.equal((pushed.reply.payload as {runId: string}).runId, runId);
+
+        await control.stop();
     } finally {
         fs.rmSync(root, {recursive: true, force: true});
     }

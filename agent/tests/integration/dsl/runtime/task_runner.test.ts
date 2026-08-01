@@ -253,6 +253,39 @@ test('runSteps publishes a failed terminal checkpoint when an executor throws', 
     assert.equal(pipe.items.at(-1)?.error?.code, 'ERR_RUNNER_UNEXPECTED');
 });
 
+test('step sink failures do not change successful runner execution', async () => {
+    const step = {
+        id: 'step-query-observer-failure',
+        name: 'browser.query',
+        args: {op: 'entity', businessTag: 'order.list', query: 'table.currentRows'},
+    } as StepUnion;
+    const pipe = createResultPipe();
+    const checkpoint = await runSteps({
+        runId: 'run-observer-failure',
+        workspaceName: 'ws-dsl-task',
+        stepsQueue: createStepsQueue([step], {closed: true}),
+        resultPipe: pipe,
+        signalChannel: createSignalChannel(),
+    }, completeRunStepsDeps({
+        stepSinks: [{
+            write: () => {throw new Error('step sink unavailable');},
+        }],
+        pluginHost: {
+            getExecutors: () => ({
+                'browser.query': async () => ({
+                    stepId: step.id,
+                    ok: true,
+                    data: {rows: []},
+                }),
+            }) as any,
+        } as any,
+    }, {workspaceName: 'ws-dsl-task'}));
+
+    assert.equal(checkpoint.status, 'completed');
+    assert.equal(pipe.items.length, 1);
+    assert.equal(pipe.items[0].ok, true);
+});
+
 const delay = async (ms: number): Promise<void> =>
     await new Promise((resolve) => {
         setTimeout(resolve, ms);

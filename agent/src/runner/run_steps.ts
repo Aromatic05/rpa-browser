@@ -85,7 +85,21 @@ const notifyAll = (waiters: Set<() => void>) => {
 
 const writeStepEvent = async (sinks: StepSink[] | undefined, event: StepEvent) => {
     if (!sinks || sinks.length === 0) {return;}
-    await Promise.all(sinks.map((sink) => sink.write(event)));
+    const results = await Promise.allSettled(
+        sinks.map(async (sink) => await sink.write(event)),
+    );
+    for (const result of results) {
+        if (result.status !== 'rejected') {continue;}
+        try {
+            stepLogger('[runner] step sink write failed', {
+                eventType: event.type,
+                stepId: event.stepId,
+                error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+            });
+        } catch {
+            // Observability failures must never alter execution.
+        }
+    }
 };
 
 export type RunLocalStepResults = Record<

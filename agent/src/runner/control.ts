@@ -54,6 +54,7 @@ export type RunnerControlDeps = {
 
 export type RunnerControl = {
     handle: (input: WorkspaceRouterInput) => Promise<ControlPlaneResult>;
+    stop: () => Promise<void>;
 };
 
 
@@ -61,6 +62,24 @@ export type RunnerControl = {
 const assertRunAcceptsPush = (run: TaskRunState): void => {
     if (run.queue.closed || (run.status !== 'running' && run.status !== 'suspended')) {
         throw new ActionError(ERROR_CODES.ERR_BAD_STATE, `run is not accepting steps: ${run.runId}`);
+    }
+};
+
+const assertRunActive = (run: TaskRunState, actionType: string): void => {
+    if (run.status !== 'running' && run.status !== 'suspended') {
+        throw new ActionError(
+            ERROR_CODES.ERR_BAD_STATE,
+            `${actionType} requires an active run: ${run.runId} (${run.status})`,
+        );
+    }
+};
+
+const assertRunStatus = (run: TaskRunState, expected: RunStatus, actionType: string): void => {
+    if (run.status !== expected) {
+        throw new ActionError(
+            ERROR_CODES.ERR_BAD_STATE,
+            `${actionType} requires run status=${expected}: ${run.runId} (${run.status})`,
+        );
     }
 };
 
@@ -75,6 +94,9 @@ export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => 
         checkpointEnabled: runnerConfig.checkpointPolicy.enabled,
         checkpointLoaded: false,
     };
+    let stopped = false;
+    let stopping = false;
+    let stopPromise: Promise<void> | null = null;
 
     const ensureCheckpointLoaded = async () => {
         if (runtime.checkpointLoaded || !runtime.checkpointEnabled) {return;}
@@ -137,9 +159,82 @@ export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => 
         return run;
     };
 
+    const haltedCheckpoint = (run: TaskRunState): Checkpoint => ({
+        runId: run.runId,
+        workspaceName: run.workspaceName,
+        status: 'halted',
+        cursor: run.queue.cursor,
+        updatedAt: Date.now(),
+    });
+
+    const observeCheckpoint = async (run: TaskRunState, checkpoint: Checkpoint): Promise<void> => {
+        if (stopped) {
+            const halted = haltedCheckpoint(run);
+            run.checkpoint = halted;
+            run.status = 'halted';
+            return;
+        }
+        if (stopping) {
+            run.checkpoint = checkpoint;
+            run.status = checkpoint.status;
+            return;
+        }
+        run.checkpoint = checkpoint;
+        run.status = checkpoint.status;
+        await persistCheckpoint(toTaskRunCheckpoint(
+            run.runId,
+            run.workspaceName,
+            checkpoint.status,
+            checkpoint.cursor,
+        ));
+    };
+
+    const stop = async (): Promise<void> => {
+        if (stopped) {return;}
+        if (stopPromise) {
+            await stopPromise;
+            return;
+        }
+        stopping = true;
+        stopPromise = (async () => {
+            const runs = [...runtime.runs.values()];
+            await Promise.all(runs.map(async (run) => {
+                await persistCheckpoint(toTaskRunCheckpoint(
+                    run.runId,
+                    run.workspaceName,
+                    'halted',
+                    run.queue.cursor,
+                ));
+            }));
+            for (const run of runs) {
+                const checkpoint = haltedCheckpoint(run);
+                run.checkpoint = checkpoint;
+                run.status = 'halted';
+                sendSignal(run.signals, 'halt');
+                closeStepsQueue(run.queue);
+            }
+            runtime.runs.clear();
+            runtime.checkpointStore.stop();
+            stopped = true;
+        })();
+        try {
+            await stopPromise;
+        } catch (error) {
+            stopping = false;
+            stopPromise = null;
+            throw error;
+        } finally {
+            stopping = false;
+        }
+    };
+
     return {
+        stop,
         handle: async (input) => {
             const { action, workspace } = input;
+            if (stopping || stopped) {
+                throw new ActionError(ERROR_CODES.ERR_BAD_STATE, 'runner control is stopped');
+            }
             await ensureCheckpointLoaded();
 
             if (!action.type.startsWith('task.run.')) {
@@ -195,16 +290,21 @@ export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => 
                     checkpointBodies: state.checkpointBodies,
                     stopOnError: true,
                     onCheckpoint: async (checkpoint) => {
-                        state.checkpoint = checkpoint;
-                        state.status = checkpoint.status;
-                        await persistCheckpoint(toTaskRunCheckpoint(runId, workspaceName, checkpoint.status, checkpoint.cursor));
+                        await observeCheckpoint(state, checkpoint);
                     },
                 })
                     .then((checkpoint) => {
+                        if (stopping || stopped) {return;}
                         state.checkpoint = checkpoint;
                         state.status = checkpoint.status;
                     })
-                    .catch(() => {
+                    .catch(async () => {
+                        if (stopping || stopped) {
+                            const halted = haltedCheckpoint(state);
+                            state.status = 'halted';
+                            state.checkpoint = halted;
+                            return;
+                        }
                         state.status = 'failed';
                         state.checkpoint = {
                             runId,
@@ -213,7 +313,7 @@ export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => 
                             cursor: state.queue.cursor,
                             updatedAt: Date.now(),
                         };
-                        void persistCheckpoint(toTaskRunCheckpoint(runId, workspaceName, 'failed', state.queue.cursor));
+                        await persistCheckpoint(toTaskRunCheckpoint(runId, workspaceName, 'failed', state.queue.cursor));
                     });
 
                 return { reply: replyAction(action, { runId }), events: [] };
@@ -277,6 +377,7 @@ export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => 
                     checkpoints?: RunnerCheckpoint[];
                 };
                 const run = requireOwnedRun(payload, workspace.name);
+                assertRunActive(run, action.type);
                 const checkpoint = { runId: run.runId, workspaceName: run.workspaceName, status: 'halted' as const, cursor: run.queue.cursor, updatedAt: Date.now() };
                 await persistCheckpoint(toTaskRunCheckpoint(run.runId, run.workspaceName, 'halted', run.queue.cursor));
                 sendSignal(run.signals, 'halt');
@@ -293,6 +394,7 @@ export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => 
                     checkpoints?: RunnerCheckpoint[];
                 };
                 const run = requireOwnedRun(payload, workspace.name);
+                assertRunStatus(run, 'running', action.type);
                 sendSignal(run.signals, 'suspend');
                 return { reply: replyAction(action, { runId: run.runId }), events: [] };
             }
@@ -304,6 +406,7 @@ export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => 
                     checkpoints?: RunnerCheckpoint[];
                 };
                 const run = requireOwnedRun(payload, workspace.name);
+                assertRunStatus(run, 'suspended', action.type);
                 sendSignal(run.signals, 'continue');
                 return { reply: replyAction(action, { runId: run.runId }), events: [] };
             }
@@ -315,6 +418,7 @@ export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => 
                     checkpoints?: RunnerCheckpoint[];
                 };
                 const run = requireOwnedRun(payload, workspace.name);
+                assertRunActive(run, action.type);
                 sendSignal(run.signals, 'flush');
                 return { reply: replyAction(action, { runId: run.runId, cursor: run.queue.cursor }), events: [] };
             }
@@ -391,16 +495,21 @@ export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => 
                     checkpointBodies: state.checkpointBodies,
                     stopOnError: true,
                     onCheckpoint: async (next) => {
-                        state.checkpoint = next;
-                        state.status = next.status;
-                        await persistCheckpoint(toTaskRunCheckpoint(checkpoint.runId, checkpoint.workspaceName, next.status, next.cursor));
+                        await observeCheckpoint(state, next);
                     },
                 })
                     .then((finalCheckpoint) => {
+                        if (stopping || stopped) {return;}
                         state.checkpoint = finalCheckpoint;
                         state.status = finalCheckpoint.status;
                     })
-                    .catch(() => {
+                    .catch(async () => {
+                        if (stopping || stopped) {
+                            const halted = haltedCheckpoint(state);
+                            state.status = 'halted';
+                            state.checkpoint = halted;
+                            return;
+                        }
                         state.status = 'failed';
                         state.checkpoint = {
                             runId: checkpoint.runId,
@@ -409,7 +518,7 @@ export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => 
                             cursor: state.queue.cursor,
                             updatedAt: Date.now(),
                         };
-                        void persistCheckpoint(toTaskRunCheckpoint(checkpoint.runId, checkpoint.workspaceName, 'failed', state.queue.cursor));
+                        await persistCheckpoint(toTaskRunCheckpoint(checkpoint.runId, checkpoint.workspaceName, 'failed', state.queue.cursor));
                     });
 
                 return {
