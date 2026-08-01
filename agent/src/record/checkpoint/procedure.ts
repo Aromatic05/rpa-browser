@@ -110,7 +110,7 @@ const validateProcedureMappings = (steps: readonly StepUnion[], option: Checkpoi
         if (!step || result.has(mapping.stepId)) {throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, '检查点步骤映射无效');}
         if (mapping.kind === 'input' && (!['browser.fill', 'browser.type', 'browser.select_option'].includes(step.name) || !option.fields.some((field) => field.fieldKey === mapping.fieldKey))) {throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, '输入字段不属于所选业务区域');}
         if (mapping.kind === 'action' && (step.name !== 'browser.click' || !option.actions.some((action) => action.actionIntent === mapping.actionIntent))) {throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, '业务操作不属于所选业务区域');}
-        if (mapping.kind === 'row_action' && (step.name !== 'browser.click' || option.entityKind !== 'table' || !option.primaryKey || mapping.primaryKeyFieldKey !== option.primaryKey.fieldKey || !option.rowActions.some((action) => action.actionIntent === mapping.actionIntent) || !normalizeText(mapping.inputKey))) {throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, '行操作映射无效');}
+        if (mapping.kind === 'row_action' && (step.name !== 'browser.click' || option.entityKind !== 'table' || mapping.primaryKeyFieldKey !== option.primaryKey?.fieldKey || !option.rowActions.some((action) => action.actionIntent === mapping.actionIntent) || !normalizeText(mapping.inputKey))) {throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, '行操作映射无效');}
         result.set(mapping.stepId, structuredClone(mapping));
     }
     return result;

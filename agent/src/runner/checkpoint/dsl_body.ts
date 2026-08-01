@@ -4,6 +4,7 @@ import type { DslEntityRulesResolver, DslResolveResolver } from '../../dsl/link'
 import type { StepResolve, StepResult, StepUnion } from '../steps/types';
 import type { Checkpoint } from './types';
 import type { DslCheckpointProvider } from '../../dsl/emit';
+import type { RunStepsDeps } from '../run_steps_types';
 
 export const MAX_CHECKPOINT_DSL_DEPTH = 16;
 
@@ -15,7 +16,7 @@ export const runCheckpointDslBody = async (options: {
     stepResolves: Record<string, StepResolve>;
     executeStep: (step: StepUnion) => Promise<StepResult>;
     workspaceName: string;
-    deps: import('../run_steps_types').RunStepsDeps;
+    deps: RunStepsDeps;
     entityRulesResolver?: DslEntityRulesResolver;
     resolveResolver?: DslResolveResolver;
     callStack?: string[];

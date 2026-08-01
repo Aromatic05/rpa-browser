@@ -7,6 +7,7 @@ import { createDslEntityRulesResolver, createDslResolveResolver, type DslEntityR
 import { DslValidationError } from './diagnostics';
 import { runWorkspaceExecution } from '../runtime/workspace/execution_coordinator';
 import type { RunStepsDeps } from '../runner/run_steps';
+import type { WorkspaceEntityRulesProvider } from '../snapshot/rules/runtime/contracts';
 import type { Workflow, WorkflowDsl, WorkflowDummy } from '../workflow';
 import type { StepResolve } from '../runner/steps/types';
 import { validateStepResolveFileForSerialization } from '../runner/serialization/types';
@@ -52,8 +53,9 @@ const resolveEntityRulesResolver = (
     workspace: WorkspaceRouterInput['workspace'],
     workflow: Workflow,
 ): DslEntityRulesResolver | undefined => {
-    if (!workspace.entityRules?.getProvider) {return undefined;}
-    return createDslEntityRulesResolver(workspace.entityRules.getProvider(workflow));
+    const entityRules = (workspace as {entityRules?: {getProvider: (workflow: Workflow) => WorkspaceEntityRulesProvider}}).entityRules;
+    if (!entityRules) {return undefined;}
+    return createDslEntityRulesResolver(entityRules.getProvider(workflow));
 };
 
 const resolveDslResolves = (workflow: Workflow): DslResolveResolver => createDslResolveResolver(workflow);

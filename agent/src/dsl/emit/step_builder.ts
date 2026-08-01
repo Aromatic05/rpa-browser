@@ -32,7 +32,7 @@ export const buildQueryStep = (expr: QueryExpr, resolveRef?: (ref: RefExpr) => u
 
 const resolveQueryPayload = (value: unknown, resolveRef?: (ref: RefExpr) => unknown): unknown => {
     if (value && typeof value === 'object') {
-        if ((value as RefExpr).kind === 'ref') {
+        if ((value as {kind?: string}).kind === 'ref') {
             if (!resolveRef) {throw new DslRuntimeError('entity target contains an unresolved DSL reference');}
             return String(resolveRef(value as RefExpr));
         }

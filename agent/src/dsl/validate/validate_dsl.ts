@@ -282,9 +282,7 @@ const validateExpr = (
         validateRef(expr, scope, diagnostics, path);
         return;
     }
-    if (expr.kind === 'query') {
-        validateQueryPayload(expr.payload, scope, diagnostics, `${path}.payload`);
-    }
+    validateQueryPayload(expr.payload, scope, diagnostics, `${path}.payload`);
 };
 
 const validateQueryPayload = (
@@ -298,7 +296,7 @@ const validateQueryPayload = (
         return;
     }
     if (Array.isArray(value)) {
-        value.forEach((item, index) => validateQueryPayload(item, scope, diagnostics, `${path}.${index}`));
+        value.forEach((item, index) => {validateQueryPayload(item, scope, diagnostics, `${path}.${index}`);});
         return;
     }
     if (!isRecord(value)) {return;}

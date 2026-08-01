@@ -1,5 +1,4 @@
 import fs from 'node:fs';
-import path from 'node:path';
 import type { StepResolve } from '../runner/steps/types';
 import type { StepResolveFile } from '../runner/serialization/types';
 import { validateStepResolveFileForSerialization } from '../runner/serialization/types';
@@ -55,7 +54,7 @@ export const createDslCodec = (workflowName: string): WorkflowCodec<WorkflowDsl>
             .filter((item): item is WorkflowDsl => item !== null);
     },
     save: (value) => {
-        const stepResolves = value.stepResolves ?? {};
+        const stepResolves = (value as { stepResolves?: Record<string, StepResolve> }).stepResolves ?? {};
         const resolveFile: StepResolveFile = {version: 1, resolves: stepResolves};
         validateStepResolveFileForSerialization(resolveFile);
         writeTextFile(dslPath(workflowName, value.name), value.content);

@@ -7,7 +7,6 @@ import {
     removePath,
     requireArtifactName,
     workflowArtifactPath,
-    workflowRootDir,
     writeYamlFile,
 } from './fs';
 import type { WorkflowCodec } from './store';

@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unnecessary-condition -- Runtime validators intentionally defend against untyped input. */
 import type {Checkpoint} from '../checkpoint/types';
 import {assertStepEntityRulesControl} from '../../snapshot/rules/model';
 

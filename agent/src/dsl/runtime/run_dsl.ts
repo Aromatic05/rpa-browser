@@ -1,5 +1,5 @@
 import type { RunStepsDeps, StepResult as TaskStepResult } from '../../runner/run_steps';
-import type { StepResolve, StepResult as ExecutorStepResult, StepUnion } from '../../runner/steps/types';
+import type { BrowserQueryResult, StepResolve, StepResult as ExecutorStepResult, StepUnion } from '../../runner/steps/types';
 import { runDslCheckpointCall, type DslCheckpointProvider } from '../emit/checkpoint_call';
 import { getLogger, type Logger } from '../../logging/logger';
 import { buildClickStep, buildFillStep, buildQueryStep, buildSelectStep, buildSnapshotStep, buildTypeStep } from '../emit/step_builder';
@@ -98,7 +98,7 @@ const executeStmt = async (
             if (stmt.expr.kind === 'query') {
                 const step = buildQueryStep(stmt.expr, (ref) => resolveDslValue(ref, scope));
                 const result = await emitStepAndWait(step, port, logger, stmtIndex);
-                const value = adaptDslQueryResult(result as import('../../runner/steps/types').BrowserQueryResult);
+                const value = adaptDslQueryResult(result as BrowserQueryResult);
                 setDslValue(scope, `vars.${stmt.name}`, value);
                 safeLog(logger, 'debug', 'dsl.scope.write', { key: `vars.${stmt.name}`, valuePreview: previewValue(value) });
                 return;
@@ -150,7 +150,7 @@ const executeStmt = async (
             const queryStep = buildQueryStep(stmt.targetQuery, (ref) => resolveDslValue(ref, scope));
             const queryResult = await emitStepAndWait(queryStep, port, logger, stmtIndex);
             const target = adaptDslQueryResult(
-                queryResult as import('../../runner/steps/types').BrowserQueryResult,
+                queryResult as BrowserQueryResult,
             );
             const profileName = stmt.targetQuery.profileName;
             if (stmt.action === 'click') {

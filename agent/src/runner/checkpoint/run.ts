@@ -37,7 +37,7 @@ export const maybeRunCheckpoint = async (ctx: CheckpointCtx): Promise<Checkpoint
                 code: error instanceof Error && 'code' in error ? String((error as {code: unknown}).code) : 'ERR_CHECKPOINT_BODY_FAILED',
                 message: error instanceof Error ? error.message : String(error),
                 ...((error && typeof error === 'object' && 'diagnostics' in error)
-                    ? {details: {diagnostics: (error as {diagnostics: unknown}).diagnostics}}
+                    ? {details: {diagnostics: error.diagnostics}}
                     : {}),
             });
         }

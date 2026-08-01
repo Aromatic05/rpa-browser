@@ -68,8 +68,8 @@ export const executeBrowserCheckpoint = async (
             runLocalStepResults: nestedResults,
             stepResolves,
             checkpointProvider: provider,
-            entityRulesResolver: context?.entityRulesResolver,
-            resolveResolver: context?.resolveResolver,
+            entityRulesResolver: context.entityRulesResolver,
+            resolveResolver: context.resolveResolver,
         });
         nestedResults[result.stepId] = {
             ok: result.ok,
@@ -89,8 +89,8 @@ export const executeBrowserCheckpoint = async (
                 executeStep: executeNestedStep,
                 workspaceName,
                 deps,
-                entityRulesResolver: context?.entityRulesResolver,
-                resolveResolver: context?.resolveResolver,
+                entityRulesResolver: context.entityRulesResolver,
+                resolveResolver: context.resolveResolver,
                 checkpointProvider: provider,
             });
             return {

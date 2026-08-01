@@ -37,7 +37,7 @@ export const materializeCheckpointRuntimeSnapshot = (options: {
     const provider: DslCheckpointProvider = {
         getCheckpoint: (id) => checkpoints.get(id) ?? null,
         getCheckpointResolves: (id) => checkpointStepResolves[id] ?? null,
-        getCheckpointBody: (id) => checkpointBodies[id] === undefined ? null : {source: checkpointBodies[id], stepResolves: checkpointStepResolves[id] ?? {}},
+        getCheckpointBody: (id) => (checkpointBodies as Record<string, string | undefined>)[id] === undefined ? null : {source: checkpointBodies[id], stepResolves: (checkpointStepResolves as Record<string, Record<string, StepResolve> | undefined>)[id] ?? {}},
         listCheckpoints: () => [...checkpoints.values()],
     };
     const references = collectAssetReferences(options.assetSources || Object.values(checkpointBodies));
@@ -73,11 +73,11 @@ export const materializeReferencedCheckpointRuntimeSnapshot = (options: {
             const checkpoint = checkpoints.get(id) || options.checkpointProvider.getCheckpoint(id);
             if (!checkpoint) {continue;}
             checkpoints.set(id, checkpoint);
-            if (stepResolves[id] === undefined) {
+            if ((stepResolves as Record<string, Record<string, StepResolve> | undefined>)[id] === undefined) {
                 stepResolves[id] = options.checkpointProvider.getCheckpointResolves?.(id) || {};
             }
             if (!checkpoint.body) {continue;}
-            if (bodies[id] === undefined) {
+            if ((bodies as Record<string, string | undefined>)[id] === undefined) {
                 const body = options.checkpointProvider.getCheckpointBody?.(id);
                 if (!body) {continue;}
                 bodies[id] = body.source;
@@ -131,7 +131,7 @@ const snapshotEntityRuleResolution = (
 const materializeResolveResolver = (workflow: Workflow, bundleNames: ReadonlySet<string>): DslResolveResolver => {
     const bundles = new Map([...bundleNames].flatMap((name) => {
         const artifact = workflow.get(name, {kind: 'dsl'});
-        return artifact?.kind === 'dsl' ? [[name, cloneFrozen(artifact.stepResolves ?? {})] as const] : [];
+        return artifact?.kind === 'dsl' ? [[name, cloneFrozen(artifact.stepResolves)] as const] : [];
     }));
     return {resolveBundle: (name) => ({resolves: bundles.get(name) ?? null, diagnostics: []})};
 };

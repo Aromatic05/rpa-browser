@@ -12,7 +12,6 @@ import type {
     RunSignal,
     RunStatus,
     RunStepsDeps,
-    RunStepsExecutionContext,
     RunStepsRequest,
     SignalChannel,
     StepEvent,
@@ -23,6 +22,8 @@ import type {
 import type { StepResolve } from './steps/types';
 import { injectStepResolve } from './step_resolve';
 import type { DslCheckpointProvider } from '../dsl/emit';
+import type { DslEntityRulesResolver, DslResolveResolver } from '../dsl/link';
+import type { Workflow } from '../workflow';
 import { resolveStepEntityRulesExecution } from '../snapshot/rules/runtime';
 import { summarizeStepArgs } from './step_event_summary';
 
@@ -86,7 +87,7 @@ const notifyAll = (waiters: Set<() => void>) => {
 const writeStepEvent = async (sinks: StepSink[] | undefined, event: StepEvent) => {
     if (!sinks || sinks.length === 0) {return;}
     const results = await Promise.allSettled(
-        sinks.map(async (sink) => await sink.write(event)),
+        sinks.map(async (sink) => {await sink.write(event);}),
     );
     for (const result of results) {
         if (result.status !== 'rejected') {continue;}
@@ -115,8 +116,8 @@ export type ExecuteStepRuntimeOptions = {
     runLocalStepResults?: RunLocalStepResults;
     stepResolves?: Record<string, StepResolve>;
     checkpointProvider?: DslCheckpointProvider;
-    entityRulesResolver?: import('../dsl/link').DslEntityRulesResolver;
-    resolveResolver?: import('../dsl/link').DslResolveResolver;
+    entityRulesResolver?: DslEntityRulesResolver;
+    resolveResolver?: DslResolveResolver;
 };
 
 export const executeStepWithRuntimeContracts = async (
@@ -214,8 +215,8 @@ const executeOne = async (
     deps: RunStepsDeps,
     stepResolves?: Record<string, StepResolve>,
     checkpointProvider?: DslCheckpointProvider,
-    entityRulesResolver?: import('../dsl/link').DslEntityRulesResolver,
-    resolveResolver?: import('../dsl/link').DslResolveResolver,
+    entityRulesResolver?: DslEntityRulesResolver,
+    resolveResolver?: DslResolveResolver,
 ): Promise<ExecStepResult> => await executeStepWithRuntimeContracts(step, workspaceName, deps, {
     runLocalStepResults,
     stepResolves,
@@ -380,13 +381,14 @@ export const setRunStepsDeps = (deps: RunStepsDeps): void => {
 const resolveRunCheckpoints = (
     req: RunStepsRequest,
     deps: RunStepsDeps,
-): {checkpoints: RunnerCheckpoint[]; stepResolves: Record<string, Record<string, StepResolve>>; bodies: Record<string, string>; provider: DslCheckpointProvider; entityRulesResolver?: import('../dsl/link').DslEntityRulesResolver; resolveResolver?: import('../dsl/link').DslResolveResolver} => {
+): {checkpoints: RunnerCheckpoint[]; stepResolves: Record<string, Record<string, StepResolve>>; bodies: Record<string, string>; provider: DslCheckpointProvider; entityRulesResolver?: DslEntityRulesResolver; resolveResolver?: DslResolveResolver} => {
     if (req.checkpoints !== undefined) {
         validateCheckpointFileForSerialization({version: 1, checkpoints: req.checkpoints});
     }
     const workspace = deps.resolveWorkspace(req.workspaceName);
-    const sourceProvider = req.checkpoints === undefined && workspace.checkpoint && workspace.workflow
-        ? workspace.checkpoint.getProvider(workspace.workflow)
+    const checkpointProviderHost = workspace as unknown as {checkpoint?: {getProvider: (workflow: Workflow) => DslCheckpointProvider}; workflow?: Workflow};
+    const sourceProvider = req.checkpoints === undefined && checkpointProviderHost.checkpoint && checkpointProviderHost.workflow
+        ? checkpointProviderHost.checkpoint.getProvider(checkpointProviderHost.workflow)
         : undefined;
     const allCheckpoints = req.checkpoints ?? sourceProvider?.listCheckpoints?.() ?? [];
     const stepResolves = req.checkpoints === undefined
@@ -404,21 +406,21 @@ const resolveRunCheckpoints = (
         : req.checkpointBodies ?? {};
     const recoverySources = allCheckpoints
         .filter(isAutomaticRecoveryCheckpoint)
-        .flatMap((checkpoint) => bodies[checkpoint.id] === undefined ? [] : [bodies[checkpoint.id]]);
+        .flatMap((checkpoint) => (bodies as Record<string, string | undefined>)[checkpoint.id] === undefined ? [] : [bodies[checkpoint.id]]);
     const queuedProcedureSources = req.stepsQueue.items
         .slice(req.stepsQueue.cursor)
         .flatMap((step) => {
             if (step.name !== 'browser.checkpoint') {return [];}
             const checkpointId = (step.args as {checkpointId?: unknown}).checkpointId;
-            return typeof checkpointId === 'string' && bodies[checkpointId] !== undefined
+            return typeof checkpointId === 'string' && (bodies as Record<string, string | undefined>)[checkpointId] !== undefined
                 ? [bodies[checkpointId]]
                 : [];
         });
     const snapshot = materializeReferencedCheckpointRuntimeSnapshot({
         sources: [...recoverySources, ...queuedProcedureSources], checkpointProvider: sourceProvider || {
             getCheckpoint: (id) => allCheckpoints.find((checkpoint) => checkpoint.id === id) || null,
-            getCheckpointResolves: (id) => stepResolves[id] || null,
-            getCheckpointBody: (id) => bodies[id] === undefined ? null : {source: bodies[id], stepResolves: stepResolves[id] || {}},
+            getCheckpointResolves: (id) => (stepResolves as Record<string, Record<string, StepResolve> | undefined>)[id] || null,
+            getCheckpointBody: (id) => (bodies as Record<string, string | undefined>)[id] === undefined ? null : {source: bodies[id], stepResolves: (stepResolves as Record<string, Record<string, StepResolve> | undefined>)[id] || {}},
         },
         checkpoints: allCheckpoints, checkpointStepResolves: stepResolves, checkpointBodies: bodies,
         workflow: isWorkflow(workspace.workflow) ? workspace.workflow : undefined,
@@ -436,7 +438,7 @@ const resolveRunCheckpoints = (
     };
 };
 
-const isWorkflow = (value: unknown): value is import('../workflow').Workflow =>
+const isWorkflow = (value: unknown): value is Workflow =>
     Boolean(value && typeof value === 'object' && 'list' in value && 'get' in value);
 
 const requireCheckpointMaxAttempts = (value: number | undefined): number => {

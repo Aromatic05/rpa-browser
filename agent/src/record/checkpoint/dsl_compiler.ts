@@ -24,7 +24,7 @@ export const compileRecordedCheckpointDsl = (options: {
     output?: 'table.currentRows' | 'table.rowCount';
 }): string => {
     const artifact = options.workspace.workflow.get(options.entity.profileName, {kind: 'entity_rules'});
-    if (!artifact || artifact.kind !== 'entity_rules') {
+    if (artifact?.kind !== 'entity_rules') {
         throw new ActionError(ERROR_CODES.ERR_NOT_FOUND, '所选业务标注不存在');
     }
     const exports = buildEntityRuleExportIndex(artifact);

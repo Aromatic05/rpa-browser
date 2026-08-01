@@ -143,7 +143,7 @@ const readCheckpointBody = (dir: string, checkpoint: Checkpoint): string | undef
 };
 
 const validateCheckpointBody = (checkpoint: Checkpoint, bodyDsl: string | undefined): void => {
-    const body = checkpoint.body;
+    const body = checkpoint.body as {language?: unknown; source?: unknown} | undefined;
     if (!body) {
         if (bodyDsl !== undefined) {throw new Error('orphan checkpoint body.dsl without body metadata');}
         return;

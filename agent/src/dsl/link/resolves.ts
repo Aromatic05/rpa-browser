@@ -77,7 +77,7 @@ export const linkResolveAction = (
         ));
         return stmt;
     }
-    const resolve = bundle.resolves[stmt.target.symbol];
+    const resolve = (bundle.resolves as Record<string, StepResolve | undefined>)[stmt.target.symbol];
     if (!resolve) {
         diagnostics.push(createDiagnostic(
             'ERR_DSL_RESOLVE_SYMBOL_NOT_FOUND',

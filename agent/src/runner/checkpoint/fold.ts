@@ -52,7 +52,7 @@ export const foldCheckpointResult = (ctx: CheckpointCtx): CheckpointCtx => {
             return {
                 ...ctx,
                 finalResult: ctx.runResult,
-                meta: {...(ctx.meta || {}), foldedBy: 'checkpoint_body_failure', stopReason: ctx.stopReason},
+                meta: {...ctx.meta, foldedBy: 'checkpoint_body_failure', stopReason: ctx.stopReason},
             };
         }
         log.info('checkpoint.fold', { stepId: ctx.failedCtx.step.id, fallbackToRaw: true, stopReason: ctx.stopReason });

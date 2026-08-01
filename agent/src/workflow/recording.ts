@@ -4,7 +4,7 @@ import type { StepUnion } from '../runner/steps/types';
 import type { StepResolve } from '../runner/steps/types';
 import type { StepFile, StepResolveFile } from '../runner/serialization/types';
 import { validateStepFileForSerialization, validateStepResolveFileForSerialization } from '../runner/serialization/types';
-import { listDirectories, readValidatedYamlFile, readYamlFile, removePath, requireArtifactName, workflowArtifactPath, workflowRootDir, writeYamlFile } from './fs';
+import { listDirectories, readValidatedYamlFile, readYamlFile, removePath, requireArtifactName, workflowArtifactPath, writeYamlFile } from './fs';
 import { invalidWorkflowArtifact } from './errors';
 import type { WorkflowCodec } from './store';
 
