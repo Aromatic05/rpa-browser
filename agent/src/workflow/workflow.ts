@@ -11,6 +11,9 @@ import {
     discardWorkflowArtifactSnapshot,
     restoreWorkflowArtifact,
     snapshotWorkflowArtifact,
+    withWorkflowMutationLock,
+    withWorkflowMutationLocks,
+    withWorkflowMutationLocksAsync,
 } from './transaction';
 
 export type WorkflowArtifactKind = 'recording' | 'checkpoint' | 'dsl' | 'entity_rules';
@@ -190,22 +193,30 @@ const validateCatalogArtifacts = (
     }
 };
 
-export const loadWorkflowFromFs = (workflowName: string): Workflow => {
+const loadWorkflowUnlocked = (workflowName: string): Workflow => {
     if (!existsDir(workflowRootDir(workflowName))) {
         throw new WorkflowError(`workflow not found: ${workflowName}`, 'ERR_WORKFLOW_NOT_FOUND');
     }
     let manifest = readManifest(workflowName);
     const internal = createInternal(workflowName);
+    const refreshManifest = (): WorkflowManifest => {
+        manifest = readManifest(workflowName);
+        return manifest;
+    };
 
     return {
         name: workflowName,
-        entryDslName: () => manifest.entry.dsl,
-        save: (value) => {
+        entryDslName: () => withWorkflowMutationLock(
+            workflowName,
+            () => refreshManifest().entry.dsl,
+        ),
+        save: (value) => withWorkflowMutationLock(workflowName, () => {
+            const currentManifest = refreshManifest();
             const snapshot = snapshotWorkflowArtifact(workflowName, value.kind, value.name);
             let saved: WorkflowArtifact;
             try {
                 saved = saveArtifact(internal, value);
-                const nextManifest = structuredClone(manifest);
+                const nextManifest = structuredClone(currentManifest);
                 const idx = nextManifest.catalog.findIndex((item) => item.kind === saved.kind && item.name === saved.name);
                 const nextItem = toCatalogItem(saved, idx >= 0 ? nextManifest.catalog[idx] : undefined);
                 if (idx >= 0) {
@@ -228,28 +239,33 @@ export const loadWorkflowFromFs = (workflowName: string): Workflow => {
             }
             discardWorkflowArtifactSnapshot(snapshot);
             return saved;
-        },
-        get: (name, dummy) => {
+        }),
+        get: (name, dummy) => withWorkflowMutationLock(workflowName, () => {
             requireArtifactName(name, `${dummy.kind} artifact name`);
-            if (!hasCatalog(manifest, dummy.kind, name)) {
+            const currentManifest = refreshManifest();
+            if (!hasCatalog(currentManifest, dummy.kind, name)) {
                 return null;
             }
             return requireCatalogArtifact(internal, dummy.kind, name);
-        },
-        list: (dummy) => manifest.catalog.filter((item) => item.kind === dummy.kind).map((item) => {
-            requireCatalogArtifact(internal, dummy.kind, item.name);
-            return item;
         }),
-        delete: (name, dummy) => {
+        list: (dummy) => withWorkflowMutationLock(
+            workflowName,
+            () => refreshManifest().catalog.filter((item) => item.kind === dummy.kind).map((item) => {
+                requireCatalogArtifact(internal, dummy.kind, item.name);
+                return item;
+            }),
+        ),
+        delete: (name, dummy) => withWorkflowMutationLock(workflowName, () => {
             requireArtifactName(name, `${dummy.kind} artifact name`);
-            if (dummy.kind === 'dsl' && name === manifest.entry.dsl) {
+            const currentManifest = refreshManifest();
+            if (dummy.kind === 'dsl' && name === currentManifest.entry.dsl) {
                 throw new WorkflowError(`cannot delete workflow entry DSL: ${name}`, 'ERR_WORKFLOW_BAD_ARGS');
             }
             const snapshot = snapshotWorkflowArtifact(workflowName, dummy.kind, name);
             let deleted: boolean;
             try {
                 deleted = resolveStore(internal, dummy.kind).delete(name);
-                const nextManifest = structuredClone(manifest);
+                const nextManifest = structuredClone(currentManifest);
                 nextManifest.catalog = nextManifest.catalog.filter((item) => !(item.kind === dummy.kind && item.name === name));
                 manifest = writeManifest(nextManifest);
             } catch (error) {
@@ -266,42 +282,72 @@ export const loadWorkflowFromFs = (workflowName: string): Workflow => {
             }
             discardWorkflowArtifactSnapshot(snapshot);
             return deleted;
-        },
+        }),
     };
 };
 
-export const createWorkflowOnFs = (workflowName: string): Workflow => {
+export const loadWorkflowFromFs = (workflowName: string): Workflow =>
+    withWorkflowMutationLock(workflowName, () => loadWorkflowUnlocked(workflowName));
+
+const createWorkflowUnlocked = (workflowName: string): Workflow => {
     const rootDir = workflowRootDir(workflowName);
-    if (existsDir(rootDir)) {
+    if (fs.existsSync(rootDir)) {
         throw new WorkflowError(`workflow already exists: ${workflowName}`, 'ERR_WORKFLOW_BAD_ARGS');
     }
-    ensureDir(path.join(rootDir, 'recordings'));
-    ensureDir(path.join(rootDir, 'checkpoints'));
-    ensureDir(path.join(rootDir, 'dsls'));
-    ensureDir(path.join(rootDir, 'entity_rules'));
-    const manifest = defaultManifest(workflowName);
-    writeYamlFile(workflowManifestPath(workflowName), manifest);
-    return loadWorkflowFromFs(workflowName);
+    try {
+        ensureDir(path.join(rootDir, 'recordings'));
+        ensureDir(path.join(rootDir, 'checkpoints'));
+        ensureDir(path.join(rootDir, 'dsls'));
+        ensureDir(path.join(rootDir, 'entity_rules'));
+        const manifest = defaultManifest(workflowName);
+        writeYamlFile(workflowManifestPath(workflowName), manifest);
+        return loadWorkflowUnlocked(workflowName);
+    } catch (error) {
+        removePath(rootDir);
+        throw error;
+    }
+};
+
+export const createWorkflowOnFs = (workflowName: string): Workflow => {
+    return withWorkflowMutationLock(workflowName, () => createWorkflowUnlocked(workflowName));
 };
 
 export const ensureWorkflowOnFs = (workflowName: string): Workflow => {
-    if (existsDir(workflowRootDir(workflowName))) {
-        return loadWorkflowFromFs(workflowName);
-    }
-    return createWorkflowOnFs(workflowName);
+    return withWorkflowMutationLock(workflowName, () => {
+        if (fs.existsSync(workflowRootDir(workflowName))) {
+            return loadWorkflowUnlocked(workflowName);
+        }
+        return createWorkflowUnlocked(workflowName);
+    });
 };
 
-export const renameWorkflowOnFs = (fromName: string, toName: string): void => {
+const requireWorkflowRenameManifest = (fromName: string, toName: string): WorkflowManifest => {
     const fromDir = workflowRootDir(fromName);
     const toDir = workflowRootDir(toName);
     if (!existsDir(fromDir)) {
         throw new WorkflowError(`workflow not found: ${fromName}`, 'ERR_WORKFLOW_NOT_FOUND');
     }
-    if (existsDir(toDir)) {
+    if (fs.existsSync(toDir)) {
         throw new WorkflowError(`workflow already exists: ${toName}`, 'ERR_WORKFLOW_BAD_ARGS');
     }
     const manifest = readManifest(fromName);
     validateCatalogArtifacts(fromName, manifest);
+    return manifest;
+};
+
+export const validateWorkflowRenameOnFs = (fromName: string, toName: string): void => {
+    withWorkflowMutationLocks([fromName, toName], () => {
+        requireWorkflowRenameManifest(fromName, toName);
+    });
+};
+
+const renameWorkflowUnlocked = (
+    fromName: string,
+    toName: string,
+    manifest: WorkflowManifest,
+): void => {
+    const fromDir = workflowRootDir(fromName);
+    const toDir = workflowRootDir(toName);
     fs.renameSync(fromDir, toDir);
     try {
         writeYamlFile(workflowManifestPath(toName), {
@@ -323,28 +369,48 @@ export const renameWorkflowOnFs = (fromName: string, toName: string): void => {
     }
 };
 
+export const renameWorkflowOnFs = (fromName: string, toName: string): void => {
+    withWorkflowMutationLocks([fromName, toName], () => {
+        renameWorkflowUnlocked(fromName, toName, requireWorkflowRenameManifest(fromName, toName));
+    });
+};
+
+export const renameWorkflowAfterPreparationOnFs = async (
+    fromName: string,
+    toName: string,
+    prepare: () => Promise<void>,
+): Promise<void> => {
+    await withWorkflowMutationLocksAsync([fromName, toName], async () => {
+        const manifest = requireWorkflowRenameManifest(fromName, toName);
+        await prepare();
+        renameWorkflowUnlocked(fromName, toName, manifest);
+    });
+};
+
 export const copyWorkflowOnFs = (sourceName: string, targetName: string): void => {
-    const sourceDir = workflowRootDir(sourceName);
-    const targetDir = workflowRootDir(targetName);
-    if (!existsDir(sourceDir)) {
-        throw new WorkflowError(`workflow not found: ${sourceName}`, 'ERR_WORKFLOW_NOT_FOUND');
-    }
-    if (existsDir(targetDir)) {
-        throw new WorkflowError(`workflow already exists: ${targetName}`, 'ERR_WORKFLOW_BAD_ARGS');
-    }
-    const manifest = readManifest(sourceName);
-    validateCatalogArtifacts(sourceName, manifest);
-    try {
-        fs.cpSync(sourceDir, targetDir, { recursive: true });
-        writeYamlFile(workflowManifestPath(targetName), {
-            ...manifest,
-            name: targetName,
-            updatedAt: Date.now(),
-        } satisfies WorkflowManifest);
-    } catch (error) {
-        removePath(targetDir);
-        throw error;
-    }
+    withWorkflowMutationLocks([sourceName, targetName], () => {
+        const sourceDir = workflowRootDir(sourceName);
+        const targetDir = workflowRootDir(targetName);
+        if (!existsDir(sourceDir)) {
+            throw new WorkflowError(`workflow not found: ${sourceName}`, 'ERR_WORKFLOW_NOT_FOUND');
+        }
+        if (fs.existsSync(targetDir)) {
+            throw new WorkflowError(`workflow already exists: ${targetName}`, 'ERR_WORKFLOW_BAD_ARGS');
+        }
+        const manifest = readManifest(sourceName);
+        validateCatalogArtifacts(sourceName, manifest);
+        try {
+            fs.cpSync(sourceDir, targetDir, { recursive: true });
+            writeYamlFile(workflowManifestPath(targetName), {
+                ...manifest,
+                name: targetName,
+                updatedAt: Date.now(),
+            } satisfies WorkflowManifest);
+        } catch (error) {
+            removePath(targetDir);
+            throw error;
+        }
+    });
 };
 
 export const listWorkflowNames = (): string[] => listDirectories(workflowsRootDir()).filter((name) => {
@@ -356,7 +422,9 @@ export const listWorkflowNames = (): string[] => listDirectories(workflowsRootDi
     }
 });
 export const deleteWorkflowFromFs = (workflowName: string): void => {
-    removePath(workflowRootDir(workflowName));
+    withWorkflowMutationLock(workflowName, () => {
+        removePath(workflowRootDir(workflowName));
+    });
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>

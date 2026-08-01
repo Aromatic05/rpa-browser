@@ -2,11 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import {spawn} from 'node:child_process';
+import {pathToFileURL} from 'node:url';
 import YAML from 'yaml';
 import { createWorkspaceHarness } from '../../helpers/workspace_harness';
 import { copyWorkflowOnFs, createWorkflowOnFs, deleteWorkflowFromFs, loadWorkflowFromFs, renameWorkflowOnFs } from '../../../src/workflow';
 import { createDslCodec } from '../../../src/workflow/dsl';
 import { workflowRootDir, workflowsRootDir } from '../../../src/workflow/fs';
+import {withWorkflowMutationLock, withWorkflowMutationLocksAsync} from '../../../src/workflow/transaction';
 import { runStepList, type RunStepsDeps } from '../../../src/runner/run_steps';
 import type { StepUnion } from '../../../src/runner/steps/types';
 import { completeRunStepsDeps } from '../../helpers/run_steps_workspace';
@@ -268,23 +271,215 @@ test('workflow save and delete roll back artifacts when the manifest cannot be w
             fs.existsSync(path.join(workflowRootDir(name), 'dsls', 'new-artifact.dsl')),
             false,
         );
-        assert.equal(workflow.get('new-artifact', {kind: 'dsl'}), null);
 
         assert.throws(() => workflow.delete('existing', {kind: 'dsl'}));
         assert.equal(
             fs.readFileSync(path.join(workflowRootDir(name), 'dsls', 'existing.dsl'), 'utf8'),
             'wait 1',
         );
-        assert.equal(workflow.get('existing', {kind: 'dsl'})?.kind, 'dsl');
 
         fs.rmSync(manifestPath, {recursive: true});
         fs.writeFileSync(manifestPath, manifestSource, 'utf8');
+        assert.equal(workflow.get('new-artifact', {kind: 'dsl'}), null);
+        assert.equal(workflow.get('existing', {kind: 'dsl'})?.kind, 'dsl');
         const reloaded = loadWorkflowFromFs(name);
         assert.equal(reloaded.get('new-artifact', {kind: 'dsl'}), null);
         assert.equal(reloaded.get('existing', {kind: 'dsl'})?.kind, 'dsl');
     } finally {
         cleanup(name);
     }
+});
+
+test('separately loaded workflow handles preserve each other catalog mutations', () => {
+    const name = uniqueName('concurrent-workflow-handles');
+    cleanup(name);
+    try {
+        createWorkflowOnFs(name);
+        const first = loadWorkflowFromFs(name);
+        const second = loadWorkflowFromFs(name);
+
+        first.save({kind: 'dsl', name: 'first-artifact', content: 'wait 1', stepResolves: {}});
+        second.save({kind: 'dsl', name: 'second-artifact', content: 'wait 2', stepResolves: {}});
+
+        const reloaded = loadWorkflowFromFs(name);
+        assert.equal(reloaded.get('first-artifact', {kind: 'dsl'})?.kind, 'dsl');
+        assert.equal(reloaded.get('second-artifact', {kind: 'dsl'})?.kind, 'dsl');
+        assert.deepEqual(
+            reloaded.list({kind: 'dsl'}).map((item) => item.name).sort(),
+            ['first-artifact', 'second-artifact'],
+        );
+
+        first.delete('first-artifact', {kind: 'dsl'});
+        second.save({kind: 'dsl', name: 'third-artifact', content: 'wait 3', stepResolves: {}});
+
+        const finalReload = loadWorkflowFromFs(name);
+        assert.equal(finalReload.get('first-artifact', {kind: 'dsl'}), null);
+        assert.equal(finalReload.get('second-artifact', {kind: 'dsl'})?.kind, 'dsl');
+        assert.equal(finalReload.get('third-artifact', {kind: 'dsl'})?.kind, 'dsl');
+    } finally {
+        cleanup(name);
+    }
+});
+
+test('workflow mutation recovers an ownerless stale lock left by a crashed writer', () => {
+    const name = uniqueName('stale-workflow-lock');
+    cleanup(name);
+    try {
+        const workflow = createWorkflowOnFs(name);
+        const lockDir = path.join(workflowsRootDir(), '.locks', `${name}.lock`);
+        fs.mkdirSync(lockDir);
+        const staleTime = new Date(Date.now() - 10 * 60_000);
+        fs.utimesSync(lockDir, staleTime, staleTime);
+
+        workflow.save({kind: 'dsl', name: 'after-crash', content: 'wait 1', stepResolves: {}});
+
+        assert.equal(workflow.get('after-crash', {kind: 'dsl'})?.kind, 'dsl');
+        assert.equal(fs.existsSync(lockDir), false);
+    } finally {
+        cleanup(name);
+    }
+});
+
+test('workflow creation removes a partial root when manifest persistence fails', () => {
+    const name = uniqueName('create-rollback');
+    cleanup(name);
+    const originalWriteFileSync = fs.writeFileSync;
+    try {
+        (fs as any).writeFileSync = (filePath: fs.PathOrFileDescriptor, ...args: unknown[]) => {
+            if (typeof filePath === 'string' && path.basename(filePath).startsWith('.workflow.yaml.')) {
+                throw new Error('simulated manifest persistence failure');
+            }
+            return (originalWriteFileSync as any)(filePath, ...args);
+        };
+
+        assert.throws(
+            () => createWorkflowOnFs(name),
+            /simulated manifest persistence failure/,
+        );
+        assert.equal(fs.existsSync(workflowRootDir(name)), false);
+    } finally {
+        (fs as any).writeFileSync = originalWriteFileSync;
+        cleanup(name);
+    }
+});
+
+test('concurrent ensureWorkflowOnFs calls both resolve the same workflow', async () => {
+    const name = uniqueName('concurrent-ensure');
+    cleanup(name);
+    const lockDir = path.join(workflowsRootDir(), '.locks', `${name}.lock`);
+    const readyFiles = [
+        path.join(workflowsRootDir(), `.ready-${name}-1`),
+        path.join(workflowsRootDir(), `.ready-${name}-2`),
+    ];
+    const moduleUrl = pathToFileURL(path.resolve('src/workflow/index.ts')).href;
+    const runEnsure = (readyFile: string) => new Promise<{code: number | null; stderr: string}>((resolve) => {
+        const script = `
+            import fs from 'node:fs';
+            const workflow = await import(${JSON.stringify(moduleUrl)});
+            fs.writeFileSync(${JSON.stringify(readyFile)}, 'ready');
+            workflow.ensureWorkflowOnFs(${JSON.stringify(name)});
+        `;
+        const child = spawn('node', ['--import', 'tsx', '--input-type=module', '--eval', script], {
+            cwd: path.resolve('.'),
+            env: process.env,
+            stdio: ['ignore', 'ignore', 'pipe'],
+        });
+        let stderr = '';
+        child.stderr.setEncoding('utf8');
+        child.stderr.on('data', (chunk) => {stderr += chunk;});
+        child.on('close', (code) => resolve({code, stderr}));
+    });
+    try {
+        fs.mkdirSync(lockDir, {recursive: true});
+        fs.writeFileSync(path.join(lockDir, 'owner.json'), JSON.stringify({
+            pid: process.pid,
+            acquiredAt: Date.now(),
+            token: 'test-owner',
+        }));
+        const first = runEnsure(readyFiles[0]);
+        const second = runEnsure(readyFiles[1]);
+        for (let attempt = 0; attempt < 200; attempt += 1) {
+            if (readyFiles.every((file) => fs.existsSync(file))) {break;}
+            await new Promise((resolve) => setTimeout(resolve, 5));
+        }
+        assert.equal(readyFiles.every((file) => fs.existsSync(file)), true);
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        fs.rmSync(lockDir, {recursive: true, force: true});
+
+        const results = await Promise.all([first, second]);
+        assert.deepEqual(results.map((result) => result.code), [0, 0], results.map((result) => result.stderr).join('\n'));
+        assert.equal(loadWorkflowFromFs(name).name, name);
+    } finally {
+        fs.rmSync(lockDir, {recursive: true, force: true});
+        for (const file of readyFiles) {fs.rmSync(file, {force: true});}
+        cleanup(name);
+    }
+});
+
+test('workflow artifact reads wait for an active mutation lock', async () => {
+    const name = uniqueName('read-mutation-lock');
+    cleanup(name);
+    const lockDir = path.join(workflowsRootDir(), '.locks', `${name}.lock`);
+    const readyFile = path.join(workflowsRootDir(), `.ready-${name}`);
+    const doneFile = path.join(workflowsRootDir(), `.done-${name}`);
+    const moduleUrl = pathToFileURL(path.resolve('src/workflow/index.ts')).href;
+    try {
+        const workflow = createWorkflowOnFs(name);
+        workflow.save({kind: 'dsl', name: 'read-target', content: 'wait 1', stepResolves: {}});
+        fs.mkdirSync(lockDir, {recursive: true});
+        fs.writeFileSync(path.join(lockDir, 'owner.json'), JSON.stringify({
+            pid: process.pid,
+            acquiredAt: Date.now(),
+            token: 'read-lock-owner',
+        }));
+        const script = `
+            import fs from 'node:fs';
+            const workflowModule = await import(${JSON.stringify(moduleUrl)});
+            fs.writeFileSync(${JSON.stringify(readyFile)}, 'ready');
+            const workflow = workflowModule.loadWorkflowFromFs(${JSON.stringify(name)});
+            workflow.get('read-target', {kind: 'dsl'});
+            fs.writeFileSync(${JSON.stringify(doneFile)}, 'done');
+        `;
+        const result = new Promise<{code: number | null; stderr: string}>((resolve) => {
+            const child = spawn('node', ['--import', 'tsx', '--input-type=module', '--eval', script], {
+                cwd: path.resolve('.'),
+                env: process.env,
+                stdio: ['ignore', 'ignore', 'pipe'],
+            });
+            let stderr = '';
+            child.stderr.setEncoding('utf8');
+            child.stderr.on('data', (chunk) => {stderr += chunk;});
+            child.on('close', (code) => resolve({code, stderr}));
+        });
+        for (let attempt = 0; attempt < 200 && !fs.existsSync(readyFile); attempt += 1) {
+            await new Promise((resolve) => setTimeout(resolve, 5));
+        }
+        assert.equal(fs.existsSync(readyFile), true);
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        assert.equal(fs.existsSync(doneFile), false);
+
+        fs.rmSync(lockDir, {recursive: true, force: true});
+        const childResult = await result;
+        assert.equal(childResult.code, 0, childResult.stderr);
+        assert.equal(fs.existsSync(doneFile), true);
+    } finally {
+        fs.rmSync(lockDir, {recursive: true, force: true});
+        fs.rmSync(readyFile, {force: true});
+        fs.rmSync(doneFile, {force: true});
+        cleanup(name);
+    }
+});
+
+test('same-process workflow lock contention fails immediately instead of blocking the event loop', async () => {
+    const name = uniqueName('same-process-lock');
+    const startedAt = Date.now();
+    await withWorkflowMutationLocksAsync([name], async () => {
+        assert.throws(
+            () => withWorkflowMutationLock(name, () => undefined),
+            (error: any) => error?.code === 'ERR_WORKFLOW_CONFLICT',
+        );
+    });
+    assert.ok(Date.now() - startedAt < 500, 'same-process contention must not wait for the filesystem timeout');
 });
 
 test('workflow rename and copy validate the source manifest before mutating directories', () => {

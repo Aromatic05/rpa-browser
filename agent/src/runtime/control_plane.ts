@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { replyAction, type Action } from '../actions/action_protocol';
 import { ActionError } from '../actions/results';
 import { ERROR_CODES } from '../actions/results';
-import { copyWorkflowOnFs, createWorkflowOnFs, deleteWorkflowFromFs, listWorkflowNames, loadWorkflowFromFs, renameWorkflowOnFs } from '../workflow';
+import { copyWorkflowOnFs, createWorkflowOnFs, deleteWorkflowFromFs, listWorkflowNames, loadWorkflowFromFs, renameWorkflowAfterPreparationOnFs } from '../workflow';
 import { getLogger } from '../logging/logger';
 import type { RuntimeWorkspace, WorkspaceRegistry } from './workspace/registry';
 
@@ -21,6 +21,11 @@ const stopWorkspaceRuntime = async (workspace: RuntimeWorkspace): Promise<void> 
         await workspace.mcp.stop();
     } catch (error) {
         firstError = error;
+    }
+    try {
+        await workspace.runner.stop();
+    } catch (error) {
+        firstError = firstError || error;
     }
     try {
         await workspace.browserSession.stop();
@@ -150,10 +155,11 @@ export const handleRuntimeControlAction = async (input: RuntimeControlInput): Pr
                 throw new ActionError(ERROR_CODES.ERR_WORKFLOW_BAD_ARGS, 'fromName and toName are required');
             }
             const currentWorkspace = workspaceRegistry.getWorkspace(fromName);
-            if (currentWorkspace) {
-                await stopWorkspaceRuntime(currentWorkspace);
-            }
-            renameWorkflowOnFs(fromName, toName);
+            await renameWorkflowAfterPreparationOnFs(fromName, toName, async () => {
+                if (currentWorkspace) {
+                    await stopWorkspaceRuntime(currentWorkspace);
+                }
+            });
             const renamedWorkflow = loadWorkflowFromFs(toName);
             const workspace = workspaceRegistry.renameWorkspace(fromName, toName, renamedWorkflow);
             if (workspace.name !== workspace.workflow.name) {
