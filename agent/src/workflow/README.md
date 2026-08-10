@@ -52,6 +52,15 @@ Workspace actions must use `action.workspaceName` only.
 - dsls: `dsls/<dslName>.dsl`
 - entity-rule profiles: `entity_rules/<profileName>/` with `match.yaml`, `annotation.yaml`, and optional `page.yaml`
 
+## Manifest and Artifact Authority
+
+- `workflow.yaml.name` and `workflow.yaml.entry.dsl` are workflow source-of-truth fields.
+- `workflow.yaml.catalog` is optional cache/display metadata. Artifact existence is discovered from the artifact directories, not from catalog membership.
+- A valid artifact added directly under `dsls/`, `checkpoints/`, `recordings/`, or `entity_rules/` is visible through `workflow.get/list` even when no catalog entry exists.
+- A catalog entry whose artifact was fully deleted is stale cache and is ignored. A partially present but invalid artifact is still reported as an invalid artifact.
+- Workflow API save/delete operations reconcile stale catalog entries and refresh metadata for the mutated artifact; authors do not need to hand-maintain derived `summary`, checkpoint `enabled/priority`, or catalog membership.
+- `.locks/` and `*.lock.reclaimed/` are runtime lock internals, not workflow artifacts. Reclaimed generation tombstones are intentionally retained to prevent delayed stale reclaimers from acting on a newer lock generation.
+
 ## Artifact Names and Entry DSL
 
 - Workflow names, recording names, checkpoint IDs, DSL names, and entity-rule profile names use the same safe artifact-name boundary. Empty names, `.`/`..`, path separators, traversal, and other unsafe names are rejected before filesystem access.
@@ -85,6 +94,8 @@ Workspace actions must use `action.workspaceName` only.
 - snapshot executor does not read workflow directly.
 - snapshot executor does not read filesystem rule artifacts directly.
 - shared action protocol package is not introduced in this stage.
+- `dsl.save`/`dsl.validate` validate referenced checkpoint existence, callability, body availability, recursion, and call-depth before execution.
+- `checkpoint.save` validates a DSL body before persistence, including recovery-only `failure.*` scope and nested checkpoint dependencies.
 
 ## Record Persistence Boundary
 

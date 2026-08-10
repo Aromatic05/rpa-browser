@@ -12,6 +12,8 @@ import type { Workflow, WorkflowDsl, WorkflowDummy } from '../workflow';
 import type { StepResolve } from '../runner/steps/types';
 import { validateStepResolveFileForSerialization } from '../runner/serialization/types';
 import { materializeReferencedCheckpointRuntimeSnapshot } from '../runner/checkpoint';
+import { validateDslCheckpointGraph } from './validate';
+import type { DslCheckpointProvider } from './emit';
 
 const DSL_DUMMY: WorkflowDummy = {kind: 'dsl'};
 
@@ -59,6 +61,29 @@ const resolveEntityRulesResolver = (
 };
 
 const resolveDslResolves = (workflow: Workflow): DslResolveResolver => createDslResolveResolver(workflow);
+
+const withCheckpointResolveBundle = (
+    base: DslResolveResolver,
+    checkpointId: string,
+    stepResolves: Record<string, StepResolve>,
+): DslResolveResolver => ({
+    resolveBundle: (name) => name === checkpointId
+        ? {resolves: stepResolves, diagnostics: []}
+        : base.resolveBundle(name),
+});
+
+const validateCheckpointGraph = (
+    source: string,
+    checkpointProvider: DslCheckpointProvider,
+    entityRulesResolver: DslEntityRulesResolver | undefined,
+    resolveResolver: DslResolveResolver,
+) => validateDslCheckpointGraph(source, checkpointProvider, {
+    validateBody: ({checkpoint, source: bodySource, stepResolves}) => validateDslSource(
+        bodySource,
+        entityRulesResolver,
+        withCheckpointResolveBundle(resolveResolver, checkpoint.id, stepResolves),
+    ).diagnostics,
+});
 
 const validateStepResolves = (value: unknown): Record<string, StepResolve> => {
     try {
@@ -116,6 +141,15 @@ export const createDslControl = (services: DslControlServices): DslControl => ({
             if (validation.diagnostics.length > 0) {
                 throw new DslValidationError(validation.diagnostics);
             }
+            const checkpointDiagnostics = validateCheckpointGraph(
+                payload.content,
+                workspace.checkpoint.getProvider(workflow),
+                entityRulesResolver,
+                resolveResolver,
+            );
+            if (checkpointDiagnostics.length > 0) {
+                throw new DslValidationError(checkpointDiagnostics);
+            }
             workflow.save({kind: 'dsl', name: dslName, content: payload.content, stepResolves});
             return {
                 reply: replyAction(action, {workspaceName: workspace.name, dslName, saved: true}),
@@ -128,10 +162,19 @@ export const createDslControl = (services: DslControlServices): DslControl => ({
         const resolveResolver = resolveDslResolves(workflow);
         if (action.type === 'dsl.validate' || action.type === 'dsl.test') {
             const validation = validateDslSource(dsl.content, entityRulesResolver, resolveResolver);
+            const checkpointDiagnostics = validation.diagnostics.length === 0
+                ? validateCheckpointGraph(
+                    dsl.content,
+                    workspace.checkpoint.getProvider(workflow),
+                    entityRulesResolver,
+                    resolveResolver,
+                )
+                : [];
+            const diagnostics = [...validation.diagnostics, ...checkpointDiagnostics];
             return {
                 reply: replyAction(action, {
-                    ok: validation.diagnostics.length === 0,
-                    diagnostics: validation.diagnostics,
+                    ok: diagnostics.length === 0,
+                    diagnostics,
                     workspaceName: workspace.name,
                     ...(action.type === 'dsl.test'
                         ? {deprecated: 'dsl.test validates only; use dsl.run to execute'}
@@ -146,6 +189,25 @@ export const createDslControl = (services: DslControlServices): DslControl => ({
                 sources: [dsl.content], checkpointProvider: workspace.checkpoint.getProvider(workflow), workflow,
                 entityRulesProvider: services.runStepsDeps.resolveEntityRulesProvider?.(workspace.name),
             });
+            const executionEntityRulesResolver = checkpointRuntime.entityRulesResolver || entityRulesResolver;
+            const executionResolveResolver = checkpointRuntime.resolveResolver || resolveResolver;
+            const preflight = validateDslSource(
+                dsl.content,
+                executionEntityRulesResolver,
+                executionResolveResolver,
+            );
+            if (preflight.diagnostics.length > 0) {
+                throw new DslValidationError(preflight.diagnostics);
+            }
+            const checkpointDiagnostics = validateCheckpointGraph(
+                dsl.content,
+                checkpointRuntime.provider,
+                executionEntityRulesResolver,
+                executionResolveResolver,
+            );
+            if (checkpointDiagnostics.length > 0) {
+                throw new DslValidationError(checkpointDiagnostics);
+            }
             return await runDslSource(
                 dsl.content,
                 {
@@ -153,8 +215,8 @@ export const createDslControl = (services: DslControlServices): DslControl => ({
                     deps: services.runStepsDeps,
                     input: payload.input || {},
                     checkpointProvider: checkpointRuntime.provider,
-                    entityRulesResolver: checkpointRuntime.entityRulesResolver || entityRulesResolver,
-                    resolveResolver: checkpointRuntime.resolveResolver || resolveResolver,
+                    entityRulesResolver: executionEntityRulesResolver,
+                    resolveResolver: executionResolveResolver,
                 },
             );
         });

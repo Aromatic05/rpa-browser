@@ -18,6 +18,7 @@ export const validateDslSource = (
     source: string,
     entityRulesResolver?: DslEntityRulesResolver,
     resolveResolver?: DslResolveResolver,
+    options: {allowFailureRoot?: boolean} = {},
 ): ValidateDslSourceResult => {
     const parsed = parseDsl(source);
     const linked = linkDsl(parsed, entityRulesResolver, resolveResolver);
@@ -25,7 +26,7 @@ export const validateDslSource = (
         return {diagnostics: linked.diagnostics};
     }
     const normalized = normalizeDsl(linked.program);
-    return {diagnostics: validateDsl(normalized)};
+    return {diagnostics: validateDsl(normalized, options)};
 };
 
 export const runDslSource = async (

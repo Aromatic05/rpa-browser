@@ -2,6 +2,11 @@ import crypto from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type {Checkpoint, RunStatus} from './run_steps_types';
+import {
+    observeStaleDirectoryLock,
+    readDirectoryLockOwner,
+    reclaimObservedDirectoryLock,
+} from '../storage/directory_lock';
 
 export type TaskRunCheckpoint = Checkpoint & {
     workspaceName: string;
@@ -154,49 +159,6 @@ const delay = async (durationMs: number): Promise<void> => {
     await new Promise((resolve) => setTimeout(resolve, durationMs));
 };
 
-const isProcessAlive = (pid: number): boolean => {
-    try {
-        process.kill(pid, 0);
-        return true;
-    } catch (error) {
-        return typeof error === 'object' && error !== null && 'code' in error && error.code === 'EPERM';
-    }
-};
-
-const readFileLockOwner = async (lockDir: string): Promise<CheckpointFileLockOwner | null> => {
-    try {
-        const parsed = JSON.parse(await fs.readFile(path.join(lockDir, 'owner.json'), 'utf8')) as Partial<CheckpointFileLockOwner>;
-        if (typeof parsed.pid !== 'number' || !Number.isSafeInteger(parsed.pid) || parsed.pid <= 0
-            || typeof parsed.acquiredAt !== 'number' || !Number.isFinite(parsed.acquiredAt)
-            || typeof parsed.token !== 'string' || parsed.token.length === 0) {
-            return null;
-        }
-        return parsed as CheckpointFileLockOwner;
-    } catch {
-        return null;
-    }
-};
-
-const removeStaleFileLock = async (lockDir: string): Promise<boolean> => {
-    const owner = await readFileLockOwner(lockDir);
-    if (owner) {
-        if (isProcessAlive(owner.pid)) {return false;}
-    } else {
-        try {
-            const ageMs = Date.now() - (await fs.stat(lockDir)).mtimeMs;
-            if (ageMs <= CHECKPOINT_LOCK_STALE_MS) {return false;}
-        } catch {
-            return true;
-        }
-    }
-    try {
-        await fs.rm(lockDir, {recursive: true, force: true});
-        return true;
-    } catch {
-        return false;
-    }
-};
-
 const withCheckpointFileLock = async <T>(filePath: string, operation: () => Promise<T>): Promise<T> => {
     const lockDir = `${filePath}.lock`;
     const owner: CheckpointFileLockOwner = {
@@ -219,7 +181,8 @@ const withCheckpointFileLock = async <T>(filePath: string, operation: () => Prom
             break;
         } catch (error) {
             if (!isExistingPath(error)) {throw error;}
-            if (await removeStaleFileLock(lockDir)) {continue;}
+            const staleObservation = await observeStaleDirectoryLock(lockDir, CHECKPOINT_LOCK_STALE_MS);
+            if (staleObservation && await reclaimObservedDirectoryLock(lockDir, staleObservation)) {continue;}
             if (Date.now() >= deadline) {
                 throw new Error(`task checkpoint store lock timeout: ${filePath}`, {cause: error});
             }
@@ -230,7 +193,7 @@ const withCheckpointFileLock = async <T>(filePath: string, operation: () => Prom
     try {
         return await operation();
     } finally {
-        const currentOwner = await readFileLockOwner(lockDir);
+        const currentOwner = await readDirectoryLockOwner(lockDir);
         if (currentOwner?.token === owner.token) {
             await fs.rm(lockDir, {recursive: true, force: true});
         }

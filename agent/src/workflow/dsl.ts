@@ -44,7 +44,8 @@ export const createDslCodec = (workflowName: string): WorkflowCodec<WorkflowDsl>
                 .readdirSync(dir, { withFileTypes: true })
                 .filter((entry) => entry.isFile() && entry.name.endsWith('.dsl'))
                 .map((entry) => entry.name.slice(0, -4))
-                .filter(isArtifactName);
+                .filter(isArtifactName)
+                .sort();
         } catch (error) {
             if (!isMissingFile(error)) {throw error;}
             return [];

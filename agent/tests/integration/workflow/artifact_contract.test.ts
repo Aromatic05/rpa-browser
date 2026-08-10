@@ -99,7 +99,7 @@ test('workflow manifest entry.dsl is authoritative for default DSL actions and m
         fs.rmSync(path.join(workflowRootDir(name), 'dsls', 'chosen.dsl'));
         await assert.rejects(
             () => workspace.router.handle({ v: 1, id: 'missing-entry', type: 'dsl.get', workspaceName: name } as any, workspace as any, registry as any),
-            (error: any) => error?.code === 'ERR_WORKFLOW_INVALID_ARTIFACT',
+            (error: any) => error?.code === 'ERR_NOT_FOUND',
         );
         fs.writeFileSync(manifestPath, YAML.stringify({ ...manifest, entry: {} }), 'utf8');
         assert.throws(() => loadWorkflowFromFs(name), (error: any) => error?.code === 'ERR_WORKFLOW_INVALID_MANIFEST');
@@ -108,7 +108,7 @@ test('workflow manifest entry.dsl is authoritative for default DSL actions and m
     }
 });
 
-test('workflow manifest rejects identity mismatches and duplicate catalog entries', () => {
+test('workflow manifest keeps identity strict while tolerating duplicate catalog cache entries', () => {
     const name = uniqueName('manifest-integrity');
     cleanup(name);
     try {
@@ -129,10 +129,9 @@ test('workflow manifest rejects identity mismatches and duplicate catalog entrie
             ...manifest,
             catalog: [...manifest.catalog, structuredClone(manifest.catalog[0])],
         }), 'utf8');
-        assert.throws(
-            () => loadWorkflowFromFs(name),
-            (error: any) => error?.code === 'ERR_WORKFLOW_INVALID_MANIFEST',
-        );
+        const reloaded = loadWorkflowFromFs(name);
+        assert.equal(reloaded.get('main', {kind: 'dsl'})?.kind, 'dsl');
+        assert.deepEqual(reloaded.list({kind: 'dsl'}).map((item) => item.name), ['main']);
     } finally {
         cleanup(name);
     }
@@ -207,7 +206,7 @@ test('missing required recording and checkpoint files are reported as corrupt ar
     }
 });
 
-test('manifest catalog entries with missing artifact roots are reported as corrupt', () => {
+test('stale manifest catalog entries do not make deleted artifacts corrupt', () => {
     const name = uniqueName('missing-catalog-artifact');
     cleanup(name);
     try {
@@ -236,15 +235,46 @@ test('manifest catalog entries with missing artifact roots are reported as corru
             {kind: 'entity_rules' as const, name: 'rules-gone'},
         ];
         for (const artifact of missing) {
-            assert.throws(
-                () => reloaded.get(artifact.name, {kind: artifact.kind}),
-                (error: any) => error?.code === 'ERR_WORKFLOW_INVALID_ARTIFACT',
-            );
-            assert.throws(
-                () => reloaded.list({kind: artifact.kind}),
-                (error: any) => error?.code === 'ERR_WORKFLOW_INVALID_ARTIFACT',
+            assert.equal(reloaded.get(artifact.name, {kind: artifact.kind}), null);
+            assert.equal(
+                reloaded.list({kind: artifact.kind}).some((item) => item.name === artifact.name),
+                false,
             );
         }
+    } finally {
+        cleanup(name);
+    }
+});
+
+test('workflow discovers valid filesystem artifacts that are absent from manifest catalog', () => {
+    const name = uniqueName('filesystem-artifact-discovery');
+    cleanup(name);
+    try {
+        createWorkflowOnFs(name);
+        createDslCodec(name).save({kind: 'dsl', name: 'manual', content: 'wait 1', stepResolves: {}});
+
+        const reloaded = loadWorkflowFromFs(name);
+        assert.equal(reloaded.get('manual', {kind: 'dsl'})?.kind, 'dsl');
+        assert.equal(reloaded.list({kind: 'dsl'}).some((item) => item.name === 'manual'), true);
+    } finally {
+        cleanup(name);
+    }
+});
+
+test('workflow artifact discovery does not require a persisted catalog cache', () => {
+    const name = uniqueName('catalog-optional');
+    cleanup(name);
+    try {
+        createWorkflowOnFs(name);
+        createDslCodec(name).save({kind: 'dsl', name: 'manual', content: 'wait 1', stepResolves: {}});
+        const manifestPath = path.join(workflowRootDir(name), 'workflow.yaml');
+        const manifest = YAML.parse(fs.readFileSync(manifestPath, 'utf8')) as Record<string, unknown>;
+        delete manifest.catalog;
+        fs.writeFileSync(manifestPath, YAML.stringify(manifest), 'utf8');
+
+        const reloaded = loadWorkflowFromFs(name);
+        assert.equal(reloaded.get('manual', {kind: 'dsl'})?.kind, 'dsl');
+        assert.equal(reloaded.list({kind: 'dsl'}).some((item) => item.name === 'manual'), true);
     } finally {
         cleanup(name);
     }
@@ -512,7 +542,7 @@ test('workflow rename and copy validate the source manifest before mutating dire
     }
 });
 
-test('workflow rename and copy reject catalog corruption before mutating directories', () => {
+test('workflow lifecycle ignores stale catalog entries but rejects corrupt stored artifacts', () => {
     const renameSource = uniqueName('rename-corrupt-source');
     const renameTarget = uniqueName('rename-corrupt-target');
     const copySource = uniqueName('copy-corrupt-source');
@@ -527,12 +557,10 @@ test('workflow rename and copy reject catalog corruption before mutating directo
         copyWorkflow.save(entityRules('broken-rules'));
         fs.rmSync(path.join(workflowRootDir(copySource), 'entity_rules', 'broken-rules', 'match.yaml'));
 
-        assert.throws(
-            () => renameWorkflowOnFs(renameSource, renameTarget),
-            (error: any) => error?.code === 'ERR_WORKFLOW_INVALID_ARTIFACT',
-        );
-        assert.equal(fs.existsSync(workflowRootDir(renameSource)), true);
-        assert.equal(fs.existsSync(workflowRootDir(renameTarget)), false);
+        renameWorkflowOnFs(renameSource, renameTarget);
+        assert.equal(fs.existsSync(workflowRootDir(renameSource)), false);
+        assert.equal(fs.existsSync(workflowRootDir(renameTarget)), true);
+        assert.equal(loadWorkflowFromFs(renameTarget).get('secondary', {kind: 'dsl'}), null);
 
         assert.throws(
             () => copyWorkflowOnFs(copySource, copyTarget),
@@ -727,6 +755,29 @@ test('dsl.save preserves omitted sidecars and rejects invalid candidates before 
     }
 });
 
+test('dsl.save rejects missing checkpoint dependencies before persistence', async () => {
+    const name = uniqueName('dsl-save-checkpoint-dependency');
+    cleanup(name);
+    try {
+        const workflow = createWorkflowOnFs(name);
+        workflow.save({kind: 'dsl', name: 'main', content: 'wait 1', stepResolves: {}});
+        const {registry} = createWorkspaceHarness();
+        const workspace = registry.createWorkspace(name, workflow);
+
+        await assert.rejects(() => workspace.router.handle({
+            v: 1,
+            id: 'save-missing-checkpoint-reference',
+            type: 'dsl.save',
+            workspaceName: name,
+            payload: {content: 'use checkpoint "missing-procedure"'},
+        } as any, workspace as any, registry as any));
+
+        assert.equal((workflow.get('main', {kind: 'dsl'}) as any)?.content, 'wait 1');
+    } finally {
+        cleanup(name);
+    }
+});
+
 test('checkpoint.get exposes persisted body DSL without bloating checkpoint.list', async () => {
     const name = uniqueName('checkpoint-get-body');
     cleanup(name);
@@ -846,6 +897,48 @@ test('checkpoint.save persists DSL bodies and preserves them across metadata-onl
                 stepResolves: [],
             },
         } as any, workspace as any, registry as any));
+
+        await assert.rejects(() => workspace.router.handle({
+            v: 1,
+            id: 'save-invalid-body-source',
+            type: 'checkpoint.save',
+            workspaceName: name,
+            payload: {
+                checkpoint: {...checkpoint, id: 'invalid-body-source'},
+                bodyDsl: 'if input.ready\n  wait 1',
+                stepResolves: {},
+                hints: {},
+            },
+        } as any, workspace as any, registry as any));
+        assert.equal(workflow.get('invalid-body-source', {kind: 'checkpoint'}), null);
+
+        await assert.rejects(() => workspace.router.handle({
+            v: 1,
+            id: 'save-missing-nested-checkpoint',
+            type: 'checkpoint.save',
+            workspaceName: name,
+            payload: {
+                checkpoint: {...checkpoint, id: 'missing-nested-checkpoint'},
+                bodyDsl: 'use checkpoint "missing-procedure"',
+                stepResolves: {},
+                hints: {},
+            },
+        } as any, workspace as any, registry as any));
+        assert.equal(workflow.get('missing-nested-checkpoint', {kind: 'checkpoint'}), null);
+
+        await assert.rejects(() => workspace.router.handle({
+            v: 1,
+            id: 'save-recursive-checkpoint',
+            type: 'checkpoint.save',
+            workspaceName: name,
+            payload: {
+                checkpoint: {...checkpoint, id: 'recursive-checkpoint'},
+                bodyDsl: 'use checkpoint "recursive-checkpoint"',
+                stepResolves: {},
+                hints: {},
+            },
+        } as any, workspace as any, registry as any));
+        assert.equal(workflow.get('recursive-checkpoint', {kind: 'checkpoint'}), null);
     } finally {
         cleanup(name);
     }

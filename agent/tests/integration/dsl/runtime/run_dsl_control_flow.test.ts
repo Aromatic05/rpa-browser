@@ -160,6 +160,43 @@ test('runDsl promotes a variable assigned by both branches', async () => {
     assert.equal(falseResult.scope.vars.selected, 'fallback-btn');
 });
 
+test('runDsl promotes a checkpoint result bound by both branches', async () => {
+    const calls: StubCall[] = [];
+    const program = normalizeDsl(parseDsl(`
+if input.enabled:
+  let selected = use checkpoint "primary" with {
+    target: input.primary
+  }
+else:
+  let selected = use checkpoint "fallback" with {
+    target: input.fallback
+  }
+click selected.target
+    `));
+    const checkpointProvider = {
+        getCheckpoint: (id: string) => ({
+            id,
+            kind: 'procedure' as const,
+            body: {language: 'dsl' as const, source: 'body.dsl' as const},
+        }),
+        getCheckpointResolves: () => ({}),
+        getCheckpointBody: () => ({
+            source: 'output target = input.target',
+            stepResolves: {},
+        }),
+    };
+
+    const result = await runDsl(program, {
+        workspaceName: 'ws-dsl-cf',
+        deps: createDeps(calls),
+        input: {enabled: true, primary: 'primary-btn', fallback: 'fallback-btn'},
+        checkpointProvider,
+    });
+
+    assert.deepEqual(calls.at(-1), {name: 'browser.click', args: {nodeId: 'primary-btn'}});
+    assert.deepEqual(result.scope.vars.selected, {target: 'primary-btn'});
+});
+
 test('runDsl can branch on query results and handle nested for/if', async () => {
     const calls: StubCall[] = [];
     const program = normalizeDsl({

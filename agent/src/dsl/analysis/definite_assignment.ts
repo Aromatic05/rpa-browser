@@ -10,6 +10,10 @@ export const collectDefinitelyAssignedVariables = (
             assigned.add(stmt.name);
             continue;
         }
+        if (stmt.kind === 'checkpoint' && stmt.bind) {
+            assigned.add(stmt.bind);
+            continue;
+        }
         if (stmt.kind === 'if') {
             const thenAssigned = collectDefinitelyAssignedVariables(stmt.then, assigned);
             const elseAssigned = stmt.else

@@ -1,6 +1,6 @@
 import path from 'node:path';
 import fs from 'node:fs';
-import { invalidWorkflowArtifact, WorkflowError } from './errors';
+import { WorkflowError } from './errors';
 import { createCheckpointCodec, type WorkflowCheckpoint } from './checkpoint';
 import { createDslCodec, type WorkflowDsl } from './dsl';
 import { ensureDir, existsDir, listDirectories, readYamlFile, removePath, requireArtifactName, workflowManifestPath, workflowRootDir, workflowsRootDir, writeYamlFile } from './fs';
@@ -92,9 +92,6 @@ const readManifest = (workflowName: string): WorkflowManifest => {
     if (!isRecord(parsed.entry) || typeof parsed.entry.dsl !== 'string') {
         throw new WorkflowError(`invalid workflow manifest entry: ${workflowName}`, 'ERR_WORKFLOW_INVALID_MANIFEST');
     }
-    if (!Array.isArray(parsed.catalog)) {
-        throw new WorkflowError(`invalid workflow manifest catalog: ${workflowName}`, 'ERR_WORKFLOW_INVALID_MANIFEST');
-    }
     return parseWorkflowManifest(parsed, workflowName);
 };
 
@@ -117,7 +114,7 @@ const toCatalogItem = (artifact: WorkflowArtifact, existing?: WorkflowCatalogIte
     const base: WorkflowCatalogItemBase = {
         kind: artifact.kind,
         name: artifact.name,
-        title: artifact.name,
+        title: existing?.title || artifact.name,
         createdAt: existing?.createdAt || now,
         updatedAt: now,
         summary: artifact.kind,
@@ -166,31 +163,51 @@ const resolveStore = (internal: WorkflowInternal, kind: WorkflowArtifactKind): N
     return internal.entityRulesStore as NamedStore<WorkflowArtifact>;
 };
 
-const hasCatalog = (manifest: WorkflowManifest, kind: WorkflowArtifactKind, name: string): boolean =>
-    manifest.catalog.some((item) => item.kind === kind && item.name === name);
-
-const requireCatalogArtifact = (
-    internal: WorkflowInternal,
-    kind: WorkflowArtifactKind,
-    name: string,
-): WorkflowArtifact => {
-    const artifact = resolveStore(internal, kind).get(name);
-    if (artifact) {return artifact;}
-    throw invalidWorkflowArtifact(
-        kind,
-        name,
-        new Error('workflow manifest catalog points to a missing artifact'),
-    );
+const toCatalogViewItem = (
+    artifact: WorkflowArtifact,
+    existing?: WorkflowCatalogItem,
+): WorkflowCatalogItem => {
+    const derived = toCatalogItem(artifact, existing);
+    if (!existing) {return derived;}
+    return {
+        ...derived,
+        title: existing.title,
+        createdAt: existing.createdAt,
+        updatedAt: existing.updatedAt,
+    };
 };
 
-const validateCatalogArtifacts = (
-    workflowName: string,
-    manifest: WorkflowManifest,
-): void => {
+const validateStoredArtifacts = (workflowName: string): void => {
     const internal = createInternal(workflowName);
-    for (const item of manifest.catalog) {
-        requireCatalogArtifact(internal, item.kind, item.name);
+    for (const kind of WORKFLOW_ARTIFACT_KINDS) {
+        resolveStore(internal, kind).list();
     }
+};
+
+const reconcileCatalog = (
+    internal: WorkflowInternal,
+    manifest: WorkflowManifest,
+    updated?: WorkflowArtifact,
+): WorkflowCatalogItem[] => {
+    const catalog: WorkflowCatalogItem[] = [];
+    let updatedPrevious: WorkflowCatalogItem | undefined;
+    for (const item of manifest.catalog) {
+        if (updated?.kind === item.kind && updated.name === item.name) {
+            updatedPrevious = item;
+            continue;
+        }
+        try {
+            const artifact = resolveStore(internal, item.kind).get(item.name);
+            if (artifact) {catalog.push(toCatalogViewItem(artifact, item));}
+        } catch {
+            // Catalog is cache metadata. Keep an entry for a corrupt stored artifact so an
+            // unrelated mutation does not have to repair every broken artifact first.
+            catalog.push(item);
+        }
+    }
+    if (updated) {catalog.push(toCatalogItem(updated, updatedPrevious));}
+    return catalog.sort((left, right) =>
+        left.kind.localeCompare(right.kind) || left.name.localeCompare(right.name));
 };
 
 const loadWorkflowUnlocked = (workflowName: string): Workflow => {
@@ -217,13 +234,7 @@ const loadWorkflowUnlocked = (workflowName: string): Workflow => {
             try {
                 saved = saveArtifact(internal, value);
                 const nextManifest = structuredClone(currentManifest);
-                const idx = nextManifest.catalog.findIndex((item) => item.kind === saved.kind && item.name === saved.name);
-                const nextItem = toCatalogItem(saved, idx >= 0 ? nextManifest.catalog[idx] : undefined);
-                if (idx >= 0) {
-                    nextManifest.catalog[idx] = nextItem;
-                } else {
-                    nextManifest.catalog.push(nextItem);
-                }
+                nextManifest.catalog = reconcileCatalog(internal, currentManifest, saved);
                 manifest = writeManifest(nextManifest);
             } catch (error) {
                 try {
@@ -242,18 +253,21 @@ const loadWorkflowUnlocked = (workflowName: string): Workflow => {
         }),
         get: (name, dummy) => withWorkflowMutationLock(workflowName, () => {
             requireArtifactName(name, `${dummy.kind} artifact name`);
-            const currentManifest = refreshManifest();
-            if (!hasCatalog(currentManifest, dummy.kind, name)) {
-                return null;
-            }
-            return requireCatalogArtifact(internal, dummy.kind, name);
+            refreshManifest();
+            return resolveStore(internal, dummy.kind).get(name);
         }),
         list: (dummy) => withWorkflowMutationLock(
             workflowName,
-            () => refreshManifest().catalog.filter((item) => item.kind === dummy.kind).map((item) => {
-                requireCatalogArtifact(internal, dummy.kind, item.name);
-                return item;
-            }),
+            () => {
+                const currentManifest = refreshManifest();
+                const existing = new Map(
+                    currentManifest.catalog
+                        .filter((item) => item.kind === dummy.kind)
+                        .map((item) => [item.name, item]),
+                );
+                return resolveStore(internal, dummy.kind).list()
+                    .map((artifact) => toCatalogViewItem(artifact, existing.get(artifact.name)));
+            },
         ),
         delete: (name, dummy) => withWorkflowMutationLock(workflowName, () => {
             requireArtifactName(name, `${dummy.kind} artifact name`);
@@ -266,7 +280,7 @@ const loadWorkflowUnlocked = (workflowName: string): Workflow => {
             try {
                 deleted = resolveStore(internal, dummy.kind).delete(name);
                 const nextManifest = structuredClone(currentManifest);
-                nextManifest.catalog = nextManifest.catalog.filter((item) => !(item.kind === dummy.kind && item.name === name));
+                nextManifest.catalog = reconcileCatalog(internal, currentManifest);
                 manifest = writeManifest(nextManifest);
             } catch (error) {
                 try {
@@ -331,7 +345,7 @@ const requireWorkflowRenameManifest = (fromName: string, toName: string): Workfl
         throw new WorkflowError(`workflow already exists: ${toName}`, 'ERR_WORKFLOW_BAD_ARGS');
     }
     const manifest = readManifest(fromName);
-    validateCatalogArtifacts(fromName, manifest);
+    validateStoredArtifacts(fromName);
     return manifest;
 };
 
@@ -398,7 +412,7 @@ export const copyWorkflowOnFs = (sourceName: string, targetName: string): void =
             throw new WorkflowError(`workflow already exists: ${targetName}`, 'ERR_WORKFLOW_BAD_ARGS');
         }
         const manifest = readManifest(sourceName);
-        validateCatalogArtifacts(sourceName, manifest);
+        validateStoredArtifacts(sourceName);
         try {
             fs.cpSync(sourceDir, targetDir, { recursive: true });
             writeYamlFile(workflowManifestPath(targetName), {
@@ -432,7 +446,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const parseWorkflowManifest = (value: unknown, workflowName: string): WorkflowManifest => {
     if (!isRecord(value) || value.version !== 1 || typeof value.name !== 'string'
-        || !isRecord(value.entry) || typeof value.entry.dsl !== 'string' || !Array.isArray(value.catalog)
+        || !isRecord(value.entry) || typeof value.entry.dsl !== 'string'
         || typeof value.createdAt !== 'number' || typeof value.updatedAt !== 'number') {
         throw new WorkflowError(
             `invalid workflow manifest: ${workflowName}`,
@@ -447,21 +461,46 @@ const parseWorkflowManifest = (value: unknown, workflowName: string): WorkflowMa
         );
     }
     requireArtifactName(value.entry.dsl, 'workflow entry DSL name');
-    const catalogKeys = new Set<string>();
-    for (const item of value.catalog) {
+    return {
+        ...value,
+        version: 1,
+        name: value.name,
+        entry: {...value.entry, dsl: value.entry.dsl},
+        createdAt: value.createdAt,
+        updatedAt: value.updatedAt,
+        catalog: parseCatalogCache(value.catalog),
+    } as WorkflowManifest;
+};
+
+const parseCatalogCache = (value: unknown): WorkflowCatalogItem[] => {
+    if (!Array.isArray(value)) {return [];}
+    const catalog: WorkflowCatalogItem[] = [];
+    const seen = new Set<string>();
+    for (const item of value) {
         if (!isRecord(item) || typeof item.kind !== 'string'
             || !WORKFLOW_ARTIFACT_KINDS.has(item.kind as WorkflowArtifactKind)
-            || typeof item.name !== 'string' || typeof item.title !== 'string'
-            || typeof item.createdAt !== 'number' || typeof item.updatedAt !== 'number'
-            || typeof item.summary !== 'string') {
-            throw new WorkflowError(`invalid workflow manifest catalog: ${workflowName}`, 'ERR_WORKFLOW_INVALID_MANIFEST');
+            || typeof item.name !== 'string') {continue;}
+        try {
+            requireArtifactName(item.name, `${item.kind} artifact name`);
+        } catch {
+            continue;
         }
-        requireArtifactName(item.name, `${item.kind} artifact name`);
-        const key = `${item.kind}:${item.name}`;
-        if (catalogKeys.has(key)) {
-            throw new WorkflowError(`duplicate workflow catalog entry: ${key}`, 'ERR_WORKFLOW_INVALID_MANIFEST');
-        }
-        catalogKeys.add(key);
+        const kind = item.kind as WorkflowArtifactKind;
+        const key = `${kind}:${item.name}`;
+        if (seen.has(key)) {continue;}
+        seen.add(key);
+        const base: WorkflowCatalogItemBase = {
+            kind,
+            name: item.name,
+            title: typeof item.title === 'string' && item.title ? item.title : item.name,
+            createdAt: typeof item.createdAt === 'number' && Number.isFinite(item.createdAt) ? item.createdAt : 0,
+            updatedAt: typeof item.updatedAt === 'number' && Number.isFinite(item.updatedAt) ? item.updatedAt : 0,
+            summary: typeof item.summary === 'string' ? item.summary : kind,
+        };
+        if (kind === 'checkpoint') {catalog.push({...base, kind});}
+        else if (kind === 'entity_rules') {catalog.push({...base, kind});}
+        else if (kind === 'recording') {catalog.push({...base, kind});}
+        else {catalog.push({...base, kind});}
     }
-    return value as WorkflowManifest;
+    return catalog;
 };

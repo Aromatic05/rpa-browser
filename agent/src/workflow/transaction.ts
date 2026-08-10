@@ -4,6 +4,11 @@ import path from 'node:path';
 import type {WorkflowArtifactKind} from './workflow';
 import {ensureDir, removePath, requireArtifactName, workflowArtifactPath, workflowsRootDir} from './fs';
 import {WorkflowError} from './errors';
+import {
+    observeStaleDirectoryLockSync,
+    readDirectoryLockOwnerSync,
+    reclaimObservedDirectoryLockSync,
+} from '../storage/directory_lock';
 
 export type WorkflowArtifactSnapshot = {
     root: string;
@@ -74,49 +79,6 @@ const sleepSync = (durationMs: number): void => {
     Atomics.wait(sleepArray, 0, 0, durationMs);
 };
 
-const isProcessAlive = (pid: number): boolean => {
-    try {
-        process.kill(pid, 0);
-        return true;
-    } catch (error) {
-        return typeof error === 'object' && error !== null && 'code' in error && error.code === 'EPERM';
-    }
-};
-
-const readLockOwner = (lockDir: string): WorkflowLockOwner | null => {
-    try {
-        const parsed = JSON.parse(fs.readFileSync(path.join(lockDir, 'owner.json'), 'utf8')) as Partial<WorkflowLockOwner>;
-        if (typeof parsed.pid !== 'number' || !Number.isSafeInteger(parsed.pid) || parsed.pid <= 0
-            || typeof parsed.acquiredAt !== 'number' || !Number.isFinite(parsed.acquiredAt)
-            || typeof parsed.token !== 'string' || parsed.token.length === 0) {
-            return null;
-        }
-        return parsed as WorkflowLockOwner;
-    } catch {
-        return null;
-    }
-};
-
-const removeStaleLock = (lockDir: string): boolean => {
-    const owner = readLockOwner(lockDir);
-    if (owner) {
-        if (isProcessAlive(owner.pid)) {return false;}
-    } else {
-        try {
-            const ageMs = Date.now() - fs.statSync(lockDir).mtimeMs;
-            if (ageMs <= LOCK_STALE_MS) {return false;}
-        } catch {
-            return true;
-        }
-    }
-    try {
-        fs.rmSync(lockDir, {recursive: true, force: true});
-        return true;
-    } catch {
-        return false;
-    }
-};
-
 const workflowLockDir = (workflowName: string): string => path.join(
     workflowsRootDir(),
     '.locks',
@@ -153,13 +115,14 @@ const acquireWorkflowMutationLock = (workflowName: string): (() => void) => {
         } catch (error) {
             const isExisting = typeof error === 'object' && error !== null && 'code' in error && error.code === 'EEXIST';
             if (!isExisting) {throw error;}
-            if (readLockOwner(lockDir)?.pid === process.pid) {
+            if (readDirectoryLockOwnerSync(lockDir)?.pid === process.pid) {
                 throw new WorkflowError(
                     `workflow mutation already active in this process: ${workflowName}`,
                     'ERR_WORKFLOW_CONFLICT',
                 );
             }
-            if (removeStaleLock(lockDir)) {continue;}
+            const staleObservation = observeStaleDirectoryLockSync(lockDir, LOCK_STALE_MS);
+            if (staleObservation && reclaimObservedDirectoryLockSync(lockDir, staleObservation)) {continue;}
             if (Date.now() >= deadline) {
                 throw new WorkflowError(
                     `workflow mutation lock timeout: ${workflowName}`,
@@ -175,7 +138,7 @@ const acquireWorkflowMutationLock = (workflowName: string): (() => void) => {
         if (released) {return;}
         released = true;
         try {
-            const currentOwner = readLockOwner(lockDir);
+            const currentOwner = readDirectoryLockOwnerSync(lockDir);
             if (currentOwner?.token === owner.token) {
                 fs.rmSync(lockDir, {recursive: true, force: true});
             }

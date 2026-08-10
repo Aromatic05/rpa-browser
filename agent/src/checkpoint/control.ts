@@ -9,6 +9,10 @@ import type { Workflow, WorkflowCheckpoint } from '../workflow';
 import { createWorkspaceCheckpointRuntime } from './runtime';
 import { createWorkspaceCheckpointProvider } from './provider';
 import type { DslCheckpointProvider } from '../dsl/emit/checkpoint_call';
+import { validateDslSource } from '../dsl/runtime';
+import { createDslEntityRulesResolver, createDslResolveResolver } from '../dsl/link';
+import { DslValidationError } from '../dsl/diagnostics';
+import { validateDslCheckpointGraph } from '../dsl/validate';
 
 export type CheckpointControl = {
     handle: (input: WorkspaceRouterInput) => Promise<ControlPlaneResult>;
@@ -61,7 +65,52 @@ export const createCheckpointControl = (): CheckpointControl => ({
     getProvider: (workflow) => createWorkspaceCheckpointProvider(workflow),
     handle: async (input) => {
         const { action, workspace } = input;
-        const runtime = createWorkspaceCheckpointRuntime(workspace.workflow);
+        const runtime = createWorkspaceCheckpointRuntime(workspace.workflow, {
+            validateBody: ({checkpoint, bodyDsl, stepResolves}) => {
+                const entityRulesResolver = createDslEntityRulesResolver(
+                    workspace.entityRules.getProvider(workspace.workflow),
+                );
+                const validation = validateDslSource(
+                    bodyDsl,
+                    entityRulesResolver,
+                    createDslResolveResolver(workspace.workflow, new Map([[checkpoint.id, stepResolves]])),
+                    {allowFailureRoot: isRecoveryCheckpoint(checkpoint)},
+                );
+                if (validation.diagnostics.length > 0) {
+                    throw new DslValidationError(validation.diagnostics);
+                }
+                const persistedProvider = createWorkspaceCheckpointProvider(workspace.workflow);
+                const candidateProvider: DslCheckpointProvider = {
+                    getCheckpoint: (id) => id === checkpoint.id ? checkpoint : persistedProvider.getCheckpoint(id),
+                    getCheckpointResolves: (id) => id === checkpoint.id
+                        ? stepResolves
+                        : persistedProvider.getCheckpointResolves?.(id) ?? null,
+                    getCheckpointBody: (id) => id === checkpoint.id
+                        ? {source: bodyDsl, stepResolves}
+                        : persistedProvider.getCheckpointBody?.(id) ?? null,
+                };
+                const checkpointDiagnostics = validateDslCheckpointGraph(
+                    bodyDsl,
+                    candidateProvider,
+                    {
+                        callStack: [checkpoint.id],
+                        path: `checkpoint.${checkpoint.id}.body`,
+                        validateBody: ({checkpoint: nested, source, stepResolves: nestedResolves}) =>
+                            validateDslSource(
+                                source,
+                                entityRulesResolver,
+                                createDslResolveResolver(
+                                    workspace.workflow,
+                                    new Map([[nested.id, nestedResolves]]),
+                                ),
+                            ).diagnostics,
+                    },
+                );
+                if (checkpointDiagnostics.length > 0) {
+                    throw new DslValidationError(checkpointDiagnostics);
+                }
+            },
+        });
 
         if (!action.type.startsWith('checkpoint.')) {
             throw new ActionError(ERROR_CODES.ERR_UNSUPPORTED, `unsupported action: ${action.type}`);
@@ -145,3 +194,7 @@ export const createCheckpointControl = (): CheckpointControl => ({
         throw new ActionError(ERROR_CODES.ERR_UNSUPPORTED, `unsupported action: ${action.type}`);
     },
 });
+
+const isRecoveryCheckpoint = (checkpoint: Checkpoint): boolean =>
+    checkpoint.kind === 'recovery'
+    || (checkpoint.kind === undefined && (checkpoint.trigger?.matchRules?.length ?? 0) > 0);

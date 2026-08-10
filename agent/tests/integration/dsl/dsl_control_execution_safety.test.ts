@@ -51,7 +51,7 @@ const createEntityRulesProvider = () => ({
 const createInput = (
     content: string,
     state: {value: 'idle' | 'executing'},
-    options: {save?: (value: unknown) => void} = {},
+    options: {save?: (value: unknown) => void; checkpointProvider?: unknown} = {},
 ) => {
     const workspace = {
         name: 'ws-dsl-control',
@@ -65,7 +65,7 @@ const createInput = (
             get: () => ({kind: 'dsl', name: 'main', content}),
             save: options.save ?? (() => undefined),
         },
-        checkpoint: {getProvider: () => ({getCheckpoint: () => null})},
+        checkpoint: {getProvider: () => options.checkpointProvider ?? ({getCheckpoint: () => null})},
         entityRules: {getProvider: () => createEntityRulesProvider()},
     } as any;
     return (type: string, payload?: Record<string, unknown>) => ({
@@ -122,6 +122,39 @@ test('dsl.save validates imports and references before persistence', async () =>
             && error.diagnostics.some((diagnostic) => diagnostic.code === 'ERR_DSL_VAR_NOT_DEFINED'),
     );
     assert.deepEqual(saved, []);
+});
+
+test('dsl.run rejects an invalid procedure body before executing any step', async () => {
+    let executions = 0;
+    const control = createDslControl({
+        runStepsDeps: completeRunStepsDeps({
+            config: {} as any,
+            pluginHost: {getExecutors: () => ({
+                'browser.click': async (step: StepUnion) => {
+                    executions += 1;
+                    return {stepId: step.id, ok: true};
+                },
+            }) as any} as any,
+        }, {workspaceName: 'ws-dsl-control'}),
+    });
+    const input = createInput(
+        'click input.target\nuse checkpoint "invalid-procedure"',
+        {value: 'idle'},
+        {checkpointProvider: {
+            getCheckpoint: (id: string) => id === 'invalid-procedure'
+                ? {id, kind: 'procedure', body: {language: 'dsl', source: 'body.dsl'}}
+                : null,
+            getCheckpointResolves: () => ({}),
+            getCheckpointBody: () => ({source: 'click missing.target', stepResolves: {}}),
+        }},
+    );
+
+    await assert.rejects(
+        () => control.handle(input('dsl.run', {input: {target: 'button-1'}})),
+        (error: unknown) => error instanceof DslValidationError
+            && error.diagnostics.some((diagnostic) => diagnostic.code === 'ERR_DSL_VAR_NOT_DEFINED'),
+    );
+    assert.equal(executions, 0);
 });
 
 test('dsl.run acquires one workspace execution slot and releases it after completion', async () => {

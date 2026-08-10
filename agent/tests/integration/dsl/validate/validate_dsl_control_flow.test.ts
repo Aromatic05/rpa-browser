@@ -144,3 +144,19 @@ test('validateDsl promotes a variable assigned by both if branches', () => {
 
     assert.deepEqual(diagnostics, []);
 });
+
+test('validateDsl promotes a checkpoint result bound by both if branches', () => {
+    const diagnostics = validateDsl(normalizeDsl({
+        body: [
+            {
+                kind: 'if',
+                condition: {kind: 'ref', ref: 'input.enabled'},
+                then: [{kind: 'checkpoint', id: 'primary', bind: 'selected'}],
+                else: [{kind: 'checkpoint', id: 'fallback', bind: 'selected'}],
+            },
+            {kind: 'act', action: 'click', target: {kind: 'ref', ref: 'selected.target'}},
+        ],
+    }));
+
+    assert.deepEqual(diagnostics, []);
+});

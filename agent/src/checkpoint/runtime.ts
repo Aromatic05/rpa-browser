@@ -18,7 +18,18 @@ export type WorkspaceCheckpointRuntime = {
     delete: (checkpointId: string) => WorkflowCheckpoint;
 };
 
-export const createWorkspaceCheckpointRuntime = (workflow: Workflow): WorkspaceCheckpointRuntime => {
+export type WorkspaceCheckpointRuntimeOptions = {
+    validateBody?: (input: {
+        checkpoint: Checkpoint;
+        bodyDsl: string;
+        stepResolves: Record<string, StepResolve>;
+    }) => void;
+};
+
+export const createWorkspaceCheckpointRuntime = (
+    workflow: Workflow,
+    options: WorkspaceCheckpointRuntimeOptions = {},
+): WorkspaceCheckpointRuntime => {
     const list = (): WorkflowCheckpoint[] => {
         return workflow
             .list(CHECKPOINT_DUMMY)
@@ -51,11 +62,15 @@ export const createWorkspaceCheckpointRuntime = (workflow: Workflow): WorkspaceC
             ? existing?.bodyDsl
             : undefined;
         const effectiveBodyDsl = bodyDsl ?? preservedBodyDsl;
+        const effectiveStepResolves = stepResolves ?? existing?.stepResolves ?? {};
+        if (checkpoint.body && effectiveBodyDsl !== undefined) {
+            options.validateBody?.({checkpoint, bodyDsl: effectiveBodyDsl, stepResolves: effectiveStepResolves});
+        }
         const artifact: WorkflowCheckpoint = {
             kind: 'checkpoint',
             name: checkpoint.id,
             checkpoint,
-            stepResolves: stepResolves ?? existing?.stepResolves ?? {},
+            stepResolves: effectiveStepResolves,
             hints: hints ?? existing?.hints ?? {},
             ...(effectiveBodyDsl !== undefined ? {bodyDsl: effectiveBodyDsl} : {}),
         };
