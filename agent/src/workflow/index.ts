@@ -1,5 +1,5 @@
 export { createWorkflowOnFs, deleteWorkflowFromFs, ensureWorkflowOnFs, listWorkflowNames, loadWorkflowFromFs, renameWorkflowAfterPreparationOnFs, renameWorkflowOnFs, validateWorkflowRenameOnFs, copyWorkflowOnFs } from './workflow';
-export type { Workflow, WorkflowArtifact, WorkflowCatalogItem, WorkflowDummy, WorkflowManifest } from './workflow';
+export type { Workflow, WorkflowArtifact, WorkflowCatalogItem, WorkflowDummy, WorkflowManifest, WorkflowMutationOptions } from './workflow';
 export type { WorkflowRecording } from './recording';
 export type { WorkflowCheckpoint } from './checkpoint';
 export type { WorkflowDsl } from './dsl';
@@ -24,4 +24,4 @@ export type {
     EntityRuleExportRowAction,
 } from './entity_rule_exports';
 export { buildEntityRuleExportIndex } from './entity_rule_exports';
-export { entityRulesArtifactRevision } from './revision';
+export { entityRulesArtifactRevision, workflowArtifactRevision } from './revision';

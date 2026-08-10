@@ -35,6 +35,7 @@ export type RuntimeWorkspace = {
     mcp: McpControl;
     router: WorkspaceRouter;
     state: WorkspaceState;
+    executionOwner: symbol | null;
     createdAt: number;
     updatedAt: number;
 };
@@ -148,6 +149,7 @@ export const createRuntimeWorkspace = (deps: CreateRuntimeWorkspaceDeps): Runtim
         mcp,
         router,
         state: 'idle',
+        executionOwner: null,
         createdAt: now,
         updatedAt: now,
     };

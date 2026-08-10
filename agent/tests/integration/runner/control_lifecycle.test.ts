@@ -149,6 +149,44 @@ test('task.run.poll retains terminal results until the client drains them', asyn
     assert.equal(payload.cursor, 1);
 });
 
+test('task run execution ownership is released when a run reaches a terminal checkpoint', async () => {
+    const baseConfig = getRunnerConfig();
+    const deps = completeRunStepsDeps({
+        pluginHost: {
+            getExecutors: () => ({
+                'browser.click': async (step: StepUnion) => ({stepId: step.id, ok: true}),
+            }),
+        } as never,
+    }, {workspaceName: 'ws-1'});
+    setRunStepsDeps(deps);
+    const control = createRunnerControl({
+        runnerConfig: {
+            ...baseConfig,
+            checkpointPolicy: {...baseConfig.checkpointPolicy, enabled: false},
+        },
+    });
+    const workspace = deps.resolveWorkspace('ws-1');
+    const workspaceRegistry = {} as never;
+    const runId = 'terminal-releases-owner';
+    const workspaceState = () => workspace.state;
+
+    await control.handle({action: action('task.run.start', {runId}), workspace, workspaceRegistry});
+    assert.equal(workspaceState(), 'executing');
+    await control.handle({
+        action: action('task.run.push', {
+            runId,
+            steps: [{id: 'click-once', name: 'browser.click', args: {nodeId: 'button'}}],
+            close: true,
+        }),
+        workspace,
+        workspaceRegistry,
+    });
+    for (let attempt = 0; attempt < 100 && workspaceState() !== 'idle'; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 2));
+    }
+    assert.equal(workspaceState(), 'idle');
+});
+
 test('task.run.start rejects malformed checkpoint assets before registering the run', async () => {
     const baseConfig = getRunnerConfig();
     const deps = completeRunStepsDeps({}, {workspaceName: 'ws-1'});
@@ -559,11 +597,13 @@ test('closed resume requires enough step history to reach the persisted cursor',
             workspace,
             workspaceRegistry,
         });
+        assert.equal(workspace.state, 'executing');
         await control.handle({
             action: action('task.run.halt', {runId}),
             workspace,
             workspaceRegistry,
         });
+        assert.equal(workspace.state, 'idle');
     } finally {
         fs.rmSync(root, {recursive: true, force: true});
     }

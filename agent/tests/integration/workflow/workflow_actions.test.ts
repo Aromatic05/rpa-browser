@@ -5,6 +5,8 @@ import { createWorkspaceHarness } from '../../helpers/workspace_harness';
 import { handleRuntimeControlAction } from '../../../src/runtime/control_plane';
 import { createWorkflowOnFs, deleteWorkflowFromFs, loadWorkflowFromFs } from '../../../src/workflow';
 import { isRequestActionType } from '../../../src/actions/action_types';
+import {ActionError, ERROR_CODES} from '../../../src/actions/results';
+import {setRunStepsDeps} from '../../../src/runner/run_steps';
 
 const uniqueName = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
 const cleanup = (name: string) => { try { deleteWorkflowFromFs(name); } catch {} };
@@ -150,6 +152,104 @@ test('workspace.close removes runtime and workflow.open rebuilds it from persist
         assert.equal(rebuilt.workflow.get('main', { kind: 'dsl' })?.kind, 'dsl');
     } finally {
         cleanup(name);
+    }
+});
+
+test('an active task run owns the workspace and blocks DSL and destructive lifecycle actions', async () => {
+    const {registry, runStepsDeps} = createWorkspaceHarness();
+    setRunStepsDeps(runStepsDeps);
+    const source = uniqueName('wf-execution-owner');
+    const target = uniqueName('wf-execution-owner-renamed');
+    const runId = uniqueName('workspace-owner-run');
+    cleanup(source);
+    cleanup(target);
+    try {
+        const workflow = createWorkflowOnFs(source);
+        workflow.save({kind: 'dsl', name: 'main', content: 'wait 1', stepResolves: {}});
+        const workspace = registry.createWorkspace(source, workflow);
+
+        await workspace.router.handle({
+            v: 1, id: 'task-owner-start', type: 'task.run.start', workspaceName: source, payload: {runId},
+        } as any, workspace as any, registry as any);
+        assert.equal(workspace.state, 'executing');
+
+        await assert.rejects(
+            () => workspace.router.handle({
+                v: 1, id: 'dsl-while-task', type: 'dsl.run', workspaceName: source,
+            } as any, workspace as any, registry as any),
+            (error: unknown) => error instanceof ActionError && error.code === ERROR_CODES.ERR_BAD_STATE,
+        );
+        await assert.rejects(
+            () => handleRuntimeControlAction({
+                action: {v: 1, id: 'close-while-task', type: 'workspace.close', payload: {workspaceName: source}},
+                workspaceRegistry: registry,
+            } as any),
+            (error: unknown) => error instanceof ActionError && error.code === ERROR_CODES.ERR_BAD_STATE,
+        );
+        await assert.rejects(
+            () => handleRuntimeControlAction({
+                action: {v: 1, id: 'rename-while-task', type: 'workflow.rename', payload: {fromName: source, toName: target}},
+                workspaceRegistry: registry,
+            } as any),
+            (error: unknown) => error instanceof ActionError && error.code === ERROR_CODES.ERR_BAD_STATE,
+        );
+        assert.equal(registry.getWorkspace(source), workspace);
+        assert.equal(registry.getWorkspace(target), null);
+
+        await workspace.router.handle({
+            v: 1, id: 'task-owner-halt', type: 'task.run.halt', workspaceName: source, payload: {runId},
+        } as any, workspace as any, registry as any);
+        assert.equal(workspace.state, 'idle');
+    } finally {
+        const workspace = registry.getWorkspace(source);
+        if (workspace?.state === 'executing') {
+            try {
+                await workspace.router.handle({
+                    v: 1, id: 'task-owner-cleanup', type: 'task.run.halt', workspaceName: source,
+                    payload: {runId},
+                } as any, workspace as any, registry as any);
+            } catch {}
+        }
+        cleanup(source);
+        cleanup(target);
+    }
+});
+
+test('workflow.resetDefault refuses to replace a workspace owned by an active task run', async () => {
+    const {registry, runStepsDeps} = createWorkspaceHarness();
+    setRunStepsDeps(runStepsDeps);
+    const runId = uniqueName('default-owner-run');
+    cleanup('default');
+    try {
+        const workflow = createWorkflowOnFs('default');
+        const workspace = registry.createWorkspace('default', workflow);
+        await workspace.router.handle({
+            v: 1, id: 'default-owner-start', type: 'task.run.start', workspaceName: 'default', payload: {runId},
+        } as any, workspace as any, registry as any);
+
+        await assert.rejects(
+            () => handleRuntimeControlAction({
+                action: {v: 1, id: 'reset-while-task', type: 'workflow.resetDefault', payload: {}},
+                workspaceRegistry: registry,
+            } as any),
+            (error: unknown) => error instanceof ActionError && error.code === ERROR_CODES.ERR_BAD_STATE,
+        );
+        assert.equal(registry.getWorkspace('default'), workspace);
+
+        await workspace.router.handle({
+            v: 1, id: 'default-owner-halt', type: 'task.run.halt', workspaceName: 'default', payload: {runId},
+        } as any, workspace as any, registry as any);
+        assert.equal(workspace.state, 'idle');
+    } finally {
+        const workspace = registry.getWorkspace('default');
+        if (workspace?.state === 'executing') {
+            try {
+                await workspace.router.handle({
+                    v: 1, id: 'default-owner-cleanup', type: 'task.run.halt', workspaceName: 'default', payload: {runId},
+                } as any, workspace as any, registry as any);
+            } catch {}
+        }
+        cleanup('default');
     }
 });
 

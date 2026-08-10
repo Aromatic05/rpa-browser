@@ -33,6 +33,7 @@ import {
     readStepResolves,
     readSteps,
 } from './control_input';
+import {acquireWorkspaceExecution, type WorkspaceExecutionRelease} from '../runtime/workspace/execution_coordinator';
 
 type TaskRunState = {
     runId: string;
@@ -46,6 +47,7 @@ type TaskRunState = {
     checkpoints: RunnerCheckpoint[];
     checkpointStepResolves: Record<string, Record<string, StepResolve>>;
     checkpointBodies: Record<string, string>;
+    releaseExecution?: WorkspaceExecutionRelease;
 };
 
 export type RunnerControlDeps = {
@@ -137,6 +139,13 @@ export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => 
 
     const getRun = (runId: string) => runtime.runs.get(runId) || null;
 
+    const releaseRunExecution = (run: TaskRunState): void => {
+        const release = run.releaseExecution;
+        if (!release) {return;}
+        run.releaseExecution = undefined;
+        release();
+    };
+
     const requireRunId = (payload: {runId?: unknown}): string => {
         if (typeof payload.runId !== 'string') {
             throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'missing runId');
@@ -212,6 +221,7 @@ export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => 
                 run.status = 'halted';
                 sendSignal(run.signals, 'halt');
                 closeStepsQueue(run.queue);
+                releaseRunExecution(run);
             }
             runtime.runs.clear();
             runtime.checkpointStore.stop();
@@ -254,6 +264,11 @@ export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => 
                 if (getRun(runId) || runtime.checkpointStore.checkpoints.has(runId)) {
                     throw new ActionError(ERROR_CODES.ERR_CONFLICT, `run identity already exists: ${runId}`);
                 }
+                const stepResolves = readStepResolves(payload.stepResolves);
+                const checkpoints = readCheckpoints(payload.checkpoints);
+                const checkpointStepResolves = readCheckpointStepResolves(payload.checkpointStepResolves);
+                const checkpointBodies = readCheckpointBodies(payload.checkpointBodies);
+                const releaseExecution = acquireWorkspaceExecution(workspace, action.type);
                 const queue = createStepsQueue();
                 const pipe = createResultPipe();
                 const signals = createSignalChannel();
@@ -265,16 +280,18 @@ export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => 
                     pipe,
                     signals,
                     checkpoint: { runId, workspaceName, status: 'running', cursor: 0, updatedAt: Date.now() },
-                    stepResolves: readStepResolves(payload.stepResolves),
-                    checkpoints: readCheckpoints(payload.checkpoints),
-                    checkpointStepResolves: readCheckpointStepResolves(payload.checkpointStepResolves),
-                    checkpointBodies: readCheckpointBodies(payload.checkpointBodies),
+                    stepResolves,
+                    checkpoints,
+                    checkpointStepResolves,
+                    checkpointBodies,
+                    releaseExecution,
                 };
                 runtime.runs.set(runId, state);
                 try {
                     await persistCheckpoint(toTaskRunCheckpoint(runId, workspaceName, 'running', 0));
                 } catch (error) {
                     runtime.runs.delete(runId);
+                    releaseRunExecution(state);
                     throw error;
                 }
 
@@ -314,7 +331,8 @@ export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => 
                             updatedAt: Date.now(),
                         };
                         await persistCheckpoint(toTaskRunCheckpoint(runId, workspaceName, 'failed', state.queue.cursor));
-                    });
+                    })
+                    .finally(() => {releaseRunExecution(state);});
 
                 return { reply: replyAction(action, { runId }), events: [] };
             }
@@ -384,6 +402,7 @@ export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => 
                 run.status = 'halted';
                 run.checkpoint = checkpoint;
                 runtime.runs.delete(run.runId);
+                releaseRunExecution(run);
                 return { reply: replyAction(action, { checkpoint }), events: [] };
             }
 
@@ -457,6 +476,11 @@ export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => 
                         'closed resume does not include enough step history for the checkpoint cursor',
                     );
                 }
+                const stepResolves = readStepResolves(payload.stepResolves);
+                const checkpoints = readCheckpoints(payload.checkpoints);
+                const checkpointStepResolves = readCheckpointStepResolves(payload.checkpointStepResolves);
+                const checkpointBodies = readCheckpointBodies(payload.checkpointBodies);
+                const releaseExecution = acquireWorkspaceExecution(workspace, action.type);
 
                 const queue = createStepsQueue(steps, { closed: payload.close === true });
                 queue.cursor = checkpoint.cursor;
@@ -470,16 +494,18 @@ export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => 
                     pipe,
                     signals,
                     checkpoint,
-                    stepResolves: readStepResolves(payload.stepResolves),
-                    checkpoints: readCheckpoints(payload.checkpoints),
-                    checkpointStepResolves: readCheckpointStepResolves(payload.checkpointStepResolves),
-                    checkpointBodies: readCheckpointBodies(payload.checkpointBodies),
+                    stepResolves,
+                    checkpoints,
+                    checkpointStepResolves,
+                    checkpointBodies,
+                    releaseExecution,
                 };
                 runtime.runs.set(checkpoint.runId, state);
                 try {
                     await persistCheckpoint(toTaskRunCheckpoint(checkpoint.runId, checkpoint.workspaceName, 'running', checkpoint.cursor));
                 } catch (error) {
                     runtime.runs.delete(checkpoint.runId);
+                    releaseRunExecution(state);
                     throw error;
                 }
 
@@ -519,7 +545,8 @@ export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => 
                             updatedAt: Date.now(),
                         };
                         await persistCheckpoint(toTaskRunCheckpoint(checkpoint.runId, checkpoint.workspaceName, 'failed', state.queue.cursor));
-                    });
+                    })
+                    .finally(() => {releaseRunExecution(state);});
 
                 return {
                     reply: replyAction(action, {

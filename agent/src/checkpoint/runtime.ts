@@ -14,8 +14,9 @@ export type WorkspaceCheckpointRuntime = {
         stepResolves?: Record<string, StepResolve>,
         hints?: WorkflowCheckpoint['hints'],
         bodyDsl?: string,
+        expectedRevision?: string | null,
     ) => WorkflowCheckpoint;
-    delete: (checkpointId: string) => WorkflowCheckpoint;
+    delete: (checkpointId: string, expectedRevision?: string | null) => WorkflowCheckpoint;
 };
 
 export type WorkspaceCheckpointRuntimeOptions = {
@@ -50,6 +51,7 @@ export const createWorkspaceCheckpointRuntime = (
         stepResolves?: Record<string, StepResolve>,
         hints?: WorkflowCheckpoint['hints'],
         bodyDsl?: string,
+        expectedRevision?: string | null,
     ): WorkflowCheckpoint => {
         if (checkpoint.id !== checkpoint.id.trim()) {
             throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'checkpoint.id must not contain surrounding whitespace');
@@ -77,19 +79,19 @@ export const createWorkspaceCheckpointRuntime = (
         if (artifact.name !== checkpoint.id) {
             throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'checkpoint identity mismatch: artifact.name must equal checkpoint.id');
         }
-        const saved = workflow.save(artifact);
+        const saved = workflow.save(artifact, {expectedRevision});
         if (saved.kind !== 'checkpoint') {
             throw new ActionError(ERROR_CODES.ERR_INTERNAL, 'unexpected checkpoint artifact kind after save');
         }
         return saved;
     };
 
-    const remove = (checkpointId: string): WorkflowCheckpoint => {
+    const remove = (checkpointId: string, expectedRevision?: string | null): WorkflowCheckpoint => {
         const existing = get(checkpointId);
         if (!existing) {
             throw new ActionError(ERROR_CODES.ERR_NOT_FOUND, `checkpoint not found: ${checkpointId}`);
         }
-        workflow.delete(checkpointId, CHECKPOINT_DUMMY);
+        workflow.delete(checkpointId, CHECKPOINT_DUMMY, {expectedRevision});
         return existing;
     };
 

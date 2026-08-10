@@ -15,6 +15,7 @@ import {
     withWorkflowMutationLocks,
     withWorkflowMutationLocksAsync,
 } from './transaction';
+import {workflowArtifactRevision} from './revision';
 
 export type WorkflowArtifactKind = 'recording' | 'checkpoint' | 'dsl' | 'entity_rules';
 export type WorkflowDummy = { kind: WorkflowArtifactKind };
@@ -27,6 +28,10 @@ const WORKFLOW_ARTIFACT_KINDS = new Set<WorkflowArtifactKind>([
 ]);
 
 export type WorkflowArtifact = WorkflowRecording | WorkflowCheckpoint | WorkflowDsl | WorkflowEntityRules;
+
+export type WorkflowMutationOptions = {
+    expectedRevision?: string | null;
+};
 
 export type WorkflowCatalogItemBase = {
     kind: WorkflowArtifactKind;
@@ -61,10 +66,10 @@ export type WorkflowManifest = {
 export type Workflow = {
     readonly name: string;
     entryDslName?: () => string;
-    save: (value: WorkflowArtifact) => WorkflowArtifact;
+    save: (value: WorkflowArtifact, options?: WorkflowMutationOptions) => WorkflowArtifact;
     get: (name: string, dummy: WorkflowDummy) => WorkflowArtifact | null;
     list: (dummy: WorkflowDummy) => WorkflowCatalogItem[];
-    delete: (name: string, dummy: WorkflowDummy) => boolean;
+    delete: (name: string, dummy: WorkflowDummy, options?: WorkflowMutationOptions) => boolean;
 };
 
 type WorkflowInternal = {
@@ -184,6 +189,23 @@ const validateStoredArtifacts = (workflowName: string): void => {
     }
 };
 
+const assertExpectedRevision = (
+    internal: WorkflowInternal,
+    kind: WorkflowArtifactKind,
+    name: string,
+    expectedRevision: string | null | undefined,
+): void => {
+    if (expectedRevision === undefined) {return;}
+    const current = resolveStore(internal, kind).get(name);
+    const actualRevision = current ? workflowArtifactRevision(current) : null;
+    if (actualRevision === expectedRevision) {return;}
+    throw new WorkflowError(
+        `workflow artifact revision conflict: ${kind}:${name}`,
+        'ERR_CONFLICT',
+        {cause: new Error(`expected=${String(expectedRevision)} actual=${String(actualRevision)}`)},
+    );
+};
+
 const reconcileCatalog = (
     internal: WorkflowInternal,
     manifest: WorkflowManifest,
@@ -227,8 +249,9 @@ const loadWorkflowUnlocked = (workflowName: string): Workflow => {
             workflowName,
             () => refreshManifest().entry.dsl,
         ),
-        save: (value) => withWorkflowMutationLock(workflowName, () => {
+        save: (value, options = {}) => withWorkflowMutationLock(workflowName, () => {
             const currentManifest = refreshManifest();
+            assertExpectedRevision(internal, value.kind, value.name, options.expectedRevision);
             const snapshot = snapshotWorkflowArtifact(workflowName, value.kind, value.name);
             let saved: WorkflowArtifact;
             try {
@@ -269,12 +292,13 @@ const loadWorkflowUnlocked = (workflowName: string): Workflow => {
                     .map((artifact) => toCatalogViewItem(artifact, existing.get(artifact.name)));
             },
         ),
-        delete: (name, dummy) => withWorkflowMutationLock(workflowName, () => {
+        delete: (name, dummy, options = {}) => withWorkflowMutationLock(workflowName, () => {
             requireArtifactName(name, `${dummy.kind} artifact name`);
             const currentManifest = refreshManifest();
             if (dummy.kind === 'dsl' && name === currentManifest.entry.dsl) {
                 throw new WorkflowError(`cannot delete workflow entry DSL: ${name}`, 'ERR_WORKFLOW_BAD_ARGS');
             }
+            assertExpectedRevision(internal, dummy.kind, name, options.expectedRevision);
             const snapshot = snapshotWorkflowArtifact(workflowName, dummy.kind, name);
             let deleted: boolean;
             try {
@@ -469,7 +493,7 @@ const parseWorkflowManifest = (value: unknown, workflowName: string): WorkflowMa
         createdAt: value.createdAt,
         updatedAt: value.updatedAt,
         catalog: parseCatalogCache(value.catalog),
-    } as WorkflowManifest;
+    };
 };
 
 const parseCatalogCache = (value: unknown): WorkflowCatalogItem[] => {

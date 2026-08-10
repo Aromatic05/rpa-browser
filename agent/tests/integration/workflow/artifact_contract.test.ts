@@ -778,6 +778,54 @@ test('dsl.save rejects missing checkpoint dependencies before persistence', asyn
     }
 });
 
+test('dsl authoring revision rejects stale saves after direct filesystem edits', async () => {
+    const name = uniqueName('dsl-authoring-revision');
+    cleanup(name);
+    try {
+        const workflow = createWorkflowOnFs(name);
+        workflow.save({kind: 'dsl', name: 'main', content: 'wait 1', stepResolves: {}});
+        const {registry} = createWorkspaceHarness();
+        const workspace = registry.createWorkspace(name, workflow);
+
+        const initial = await workspace.router.handle({
+            v: 1, id: 'dsl-revision-get-1', type: 'dsl.get', workspaceName: name,
+        } as any, workspace as any, registry as any);
+        const initialRevision = (initial.reply.payload as {artifactRevision?: string}).artifactRevision;
+        assert.equal(typeof initialRevision, 'string');
+
+        fs.writeFileSync(path.join(workflowRootDir(name), 'dsls', 'main.dsl'), 'wait 2', 'utf8');
+        await assert.rejects(
+            () => workspace.router.handle({
+                v: 1,
+                id: 'dsl-revision-stale-save',
+                type: 'dsl.save',
+                workspaceName: name,
+                payload: {content: 'wait 3', expectedRevision: initialRevision},
+            } as any, workspace as any, registry as any),
+            (error: any) => error?.code === 'ERR_CONFLICT',
+        );
+        assert.equal((workflow.get('main', {kind: 'dsl'}) as any)?.content, 'wait 2');
+
+        const current = await workspace.router.handle({
+            v: 1, id: 'dsl-revision-get-2', type: 'dsl.get', workspaceName: name,
+        } as any, workspace as any, registry as any);
+        const currentRevision = (current.reply.payload as {artifactRevision?: string}).artifactRevision;
+        assert.equal(typeof currentRevision, 'string');
+        assert.notEqual(currentRevision, initialRevision);
+        const saved = await workspace.router.handle({
+            v: 1,
+            id: 'dsl-revision-current-save',
+            type: 'dsl.save',
+            workspaceName: name,
+            payload: {content: 'wait 3', expectedRevision: currentRevision},
+        } as any, workspace as any, registry as any);
+        assert.equal(typeof (saved.reply.payload as {artifactRevision?: string}).artifactRevision, 'string');
+        assert.equal((workflow.get('main', {kind: 'dsl'}) as any)?.content, 'wait 3');
+    } finally {
+        cleanup(name);
+    }
+});
+
 test('checkpoint.get exposes persisted body DSL without bloating checkpoint.list', async () => {
     const name = uniqueName('checkpoint-get-body');
     cleanup(name);
@@ -939,6 +987,75 @@ test('checkpoint.save persists DSL bodies and preserves them across metadata-onl
             },
         } as any, workspace as any, registry as any));
         assert.equal(workflow.get('recursive-checkpoint', {kind: 'checkpoint'}), null);
+    } finally {
+        cleanup(name);
+    }
+});
+
+test('checkpoint authoring revision rejects stale save and delete operations', async () => {
+    const name = uniqueName('checkpoint-authoring-revision');
+    cleanup(name);
+    try {
+        const workflow = createWorkflowOnFs(name);
+        const {registry} = createWorkspaceHarness();
+        const workspace = registry.createWorkspace(name, workflow);
+        const checkpoint = {
+            id: 'revision-checkpoint',
+            kind: 'procedure',
+            trigger: {matchRules: []},
+            body: {language: 'dsl', source: 'body.dsl'},
+        };
+        const created = await workspace.router.handle({
+            v: 1,
+            id: 'checkpoint-revision-create',
+            type: 'checkpoint.save',
+            workspaceName: name,
+            payload: {checkpoint, bodyDsl: 'output value = input.value', expectedRevision: null},
+        } as any, workspace as any, registry as any);
+        const firstRevision = (created.reply.payload as {artifactRevision?: string}).artifactRevision;
+        assert.equal(typeof firstRevision, 'string');
+
+        const updated = await workspace.router.handle({
+            v: 1,
+            id: 'checkpoint-revision-update',
+            type: 'checkpoint.save',
+            workspaceName: name,
+            payload: {checkpoint: {...checkpoint, priority: 5}, expectedRevision: firstRevision},
+        } as any, workspace as any, registry as any);
+        const secondRevision = (updated.reply.payload as {artifactRevision?: string}).artifactRevision;
+        assert.equal(typeof secondRevision, 'string');
+        assert.notEqual(secondRevision, firstRevision);
+
+        await assert.rejects(
+            () => workspace.router.handle({
+                v: 1,
+                id: 'checkpoint-revision-stale-save',
+                type: 'checkpoint.save',
+                workspaceName: name,
+                payload: {checkpoint: {...checkpoint, priority: 9}, expectedRevision: firstRevision},
+            } as any, workspace as any, registry as any),
+            (error: any) => error?.code === 'ERR_CONFLICT',
+        );
+        await assert.rejects(
+            () => workspace.router.handle({
+                v: 1,
+                id: 'checkpoint-revision-stale-delete',
+                type: 'checkpoint.delete',
+                workspaceName: name,
+                payload: {checkpointId: checkpoint.id, expectedRevision: firstRevision},
+            } as any, workspace as any, registry as any),
+            (error: any) => error?.code === 'ERR_CONFLICT',
+        );
+
+        const removed = await workspace.router.handle({
+            v: 1,
+            id: 'checkpoint-revision-current-delete',
+            type: 'checkpoint.delete',
+            workspaceName: name,
+            payload: {checkpointId: checkpoint.id, expectedRevision: secondRevision},
+        } as any, workspace as any, registry as any);
+        assert.equal((removed.reply.payload as {deleted?: boolean}).deleted, true);
+        assert.equal(workflow.get(checkpoint.id, {kind: 'checkpoint'}), null);
     } finally {
         cleanup(name);
     }

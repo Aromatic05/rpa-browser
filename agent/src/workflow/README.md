@@ -60,6 +60,7 @@ Workspace actions must use `action.workspaceName` only.
 - A catalog entry whose artifact was fully deleted is stale cache and is ignored. A partially present but invalid artifact is still reported as an invalid artifact.
 - Workflow API save/delete operations reconcile stale catalog entries and refresh metadata for the mutated artifact; authors do not need to hand-maintain derived `summary`, checkpoint `enabled/priority`, or catalog membership.
 - `.locks/` and `*.lock.reclaimed/` are runtime lock internals, not workflow artifacts. Reclaimed generation tombstones are intentionally retained to prevent delayed stale reclaimers from acting on a newer lock generation.
+- Workflow save/delete supports lock-held `expectedRevision` CAS for writers that participate in the workflow lock protocol. Revisions are stable hashes of the loaded artifact's semantic content, so direct filesystem edits completed before CAS invalidate stale editor revisions without a revision sidecar; raw concurrent filesystem writers are not transactional participants.
 
 ## Artifact Names and Entry DSL
 
@@ -96,6 +97,8 @@ Workspace actions must use `action.workspaceName` only.
 - shared action protocol package is not introduced in this stage.
 - `dsl.save`/`dsl.validate` validate referenced checkpoint existence, callability, body availability, recursion, and call-depth before execution.
 - `checkpoint.save` validates a DSL body before persistence, including recovery-only `failure.*` scope and nested checkpoint dependencies.
+- `dsl.get/save` and `checkpoint.list/get/save` expose `artifactRevision`; DSL/checkpoint mutations accept optional `expectedRevision` for collaborative authoring.
+- `dsl.run` and `task.run.start/resume` share one workspace execution ownership boundary. Destructive workspace lifecycle actions require `idle` and cannot tear down an active run.
 
 ## Record Persistence Boundary
 

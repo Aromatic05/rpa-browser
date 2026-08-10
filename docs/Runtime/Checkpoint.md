@@ -133,6 +133,10 @@ Checkpoint flow 内再次失败不会无限递归进入同一 recovery flow。
 
 metadata-only 更新会复用并重新验证已持久化的 `body.dsl`，不会绕过 body validation。
 
+`checkpoint.list/get/save` 返回 `artifactRevision`。协作式 `checkpoint.save/delete` 可传 `expectedRevision`：省略表示兼容的无条件 mutation，`null` 表示要求 artifact 不存在，字符串表示要求当前实际 revision 精确匹配。比较与 mutation 在同一个 workflow filesystem lock 内完成，冲突返回 `ERR_CONFLICT`。
+
+Checkpoint revision 直接由 checkpoint metadata、`body.dsl`、resolve sidecar 与 hints 的语义内容计算，不额外保存 revision 文件；直接文件编辑会自动让旧 revision 失效。
+
 ## 运行时 snapshot
 
 DSL run 开始时会物化其引用的 checkpoint graph、body、resolve 和 entity-rule exports，并冻结为本次执行 snapshot。执行开始后的 artifact 修改不会直接改变已经启动的这次 run。

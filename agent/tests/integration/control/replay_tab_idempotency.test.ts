@@ -61,6 +61,7 @@ const createHarness = () => {
         runtime: {},
         pageRegistry: {},
         config: getRunnerConfig(),
+        resolveWorkspace: () => workspace,
         pluginHost: {
             getExecutors: () => ({
                 'browser.create_tab': async (s: Extract<StepUnion, { name: 'browser.create_tab' }>) => {

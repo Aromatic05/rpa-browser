@@ -193,5 +193,14 @@ test('browser.query business failures include page and semantic resolution diagn
         query: 'table.rowCount',
         semanticProfiles: ['orders-form', 'orders-table'],
         availableBusinessTags: ['order.form.main', 'order.table.main'],
+        entityRules: {
+            status: 'ready',
+            ok: true,
+            diagnostics: [],
+            profiles: {
+                'orders-form': {ok: true, diagnostics: [], rules: {}},
+                'orders-table': {ok: true, diagnostics: [], rules: {}},
+            },
+        },
     });
 });

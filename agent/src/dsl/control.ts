@@ -8,7 +8,7 @@ import { DslValidationError } from './diagnostics';
 import { runWorkspaceExecution } from '../runtime/workspace/execution_coordinator';
 import type { RunStepsDeps } from '../runner/run_steps';
 import type { WorkspaceEntityRulesProvider } from '../snapshot/rules/runtime/contracts';
-import type { Workflow, WorkflowDsl, WorkflowDummy } from '../workflow';
+import {workflowArtifactRevision, type Workflow, type WorkflowDsl, type WorkflowDummy} from '../workflow';
 import type { StepResolve } from '../runner/steps/types';
 import { validateStepResolveFileForSerialization } from '../runner/serialization/types';
 import { materializeReferencedCheckpointRuntimeSnapshot } from '../runner/checkpoint';
@@ -98,6 +98,15 @@ const validateStepResolves = (value: unknown): Record<string, StepResolve> => {
     }
 };
 
+const readExpectedRevision = (value: unknown): string | null | undefined => {
+    if (value === undefined) {return undefined;}
+    if (value === null) {return null;}
+    if (typeof value !== 'string' || value.length === 0) {
+        throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'expectedRevision must be a non-empty string or null');
+    }
+    return value;
+};
+
 export const createDslControl = (services: DslControlServices): DslControl => ({
     handle: async (input) => {
         const {action, workspace} = input;
@@ -116,13 +125,20 @@ export const createDslControl = (services: DslControlServices): DslControl => ({
             content?: string;
             input?: Record<string, unknown>;
             stepResolves?: Record<string, StepResolve>;
+            expectedRevision?: unknown;
         };
 
         if (action.type === 'dsl.get') {
             const dslName = payload.dslName || resolveDefaultDslName(workflow);
             const dsl = requireDsl(workflow, dslName);
             return {
-                reply: replyAction(action, {workspaceName: workspace.name, dslName, content: dsl.content, stepResolves: dsl.stepResolves}),
+                reply: replyAction(action, {
+                    workspaceName: workspace.name,
+                    dslName,
+                    content: dsl.content,
+                    stepResolves: dsl.stepResolves,
+                    artifactRevision: workflowArtifactRevision(dsl),
+                }),
                 events: [],
             };
         }
@@ -133,6 +149,7 @@ export const createDslControl = (services: DslControlServices): DslControl => ({
                 throw new ActionError(ERROR_CODES.ERR_WORKFLOW_BAD_ARGS, 'dsl.save requires content');
             }
             const dslName = payload.dslName || resolveDefaultDslName(workflow);
+            const expectedRevision = readExpectedRevision(payload.expectedRevision);
             const stepResolves = payload.stepResolves === undefined
                 ? existingDslResolves(workflow, dslName)
                 : validateStepResolves(payload.stepResolves);
@@ -150,9 +167,20 @@ export const createDslControl = (services: DslControlServices): DslControl => ({
             if (checkpointDiagnostics.length > 0) {
                 throw new DslValidationError(checkpointDiagnostics);
             }
-            workflow.save({kind: 'dsl', name: dslName, content: payload.content, stepResolves});
+            const saved = workflow.save(
+                {kind: 'dsl', name: dslName, content: payload.content, stepResolves},
+                {expectedRevision},
+            );
+            if (saved.kind !== 'dsl') {
+                throw new ActionError(ERROR_CODES.ERR_INTERNAL, 'unexpected DSL artifact kind after save');
+            }
             return {
-                reply: replyAction(action, {workspaceName: workspace.name, dslName, saved: true}),
+                reply: replyAction(action, {
+                    workspaceName: workspace.name,
+                    dslName,
+                    artifactRevision: workflowArtifactRevision(saved),
+                    saved: true,
+                }),
                 events: [],
             };
         }

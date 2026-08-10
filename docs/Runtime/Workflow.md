@@ -145,6 +145,14 @@ parse -> link -> normalize -> validate
 
 如果 `stepResolves` 没有显式提供，保存会保留已有 sidecar；显式提供时先验证候选 sidecar，再写入。
 
+`dsl.get` 返回 `artifactRevision`。`dsl.save` 可选接受 `expectedRevision`：
+
+- 省略：保持兼容，执行无条件写入；
+- `null`：要求该 DSL 当前不存在；
+- revision 字符串：要求当前 DSL 的实际内容 revision 完全一致，否则返回 `ERR_CONFLICT`。
+
+revision 是对 DSL 内容和 resolve sidecar 的稳定 SHA-256 语义摘要，不使用 revision sidecar。直接修改 `.dsl` 或 `.resolve.yaml` 会自然使旧 revision 失效。
+
 ## Checkpoint 保存边界
 
 `checkpoint.save` 会：
@@ -154,6 +162,8 @@ parse -> link -> normalize -> validate
 - 保留 metadata-only update 未显式替换的 body/resolve/hints；
 - 对 `body.dsl` 做 DSL validation；
 - 校验 nested checkpoint graph。
+
+`checkpoint.list/get/save` 返回 `artifactRevision`；`checkpoint.save/delete` 可接受 `expectedRevision`，语义与 DSL 相同。Checkpoint revision 覆盖 `checkpoint.yaml`、`body.dsl`、resolve sidecar 和 hints 的实际语义内容。
 
 ## Entity rules
 
@@ -176,6 +186,17 @@ Workflow mutation 通过 filesystem lock 序列化。stale lock 回收使用 gen
 stale generation 会留下很小的 `*.lock.reclaimed/` tombstone；它属于运行时锁协议，不是 workflow artifact，不应在运行中的 agent 下由 authoring 工具自动清理。
 
 save/delete 的 artifact 与 manifest mutation 带 rollback 边界：manifest 更新失败时尝试恢复 mutation 前 artifact snapshot。
+
+`expectedRevision` 的比较发生在同一个 workflow mutation lock 内，和后续 save/delete 对所有遵守 workflow facade/lock 的 writer 形成原子 CAS；不是 control 层的“先读再写”检查。现有 entity-rules annotator 也使用这一锁内 CAS。
+
+直接 filesystem editor 不会自动取得 workflow lock。它在 CAS compare 之前完成的修改会改变 `artifactRevision` 并触发冲突；但一个与 API mutation 真正同时写同一 artifact 的外部进程不属于该事务协议。需要强并发协作时，editor/agent 应通过 workflow authoring API 或遵守同一 lock protocol。
+
+Workspace 同一时刻只有一个 execution owner：
+
+- `dsl.run` 从 snapshot/preflight 开始到执行结束持有 execution lease；
+- `task.run.start/resume` 从 run 创建/恢复开始持有 lease，直到自然终态、失败、显式 halt 或 runner stop；suspend 不释放 lease；
+- `workspace.close`、`workflow.rename`、`workflow.resetDefault` 只允许在 workspace `idle` 时执行，不会在运行中拆掉 browser/runtime；
+- lease 带 owner token，旧 run 的延迟 cleanup 不能释放后来新 run 的 ownership。
 
 rename/copy 在执行前扫描真实存在的 artifact：
 
@@ -202,10 +223,11 @@ rename/copy 在执行前扫描真实存在的 artifact：
 
 AI 可以直接新增、删除和修改合法 artifact，而不需要手工同步 catalog；但修改后仍应通过对应 `dsl.validate` / save validation 和实际执行验证。
 
+协作式 AI/editor 应优先执行 `get -> 修改 -> save(expectedRevision=artifactRevision)`。如果用户或另一个 agent 在期间直接修改了文件，旧 save 会得到 `ERR_CONFLICT`，应重新读取而不是覆盖。
+
 ## 当前限制
 
 - DSL 尚未覆盖 runner 的全部 browser primitive。
 - `dsl.run` 尚未接入 task runner durable checkpoint store，进程崩溃后不能从 DSL cursor 继续。
-- DSL/checkpoint 普通 authoring API 尚未全面采用 artifact revision / expectedRevision 乐观并发；旧读取结果仍可能被后写覆盖。
 - DSL diagnostic 尚无完整 source span。
 - Workflow transaction 提供进程级 rollback，但当前不是完整的掉电 durability protocol。

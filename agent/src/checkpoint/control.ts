@@ -5,7 +5,7 @@ import type { WorkspaceRouterInput } from '../runtime/workspace/router';
 import type { ControlPlaneResult } from '../runtime/control_plane';
 import type { Checkpoint } from '../runner/checkpoint';
 import type { StepResolve } from '../runner/steps/types';
-import type { Workflow, WorkflowCheckpoint } from '../workflow';
+import {workflowArtifactRevision, type Workflow, type WorkflowCheckpoint} from '../workflow';
 import { createWorkspaceCheckpointRuntime } from './runtime';
 import { createWorkspaceCheckpointProvider } from './provider';
 import type { DslCheckpointProvider } from '../dsl/emit/checkpoint_call';
@@ -59,6 +59,16 @@ const resolveBodyDsl = (payload: Record<string, unknown>): string | undefined =>
         throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'bodyDsl must be a string');
     }
     return payload.bodyDsl;
+};
+
+const resolveExpectedRevision = (payload: Record<string, unknown>): string | null | undefined => {
+    if (!Object.prototype.hasOwnProperty.call(payload, 'expectedRevision')) {return undefined;}
+    const value = payload.expectedRevision;
+    if (value === null) {return null;}
+    if (typeof value !== 'string' || value.length === 0) {
+        throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'expectedRevision must be a non-empty string or null');
+    }
+    return value;
 };
 
 export const createCheckpointControl = (): CheckpointControl => ({
@@ -128,6 +138,7 @@ export const createCheckpointControl = (): CheckpointControl => ({
                         checkpoint: item.checkpoint,
                         stepResolves: item.stepResolves,
                         hints: item.hints,
+                        artifactRevision: workflowArtifactRevision(item),
                     })),
                 }),
                 events: [],
@@ -147,6 +158,7 @@ export const createCheckpointControl = (): CheckpointControl => ({
                     checkpoint: artifact.checkpoint,
                     stepResolves: artifact.stepResolves,
                     hints: artifact.hints,
+                    artifactRevision: workflowArtifactRevision(artifact),
                     ...(artifact.bodyDsl !== undefined ? {bodyDsl: artifact.bodyDsl} : {}),
                 }),
                 events: [],
@@ -164,6 +176,7 @@ export const createCheckpointControl = (): CheckpointControl => ({
                 resolveStepResolves(payload),
                 resolveHints(payload),
                 resolveBodyDsl(payload),
+                resolveExpectedRevision(payload),
             );
             return {
                 reply: replyAction(action, {
@@ -172,6 +185,7 @@ export const createCheckpointControl = (): CheckpointControl => ({
                     checkpoint: artifact.checkpoint,
                     stepResolves: artifact.stepResolves,
                     hints: artifact.hints,
+                    artifactRevision: workflowArtifactRevision(artifact),
                     saved: true,
                 }),
                 events: [],
@@ -180,7 +194,7 @@ export const createCheckpointControl = (): CheckpointControl => ({
 
         if (action.type === 'checkpoint.delete') {
             const checkpointId = requireCheckpointId(payload);
-            const removed = runtime.delete(checkpointId);
+            const removed = runtime.delete(checkpointId, resolveExpectedRevision(payload));
             return {
                 reply: replyAction(action, {
                     workspaceName: workspace.name,
@@ -197,4 +211,4 @@ export const createCheckpointControl = (): CheckpointControl => ({
 
 const isRecoveryCheckpoint = (checkpoint: Checkpoint): boolean =>
     checkpoint.kind === 'recovery'
-    || (checkpoint.kind === undefined && (checkpoint.trigger?.matchRules?.length ?? 0) > 0);
+    || (checkpoint.kind === undefined && (checkpoint.trigger?.matchRules.length ?? 0) > 0);

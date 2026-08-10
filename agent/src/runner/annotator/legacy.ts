@@ -362,7 +362,7 @@ const legacySave = async (
             validation: evaluation.validation,
         });
     }
-    const saved = input.workspace.workflow.save(evaluation.profile);
+    const saved = input.workspace.workflow.save(evaluation.profile, {expectedRevision});
     if (saved.kind !== 'entity_rules') {
         throw new ActionError(ERROR_CODES.ERR_INTERNAL, 'workflow returned a non-entity_rules artifact');
     }

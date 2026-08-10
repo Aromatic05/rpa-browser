@@ -23,6 +23,8 @@ dsls/<dslName>.resolve.yaml
 
 `workflow.yaml.entry.dsl` 指定默认入口。`dsl.get/save/validate/run` 未显式指定 `dslName` 时使用该入口。
 
+`dsl.get` 同时返回 `artifactRevision`。协作式保存可把它作为 `dsl.save.expectedRevision` 回传；如果 `.dsl` 或 resolve sidecar 已被人类/另一个 agent 修改，保存返回 `ERR_CONFLICT`。省略 `expectedRevision` 保持兼容的无条件保存，`null` 表示仅允许创建不存在的 DSL。
+
 ## Import
 
 Import 只能出现在 DSL 顶层开头。
@@ -196,7 +198,7 @@ output user = session.authenticatedUser
 - 是否存在递归调用；
 - 调用深度是否超过运行时上限。
 
-`dsl.run` 从取得 workspace `executing` slot 开始，就把“物化本次执行实际使用的 checkpoint / entity-rule / resolve snapshot -> 对冻结 snapshot 做 source + checkpoint graph preflight -> 执行 DSL”放在同一个 execution 生命周期内。preflight 完成前不会执行第一个 step；直接修改 `.dsl` / `body.dsl` 后留下的坏依赖或坏 procedure body 不会先产生前半段副作用再失败。
+`dsl.run` 从取得 workspace `executing` execution lease 开始，就把“物化本次执行实际使用的 checkpoint / entity-rule / resolve snapshot -> 对冻结 snapshot 做 source + checkpoint graph preflight -> 执行 DSL”放在同一个 execution 生命周期内。preflight 完成前不会执行第一个 step；直接修改 `.dsl` / `body.dsl` 后留下的坏依赖或坏 procedure body 不会先产生前半段副作用再失败。活动 `task.run` 持有同一个 workspace execution ownership，因此不会与 `dsl.run` 并发操作同一 workspace。
 
 ## Control flow
 
