@@ -2,15 +2,23 @@ import { replyAction } from '../../../actions/action_protocol';
 import { ActionError, ERROR_CODES } from '../../../actions/results';
 import type { ControlPlaneResult } from '../../../runtime/control_plane';
 import type { WorkspaceRouterInput } from '../../../runtime/workspace/router';
-import type {
-    EntityRuleAnnotationArtifact,
-    EntityRuleMatchArtifact,
-    Workflow,
-    WorkflowEntityRules,
+import {
+    entityRulesArtifactRevision,
+    validateWorkflowEntityRules,
+    type Workflow,
+    type WorkflowEntityRules,
 } from '../../../workflow';
+import {
+    compileEntityRuleQueryPlan,
+} from '../query';
 import type { WorkspaceEntityRulesProvider } from './contracts';
 import { createWorkspaceEntityRulesProvider } from './provider';
-import { executeEntityRules, type ExecuteEntityRulesInput, type EntityRulesExecutionResult } from './matcher';
+import {
+    executeEntityRules,
+    inferEntityRuleProfileDomain,
+    type ExecuteEntityRulesInput,
+    type EntityRulesExecutionResult,
+} from './matcher';
 import { executeEntityRulesOnPage } from './capture';
 import {
     projectEntityRuleProfileSummary,
@@ -30,6 +38,23 @@ export type EntityRulesRuntime = {
     getProvider: (workflow: Workflow) => WorkspaceEntityRulesProvider;
     execute: (input: ExecuteEntityRulesInput) => EntityRulesExecutionResult;
     executePage: typeof executeEntityRulesOnPage;
+};
+
+const requireExecutableProfile = (value: unknown): WorkflowEntityRules => {
+    const profile = validateWorkflowEntityRules(value);
+    const compiled = compileEntityRuleQueryPlan({
+        profileName: profile.name,
+        domain: inferEntityRuleProfileDomain(profile),
+        rules: profile.match.rules,
+    });
+    if (!compiled.ok) {
+        throw new ActionError(
+            ERROR_CODES.ERR_BAD_ARGS,
+            `entity_rules profile is not executable: ${profile.name}`,
+            {diagnostics: compiled.diagnostics},
+        );
+    }
+    return profile;
 };
 
 export const createEntityRulesRuntime = (
@@ -71,24 +96,33 @@ export const createEntityRulesRuntime = (
                     throw new ActionError(ERROR_CODES.ERR_NOT_FOUND, `entity_rules profile not found: ${profileName}`);
                 }
                 return {
-                    reply: replyAction(action, {view: projectEntityRuleProfileView(profile)}),
+                    reply: replyAction(action, {
+                        view: projectEntityRuleProfileView(profile),
+                        artifactRevision: entityRulesArtifactRevision(profile),
+                    }),
                     events: [],
                 };
             }
             case 'entity_rules.save': {
                 const profileName = requireProfileName(payload);
-                const saved = workspace.workflow.save({
+                const expectedRevision = readExpectedRevision(payload.expectedRevision);
+                const profile = requireExecutableProfile({
                     kind: 'entity_rules',
                     name: profileName,
-                    page: payload.page as WorkflowEntityRules['page'],
-                    match: payload.match as EntityRuleMatchArtifact,
-                    annotation: payload.annotation as EntityRuleAnnotationArtifact,
-                } satisfies WorkflowEntityRules);
+                    page: payload.page,
+                    match: payload.match,
+                    annotation: payload.annotation,
+                });
+                const saved = workspace.workflow.save(profile, {expectedRevision});
                 if (saved.kind !== 'entity_rules') {
                     throw new ActionError(ERROR_CODES.ERR_INTERNAL, 'workflow returned a non-entity_rules artifact');
                 }
                 return {
-                    reply: replyAction(action, { profileName: saved.name, profile: saved }),
+                    reply: replyAction(action, {
+                        profileName: saved.name,
+                        profile: saved,
+                        artifactRevision: entityRulesArtifactRevision(saved),
+                    }),
                     events: [],
                 };
             }
@@ -98,7 +132,11 @@ export const createEntityRulesRuntime = (
                 if (!exists) {
                     throw new ActionError(ERROR_CODES.ERR_NOT_FOUND, `entity_rules profile not found: ${profileName}`);
                 }
-                const deleted = workspace.workflow.delete(profileName, { kind: 'entity_rules' });
+                const deleted = workspace.workflow.delete(
+                    profileName,
+                    { kind: 'entity_rules' },
+                    {expectedRevision: readExpectedRevision(payload.expectedRevision)},
+                );
                 return {
                     reply: replyAction(action, { profileName, deleted }),
                     events: [],
@@ -126,4 +164,13 @@ const requireProfileName = (payload: Readonly<Record<string, unknown>>): string 
         throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'profileName is required');
     }
     return profileName;
+};
+
+const readExpectedRevision = (value: unknown): string | null | undefined => {
+    if (value === undefined) {return undefined;}
+    if (value === null) {return null;}
+    if (typeof value !== 'string' || value.length === 0) {
+        throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'expectedRevision must be a non-empty string or null');
+    }
+    return value;
 };

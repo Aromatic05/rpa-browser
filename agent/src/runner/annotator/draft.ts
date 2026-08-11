@@ -7,6 +7,7 @@ import {
     buildSemanticLayer,
     compileEntityRuleQueryPlan,
     executeEntityRuleQueryPlan,
+    inferEntityRuleProfileDomain,
     type PageSnapshotSessionEntry,
     type SemanticBindings,
     type SemanticLayer,
@@ -43,7 +44,7 @@ export const evaluateAnnotatorDraft = (
 
     const compiled = compileEntityRuleQueryPlan({
         profileName: profile.name,
-        domain: profileDomain(profile),
+        domain: inferEntityRuleProfileDomain(profile),
         rules: profile.match.rules,
     });
     if (!compiled.ok) {
@@ -161,12 +162,4 @@ const errorMessage = (error: unknown): string => error instanceof Error ? error.
 export type AnnotatorSemanticProjection = {
     bindings: SemanticBindings;
     suggestions: SemanticSuggestions;
-};
-
-const profileDomain = (profile: WorkflowEntityRules): 'form' | 'table' | 'node' => {
-    if (profile.page?.kind === 'form' || profile.page?.kind === 'table') {return profile.page.kind;}
-    if (profile.page) {return 'node';}
-    if (profile.match.rules.some((rule) => rule.match.kind === 'table')) {return 'table';}
-    if (profile.match.rules.some((rule) => rule.match.kind === 'form')) {return 'form';}
-    return 'node';
 };

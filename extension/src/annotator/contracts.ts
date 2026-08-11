@@ -67,7 +67,7 @@ export type AnnotatorClient = {
     visualize: (profileName?: string) => Promise<AnnotatorProjectionReply>;
     apply: (payload: AnnotatorApplyPayload) => Promise<AnnotatorApplyReply>;
     check: (draft: AnnotatorDraft) => Promise<AnnotatorCheckReply>;
-    save: (draft: AnnotatorDraft) => Promise<AnnotatorSaveReply>;
+    save: (draft: AnnotatorDraft, expectedRevision?: string | null) => Promise<AnnotatorSaveReply>;
 };
 
 export type AnnotatorOverlayPort = {
@@ -85,6 +85,7 @@ export type AnnotatorSessionState = {
     draft?: AnnotatorDraft;
     projection?: AnnotatorProjection;
     validation?: AnnotatorValidation;
+    artifactRevision?: string | null;
     error?: string;
 };
 

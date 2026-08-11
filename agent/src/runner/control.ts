@@ -22,7 +22,7 @@ import {
 } from './run_steps';
 import type { StepResolve, StepUnion } from './steps/types';
 import type {Checkpoint as RunnerCheckpoint} from './checkpoint';
-import { createTaskCheckpointStore, type TaskRunCheckpoint } from './checkpoint_store';
+import { createTaskCheckpointStore, type TaskCheckpointStore, type TaskRunCheckpoint } from './checkpoint_store';
 import { getRunnerConfig, type RunnerConfig } from '../config';
 import {
     readCheckpointBodies,
@@ -47,11 +47,15 @@ type TaskRunState = {
     checkpoints: RunnerCheckpoint[];
     checkpointStepResolves: Record<string, Record<string, StepResolve>>;
     checkpointBodies: Record<string, string>;
-    releaseExecution?: WorkspaceExecutionRelease;
+    completion: Promise<void>;
+    executionSettled: () => boolean;
+    settleExecution: () => void;
+    transition: Promise<void>;
 };
 
 export type RunnerControlDeps = {
     runnerConfig?: RunnerConfig;
+    checkpointStore?: TaskCheckpointStore;
 };
 
 export type RunnerControl = {
@@ -67,8 +71,11 @@ const assertRunAcceptsPush = (run: TaskRunState): void => {
     }
 };
 
+const isRunActive = (run: TaskRunState): boolean =>
+    run.status === 'running' || run.status === 'suspended';
+
 const assertRunActive = (run: TaskRunState, actionType: string): void => {
-    if (run.status !== 'running' && run.status !== 'suspended') {
+    if (!isRunActive(run)) {
         throw new ActionError(
             ERROR_CODES.ERR_BAD_STATE,
             `${actionType} requires an active run: ${run.runId} (${run.status})`,
@@ -89,7 +96,7 @@ export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => 
     const runnerConfig = deps?.runnerConfig || getRunnerConfig();
     const runtime = {
         runs: new Map<string, TaskRunState>(),
-        checkpointStore: createTaskCheckpointStore(
+        checkpointStore: deps?.checkpointStore ?? createTaskCheckpointStore(
             path.resolve(process.cwd(), runnerConfig.checkpointPolicy.filePath),
             { flushIntervalMs: runnerConfig.checkpointPolicy.flushIntervalMs },
         ),
@@ -139,11 +146,37 @@ export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => 
 
     const getRun = (runId: string) => runtime.runs.get(runId) || null;
 
-    const releaseRunExecution = (run: TaskRunState): void => {
-        const release = run.releaseExecution;
-        if (!release) {return;}
-        run.releaseExecution = undefined;
-        release();
+    const serializeRunTransition = async <T>(
+        run: TaskRunState,
+        transition: () => Promise<T>,
+    ): Promise<T> => {
+        const previous = run.transition;
+        let release!: () => void;
+        run.transition = new Promise<void>((resolve) => {release = resolve;});
+        await previous;
+        try {
+            return await transition();
+        } finally {
+            release();
+        }
+    };
+
+    const createRunExecutionLifecycle = (
+        releaseExecution: WorkspaceExecutionRelease,
+    ): Pick<TaskRunState, 'completion' | 'executionSettled' | 'settleExecution'> => {
+        let resolveCompletion!: () => void;
+        let settled = false;
+        const completion = new Promise<void>((resolve) => {resolveCompletion = resolve;});
+        return {
+            completion,
+            executionSettled: () => settled,
+            settleExecution: () => {
+                if (settled) {return;}
+                settled = true;
+                releaseExecution();
+                resolveCompletion();
+            },
+        };
     };
 
     const requireRunId = (payload: {runId?: unknown}): string => {
@@ -177,25 +210,27 @@ export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => 
     });
 
     const observeCheckpoint = async (run: TaskRunState, checkpoint: Checkpoint): Promise<void> => {
-        if (stopped) {
-            const halted = haltedCheckpoint(run);
-            run.checkpoint = halted;
-            run.status = 'halted';
-            return;
-        }
-        if (stopping) {
+        await serializeRunTransition(run, async () => {
+            if (stopped) {
+                const halted = haltedCheckpoint(run);
+                run.checkpoint = halted;
+                run.status = 'halted';
+                return;
+            }
+            if (stopping) {
+                run.checkpoint = checkpoint;
+                run.status = checkpoint.status;
+                return;
+            }
             run.checkpoint = checkpoint;
             run.status = checkpoint.status;
-            return;
-        }
-        run.checkpoint = checkpoint;
-        run.status = checkpoint.status;
-        await persistCheckpoint(toTaskRunCheckpoint(
-            run.runId,
-            run.workspaceName,
-            checkpoint.status,
-            checkpoint.cursor,
-        ));
+            await persistCheckpoint(toTaskRunCheckpoint(
+                run.runId,
+                run.workspaceName,
+                checkpoint.status,
+                checkpoint.cursor,
+            ));
+        });
     };
 
     const stop = async (): Promise<void> => {
@@ -207,7 +242,8 @@ export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => 
         stopping = true;
         stopPromise = (async () => {
             const runs = [...runtime.runs.values()];
-            await Promise.all(runs.map(async (run) => {
+            const activeRuns = runs.filter(isRunActive);
+            await Promise.all(activeRuns.map(async (run) => {
                 await persistCheckpoint(toTaskRunCheckpoint(
                     run.runId,
                     run.workspaceName,
@@ -215,14 +251,16 @@ export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => 
                     run.queue.cursor,
                 ));
             }));
-            for (const run of runs) {
+            for (const run of activeRuns) {
                 const checkpoint = haltedCheckpoint(run);
                 run.checkpoint = checkpoint;
                 run.status = 'halted';
                 sendSignal(run.signals, 'halt');
                 closeStepsQueue(run.queue);
-                releaseRunExecution(run);
             }
+            await Promise.all(runs.map(async (run) => {
+                await run.completion;
+            }));
             runtime.runs.clear();
             runtime.checkpointStore.stop();
             stopped = true;
@@ -269,6 +307,7 @@ export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => 
                 const checkpointStepResolves = readCheckpointStepResolves(payload.checkpointStepResolves);
                 const checkpointBodies = readCheckpointBodies(payload.checkpointBodies);
                 const releaseExecution = acquireWorkspaceExecution(workspace, action.type);
+                const executionLifecycle = createRunExecutionLifecycle(releaseExecution);
                 const queue = createStepsQueue();
                 const pipe = createResultPipe();
                 const signals = createSignalChannel();
@@ -284,14 +323,15 @@ export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => 
                     checkpoints,
                     checkpointStepResolves,
                     checkpointBodies,
-                    releaseExecution,
+                    ...executionLifecycle,
+                    transition: Promise.resolve(),
                 };
                 runtime.runs.set(runId, state);
                 try {
                     await persistCheckpoint(toTaskRunCheckpoint(runId, workspaceName, 'running', 0));
                 } catch (error) {
                     runtime.runs.delete(runId);
-                    releaseRunExecution(state);
+                    state.settleExecution();
                     throw error;
                 }
 
@@ -332,7 +372,7 @@ export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => 
                         };
                         await persistCheckpoint(toTaskRunCheckpoint(runId, workspaceName, 'failed', state.queue.cursor));
                     })
-                    .finally(() => {releaseRunExecution(state);});
+                    .finally(() => {state.settleExecution();});
 
                 return { reply: replyAction(action, { runId }), events: [] };
             }
@@ -395,14 +435,28 @@ export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => 
                     checkpoints?: RunnerCheckpoint[];
                 };
                 const run = requireOwnedRun(payload, workspace.name);
-                assertRunActive(run, action.type);
-                const checkpoint = { runId: run.runId, workspaceName: run.workspaceName, status: 'halted' as const, cursor: run.queue.cursor, updatedAt: Date.now() };
-                await persistCheckpoint(toTaskRunCheckpoint(run.runId, run.workspaceName, 'halted', run.queue.cursor));
-                sendSignal(run.signals, 'halt');
-                run.status = 'halted';
-                run.checkpoint = checkpoint;
+                if (run.status === 'completed' && !run.executionSettled()) {
+                    await run.completion;
+                    runtime.runs.delete(run.runId);
+                    return { reply: replyAction(action, { checkpoint: run.checkpoint }), events: [] };
+                }
+                const checkpoint = await serializeRunTransition(run, async () => {
+                    assertRunActive(run, action.type);
+                    const halted = {
+                        runId: run.runId,
+                        workspaceName: run.workspaceName,
+                        status: 'halted' as const,
+                        cursor: run.queue.cursor,
+                        updatedAt: Date.now(),
+                    };
+                    await persistCheckpoint(toTaskRunCheckpoint(run.runId, run.workspaceName, 'halted', run.queue.cursor));
+                    sendSignal(run.signals, 'halt');
+                    run.status = 'halted';
+                    run.checkpoint = halted;
+                    return halted;
+                });
+                await run.completion;
                 runtime.runs.delete(run.runId);
-                releaseRunExecution(run);
                 return { reply: replyAction(action, { checkpoint }), events: [] };
             }
 
@@ -481,6 +535,7 @@ export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => 
                 const checkpointStepResolves = readCheckpointStepResolves(payload.checkpointStepResolves);
                 const checkpointBodies = readCheckpointBodies(payload.checkpointBodies);
                 const releaseExecution = acquireWorkspaceExecution(workspace, action.type);
+                const executionLifecycle = createRunExecutionLifecycle(releaseExecution);
 
                 const queue = createStepsQueue(steps, { closed: payload.close === true });
                 queue.cursor = checkpoint.cursor;
@@ -498,14 +553,15 @@ export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => 
                     checkpoints,
                     checkpointStepResolves,
                     checkpointBodies,
-                    releaseExecution,
+                    ...executionLifecycle,
+                    transition: Promise.resolve(),
                 };
                 runtime.runs.set(checkpoint.runId, state);
                 try {
                     await persistCheckpoint(toTaskRunCheckpoint(checkpoint.runId, checkpoint.workspaceName, 'running', checkpoint.cursor));
                 } catch (error) {
                     runtime.runs.delete(checkpoint.runId);
-                    releaseRunExecution(state);
+                    state.settleExecution();
                     throw error;
                 }
 
@@ -546,7 +602,7 @@ export const createRunnerControl = (deps?: RunnerControlDeps): RunnerControl => 
                         };
                         await persistCheckpoint(toTaskRunCheckpoint(checkpoint.runId, checkpoint.workspaceName, 'failed', state.queue.cursor));
                     })
-                    .finally(() => {releaseRunExecution(state);});
+                    .finally(() => {state.settleExecution();});
 
                 return {
                     reply: replyAction(action, {

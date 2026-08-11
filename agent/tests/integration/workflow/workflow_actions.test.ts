@@ -7,6 +7,10 @@ import { createWorkflowOnFs, deleteWorkflowFromFs, loadWorkflowFromFs } from '..
 import { isRequestActionType } from '../../../src/actions/action_types';
 import {ActionError, ERROR_CODES} from '../../../src/actions/results';
 import {setRunStepsDeps} from '../../../src/runner/run_steps';
+import type {StepUnion} from '../../../src/runner/steps/types';
+import {completeRunStepsDeps} from '../../helpers/run_steps_workspace';
+import {setRecordedStepEnricherForTest} from '../../../src/record/recording';
+import {createRecorderEventSinkHandler} from '../../../src/record/sink';
 
 const uniqueName = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
 const cleanup = (name: string) => { try { deleteWorkflowFromFs(name); } catch {} };
@@ -212,6 +216,495 @@ test('an active task run owns the workspace and blocks DSL and destructive lifec
         }
         cleanup(source);
         cleanup(target);
+    }
+});
+
+test('play.stop waits for an active replay step before releasing the workspace', async () => {
+    const name = uniqueName('wf-play-stop-owner');
+    cleanup(name);
+    let releaseStep!: () => void;
+    let markStepStarted!: () => void;
+    const stepGate = new Promise<void>((resolve) => {releaseStep = resolve;});
+    const stepStarted = new Promise<void>((resolve) => {markStepStarted = resolve;});
+    const runStepsDeps = completeRunStepsDeps({
+        pluginHost: {
+            getExecutors: () => ({
+                'browser.click': async (step: StepUnion) => {
+                    markStepStarted();
+                    await stepGate;
+                    return {stepId: step.id, ok: true};
+                },
+            }),
+        } as never,
+    }, {workspaceName: name, tabName: 'tab-1'});
+    const {registry, recordingState} = createWorkspaceHarness({runStepsDeps});
+    setRunStepsDeps(runStepsDeps);
+    try {
+        const workflow = createWorkflowOnFs(name);
+        workflow.save({kind: 'dsl', name: 'main', content: 'wait 1', stepResolves: {}});
+        const workspace = registry.createWorkspace(name, workflow);
+        workspace.tabs.createTab({tabName: 'tab-1'});
+        await workspace.tabs.createTabPage('tab-1', {startUrl: 'about:blank'});
+        const token = `unsaved:${name}`;
+        recordingState.workspaceUnsavedRecording.set(name, token);
+        recordingState.recordings.set(token, [
+            {id: 'slow-replay-click', name: 'browser.click', args: {nodeId: 'button'}} as StepUnion,
+        ]);
+        recordingState.recordingManifests.set(token, {
+            recordingToken: token,
+            workspaceName: name,
+            activeTabRef: 'tab-1',
+            initialTabs: [{tabName: 'tab-1', tabRef: 'tab-1', url: '', title: '', active: true}],
+            startedAt: Date.now(),
+            tabs: [{tabName: 'tab-1', tabRef: 'tab-1', firstSeenAt: Date.now(), lastSeenAt: Date.now()}],
+        });
+
+        const started = await workspace.router.handle({
+            v: 1, id: 'play-owner-start', type: 'play.start', workspaceName: name, payload: {},
+        } as any, workspace as any, registry as any);
+        assert.equal(started.reply.type, 'play.started');
+        await stepStarted;
+        assert.equal(workspace.state, 'playing');
+
+        let stopSettled = false;
+        const stopPromise = workspace.router.handle({
+            v: 1, id: 'play-owner-stop', type: 'play.stop', workspaceName: name, payload: {},
+        } as any, workspace as any, registry as any).then((result) => {
+            stopSettled = true;
+            return result;
+        });
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        assert.equal(stopSettled, false);
+        assert.equal(workspace.state, 'playing');
+        await assert.rejects(
+            () => workspace.router.handle({
+                v: 1, id: 'dsl-during-replay-stop', type: 'dsl.run', workspaceName: name,
+            } as any, workspace as any, registry as any),
+            (error: unknown) => error instanceof ActionError && error.code === ERROR_CODES.ERR_BAD_STATE,
+        );
+
+        releaseStep();
+        const stopped = await stopPromise;
+        assert.equal(stopped.reply.type, 'play.stop.result');
+        assert.equal(workspace.state, 'idle');
+    } finally {
+        releaseStep?.();
+        cleanup(name);
+    }
+});
+
+test('play.start owns the workspace before browser preflight begins', async () => {
+    const name = uniqueName('wf-play-start-owner');
+    cleanup(name);
+    let releasePreflight!: () => void;
+    let markPreflightStarted!: () => void;
+    const preflightGate = new Promise<void>((resolve) => {releasePreflight = resolve;});
+    const preflightStarted = new Promise<void>((resolve) => {markPreflightStarted = resolve;});
+    const page = {
+        url: () => 'about:blank',
+        goto: async () => undefined,
+        isClosed: () => false,
+        bringToFront: async () => undefined,
+        context: () => ({}),
+    };
+    const runStepsDeps = completeRunStepsDeps({
+        runtime: {
+            awaitExecutableTab: async ({workspace, tabName}) => {
+                markPreflightStarted();
+                await preflightGate;
+                return {
+                    workspaceName: workspace.name,
+                    tabName,
+                    page,
+                    pageRegistry: workspace.browserSession.pageRegistry,
+                    traceTools: {},
+                    traceCtx: {cache: {}},
+                } as any;
+            },
+        },
+        pluginHost: {
+            getExecutors: () => ({
+                'browser.click': async (step: StepUnion) => ({stepId: step.id, ok: true}),
+            }),
+        } as never,
+    }, {workspaceName: name, tabName: 'tab-1', page});
+    const {registry, recordingState} = createWorkspaceHarness({runStepsDeps});
+    setRunStepsDeps(runStepsDeps);
+    try {
+        const workflow = createWorkflowOnFs(name);
+        workflow.save({kind: 'dsl', name: 'main', content: 'wait 1', stepResolves: {}});
+        const workspace = registry.createWorkspace(name, workflow);
+        workspace.tabs.createTab({tabName: 'tab-1'});
+        const token = `unsaved:${name}`;
+        recordingState.workspaceUnsavedRecording.set(name, token);
+        recordingState.recordings.set(token, [
+            {id: 'play-start-click', name: 'browser.click', args: {nodeId: 'button'}} as StepUnion,
+        ]);
+        recordingState.recordingManifests.set(token, {
+            recordingToken: token,
+            workspaceName: name,
+            activeTabRef: 'tab-1',
+            initialTabs: [{tabName: 'tab-1', tabRef: 'tab-1', url: '', title: '', active: true}],
+            startedAt: Date.now(),
+            tabs: [{tabName: 'tab-1', tabRef: 'tab-1', firstSeenAt: Date.now(), lastSeenAt: Date.now()}],
+        });
+
+        const startPromise = workspace.router.handle({
+            v: 1, id: 'play-preflight-start', type: 'play.start', workspaceName: name, payload: {},
+        } as any, workspace as any, registry as any);
+        await preflightStarted;
+        assert.notEqual(workspace.state, 'idle');
+        await assert.rejects(
+            () => workspace.router.handle({
+                v: 1, id: 'dsl-during-play-preflight', type: 'dsl.run', workspaceName: name,
+            } as any, workspace as any, registry as any),
+            (error: unknown) => error instanceof ActionError && error.code === ERROR_CODES.ERR_BAD_STATE,
+        );
+
+        releasePreflight();
+        const started = await startPromise;
+        assert.equal(started.reply.type, 'play.started');
+        for (let attempt = 0; attempt < 100 && workspace.state !== 'idle'; attempt += 1) {
+            await new Promise((resolve) => setTimeout(resolve, 2));
+        }
+        assert.equal(workspace.state, 'idle');
+    } finally {
+        releasePreflight?.();
+        cleanup(name);
+    }
+});
+
+test('record.start owns the workspace before page binding preflight completes', async () => {
+    const name = uniqueName('wf-record-start-owner');
+    cleanup(name);
+    let releasePreflight!: () => void;
+    let markPreflightStarted!: () => void;
+    const preflightGate = new Promise<void>((resolve) => {releasePreflight = resolve;});
+    const preflightStarted = new Promise<void>((resolve) => {markPreflightStarted = resolve;});
+    const page = {
+        url: () => 'about:blank',
+        isClosed: () => false,
+        addInitScript: async () => undefined,
+        exposeBinding: async () => undefined,
+        evaluate: async () => undefined,
+        frames: () => [],
+        mainFrame: () => ({url: () => 'about:blank'}),
+        waitForTimeout: async () => undefined,
+        on: () => undefined,
+        context: () => ({}),
+    };
+    const runStepsDeps = completeRunStepsDeps({
+        runtime: {
+            awaitExecutableTab: async ({workspace, tabName}) => {
+                markPreflightStarted();
+                await preflightGate;
+                return {
+                    workspaceName: workspace.name,
+                    tabName,
+                    page,
+                    pageRegistry: workspace.browserSession.pageRegistry,
+                    traceTools: {},
+                    traceCtx: {cache: {}},
+                } as any;
+            },
+        },
+    }, {workspaceName: name, tabName: 'tab-1', page});
+    const {registry} = createWorkspaceHarness({runStepsDeps});
+    setRunStepsDeps(runStepsDeps);
+    try {
+        const workflow = createWorkflowOnFs(name);
+        workflow.save({kind: 'dsl', name: 'main', content: 'wait 1', stepResolves: {}});
+        const workspace = registry.createWorkspace(name, workflow);
+        workspace.tabs.createTab({tabName: 'tab-1'});
+        workspace.tabs.bindPage('tab-1', page as any);
+
+        const startPromise = workspace.router.handle({
+            v: 1, id: 'record-preflight-start', type: 'record.start', workspaceName: name, payload: {},
+        } as any, workspace as any, registry as any);
+        await preflightStarted;
+        assert.notEqual(workspace.state, 'idle');
+        await assert.rejects(
+            () => workspace.router.handle({
+                v: 1, id: 'dsl-during-record-preflight', type: 'dsl.run', workspaceName: name,
+            } as any, workspace as any, registry as any),
+            (error: unknown) => error instanceof ActionError && error.code === ERROR_CODES.ERR_BAD_STATE,
+        );
+
+        releasePreflight();
+        await startPromise;
+        assert.equal(workspace.state, 'recording');
+        await workspace.router.handle({
+            v: 1, id: 'record-preflight-stop', type: 'record.stop', workspaceName: name, payload: {},
+        } as any, workspace as any, registry as any);
+        assert.equal(workspace.state, 'idle');
+    } finally {
+        releasePreflight?.();
+        cleanup(name);
+    }
+});
+
+test('record.stop keeps workspace ownership until recorder teardown completes', async () => {
+    const name = uniqueName('wf-record-stop-owner');
+    cleanup(name);
+    let releaseTeardown!: () => void;
+    let markTeardownStarted!: () => void;
+    const teardownGate = new Promise<void>((resolve) => {releaseTeardown = resolve;});
+    const teardownStarted = new Promise<void>((resolve) => {markTeardownStarted = resolve;});
+    let releaseEnhancement!: () => void;
+    let markEnhancementStarted!: () => void;
+    const enhancementGate = new Promise<void>((resolve) => {releaseEnhancement = resolve;});
+    const enhancementStarted = new Promise<void>((resolve) => {markEnhancementStarted = resolve;});
+    let releaseRecordEvent!: () => void;
+    let markRecordEventStarted!: () => void;
+    const recordEventGate = new Promise<void>((resolve) => {releaseRecordEvent = resolve;});
+    const recordEventStarted = new Promise<void>((resolve) => {markRecordEventStarted = resolve;});
+    let latePageBindingCalls = 0;
+    const page = {
+        url: () => 'about:blank',
+        isClosed: () => false,
+        addInitScript: async () => undefined,
+        exposeBinding: async () => undefined,
+        evaluate: async (_fn: unknown, value?: unknown) => {
+            if (value === false) {
+                markTeardownStarted();
+                await teardownGate;
+            }
+        },
+        frames: () => [],
+        mainFrame: () => ({url: () => 'about:blank'}),
+        waitForTimeout: async () => undefined,
+        on: () => undefined,
+        context: () => ({}),
+    };
+    const {registry, runStepsDeps, recordingState} = createWorkspaceHarness({
+        getPage: async (tabName) => {
+            if (tabName === 'late-tab') {latePageBindingCalls += 1;}
+            return page as any;
+        },
+    });
+    setRunStepsDeps(runStepsDeps);
+    recordingState.snapshotPort.ensureFresh = async () => {
+        markRecordEventStarted();
+        await recordEventGate;
+        throw new Error('test snapshot unavailable');
+    };
+    setRecordedStepEnricherForTest(async () => {
+        markEnhancementStarted();
+        await enhancementGate;
+        return {version: 1};
+    });
+    try {
+        const workflow = createWorkflowOnFs(name);
+        workflow.save({kind: 'dsl', name: 'main', content: 'wait 1', stepResolves: {}});
+        const workspace = registry.createWorkspace(name, workflow);
+        workspace.tabs.createTab({tabName: 'tab-1'});
+        workspace.tabs.bindPage('tab-1', page as any);
+
+        await workspace.router.handle({
+            v: 1, id: 'record-stop-start', type: 'record.start', workspaceName: name, payload: {},
+        } as any, workspace as any, registry as any);
+        assert.equal(workspace.state, 'recording');
+
+        const recordEventPromise = workspace.router.handle({
+            v: 1,
+            id: 'record-stop-inflight-event',
+            type: 'record.event',
+            workspaceName: name,
+            payload: {tabName: 'tab-1', ts: Date.now(), type: 'keydown', key: 'Enter', selector: '#late-button'},
+        } as any, workspace as any, registry as any);
+        await recordEventStarted;
+
+        let stopSettled = false;
+        const stopPromise = workspace.router.handle({
+            v: 1, id: 'record-stop-stop', type: 'record.stop', workspaceName: name, payload: {},
+        } as any, workspace as any, registry as any).then((result) => {
+            stopSettled = true;
+            return result;
+        });
+        await teardownStarted;
+        assert.equal(stopSettled, false);
+        assert.equal(workspace.state, 'recording');
+        workspace.tabs.createTab({tabName: 'late-tab'});
+        const lateEvent = await workspace.router.handle({
+            v: 1,
+            id: 'record-stop-late-event',
+            type: 'record.event',
+            workspaceName: name,
+            payload: {tabName: 'late-tab', ts: Date.now(), type: 'keydown', key: 'Escape'},
+        } as any, workspace as any, registry as any);
+        assert.equal((lateEvent.reply.payload as {accepted?: boolean}).accepted, false);
+        assert.equal(latePageBindingCalls, 0);
+        await assert.rejects(
+            () => workspace.router.handle({
+                v: 1, id: 'dsl-during-record-teardown', type: 'dsl.run', workspaceName: name,
+            } as any, workspace as any, registry as any),
+            (error: unknown) => error instanceof ActionError && error.code === ERROR_CODES.ERR_BAD_STATE,
+        );
+
+        releaseTeardown();
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        assert.equal(stopSettled, false);
+        assert.equal(workspace.state, 'recording');
+
+        releaseRecordEvent();
+        await recordEventPromise;
+        await enhancementStarted;
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        assert.equal(stopSettled, false);
+        assert.equal(workspace.state, 'recording');
+
+        releaseEnhancement();
+        await stopPromise;
+        assert.equal(workspace.state, 'idle');
+    } finally {
+        releaseTeardown?.();
+        releaseRecordEvent?.();
+        releaseEnhancement?.();
+        setRecordedStepEnricherForTest(null);
+        cleanup(name);
+    }
+});
+
+test('record.stop flushes pending choice semantics before recording cleanup', async () => {
+    const name = uniqueName('wf-record-stop-choice');
+    cleanup(name);
+    const page = {
+        url: () => 'about:blank',
+        isClosed: () => false,
+        addInitScript: async () => undefined,
+        exposeBinding: async () => undefined,
+        evaluate: async () => undefined,
+        frames: () => [],
+        mainFrame: () => ({url: () => 'about:blank'}),
+        waitForTimeout: async () => undefined,
+        on: () => undefined,
+        context: () => ({}),
+    };
+    const {registry, runStepsDeps, recordingState} = createWorkspaceHarness({
+        getPage: async () => page as any,
+    });
+    setRunStepsDeps(runStepsDeps);
+    setRecordedStepEnricherForTest(async () => ({version: 1}));
+    try {
+        const workflow = createWorkflowOnFs(name);
+        workflow.save({kind: 'dsl', name: 'main', content: 'wait 1', stepResolves: {}});
+        const workspace = registry.createWorkspace(name, workflow);
+        workspace.tabs.createTab({tabName: 'tab-1'});
+        workspace.tabs.bindPage('tab-1', page as any);
+
+        await workspace.router.handle({
+            v: 1, id: 'record-choice-start', type: 'record.start', workspaceName: name, payload: {},
+        } as any, workspace as any, registry as any);
+        const token = recordingState.workspaceUnsavedRecording.get(name);
+        assert.ok(token);
+        recordingState.pendingChoiceEvents.set(token, new Map([[
+            'pending-select',
+            {
+                kind: 'custom_select',
+                source: 'bound_trigger',
+                sessionKey: 'pending-select',
+                controlRootNodeId: 'control:status',
+                controlRef: 'control:status',
+                workspaceName: name,
+                tabName: 'tab-1',
+                selector: '#status-trigger',
+                triggerEvent: {
+                    tabName: 'tab-1',
+                    ts: Date.now(),
+                    type: 'click',
+                    selector: '#status-trigger',
+                },
+                ts: Date.now(),
+            },
+        ]]));
+
+        await workspace.router.handle({
+            v: 1, id: 'record-choice-stop', type: 'record.stop', workspaceName: name, payload: {},
+        } as any, workspace as any, registry as any);
+
+        const steps = recordingState.recordings.get(token) ?? [];
+        assert.equal(steps.length, 1);
+        assert.equal(steps[0].name, 'browser.click');
+        assert.equal((steps[0].args as {selector?: string}).selector, '#status-trigger');
+    } finally {
+        setRecordedStepEnricherForTest(null);
+        cleanup(name);
+    }
+});
+
+test('record.stop waits for recorder binding ingestion already in normalization', async () => {
+    const name = uniqueName('wf-record-stop-binding');
+    cleanup(name);
+    let releaseRecordEvent!: () => void;
+    let markRecordEventStarted!: () => void;
+    const recordEventGate = new Promise<void>((resolve) => {releaseRecordEvent = resolve;});
+    const recordEventStarted = new Promise<void>((resolve) => {markRecordEventStarted = resolve;});
+    const page = {
+        url: () => 'about:blank',
+        isClosed: () => false,
+        addInitScript: async () => undefined,
+        exposeBinding: async () => undefined,
+        evaluate: async () => undefined,
+        frames: () => [],
+        mainFrame: () => ({url: () => 'about:blank'}),
+        waitForTimeout: async () => undefined,
+        on: () => undefined,
+        context: () => ({}),
+    };
+    const {registry, runStepsDeps, recordingState} = createWorkspaceHarness({
+        getPage: async () => page as any,
+    });
+    setRunStepsDeps(runStepsDeps);
+    recordingState.snapshotPort.ensureFresh = async () => {
+        markRecordEventStarted();
+        await recordEventGate;
+        throw new Error('test snapshot unavailable');
+    };
+    setRecordedStepEnricherForTest(async () => ({version: 1}));
+    try {
+        const workflow = createWorkflowOnFs(name);
+        workflow.save({kind: 'dsl', name: 'main', content: 'wait 1', stepResolves: {}});
+        const workspace = registry.createWorkspace(name, workflow);
+        workspace.tabs.createTab({tabName: 'tab-1'});
+        workspace.tabs.bindPage('tab-1', page as any);
+        await workspace.router.handle({
+            v: 1, id: 'record-binding-start', type: 'record.start', workspaceName: name, payload: {},
+        } as any, workspace as any, registry as any);
+
+        const sink = createRecorderEventSinkHandler({
+            recordingState,
+            navDedupeWindowMs: 1200,
+            emit: () => undefined,
+            findWorkspaceNameByTabName: (tabName) => tabName === 'tab-1' ? name : null,
+        });
+        const sinkPromise = sink({
+            tabName: 'tab-1',
+            ts: Date.now(),
+            type: 'keydown',
+            key: 'Enter',
+            selector: '#binding-event',
+        }, page as any, 'tab-1');
+        await recordEventStarted;
+
+        let stopSettled = false;
+        const stopPromise = workspace.router.handle({
+            v: 1, id: 'record-binding-stop', type: 'record.stop', workspaceName: name, payload: {},
+        } as any, workspace as any, registry as any).then((result) => {
+            stopSettled = true;
+            return result;
+        });
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        assert.equal(stopSettled, false);
+        assert.equal(workspace.state, 'recording');
+
+        releaseRecordEvent();
+        await sinkPromise;
+        await stopPromise;
+        assert.equal(workspace.state, 'idle');
+    } finally {
+        releaseRecordEvent?.();
+        setRecordedStepEnricherForTest(null);
+        cleanup(name);
     }
 });
 

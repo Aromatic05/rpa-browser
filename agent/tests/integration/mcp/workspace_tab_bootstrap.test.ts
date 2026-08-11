@@ -4,8 +4,10 @@ import type { BrowserContext, Page } from 'playwright';
 import { createWorkspaceToolHandlers } from '../../../src/mcp/tool_handlers';
 import { createWorkspaceTabs } from '../../../src/runtime/workspace/tabs';
 import type { RuntimeWorkspace } from '../../../src/runtime/workspace/workspace';
+import { runWorkspaceExecution } from '../../../src/runtime/workspace/execution_coordinator';
 import type { StepUnion } from '../../../src/runner/steps/types';
 import { completeRunStepsDeps } from '../../helpers/run_steps_workspace';
+import {ActionError, ERROR_CODES} from '../../../src/actions/results';
 
 const createStubPage = (url = 'about:blank'): Page => ({
     url: () => url,
@@ -43,6 +45,7 @@ const createHarness = (): Harness => {
         name: 'test-ws',
         tabs,
         state: 'idle',
+        executionOwner: null,
     } as unknown as RuntimeWorkspace;
     const execute = async (step: StepUnion) => {
         calls.push(step);
@@ -58,6 +61,7 @@ const createHarness = (): Harness => {
         getExecutors: () => ({
             'browser.goto': execute,
             'browser.get_page_info': execute,
+            'browser.list_tabs': execute,
             'browser.create_tab': execute,
         }),
     } as any;
@@ -68,6 +72,7 @@ const createHarness = (): Harness => {
     const handlers = createWorkspaceToolHandlers({
         workspace,
         runStepsDeps,
+        runWorkspaceExecution: async (actionType, run) => await runWorkspaceExecution(workspace, actionType, run),
         awaitTabPage: async (tabName, timeoutMs) => {
             awaitedTabs.push(tabName);
             return await tabs.awaitTabPage(tabName, timeoutMs);
@@ -143,6 +148,37 @@ test('read-only page info does not run the page bootstrap hook', async () => {
     assert.equal(result.ok, true);
     assert.deepEqual(harness.awaitedTabs, []);
     assert.equal(harness.calls[0].name, 'browser.get_page_info');
+});
+
+test('workspace execution blocks tab-scoped MCP tools while list_tabs remains observable', async () => {
+    const harness = createHarness();
+    registerTab(harness, 'owned-tab');
+    registerTab(harness, 'other-tab');
+    harness.workspace.state = 'executing';
+    harness.workspace.executionOwner = Symbol('active-task-run');
+
+    await assert.rejects(
+        () => harness.handlers['browser.goto']({
+            url: 'https://blocked.test',
+            tabName: 'owned-tab',
+        }),
+        (error: unknown) => error instanceof ActionError && error.code === ERROR_CODES.ERR_BAD_STATE,
+    );
+    assert.deepEqual(harness.awaitedTabs, []);
+    assert.equal(harness.calls.length, 0);
+
+    await assert.rejects(
+        () => harness.handlers['browser.get_page_info']({tabName: 'other-tab'}),
+        (error: unknown) => error instanceof ActionError && error.code === ERROR_CODES.ERR_BAD_STATE,
+    );
+    assert.equal(harness.workspace.tabs.getActiveTab()?.name, 'owned-tab');
+    assert.equal(harness.calls.length, 0);
+
+    const observed = await harness.handlers['browser.list_tabs']({});
+    assert.equal(observed.ok, true);
+    assert.equal(harness.calls.length, 1);
+    assert.equal(harness.calls[0].name, 'browser.list_tabs');
+    assert.equal(harness.workspace.tabs.getActiveTab()?.name, 'owned-tab');
 });
 
 test('browser.create_tab rejects the removed MCP tabName argument', async () => {

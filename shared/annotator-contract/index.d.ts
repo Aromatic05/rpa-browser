@@ -94,11 +94,12 @@ export type AnnotatorSemanticInput =
     | {kind: 'table-action'; actionIntent: string; displayName?: string};
 export type AnnotatorApplyPayload = {draft: AnnotatorDraft; targetId: string; semantic: AnnotatorSemanticInput; tabName?: string};
 export type AnnotatorCheckPayload = {draft: AnnotatorDraft; tabName?: string};
-export type AnnotatorSavePayload = {draft: AnnotatorDraft; tabName?: string};
+export type AnnotatorSavePayload = {draft: AnnotatorDraft; tabName?: string; expectedRevision?: string | null};
 export type AnnotatorProjectionReply = {
     projection: AnnotatorProjection;
     profile?: unknown;
     validation?: AnnotatorValidation;
+    artifactRevision?: string | null;
 };
 export type AnnotatorPickReply = {
     projection: AnnotatorProjection;
@@ -134,4 +135,5 @@ export type AnnotatorSaveReply = {
     projection: AnnotatorProjection;
     validation: AnnotatorValidation;
     profile: unknown;
+    artifactRevision: string;
 };

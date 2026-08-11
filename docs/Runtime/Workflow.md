@@ -175,6 +175,10 @@ Entity rules 持久化分为：
 
 业务 DSL 应依赖这些稳定语义，而不是直接依赖 selector。
 
+`entity_rules.save` 不只校验 YAML/artifact 结构，还使用与运行时 matcher 相同的 profile-domain 推导和 QueryPlan compiler 验证候选规则是否可执行；不能编译的 match 规则不会先写入再等运行时报错。
+
+`entity_rules.get/save` 返回 `artifactRevision`，`entity_rules.save/delete` 可接受 `expectedRevision`，语义与 DSL/checkpoint 相同。Annotator 的 projection/canvas 编辑流程也把同一 artifact revision 作为保存 CAS，而不是使用页面 capture revision。
+
 ## Recording
 
 Recording 保存真实步骤与 resolve sidecar，主要面向录制、回放和后续生成/维修，不要求人类把 `steps.yaml` / `step_resolve.yaml` 当主业务源码维护。
@@ -194,7 +198,10 @@ save/delete 的 artifact 与 manifest mutation 带 rollback 边界：manifest �
 Workspace 同一时刻只有一个 execution owner：
 
 - `dsl.run` 从 snapshot/preflight 开始到执行结束持有 execution lease；
-- `task.run.start/resume` 从 run 创建/恢复开始持有 lease，直到自然终态、失败、显式 halt 或 runner stop；suspend 不释放 lease；
+- `task.run.start/resume` 从 run 创建/恢复开始持有 lease，直到实际执行 promise 静止；显式 halt/runner stop 不会在正在执行的 browser step 收尾前释放 lease，suspend 也不释放；
+- playback 从第一次 page preflight/navigation 到 replay 真正结束持有互斥状态，`play.stop` 会等待正在执行的 replay step 收尾；
+- recording 从 page preflight 到 recorder teardown、已进入的 `record.event`、pending choice/fill flush 和 snapshot enhancement 全部静止后才回到 `idle`；关闭录制入口后的迟到 event 不再触发 page binding；
+- MCP 中除不改变 workspace/tab 状态的 `browser.list_tabs` 外，browser tools 都取得同一 execution lease；annotator 的 capture/pick/check/save 请求也按单次请求取得 lease；
 - `workspace.close`、`workflow.rename`、`workflow.resetDefault` 只允许在 workspace `idle` 时执行，不会在运行中拆掉 browser/runtime；
 - lease 带 owner token，旧 run 的延迟 cleanup 不能释放后来新 run 的 ownership。
 

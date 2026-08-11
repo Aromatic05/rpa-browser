@@ -10,6 +10,7 @@ import type {Action} from '../../../src/actions/action_protocol';
 import {ActionError, ERROR_CODES} from '../../../src/actions/results';
 import {getRunnerConfig} from '../../../src/config';
 import {completeRunStepsDeps} from '../../helpers/run_steps_workspace';
+import type {TaskCheckpointStore} from '../../../src/runner/checkpoint_store';
 
 const action = (type: string, payload: Record<string, unknown>): Action => ({
     v: 1,
@@ -343,6 +344,153 @@ test('completed persisted runs cannot be restarted or resumed with the same iden
     }
 });
 
+test('task.run.halt waits for an active step to quiesce before releasing workspace execution ownership', async () => {
+    let releaseStep!: () => void;
+    let markStepStarted!: () => void;
+    const stepGate = new Promise<void>((resolve) => {releaseStep = resolve;});
+    const stepStarted = new Promise<void>((resolve) => {markStepStarted = resolve;});
+    const baseConfig = getRunnerConfig();
+    const deps = completeRunStepsDeps({
+        pluginHost: {
+            getExecutors: () => ({
+                'browser.click': async (step: StepUnion) => {
+                    markStepStarted();
+                    await stepGate;
+                    return {stepId: step.id, ok: true};
+                },
+            }),
+        } as never,
+    }, {workspaceName: 'ws-1'});
+    setRunStepsDeps(deps);
+    const control = createRunnerControl({
+        runnerConfig: {
+            ...baseConfig,
+            checkpointPolicy: {...baseConfig.checkpointPolicy, enabled: false},
+        },
+    });
+    const workspace = deps.resolveWorkspace('ws-1');
+    const workspaceRegistry = {} as never;
+    const runId = 'halt-active-step-owner';
+
+    await control.handle({action: action('task.run.start', {runId}), workspace, workspaceRegistry});
+    await control.handle({
+        action: action('task.run.push', {
+            runId,
+            steps: [{id: 'slow-click', name: 'browser.click', args: {nodeId: 'button'}}],
+            close: true,
+        }),
+        workspace,
+        workspaceRegistry,
+    });
+    await stepStarted;
+
+    let haltSettled = false;
+    const haltPromise = control.handle({
+        action: action('task.run.halt', {runId}),
+        workspace,
+        workspaceRegistry,
+    }).then((result) => {
+        haltSettled = true;
+        return result;
+    });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    assert.equal(haltSettled, false);
+    assert.equal(workspace.state, 'executing');
+    await assert.rejects(
+        () => control.handle({
+            action: action('task.run.start', {runId: 'halt-active-step-overlap'}),
+            workspace,
+            workspaceRegistry,
+        }),
+        (error: unknown) => error instanceof ActionError && error.code === ERROR_CODES.ERR_BAD_STATE,
+    );
+
+    releaseStep();
+    const halted = await haltPromise;
+    assert.equal((halted.reply.payload as {checkpoint: {status: string}}).checkpoint.status, 'halted');
+    assert.equal(workspace.state, 'idle');
+});
+
+test('task.run.halt reports completion when natural terminal persistence wins the race', async () => {
+    const runId = 'halt-natural-completion-race';
+    let releaseTerminalPersistence!: () => void;
+    let terminalPersistenceStarted!: () => void;
+    const terminalPersistenceGate = new Promise<void>((resolve) => {releaseTerminalPersistence = resolve;});
+    const terminalPersistence = new Promise<void>((resolve) => {terminalPersistenceStarted = resolve;});
+    const checkpoints = new Map();
+    let activeFlush: Promise<void> | null = null;
+    let durableCheckpoints = new Map();
+    const checkpointStore: TaskCheckpointStore = {
+        checkpoints,
+        load: async () => checkpoints,
+        flush: async () => {
+            if (activeFlush) {
+                await activeFlush;
+                return;
+            }
+            const snapshot = new Map(checkpoints);
+            activeFlush = (async () => {
+                if (snapshot.get(runId)?.status === 'completed') {
+                    terminalPersistenceStarted();
+                    await terminalPersistenceGate;
+                }
+                durableCheckpoints = snapshot;
+            })();
+            try {
+                await activeFlush;
+            } finally {
+                activeFlush = null;
+            }
+        },
+        stop: () => undefined,
+    };
+    const baseConfig = getRunnerConfig();
+    const deps = completeRunStepsDeps({
+        pluginHost: {
+            getExecutors: () => ({
+                'browser.click': async (step: StepUnion) => ({stepId: step.id, ok: true}),
+            }),
+        } as never,
+    }, {workspaceName: 'ws-1'});
+    setRunStepsDeps(deps);
+    const control = createRunnerControl({
+        runnerConfig: {
+            ...baseConfig,
+            checkpointPolicy: {...baseConfig.checkpointPolicy, enabled: true},
+        },
+        checkpointStore,
+    });
+    const workspace = deps.resolveWorkspace('ws-1');
+    const workspaceRegistry = {} as never;
+
+    await control.handle({action: action('task.run.start', {runId}), workspace, workspaceRegistry});
+    await control.handle({
+        action: action('task.run.push', {
+            runId,
+            steps: [{id: 'final-click', name: 'browser.click', args: {nodeId: 'button'}}],
+            close: true,
+        }),
+        workspace,
+        workspaceRegistry,
+    });
+    await terminalPersistence;
+
+    const haltPromise = control.handle({
+        action: action('task.run.halt', {runId}),
+        workspace,
+        workspaceRegistry,
+    }).then(
+        (result) => result,
+        (error: unknown) => assert.fail(error instanceof Error ? error : String(error)),
+    );
+    releaseTerminalPersistence();
+    const result = await haltPromise;
+
+    assert.equal((result.reply.payload as {checkpoint: {status: string}}).checkpoint.status, 'completed');
+    assert.equal(durableCheckpoints.get(runId)?.status, 'completed');
+    assert.equal(workspace.state, 'idle');
+});
+
 test('task.run.halt keeps the run active when terminal checkpoint persistence fails', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rpa-run-halt-'));
     const checkpointPath = path.join(root, 'checkpoints.json');
@@ -609,13 +757,23 @@ test('closed resume requires enough step history to reach the persisted cursor',
     }
 });
 
-test('runner control stop waits until active runs persist a halted terminal state', async () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rpa-run-stop-terminal-'));
+test('runner control stop preserves a durable failed run so it remains resumable', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rpa-run-stop-failed-'));
     const checkpointPath = path.join(root, 'checkpoints.json');
-    const runId = 'stop-terminal-run';
+    const runId = 'stop-preserves-failed-run';
     try {
         const baseConfig = getRunnerConfig();
-        const deps = completeRunStepsDeps({}, {workspaceName: 'ws-1'});
+        const deps = completeRunStepsDeps({
+            pluginHost: {
+                getExecutors: () => ({
+                    'browser.click': async (step: StepUnion) => ({
+                        stepId: step.id,
+                        ok: false,
+                        error: {code: 'ERR_TEST_FAILURE', message: 'expected failure'},
+                    }),
+                }),
+            } as never,
+        }, {workspaceName: 'ws-1'});
         setRunStepsDeps(deps);
         const control = createRunnerControl({
             runnerConfig: {
@@ -632,18 +790,114 @@ test('runner control stop waits until active runs persist a halted terminal stat
         const workspaceRegistry = {} as never;
 
         await control.handle({action: action('task.run.start', {runId}), workspace, workspaceRegistry});
-        await control.handle({action: action('task.run.suspend', {runId}), workspace, workspaceRegistry});
-        for (let attempt = 0; attempt < 50; attempt += 1) {
-            const state = await control.handle({
-                action: action('task.run.checkpoint', {runId}),
-                workspace,
-                workspaceRegistry,
-            });
-            if ((state.reply.payload as {checkpoint: {status: string}}).checkpoint.status === 'suspended') {break;}
-            await new Promise((resolve) => setTimeout(resolve, 5));
+        await control.handle({
+            action: action('task.run.push', {
+                runId,
+                steps: [{id: 'failing-click', name: 'browser.click', args: {nodeId: 'button'}}],
+                close: true,
+            }),
+            workspace,
+            workspaceRegistry,
+        });
+
+        let failedObserved = false;
+        for (let attempt = 0; attempt < 100 && !failedObserved; attempt += 1) {
+            try {
+                const persisted = JSON.parse(fs.readFileSync(checkpointPath, 'utf8')) as {
+                    checkpoints?: Record<string, {status?: string}>;
+                };
+                failedObserved = persisted.checkpoints?.[runId]?.status === 'failed';
+            } catch {}
+            if (!failedObserved) {
+                await new Promise((resolve) => setTimeout(resolve, 2));
+            }
         }
+        assert.equal(failedObserved, true);
+        for (let attempt = 0; attempt < 100 && workspace.state !== 'idle'; attempt += 1) {
+            await new Promise((resolve) => setTimeout(resolve, 2));
+        }
+        assert.equal(workspace.state, 'idle');
 
         await control.stop();
+
+        const persisted = JSON.parse(fs.readFileSync(checkpointPath, 'utf8')) as {
+            checkpoints: Record<string, {status: string}>;
+        };
+        assert.equal(persisted.checkpoints[runId].status, 'failed');
+    } finally {
+        fs.rmSync(root, {recursive: true, force: true});
+    }
+});
+
+test('runner control stop waits for active steps to quiesce and persist a halted terminal state', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rpa-run-stop-terminal-'));
+    const checkpointPath = path.join(root, 'checkpoints.json');
+    const runId = 'stop-terminal-run';
+    try {
+        let releaseStep!: () => void;
+        let markStepStarted!: () => void;
+        const stepGate = new Promise<void>((resolve) => {releaseStep = resolve;});
+        const stepStarted = new Promise<void>((resolve) => {markStepStarted = resolve;});
+        const baseConfig = getRunnerConfig();
+        const deps = completeRunStepsDeps({
+            pluginHost: {
+                getExecutors: () => ({
+                    'browser.click': async (step: StepUnion) => {
+                        markStepStarted();
+                        await stepGate;
+                        return {stepId: step.id, ok: true};
+                    },
+                }),
+            } as never,
+        }, {workspaceName: 'ws-1'});
+        setRunStepsDeps(deps);
+        const control = createRunnerControl({
+            runnerConfig: {
+                ...baseConfig,
+                checkpointPolicy: {
+                    ...baseConfig.checkpointPolicy,
+                    enabled: true,
+                    filePath: checkpointPath,
+                    flushIntervalMs: 60_000,
+                },
+            },
+        });
+        const workspace = deps.resolveWorkspace('ws-1');
+        const workspaceRegistry = {} as never;
+
+        await control.handle({action: action('task.run.start', {runId}), workspace, workspaceRegistry});
+        await control.handle({
+            action: action('task.run.push', {
+                runId,
+                steps: [{id: 'stop-slow-click', name: 'browser.click', args: {nodeId: 'button'}}],
+                close: true,
+            }),
+            workspace,
+            workspaceRegistry,
+        });
+        await stepStarted;
+
+        let stopSettled = false;
+        const stopPromise = control.stop().then(() => {stopSettled = true;});
+        let durableHaltObserved = false;
+        for (let attempt = 0; attempt < 100 && !durableHaltObserved; attempt += 1) {
+            try {
+                const persisted = JSON.parse(fs.readFileSync(checkpointPath, 'utf8')) as {
+                    checkpoints?: Record<string, {status?: string}>;
+                };
+                durableHaltObserved = persisted.checkpoints?.[runId]?.status === 'halted';
+            } catch {}
+            if (!durableHaltObserved) {
+                await new Promise((resolve) => setTimeout(resolve, 2));
+            }
+        }
+        assert.equal(durableHaltObserved, true);
+        assert.equal(stopSettled, false);
+        assert.equal(workspace.state, 'executing');
+
+        releaseStep();
+        await stopPromise;
+        assert.equal(workspace.state, 'idle');
 
         const persisted = JSON.parse(fs.readFileSync(checkpointPath, 'utf8')) as {
             checkpoints: Record<string, {status: string}>;

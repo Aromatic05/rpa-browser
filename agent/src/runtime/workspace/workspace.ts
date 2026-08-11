@@ -90,6 +90,27 @@ export const leaveWorkspaceState = (
     workspace.updatedAt = Date.now();
 };
 
+export type WorkspaceExecutionRelease = () => void;
+
+export const acquireWorkspaceExecution = (
+    workspace: RuntimeWorkspace,
+    actionType: string,
+): WorkspaceExecutionRelease => {
+    enterWorkspaceState(workspace, 'executing', actionType);
+    const owner = Symbol(actionType);
+    workspace.executionOwner = owner;
+    let released = false;
+    return () => {
+        if (released) {return;}
+        released = true;
+        if (workspace.executionOwner !== owner) {return;}
+        workspace.executionOwner = null;
+        if (workspace.state === 'executing') {
+            leaveWorkspaceState(workspace, 'executing', actionType);
+        }
+    };
+};
+
 export const createRuntimeWorkspace = (deps: CreateRuntimeWorkspaceDeps): RuntimeWorkspace => {
     const now = Date.now();
     const pageRegistry = deps.browserSession.pageRegistry;
@@ -109,8 +130,22 @@ export const createRuntimeWorkspace = (deps: CreateRuntimeWorkspaceDeps): Runtim
     });
     const dsl = createDslControl({ runStepsDeps: deps.runStepsDeps });
     const checkpoint = createCheckpointControl();
+    const runOwnedWorkspaceExecution = async <T>(
+        actionType: string,
+        run: () => Promise<T>,
+    ): Promise<T> => {
+        const release = acquireWorkspaceExecution(workspace, actionType);
+        try {
+            return await run();
+        } finally {
+            release();
+        }
+    };
     const entityRules = createEntityRulesRuntime({
-        annotator: createRunnerAnnotatorController({runStepsDeps: deps.runStepsDeps}),
+        annotator: createRunnerAnnotatorController({
+            runStepsDeps: deps.runStepsDeps,
+            runWorkspaceExecution: runOwnedWorkspaceExecution,
+        }),
     });
     const runner = createRunnerControl({ runnerConfig: deps.runnerConfig });
     const tabsControl = createTabsControl({
@@ -123,6 +158,7 @@ export const createRuntimeWorkspace = (deps: CreateRuntimeWorkspaceDeps): Runtim
         portAllocator: deps.portAllocator,
         runStepsDeps: deps.runStepsDeps,
         config: deps.runnerConfig,
+        runWorkspaceExecution: runOwnedWorkspaceExecution,
     });
     const mcp = createMcpControl(mcpService);
 

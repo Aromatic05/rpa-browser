@@ -121,6 +121,135 @@ await log('annotator session updates projection without local structural recover
     assert.equal(session.getState().status, 'ready');
 });
 
+await log('annotator session carries artifact revision through save CAS', async () => {
+    const calls = [];
+    const profile = {
+        kind: 'entity_rules',
+        name: 'orders',
+        page: {kind: 'form', urlPattern: '/orders'},
+        match: {version: 2, rules: [{ruleId: 'root', source: 'region', expect: 'unique', match: {kind: 'form'}}]},
+        annotation: {version: 2, bindings: [{ruleId: 'root', businessTag: 'orders.form'}]},
+    };
+    const client = createAnnotatorClient(async (type, payload) => {
+        calls.push({type, payload});
+        if (type === 'entity_rules.annotator.open') {
+            return {
+                v: 1,
+                id: 'open-reply',
+                type: `${type}.result`,
+                payload: {projection, profile, artifactRevision: 'sha256:old'},
+            };
+        }
+        return {
+            v: 1,
+            id: 'save-reply',
+            type: `${type}.result`,
+            payload: {
+                projection,
+                profile,
+                validation: {ok: true, domain: 'form', diagnostics: [], bindingIds: [], suggestionIds: []},
+                artifactRevision: 'sha256:new',
+            },
+        };
+    });
+    const session = createAnnotatorSession({
+        client,
+        overlay: {
+            render: () => undefined,
+            startPicking: () => undefined,
+            stopPicking: () => undefined,
+            dispose: () => undefined,
+        },
+    });
+
+    await session.open('orders');
+    assert.equal(session.getState().artifactRevision, 'sha256:old');
+    await session.save();
+    assert.deepEqual(calls[1], {
+        type: 'entity_rules.annotator.save',
+        payload: {
+            annotatorProtocol: 'projection-v1',
+            draft: {
+                profileName: 'orders',
+                page: {kind: 'form', urlPattern: '/orders'},
+                match: profile.match,
+                annotation: profile.annotation,
+            },
+            expectedRevision: 'sha256:old',
+        },
+    });
+    assert.equal(session.getState().artifactRevision, 'sha256:new');
+});
+
+await log('annotator session does not carry a revision across profile drafts', async () => {
+    const profileA = {
+        kind: 'entity_rules',
+        name: 'profile-a',
+        match: {version: 2, rules: []},
+        annotation: {version: 2, bindings: []},
+    };
+    const draftB = {
+        profileName: 'profile-b',
+        match: {version: 2, rules: []},
+        annotation: {version: 2, bindings: []},
+    };
+    const calls = [];
+    const client = createAnnotatorClient(async (type, payload) => {
+        calls.push({type, payload});
+        if (type === 'entity_rules.annotator.open') {
+            return {v: 1, id: 'open', type: `${type}.result`, payload: {
+                projection, profile: profileA, artifactRevision: 'sha256:profile-a',
+            }};
+        }
+        if (type === 'entity_rules.annotator.apply') {
+            return {v: 1, id: 'apply', type: `${type}.result`, payload: {
+                projection,
+                draft: draftB,
+                validation: {ok: true, domain: 'form', diagnostics: [], bindingIds: [], suggestionIds: []},
+            }};
+        }
+        return {v: 1, id: 'save', type: `${type}.result`, payload: {
+            projection,
+            profile: {...profileA, name: draftB.profileName},
+            validation: {ok: true, domain: 'form', diagnostics: [], bindingIds: [], suggestionIds: []},
+            artifactRevision: 'sha256:profile-b',
+        }};
+    });
+    const session = createAnnotatorSession({
+        client,
+        overlay: {render: () => undefined, startPicking: () => undefined, stopPicking: () => undefined, dispose: () => undefined},
+    });
+
+    await session.open('profile-a');
+    await session.apply({draft: draftB, targetId: 'target:submit', semantic: {kind: 'action', actionIntent: 'submit'}});
+    await session.save();
+    assert.equal(calls[2].payload.expectedRevision, null);
+
+    const directCalls = [];
+    const directClient = createAnnotatorClient(async (type, payload) => {
+        directCalls.push({type, payload});
+        if (type === 'entity_rules.annotator.open') {
+            return {v: 1, id: 'direct-open', type: `${type}.result`, payload: {
+                projection, profile: profileA, artifactRevision: 'sha256:profile-a',
+            }};
+        }
+        return {v: 1, id: 'direct-save', type: `${type}.result`, payload: {
+            projection,
+            profile: {...profileA, name: draftB.profileName},
+            validation: {ok: true, domain: 'form', diagnostics: [], bindingIds: [], suggestionIds: []},
+            artifactRevision: 'sha256:profile-b',
+        }};
+    });
+    const directSession = createAnnotatorSession({
+        client: directClient,
+        overlay: {render: () => undefined, startPicking: () => undefined, stopPicking: () => undefined, dispose: () => undefined},
+    });
+
+    await directSession.open('profile-a');
+    await directSession.save(draftB);
+    assert.equal(directCalls[1].payload.expectedRevision, null);
+});
+
 
 
 await log('annotator session preserves profile page applicability in the editable draft', async () => {

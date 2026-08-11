@@ -69,6 +69,7 @@ export type WorkspaceMcpToolDeps = {
     config?: RunnerConfig;
     log?: (...args: unknown[]) => void;
     awaitTabPage?: (tabName: string, timeoutMs: number) => Promise<Page>;
+    runWorkspaceExecution?: <T>(actionType: string, run: () => Promise<T>) => Promise<T>;
 };
 
 export type McpToolHandler = (args: unknown) => Promise<{ ok: boolean; results: unknown[]; trace?: unknown; error?: unknown }>;
@@ -772,32 +773,48 @@ const handleBatchWs = (deps: WorkspaceMcpToolDeps): McpToolHandler => async (arg
     };
 };
 
-export const createWorkspaceToolHandlers = (deps: WorkspaceMcpToolDeps): Record<string, McpToolHandler> => ({
-    'browser.goto': handleGotoWs(deps),
-    'browser.go_back': handleGoBackWs(deps),
-    'browser.reload': handleReloadWs(deps),
-    'browser.create_tab': handleCreateTabWs(deps),
-    'browser.switch_tab': handleSwitchTabWs(deps),
-    'browser.close_tab': handleCloseTabWs(deps),
-    'browser.get_page_info': handleGetPageInfoWs(deps),
-    'browser.list_tabs': handleListTabsWs(deps),
-    'browser.click': handleClickWs(deps),
-    'browser.snapshot': handleSnapshotWs(deps),
-    'browser.capture_resolve': handleCaptureResolveWs(deps),
-    'browser.entity': handleEntityWs(deps),
-    'browser.query': handleQueryWs(deps),
-    'browser.get_content': handleGetContentWs(deps),
-    'browser.read_console': handleReadConsoleWs(deps),
-    'browser.read_network': handleReadNetworkWs(deps),
-    'browser.evaluate': handleEvaluateWs(deps),
-    'browser.fill': handleFillWs(deps),
-    'browser.take_screenshot': handleTakeScreenshotWs(deps),
-    'browser.type': handleTypeWs(deps),
-    'browser.select_option': handleSelectOptionWs(deps),
-    'browser.hover': handleHoverWs(deps),
-    'browser.scroll': handleScrollWs(deps),
-    'browser.press_key': handlePressKeyWs(deps),
-    'browser.drag_and_drop': handleDragAndDropWs(deps),
-    'browser.mouse': handleMouseWs(deps),
-    'browser.batch': handleBatchWs(deps),
-});
+const OBSERVATION_ONLY_TOOLS = new Set([
+    'browser.list_tabs',
+]);
+
+export const createWorkspaceToolHandlers = (deps: WorkspaceMcpToolDeps): Record<string, McpToolHandler> => {
+    const handlers: Record<string, McpToolHandler> = {
+        'browser.goto': handleGotoWs(deps),
+        'browser.go_back': handleGoBackWs(deps),
+        'browser.reload': handleReloadWs(deps),
+        'browser.create_tab': handleCreateTabWs(deps),
+        'browser.switch_tab': handleSwitchTabWs(deps),
+        'browser.close_tab': handleCloseTabWs(deps),
+        'browser.get_page_info': handleGetPageInfoWs(deps),
+        'browser.list_tabs': handleListTabsWs(deps),
+        'browser.click': handleClickWs(deps),
+        'browser.snapshot': handleSnapshotWs(deps),
+        'browser.capture_resolve': handleCaptureResolveWs(deps),
+        'browser.entity': handleEntityWs(deps),
+        'browser.query': handleQueryWs(deps),
+        'browser.get_content': handleGetContentWs(deps),
+        'browser.read_console': handleReadConsoleWs(deps),
+        'browser.read_network': handleReadNetworkWs(deps),
+        'browser.evaluate': handleEvaluateWs(deps),
+        'browser.fill': handleFillWs(deps),
+        'browser.take_screenshot': handleTakeScreenshotWs(deps),
+        'browser.type': handleTypeWs(deps),
+        'browser.select_option': handleSelectOptionWs(deps),
+        'browser.hover': handleHoverWs(deps),
+        'browser.scroll': handleScrollWs(deps),
+        'browser.press_key': handlePressKeyWs(deps),
+        'browser.drag_and_drop': handleDragAndDropWs(deps),
+        'browser.mouse': handleMouseWs(deps),
+        'browser.batch': handleBatchWs(deps),
+    };
+    if (!deps.runWorkspaceExecution) {return handlers;}
+    return Object.fromEntries(Object.entries(handlers).map(([toolName, handler]) => [
+        toolName,
+        OBSERVATION_ONLY_TOOLS.has(toolName)
+            ? handler
+            : async (args: unknown) => await deps.runWorkspaceExecution!(
+                `mcp.${toolName}`,
+                async () => await handler(args),
+            ),
+    ]));
+};

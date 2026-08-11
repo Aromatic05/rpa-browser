@@ -1,25 +1,7 @@
-import { enterWorkspaceState, leaveWorkspaceState, type RuntimeWorkspace } from './workspace';
+import { acquireWorkspaceExecution, type RuntimeWorkspace } from './workspace';
 
-export type WorkspaceExecutionRelease = () => void;
-
-export const acquireWorkspaceExecution = (
-    workspace: RuntimeWorkspace,
-    actionType: string,
-): WorkspaceExecutionRelease => {
-    enterWorkspaceState(workspace, 'executing', actionType);
-    const owner = Symbol(actionType);
-    workspace.executionOwner = owner;
-    let released = false;
-    return () => {
-        if (released) {return;}
-        released = true;
-        if (workspace.executionOwner !== owner) {return;}
-        workspace.executionOwner = null;
-        if (workspace.state === 'executing') {
-            leaveWorkspaceState(workspace, 'executing', actionType);
-        }
-    };
-};
+export { acquireWorkspaceExecution } from './workspace';
+export type { WorkspaceExecutionRelease } from './workspace';
 
 export const runWorkspaceExecution = async <T>(
     workspace: RuntimeWorkspace,

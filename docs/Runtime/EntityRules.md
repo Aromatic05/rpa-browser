@@ -38,6 +38,10 @@ bindings: []
 
 发布保存只接受 V2。读取时允许导入合法 V1 artifact，但导入失败必须可诊断，不能静默改写原文件。
 
+`entity_rules.save` 在持久化前会把候选 artifact 编译成 QueryPlan。保存阶段与实际 matcher 共用同一 profile-domain 推导；unsupported match key、非法参数等不可执行规则直接返回 `ERR_BAD_ARGS`，不会留下一个“保存成功但首次执行必失败”的 profile。
+
+通用 authoring API 使用 artifact revision：`entity_rules.get/save` 返回 `artifactRevision`，`entity_rules.save/delete` 可带 `expectedRevision`。比较与写入发生在同一个 workflow mutation lock 内；协作式 editor/AI 应使用 `get -> edit -> save(expectedRevision)`，遇到 `ERR_CONFLICT` 后重新读取。
+
 ## 选择与执行
 
 规则选择支持 explicit、auto、inherit 和 disabled。页面 URL 与 `page.kind` 共同限制 profile applicability。规则执行结果进入当前 PageSession，并由 RuntimeEntityView 提供：
@@ -57,6 +61,10 @@ open -> pick/recognize -> local edit -> apply -> check -> save
 ```
 
 `apply` 只更新草稿；`save` 才写入 workflow artifact。保存必须使用真实 artifact revision 做乐观并发控制，页面 capture revision 不能替代 artifact revision。
+
+`projection-v1` 的 `open/recognize/visualize` 会携带当前 `artifactRevision`；extension annotator session 保存该 revision，并在 `save` 时作为 `expectedRevision` 回传，成功后替换为服务端返回的新 revision。不同 profile 之间不会复用旧 revision。
+
+Annotator 不是长期占有 workspace 的独立状态，但每个会 capture、修改 selection 或保存规则的 annotator 请求都会通过 workspace execution coordinator。它不能与正在运行的 DSL/task/playback/MCP browser mutation 并发操作同一 workspace。
 
 Annotator 请求使用显式 `annotatorProtocol` discriminator：
 
