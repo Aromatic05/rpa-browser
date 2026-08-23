@@ -30,6 +30,11 @@ const createDeps = (): RunStepsDeps =>
                         ok: true,
                         data: { snapshot: true },
                     }),
+                    'browser.query': async (step: StepUnion) => ({
+                        stepId: step.id,
+                        ok: true,
+                        data: {kind: 'value', value: 'correct horse battery staple'},
+                    }),
                 }) as any,
         } as any,
     });
@@ -70,4 +75,20 @@ test('runDsl writes stmt and step trace logs', async () => {
     assert.equal(events.includes('dsl.step.emit'), true);
     assert.equal(events.includes('dsl.step.result'), true);
     assert.equal(events.includes('dsl.stmt.end'), true);
+});
+
+test('runDsl scope logs expose value shape without string contents', async () => {
+    const logs: LogCall[] = [];
+    const logger = createMockLogger(logs);
+    const program = normalizeDsl(parseDsl('let password = query entity "secret.value" current'));
+
+    await runDsl(program, {
+        workspaceName: 'ws-dsl',
+        deps: createDeps(),
+        logger,
+    });
+
+    const write = logs.find((entry) => entry.event === 'dsl.scope.write');
+    assert.deepEqual(write?.payload.valuePreview, {type: 'string', length: 28});
+    assert.equal(JSON.stringify(logs).includes('correct horse battery staple'), false);
 });

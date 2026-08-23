@@ -132,6 +132,32 @@ test('click fill type hover and targeted press_key execute through V2 canonical 
     }
 });
 
+test('consecutive selector fills recapture stable canonical targets', async () => {
+    const browser = await chromium.launch({headless: true});
+    try {
+        const page = await browser.newPage();
+        await page.setContent('<input id="Order"><input id="Buyer">');
+        const {fill} = await importExecutors();
+        const deps = createDeps(page);
+
+        for (let index = 0; index < 10; index += 1) {
+            const order = await fill({
+                id: `fill-order-${index}`, name: 'browser.fill', args: {selector: '#Order', value: `SO-${index}`},
+            } as never, deps as never, 'workspace');
+            assert.equal(order.ok, true, JSON.stringify(order.error));
+            const buyer = await fill({
+                id: `fill-buyer-${index}`, name: 'browser.fill', args: {selector: '#Buyer', value: `Buyer-${index}`},
+            } as never, deps as never, 'workspace');
+            assert.equal(buyer.ok, true, JSON.stringify(buyer.error));
+        }
+
+        assert.equal(await page.locator('#Order').inputValue(), 'SO-9');
+        assert.equal(await page.locator('#Buyer').inputValue(), 'Buyer-9');
+    } finally {
+        await browser.close();
+    }
+});
+
 test('basic actions reject ambiguous selectors without executing the first match', async () => {
     const browser = await chromium.launch({ headless: true });
     try {

@@ -73,8 +73,10 @@ const applyEntity = (
             ...stableNodeMatch(entry, nodeId, source !== 'node'),
         },
     });
+    const businessTag = requireText(semantic.businessTag, 'businessTag');
     upsertBinding(draft, ruleId, {
-        businessTag: requireText(semantic.businessTag, 'businessTag'),
+        businessTag,
+        entityKey: semantic.entityKey ?? entityKeyFromBusinessTag(businessTag),
         ...(text(semantic.displayName) ? {displayName: text(semantic.displayName)} : {}),
         ...(source === 'node' ? {entityKind} : {}),
     });
@@ -82,6 +84,18 @@ const applyEntity = (
         draft.page = {kind: entityKind, urlPattern: pagePathPattern(entry.pageUrl)};
     }
     return {ok: true, draft};
+};
+
+const entityKeyFromBusinessTag = (businessTag: string): string => {
+    const words = businessTag.trim().split(/[^A-Za-z0-9]+/u).filter(Boolean);
+    const candidate = words.map((word, index) => index === 0
+        ? word.charAt(0).toLowerCase() + word.slice(1)
+        : word.charAt(0).toUpperCase() + word.slice(1)).join('');
+    const prefixed = /^[A-Za-z_]/u.test(candidate) ? candidate : `entity${candidate}`;
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(prefixed)) {
+        throw new Error(`businessTag cannot produce a stable entityKey: ${businessTag}`);
+    }
+    return prefixed;
 };
 
 const applyFormField = (

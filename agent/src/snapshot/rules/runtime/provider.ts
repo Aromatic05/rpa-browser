@@ -1,4 +1,4 @@
-import type { Workflow, WorkflowEntityRules } from '../../../workflow';
+import {buildEntityRuleExportIndex, type Workflow, type WorkflowEntityRules} from '../../../workflow';
 import type { WorkspaceEntityRulesProvider } from './contracts';
 
 export const createWorkspaceEntityRulesProvider = (
@@ -16,5 +16,11 @@ export const createWorkspaceEntityRulesProvider = (
             .filter((name) => getProfile(name) !== null)
             .sort((left, right) => left.localeCompare(right)),
         getProfile,
+        resolveExports: (profileName) => {
+            const profile = getProfile(profileName);
+            return profile
+                ? buildEntityRuleExportIndex(profile)
+                : {index: null, diagnostics: [{code: 'entity_rule_exports.profile_not_found', message: `entity-rules profile not found: ${profileName}`} ]};
+        },
     };
 };

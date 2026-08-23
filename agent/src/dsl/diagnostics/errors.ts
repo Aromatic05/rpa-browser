@@ -15,8 +15,11 @@ export class DslParseError extends DslError {
 }
 
 export class DslRuntimeError extends DslError {
-    constructor(message: string, code = 'ERR_DSL_RUNTIME') {
+    details?: unknown;
+
+    constructor(message: string, code = 'ERR_DSL_RUNTIME', details?: unknown) {
         super(code, message);
+        this.details = details;
     }
 }
 

@@ -1,0 +1,14 @@
+version: 2
+rules:
+  - ruleId: expired-root
+    source: region
+    expect: unique
+    match:
+      kind: panel
+      idEquals: session-expired
+  - ruleId: renew
+    source: node
+    expect: unique
+    within: expired-root
+    match:
+      idEquals: renew-session

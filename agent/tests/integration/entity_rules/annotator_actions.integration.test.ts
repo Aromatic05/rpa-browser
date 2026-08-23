@@ -6,7 +6,7 @@ import {createRunnerAnnotatorController} from '../../../src/runner/annotator';
 import {createEntityRulesRuntime} from '../../../src/snapshot/rules/runtime';
 import {ActionError, ERROR_CODES} from '../../../src/actions/results';
 import type {Action} from '../../../src/actions/action_protocol';
-import type {Workflow, WorkflowArtifact, WorkflowEntityRules} from '../../../src/workflow';
+import {entityRulesArtifactRevision, type Workflow, type WorkflowArtifact, type WorkflowEntityRules} from '../../../src/workflow';
 import type {
     AnnotatorCheckReply,
     AnnotatorDraft,
@@ -84,6 +84,26 @@ test('annotator protocol routing requires an explicit discriminator', async () =
             && error.code === ERROR_CODES.ERR_BAD_ARGS
             && /unsupported annotator payload fields: url/u.test(error.message),
     );
+});
+
+test('annotator requests enter the workspace execution coordinator before page capture', async () => {
+    let coordinatorCalls = 0;
+    const controller = createRunnerAnnotatorController({
+        runStepsDeps: {} as never,
+        runWorkspaceExecution: async () => {
+            coordinatorCalls += 1;
+            throw new ActionError(ERROR_CODES.ERR_BAD_STATE, 'workspace is already executing');
+        },
+    } as never);
+    await assert.rejects(
+        () => controller.handle({
+            action: action('entity_rules.annotator.open', {annotatorProtocol: 'projection-v1'}),
+            workspace: {name: 'ws-1', workflow} as never,
+            workspaceRegistry: {} as never,
+        }),
+        (error: unknown) => error instanceof ActionError && error.code === ERROR_CODES.ERR_BAD_STATE,
+    );
+    assert.equal(coordinatorCalls, 1);
 });
 
 test('annotator open pick recognize and visualize use one PageSession projection contract', async () => {
@@ -177,8 +197,15 @@ const createMemoryWorkflow = (): {workflow: Workflow; profiles: Map<string, Work
     const profiles = new Map<string, WorkflowEntityRules>();
     const memoryWorkflow: Workflow = {
         name: 'ws-1',
-        save: (artifact: WorkflowArtifact) => {
-            if (artifact.kind === 'entity_rules') {profiles.set(artifact.name, structuredClone(artifact));}
+        save: (artifact: WorkflowArtifact, options = {}) => {
+            if (artifact.kind === 'entity_rules') {
+                const existing = profiles.get(artifact.name) ?? null;
+                const actualRevision = existing ? entityRulesArtifactRevision(existing) : null;
+                if (options.expectedRevision !== undefined && options.expectedRevision !== actualRevision) {
+                    throw new ActionError(ERROR_CODES.ERR_CONFLICT, 'memory workflow revision conflict');
+                }
+                profiles.set(artifact.name, structuredClone(artifact));
+            }
             return structuredClone(artifact);
         },
         get: (name, dummy) => dummy.kind === 'entity_rules' ? structuredClone(profiles.get(name) ?? null) : null,
@@ -284,6 +311,68 @@ test('annotator check save and reopen share QueryPlan semantics without check-ti
             (error: unknown) => error instanceof ActionError && error.code === ERROR_CODES.ERR_BAD_ARGS,
         );
         assert.equal(memory.profiles.get('order-form')?.match.rules[0].match.idEquals, 'OrderForm');
+    } finally {
+        await browser.close();
+    }
+});
+
+test('projection annotator uses artifact revisions to reject stale editor saves', async () => {
+    const browser = await chromium.launch({headless: true});
+    try {
+        const page = await browser.newPage({viewport: {width: 900, height: 700}});
+        await page.setContent(`
+          <form id="OrderForm">
+            <label for="Buyer">Buyer</label>
+            <input id="Buyer" name="buyer">
+            <button id="Save" type="submit">Save order</button>
+          </form>
+        `);
+        const deps = completeRunStepsDeps({pluginHost: {} as never}, {workspaceName: 'ws-1', page});
+        const runtime = createEntityRulesRuntime({
+            annotator: createRunnerAnnotatorController({runStepsDeps: deps}),
+        });
+        const memory = createMemoryWorkflow();
+        await invoke(runtime, 'entity_rules.annotator.save', {draft: validDraft()}, memory.workflow);
+
+        const opened = await invoke(runtime, 'entity_rules.annotator.open', {
+            profileName: 'order-form',
+        }, memory.workflow);
+        const editorRevision = (opened.reply.payload as AnnotatorProjectionReply & {
+            artifactRevision?: string | null;
+        }).artifactRevision;
+        assert.equal(typeof editorRevision, 'string');
+
+        const editorA = validDraft();
+        editorA.annotation.bindings[0] = {
+            ...editorA.annotation.bindings[0],
+            displayName: 'Editor A',
+        };
+        const editorB = validDraft();
+        editorB.annotation.bindings[0] = {
+            ...editorB.annotation.bindings[0],
+            displayName: 'Editor B',
+        };
+        const savedA = await invoke(runtime, 'entity_rules.annotator.save', {
+            draft: editorA,
+            expectedRevision: editorRevision,
+        }, memory.workflow);
+        const savedARevision = (savedA.reply.payload as AnnotatorSaveReply & {
+            artifactRevision?: string;
+        }).artifactRevision;
+        assert.equal(typeof savedARevision, 'string');
+        assert.notEqual(savedARevision, editorRevision);
+
+        await assert.rejects(
+            () => invoke(runtime, 'entity_rules.annotator.save', {
+                draft: editorB,
+                expectedRevision: editorRevision,
+            }, memory.workflow),
+            (error: unknown) => (error as {code?: string} | null)?.code === ERROR_CODES.ERR_CONFLICT,
+        );
+        assert.equal(
+            memory.profiles.get('order-form')?.annotation.bindings[0].displayName,
+            'Editor A',
+        );
     } finally {
         await browser.close();
     }
@@ -556,6 +645,7 @@ test('annotator apply materializes table columns primary keys and row actions', 
 
         const rootBinding = draft.annotation.bindings.find((binding) =>
             binding.ruleId === 'entity-orders-table');
+        assert.equal(rootBinding?.entityKey, 'ordersTable');
         assert.deepEqual(rootBinding?.primaryKey, {
             fieldKey: 'orderId',
             columns: ['Order ID'],
@@ -613,6 +703,7 @@ test('annotator apply creates a generic entity rule from confirmed canonical sel
             expect: 'unique',
             match: {kind: 'dialog', idEquals: 'ConfirmDialog'},
         });
+        assert.equal(payload.draft.annotation.bindings[0]?.entityKey, 'orderConfirm');
     } finally {
         await browser.close();
     }
@@ -910,6 +1001,7 @@ test('table module annotation keeps filter controls in the shared business scope
                 kind: 'table',
                 name: tableCandidate.text || '订单列表',
                 businessTag: 'orders.table',
+                entityKey: 'orders',
                 target: tableCandidate.proposedTargets[0],
                 expect: 'unique',
                 annotations: [],
@@ -966,6 +1058,7 @@ test('table module annotation keeps filter controls in the shared business scope
         assert.equal((saved.reply.payload as {saved: boolean}).saved, true);
         const profile = memory.profiles.get('orders-module');
         assert.ok(profile);
+        assert.equal(profile.annotation.bindings.find((binding) => binding.businessTag === 'orders.table')?.entityKey, 'orders');
         const orderFieldRule = profile.match.rules.find((rule) => rule.match.placeholderEquals === '订单编号');
         assert.ok(orderFieldRule?.within?.endsWith('-scope'));
         assert.equal(profile.annotation.bindings.some((binding) =>
@@ -982,6 +1075,11 @@ test('table module annotation keeps filter controls in the shared business scope
             rule.match.textContains === '确认发货');
         assert.equal(rowActionRule?.expect, 'one_or_more');
         assert.equal(rowActionRule?.match.idEquals, undefined);
+        const reopened = await invokeCanvas(runtime, 'entity_rules.annotator.open', {
+            profileName: 'orders-module',
+        }, memory.workflow);
+        const reopenedDraft = (reopened.reply.payload as {canvasDraft: {entities: Array<{entityKey?: string}>}}).canvasDraft;
+        assert.equal(reopenedDraft.entities[0]?.entityKey, 'orders');
     } finally {
         await browser.close();
     }

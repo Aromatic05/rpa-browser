@@ -1,7 +1,8 @@
 import crypto from 'node:crypto';
-import type { StepName, StepResult as ExecStepResult, StepUnion } from './steps/types';
+import type { StepResult as ExecStepResult, StepUnion } from './steps/types';
+import { validateCheckpointFileForSerialization } from './serialization/types';
 import { resolveStepArgsRefs } from './step_refs';
-import { runCheckpoint, setCheckpoints, type Checkpoint as RunnerCheckpoint } from './checkpoint';
+import { isAutomaticRecoveryCheckpoint, runCheckpoint, materializeReferencedCheckpointRuntimeSnapshot, type Checkpoint as RunnerCheckpoint } from './checkpoint';
 import { getFailedCtx } from './failed_ctx';
 import { getLogger } from '../logging/logger';
 import {shouldMarkPageSessionDirtyByStep} from './session';
@@ -19,8 +20,12 @@ import type {
     StepsQueue,
 } from './run_steps_types';
 import type { StepResolve } from './steps/types';
-import { isValidStepResolve } from './steps/resolve_utils';
+import { injectStepResolve } from './step_resolve';
+import type { DslCheckpointProvider } from '../dsl/emit';
+import type { DslEntityRulesResolver, DslResolveResolver } from '../dsl/link';
+import type { Workflow } from '../workflow';
 import { resolveStepEntityRulesExecution } from '../snapshot/rules/runtime';
+import { summarizeStepArgs } from './step_event_summary';
 
 export type {
     Checkpoint,
@@ -28,6 +33,7 @@ export type {
     RunSignal,
     RunStatus,
     RunStepsDeps,
+    RunStepsExecutionContext,
     RunStepsRequest,
     SignalChannel,
     StepEvent,
@@ -80,7 +86,21 @@ const notifyAll = (waiters: Set<() => void>) => {
 
 const writeStepEvent = async (sinks: StepSink[] | undefined, event: StepEvent) => {
     if (!sinks || sinks.length === 0) {return;}
-    await Promise.all(sinks.map((sink) => sink.write(event)));
+    const results = await Promise.allSettled(
+        sinks.map(async (sink) => {await sink.write(event);}),
+    );
+    for (const result of results) {
+        if (result.status !== 'rejected') {continue;}
+        try {
+            stepLogger('[runner] step sink write failed', {
+                eventType: event.type,
+                stepId: event.stepId,
+                error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+            });
+        } catch {
+            // Observability failures must never alter execution.
+        }
+    }
 };
 
 export type RunLocalStepResults = Record<
@@ -95,6 +115,9 @@ export type RunLocalStepResults = Record<
 export type ExecuteStepRuntimeOptions = {
     runLocalStepResults?: RunLocalStepResults;
     stepResolves?: Record<string, StepResolve>;
+    checkpointProvider?: DslCheckpointProvider;
+    entityRulesResolver?: DslEntityRulesResolver;
+    resolveResolver?: DslResolveResolver;
 };
 
 export const executeStepWithRuntimeContracts = async (
@@ -174,7 +197,11 @@ export const executeStepWithRuntimeContracts = async (
     }
 
     const fn = executors[step.name];
-    const result = await fn(runtimeStep.step, deps, workspaceName);
+    const result = await fn(runtimeStep.step, deps, workspaceName, {
+        checkpointProvider: options.checkpointProvider,
+        entityRulesResolver: options.entityRulesResolver,
+        resolveResolver: options.resolveResolver,
+    });
     if (result.ok && shouldMarkPageSessionDirtyByStep(runtimeStep.step.name, runtimeStep.step.args)) {
         await markPageSessionDirtyAfterStep(deps, workspaceName, runtimeStep.step);
     }
@@ -187,9 +214,15 @@ const executeOne = async (
     runLocalStepResults: RunLocalStepResults,
     deps: RunStepsDeps,
     stepResolves?: Record<string, StepResolve>,
+    checkpointProvider?: DslCheckpointProvider,
+    entityRulesResolver?: DslEntityRulesResolver,
+    resolveResolver?: DslResolveResolver,
 ): Promise<ExecStepResult> => await executeStepWithRuntimeContracts(step, workspaceName, deps, {
     runLocalStepResults,
     stepResolves,
+    checkpointProvider,
+    entityRulesResolver,
+    resolveResolver,
 });
 
 const markPageSessionDirtyAfterStep = async (
@@ -218,89 +251,6 @@ const markPageSessionDirtyAfterStep = async (
     }
 };
 
-const STEP_RESOLVE_STEP_NAMES: ReadonlySet<StepName> = new Set<StepName>([
-    'browser.take_screenshot',
-    'browser.click',
-    'browser.fill',
-    'browser.type',
-    'browser.select_option',
-    'browser.hover',
-    'browser.scroll',
-    'browser.press_key',
-    'browser.drag_and_drop',
-]);
-
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-    typeof value === 'object' && value !== null;
-
-const injectStepResolve = (
-    step: StepUnion,
-    stepResolves?: Record<string, StepResolve>,
-): { ok: true; step: StepUnion } | { ok: false; error: ExecStepResult['error'] } => {
-    const argsRecord: unknown = step.args;
-    const resolveId = isRecord(argsRecord) && typeof argsRecord.resolveId === 'string'
-        ? argsRecord.resolveId
-        : undefined;
-
-    if (!resolveId) {
-        if (step.resolve && !isValidStepResolve(step.resolve)) {
-            return {
-                ok: false,
-                error: {
-                    code: 'ERR_BAD_ARGS',
-                    message: `step ${step.id} has invalid resolve`,
-                    details: { stepId: step.id, reason: 'empty_resolve_hint' },
-                },
-            };
-        }
-        return { ok: true, step };
-    }
-    if (step.resolve) {
-        return {
-            ok: false,
-            error: {
-                code: 'ERR_BAD_ARGS',
-                message: `step ${step.id} cannot use resolve and resolveId together`,
-            },
-        };
-    }
-    if (!STEP_RESOLVE_STEP_NAMES.has(step.name)) {
-        return {
-            ok: false,
-            error: {
-                code: 'ERR_BAD_ARGS',
-                message: `step ${step.id} does not support resolveId`,
-                details: { stepName: step.name, resolveId },
-            },
-        };
-    }
-    if (!stepResolves || !Object.prototype.hasOwnProperty.call(stepResolves, resolveId)) {
-        return {
-            ok: false,
-            error: {
-                code: 'ERR_BAD_ARGS',
-                message: `step resolve not found: ${resolveId}`,
-                details: { stepId: step.id, resolveId },
-            },
-        };
-    }
-    const resolve = stepResolves[resolveId];
-    if (!isValidStepResolve(resolve)) {
-        return {
-            ok: false,
-            error: {
-                code: 'ERR_BAD_ARGS',
-                message: `step resolve is invalid: ${resolveId}`,
-                details: { stepId: step.id, resolveId, reason: 'empty_resolve_hint' },
-            },
-        };
-    }
-
-    return {
-        ok: true,
-        step: { ...step, resolve },
-    };
-};
 
 const writeRunnerStepResultCache = async (
     deps: RunStepsDeps,
@@ -369,7 +319,14 @@ export const closeStepsQueue = (queue: StepsQueue): void => {
     notifyAll(getWaiters(queueWaiters, queue));
 };
 
-export const createResultPipe = (): ResultPipe => ({ items: [], waiters: new Set() });
+export const createResultPipe = (): ResultPipe => ({ items: [], waiters: new Set(), closed: false });
+
+export const closeResultPipe = (pipe: ResultPipe): void => {
+    pipe.closed = true;
+    const waiters = [...pipe.waiters];
+    pipe.waiters.clear();
+    for (const wake of waiters) {wake();}
+};
 
 export const readResultPipe = (pipe: ResultPipe, cursor = 0, limit = 100): { items: StepResult[]; nextCursor: number } => {
     const start = cursor >= 0 ? cursor : 0;
@@ -388,7 +345,7 @@ export const pushResultPipe = (pipe: ResultPipe, result: StepResult): void => {
 };
 
 export const waitForResultPipe = async (pipe: ResultPipe): Promise<void> =>
-    { await new Promise<void>((resolve) => {
+    { if (pipe.closed) {return;} await new Promise<void>((resolve) => {
         pipe.waiters.add(resolve);
     }); };
 
@@ -424,53 +381,130 @@ export const setRunStepsDeps = (deps: RunStepsDeps): void => {
 const resolveRunCheckpoints = (
     req: RunStepsRequest,
     deps: RunStepsDeps,
-): {checkpoints: RunnerCheckpoint[]; stepResolves: Record<string, Record<string, StepResolve>>} => {
+): {checkpoints: RunnerCheckpoint[]; stepResolves: Record<string, Record<string, StepResolve>>; bodies: Record<string, string>; provider: DslCheckpointProvider; entityRulesResolver?: DslEntityRulesResolver; resolveResolver?: DslResolveResolver} => {
     if (req.checkpoints !== undefined) {
-        return {
-            checkpoints: req.checkpoints,
-            stepResolves: req.checkpointStepResolves ?? {},
-        };
+        validateCheckpointFileForSerialization({version: 1, checkpoints: req.checkpoints});
     }
-    try {
-        const workspace = deps.resolveWorkspace(req.workspaceName);
-        const provider = workspace.checkpoint.getProvider(workspace.workflow);
-        const checkpoints = (provider.listCheckpoints?.() ?? [])
-            .filter((checkpoint) => checkpoint.kind === undefined || checkpoint.kind === 'recovery');
-        return {
-            checkpoints,
-            stepResolves: Object.fromEntries(checkpoints.map((checkpoint) => [
-                checkpoint.id,
-                provider.getCheckpointResolves?.(checkpoint.id) ?? {},
-            ])),
-        };
-    } catch {
-        return {checkpoints: [], stepResolves: {}};
+    const workspace = deps.resolveWorkspace(req.workspaceName);
+    const checkpointProviderHost = workspace as unknown as {checkpoint?: {getProvider: (workflow: Workflow) => DslCheckpointProvider}; workflow?: Workflow};
+    const sourceProvider = req.checkpoints === undefined && checkpointProviderHost.checkpoint && checkpointProviderHost.workflow
+        ? checkpointProviderHost.checkpoint.getProvider(checkpointProviderHost.workflow)
+        : undefined;
+    const allCheckpoints = req.checkpoints ?? sourceProvider?.listCheckpoints?.() ?? [];
+    const stepResolves = req.checkpoints === undefined
+        ? Object.fromEntries(allCheckpoints.map((checkpoint) => [
+            checkpoint.id,
+            sourceProvider?.getCheckpointResolves?.(checkpoint.id) ?? {},
+        ]))
+        : req.checkpointStepResolves ?? {};
+    const bodies = req.checkpoints === undefined
+        ? Object.fromEntries(allCheckpoints
+            .flatMap((checkpoint) => {
+            const body = sourceProvider?.getCheckpointBody?.(checkpoint.id);
+            return body ? [[checkpoint.id, body.source] as const] : [];
+        }))
+        : req.checkpointBodies ?? {};
+    const recoverySources = allCheckpoints
+        .filter(isAutomaticRecoveryCheckpoint)
+        .flatMap((checkpoint) => (bodies as Record<string, string | undefined>)[checkpoint.id] === undefined ? [] : [bodies[checkpoint.id]]);
+    const queuedProcedureSources = req.stepsQueue.items
+        .slice(req.stepsQueue.cursor)
+        .flatMap((step) => {
+            if (step.name !== 'browser.checkpoint') {return [];}
+            const checkpointId = (step.args as {checkpointId?: unknown}).checkpointId;
+            return typeof checkpointId === 'string' && (bodies as Record<string, string | undefined>)[checkpointId] !== undefined
+                ? [bodies[checkpointId]]
+                : [];
+        });
+    const snapshot = materializeReferencedCheckpointRuntimeSnapshot({
+        sources: [...recoverySources, ...queuedProcedureSources], checkpointProvider: sourceProvider || {
+            getCheckpoint: (id) => allCheckpoints.find((checkpoint) => checkpoint.id === id) || null,
+            getCheckpointResolves: (id) => (stepResolves as Record<string, Record<string, StepResolve> | undefined>)[id] || null,
+            getCheckpointBody: (id) => (bodies as Record<string, string | undefined>)[id] === undefined ? null : {source: bodies[id], stepResolves: (stepResolves as Record<string, Record<string, StepResolve> | undefined>)[id] || {}},
+        },
+        checkpoints: allCheckpoints, checkpointStepResolves: stepResolves, checkpointBodies: bodies,
+        workflow: isWorkflow(workspace.workflow) ? workspace.workflow : undefined,
+        entityRulesProvider: deps.resolveEntityRulesProvider?.(req.workspaceName),
+    });
+    const checkpoints = snapshot.provider.listCheckpoints!()
+        .filter(isAutomaticRecoveryCheckpoint);
+    return {
+        checkpoints,
+        stepResolves: snapshot.checkpointStepResolves,
+        bodies: snapshot.checkpointBodies,
+        provider: snapshot.provider,
+        entityRulesResolver: snapshot.entityRulesResolver,
+        resolveResolver: snapshot.resolveResolver,
+    };
+};
+
+const isWorkflow = (value: unknown): value is Workflow =>
+    Boolean(value && typeof value === 'object' && 'list' in value && 'get' in value);
+
+const requireCheckpointMaxAttempts = (value: number | undefined): number => {
+    if (value === undefined) {return Number.MAX_SAFE_INTEGER;}
+    const resolved = value;
+    if (!Number.isSafeInteger(resolved) || resolved < 0) {
+        throw new Error('checkpointMaxAttempts must be a non-negative finite integer');
     }
+    return resolved;
 };
 
 export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promise<Checkpoint> => {
     const resolvedDeps = deps || defaultDeps;
-    if (!resolvedDeps) {
-        throw new Error('runSteps deps not initialized');
-    }
-
     const stopOnError = req.stopOnError ?? true;
     const checkpointEnabled = req.checkpointEnabled ?? true;
-    const checkpointMaxAttempts = req.checkpointMaxAttempts ?? 1;
-    const checkpointAttempts = new Map<string, number>();
     const runLocalStepResults: RunLocalStepResults = {};
     let status: RunStatus = 'running';
-    const checkpointRuntime = resolveRunCheckpoints(req, resolvedDeps);
-    setCheckpoints(checkpointRuntime.checkpoints);
+    let activeStep: StepUnion | undefined;
+    let activeCursor = req.stepsQueue.cursor;
+    let activeResultPublished = false;
+    let checkpointRuntime: ReturnType<typeof resolveRunCheckpoints> | undefined;
 
-    while (true) {
+    const finish = async (finalStatus: RunStatus): Promise<Checkpoint> => {
+        const checkpoint = checkpointOf(req.runId, req.workspaceName, finalStatus, req.stepsQueue.cursor);
+        await req.onCheckpoint?.(checkpoint);
+        closeStepsQueue(req.stepsQueue);
+        closeResultPipe(req.resultPipe);
+        return checkpoint;
+    };
+
+    const fail = async (error: unknown): Promise<Checkpoint> => {
+        const message = error instanceof Error ? error.message : String(error);
+        if (activeStep && !activeResultPublished) {
+            pushResultPipe(req.resultPipe, {
+                runId: req.runId,
+                cursor: activeCursor,
+                stepId: activeStep.id,
+                ok: false,
+                error: { code: 'ERR_RUNNER_UNEXPECTED', message },
+                ts: Date.now(),
+            });
+        }
+        const checkpoint = checkpointOf(req.runId, req.workspaceName, 'failed', req.stepsQueue.cursor);
+        try {
+            await req.onCheckpoint?.(checkpoint);
+        } catch {
+            // The terminal state must still be observable through the return value and closed pipes.
+        } finally {
+            closeStepsQueue(req.stepsQueue);
+            closeResultPipe(req.resultPipe);
+        }
+        return checkpoint;
+    };
+
+    try {
+        if (!resolvedDeps) {
+            throw new Error('runSteps deps not initialized');
+        }
+        const checkpointMaxAttempts = requireCheckpointMaxAttempts(req.checkpointMaxAttempts);
+        checkpointRuntime = resolveRunCheckpoints(req, resolvedDeps);
+        while (true) {
         while (req.signalChannel.cursor < req.signalChannel.items.length) {
             const event = req.signalChannel.items[req.signalChannel.cursor++];
             if (event.signal === 'halt') {
                 status = 'halted';
-                const checkpoint = checkpointOf(req.runId, req.workspaceName, status, req.stepsQueue.cursor);
-                await req.onCheckpoint?.(checkpoint);
-                return checkpoint;
+                return await finish(status);
             }
             if (event.signal === 'flush') {
                 req.stepsQueue.items.length = req.stepsQueue.cursor;
@@ -478,10 +512,22 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
             }
             if (event.signal === 'suspend') {
                 status = 'suspended';
+                await req.onCheckpoint?.(checkpointOf(
+                    req.runId,
+                    req.workspaceName,
+                    status,
+                    req.stepsQueue.cursor,
+                ));
                 continue;
             }
             if (event.signal === 'continue' && status === 'suspended') {
                 status = 'running';
+                await req.onCheckpoint?.(checkpointOf(
+                    req.runId,
+                    req.workspaceName,
+                    status,
+                    req.stepsQueue.cursor,
+                ));
                 continue;
             }
         }
@@ -495,6 +541,9 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
             const stepIndex = req.stepsQueue.cursor;
             const step = req.stepsQueue.items[stepIndex];
             req.stepsQueue.cursor += 1;
+            activeStep = step;
+            activeCursor = stepIndex;
+            activeResultPublished = false;
 
             const startedAt = Date.now();
             await writeStepEvent(resolvedDeps.stepSinks, {
@@ -503,10 +552,19 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
                 workspaceName: req.workspaceName,
                 stepId: step.id,
                 name: step.name,
-                argsSummary: step.args,
+                argsSummary: summarizeStepArgs(step),
             });
 
-            const result = await executeOne(step, req.workspaceName, runLocalStepResults, resolvedDeps, req.stepResolves);
+            const result = await executeOne(
+                step,
+                req.workspaceName,
+                runLocalStepResults,
+                resolvedDeps,
+                req.stepResolves,
+                checkpointRuntime.provider,
+                checkpointRuntime.entityRulesResolver,
+                checkpointRuntime.resolveResolver,
+            );
 
             await writeStepEvent(resolvedDeps.stepSinks, {
                 type: 'step.end',
@@ -522,33 +580,60 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
             let finalResult = result;
             let nextStatus: RunStatus | undefined;
             if (!result.ok) {
-                const attempt = checkpointAttempts.get(step.id) ?? 0;
-                const failedCtx = await getFailedCtx({
-                    runId: req.runId,
-                    workspaceName: req.workspaceName,
-                    stepIndex,
-                    step,
-                    rawResult: result,
-                    stopOnError,
-                    checkpointEnabled,
-                    checkpointAttempt: attempt,
-                    checkpointMaxAttempts,
-                    inCheckpointFlow: false,
-                    deps: resolvedDeps,
-                    executeStep: (nestedStep, stepResolves) => executeOne(
-                        nestedStep,
-                        req.workspaceName,
-                        runLocalStepResults,
-                        resolvedDeps,
-                        stepResolves ?? req.stepResolves,
-                    ),
-                    checkpoints: checkpointRuntime.checkpoints,
-                    checkpointStepResolves: checkpointRuntime.stepResolves,
-                });
-                const checkpointOutput = await runCheckpoint(failedCtx);
-                finalResult = checkpointOutput.finalResult;
-                nextStatus = checkpointOutput.nextStatus;
-                checkpointAttempts.set(step.id, attempt + 1);
+                const checkpointAttempts = new Map<string, number>();
+                let failedResult = result;
+                while (!failedResult.ok) {
+                    const failedCtx = await getFailedCtx({
+                        runId: req.runId,
+                        workspaceName: req.workspaceName,
+                        stepIndex,
+                        step,
+                        rawResult: failedResult,
+                        stopOnError,
+                        checkpointEnabled,
+                        checkpointAttempt: 0,
+                        checkpointAttempts: Object.fromEntries(checkpointAttempts),
+                        checkpointMaxAttempts,
+                        inCheckpointFlow: false,
+                        deps: resolvedDeps,
+                        executeStep: (nestedStep, stepResolves) => executeOne(
+                            nestedStep,
+                            req.workspaceName,
+                            runLocalStepResults,
+                            resolvedDeps,
+                            stepResolves ?? req.stepResolves,
+                            checkpointRuntime!.provider,
+                            checkpointRuntime!.entityRulesResolver,
+                            checkpointRuntime!.resolveResolver,
+                        ),
+                        checkpoints: checkpointRuntime.checkpoints,
+                        checkpointStepResolves: checkpointRuntime.stepResolves,
+                        checkpointBodies: checkpointRuntime.bodies,
+                        checkpointRuntime: {
+                            ...checkpointRuntime,
+                            checkpointStepResolves: checkpointRuntime.stepResolves,
+                            checkpointBodies: checkpointRuntime.bodies,
+                        },
+                    });
+                    const checkpointOutput = await runCheckpoint(failedCtx);
+                    finalResult = checkpointOutput.finalResult;
+                    nextStatus = checkpointOutput.nextStatus;
+                    const checkpointId = typeof checkpointOutput.meta?.checkpointId === 'string'
+                        ? checkpointOutput.meta.checkpointId
+                        : undefined;
+                    if (checkpointId) {
+                        checkpointAttempts.set(checkpointId, (checkpointAttempts.get(checkpointId) ?? 0) + 1);
+                    }
+                    if (
+                        nextStatus
+                        || finalResult.ok
+                        || checkpointOutput.meta?.stopReason !== 'checkpoint_retry_failed'
+                        || !checkpointId
+                    ) {
+                        break;
+                    }
+                    failedResult = finalResult;
+                }
             }
 
             const output: StepResult = {
@@ -567,6 +652,8 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
             };
             await writeRunnerStepResultCache(resolvedDeps, req.workspaceName, req.runId, finalResult);
             pushResultPipe(req.resultPipe, output);
+            activeResultPublished = true;
+            activeStep = undefined;
 
             if (nextStatus === 'suspended') {
                 status = 'suspended';
@@ -574,22 +661,23 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
                 status = 'failed';
             }
 
+            if (status === 'failed') {
+                return await finish(status);
+            }
             const checkpoint = checkpointOf(req.runId, req.workspaceName, status, req.stepsQueue.cursor);
             await req.onCheckpoint?.(checkpoint);
-            if (status === 'failed') {
-                return checkpoint;
-            }
             continue;
         }
 
         if (req.stepsQueue.closed) {
             status = 'completed';
-            const checkpoint = checkpointOf(req.runId, req.workspaceName, status, req.stepsQueue.cursor);
-            await req.onCheckpoint?.(checkpoint);
-            return checkpoint;
+            return await finish(status);
         }
 
         await waitForInput(req.stepsQueue, req.signalChannel);
+        }
+    } catch (error) {
+        return await fail(error);
     }
 };
 

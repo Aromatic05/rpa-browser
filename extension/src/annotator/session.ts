@@ -17,6 +17,7 @@ export type CreateAnnotatorSessionInput = {
 
 export const createAnnotatorSession = (input: CreateAnnotatorSessionInput): AnnotatorSession => {
     let state: AnnotatorSessionState = {status: 'idle', profileName: ''};
+    let artifactRevisionProfileName: string | undefined;
     const listeners = new Set<(state: AnnotatorSessionState) => void>();
 
     const publish = (patch: Partial<AnnotatorSessionState>): void => {
@@ -31,12 +32,18 @@ export const createAnnotatorSession = (input: CreateAnnotatorSessionInput): Anno
     const applyProjection = (reply: AnnotatorProjectionReply): void => {
         input.overlay.render(reply.projection);
         const profileDraft = draftFromProfile(reply.profile);
+        const profileName = profileDraft?.profileName ?? state.profileName;
+        const artifactRevision = reply.artifactRevision === undefined
+            ? artifactRevisionProfileName === profileName ? state.artifactRevision : undefined
+            : reply.artifactRevision;
+        artifactRevisionProfileName = artifactRevision === undefined ? undefined : profileName;
         publish({
             status: 'ready',
             projection: structuredClone(reply.projection),
             validation: reply.validation ? structuredClone(reply.validation) : state.validation,
             draft: profileDraft ?? state.draft,
-            profileName: profileDraft?.profileName ?? state.profileName,
+            profileName,
+            artifactRevision,
             error: undefined,
         });
     };
@@ -56,7 +63,8 @@ export const createAnnotatorSession = (input: CreateAnnotatorSessionInput): Anno
 
     const open = async (profileName?: string): Promise<void> => {
         const normalized = profileName?.trim() ?? '';
-        publish({profileName: normalized});
+        artifactRevisionProfileName = undefined;
+        publish({profileName: normalized, artifactRevision: undefined});
         await runProjection('loading', async () => await input.client.open(normalized || undefined));
     };
 
@@ -87,10 +95,16 @@ export const createAnnotatorSession = (input: CreateAnnotatorSessionInput): Anno
     };
 
     const apply = async (payload: AnnotatorApplyPayload): Promise<void> => {
+        const artifactRevision = artifactRevisionProfileName === payload.draft.profileName
+            ? state.artifactRevision
+            : undefined;
+        artifactRevisionProfileName = artifactRevision === undefined ? undefined : payload.draft.profileName;
         publish({
             status: 'applying',
             draft: structuredClone(payload.draft),
+            profileName: payload.draft.profileName,
             validation: undefined,
+            artifactRevision,
             error: undefined,
         });
         try {
@@ -126,14 +140,28 @@ export const createAnnotatorSession = (input: CreateAnnotatorSessionInput): Anno
     };
 
     const save = async (draft = requireDraft(state.draft)): Promise<void> => {
-        publish({status: 'saving', draft: structuredClone(draft), error: undefined});
+        const expectedRevision = artifactRevisionProfileName === draft.profileName
+            ? state.artifactRevision ?? null
+            : null;
+        artifactRevisionProfileName = draft.profileName === state.profileName
+            ? artifactRevisionProfileName
+            : undefined;
+        publish({
+            status: 'saving',
+            draft: structuredClone(draft),
+            profileName: draft.profileName,
+            artifactRevision: expectedRevision,
+            error: undefined,
+        });
         try {
-            const reply = await input.client.save(draft);
+            const reply = await input.client.save(draft, expectedRevision);
             input.overlay.render(reply.projection);
+            artifactRevisionProfileName = draft.profileName;
             publish({
                 status: 'ready',
                 projection: structuredClone(reply.projection),
                 validation: structuredClone(reply.validation),
+                artifactRevision: reply.artifactRevision,
             });
         } catch (error) {
             publish({status: 'error', error: errorMessage(error)});
@@ -144,10 +172,15 @@ export const createAnnotatorSession = (input: CreateAnnotatorSessionInput): Anno
     return {
         getState: (): AnnotatorSessionState => structuredClone(state),
         setDraft: (draft: AnnotatorDraft): void => {
+            const artifactRevision = artifactRevisionProfileName === draft.profileName
+                ? state.artifactRevision
+                : undefined;
+            artifactRevisionProfileName = artifactRevision === undefined ? undefined : draft.profileName;
             publish({
                 draft: structuredClone(draft),
                 profileName: draft.profileName,
                 validation: undefined,
+                artifactRevision,
             });
         },
         subscribe: (listener) => {

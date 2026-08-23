@@ -1,5 +1,5 @@
 import type { StepName, StepResult, StepUnion } from '../types';
-import type { RunStepsDeps } from '../../run_steps';
+import type { RunStepsDeps, RunStepsExecutionContext } from '../../run_steps';
 import { executeBrowserClick } from './click';
 import { executeBrowserFill } from './fill';
 import { executeBrowserGoto } from './goto';
@@ -30,7 +30,12 @@ import { executeBrowserQuery } from './query';
 import { executeBrowserCompute } from './compute';
 import { executeBrowserCheckpoint } from './checkpoint';
 
-export type ExecutorFn = (step: StepUnion, deps: RunStepsDeps, workspaceName: string) => Promise<StepResult>;
+export type ExecutorFn = (
+    step: StepUnion,
+    deps: RunStepsDeps,
+    workspaceName: string,
+    context?: RunStepsExecutionContext,
+) => Promise<StepResult>;
 
 export const stepExecutors: Record<StepName, ExecutorFn> = {
     'browser.goto': executeBrowserGoto as ExecutorFn,

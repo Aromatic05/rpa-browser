@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { maybeEnterCheckpoint, maybePickCheckpoint, setCheckpoints } from '../../../../src/runner/checkpoint/match';
+import { maybeEnterCheckpoint, maybePickCheckpoint } from '../../../../src/runner/checkpoint/match';
 import { maybeBindCheckpoint } from '../../../../src/runner/checkpoint/bind';
 import { maybeRunCheckpoint } from '../../../../src/runner/checkpoint/run';
 import { foldCheckpointResult } from '../../../../src/runner/checkpoint/fold';
@@ -88,15 +88,14 @@ test('maybeEnterCheckpoint: disabled -> not entered', async () => {
     assert.equal(result.stopReason, 'checkpoint_not_entered');
 });
 
-test('maybeEnterCheckpoint: transient error does not enter', async () => {
+test('maybeEnterCheckpoint: timeout failures remain eligible for explicit recovery', async () => {
     const ctx = createCtx({
         failedCtx: createFailedCtx({
             rawResult: { stepId: 's1', ok: false, error: { code: 'ERR_TIMEOUT', message: 'timeout' } },
         }),
     });
     const result = await maybeEnterCheckpoint(ctx);
-    assert.equal(result.active, false);
-    assert.equal(result.stopReason, 'checkpoint_not_entered');
+    assert.equal(result.active, true);
 });
 
 test('maybeEnterCheckpoint: fatal error does not enter', async () => {
@@ -116,42 +115,41 @@ test('maybeEnterCheckpoint: normal failure enters', async () => {
 });
 
 test('maybePickCheckpoint: no candidates', async () => {
-    setCheckpoints([]);
-    const result = await maybePickCheckpoint(createCtx());
+    const result = await maybePickCheckpoint(createCtx({failedCtx: createFailedCtx({checkpoints: []})}));
     assert.equal(result.active, false);
     assert.equal(result.stopReason, 'checkpoint_not_found');
 });
 
 test('maybePickCheckpoint: candidates but no match', async () => {
-    setCheckpoints([
+    const checkpoints: import('../../../../src/runner/checkpoint/types').Checkpoint[] = [
         {
             id: 'cp-1',
             name: 'cp',
             trigger: { matchRules: [{ errorCode: 'ERR_TIMEOUT' }] },
             content: [],
         },
-    ]);
-    const result = await maybePickCheckpoint(createCtx());
+    ];
+    const result = await maybePickCheckpoint(createCtx({failedCtx: createFailedCtx({checkpoints})}));
     assert.equal(result.active, false);
     assert.equal(result.stopReason, 'checkpoint_not_found');
 });
 
 test('maybePickCheckpoint: single matched checkpoint', async () => {
-    setCheckpoints([
+    const checkpoints: import('../../../../src/runner/checkpoint/types').Checkpoint[] = [
         {
             id: 'cp-1',
             name: 'cp',
             trigger: { matchRules: [{ errorCode: 'ERR_NOT_FOUND' }, { stepName: 'browser.click' }] },
             content: [],
         },
-    ]);
-    const result = await maybePickCheckpoint(createCtx());
+    ];
+    const result = await maybePickCheckpoint(createCtx({failedCtx: createFailedCtx({checkpoints})}));
     assert.equal(result.active, true);
     assert.equal(result.checkpoint?.id, 'cp-1');
 });
 
 test('maybePickCheckpoint: priority wins', async () => {
-    setCheckpoints([
+    const checkpoints: import('../../../../src/runner/checkpoint/types').Checkpoint[] = [
         {
             id: 'cp-low',
             name: 'low',
@@ -166,13 +164,13 @@ test('maybePickCheckpoint: priority wins', async () => {
             trigger: { matchRules: [{ errorCode: 'ERR_NOT_FOUND' }] },
             content: [],
         },
-    ]);
-    const result = await maybePickCheckpoint(createCtx());
+    ];
+    const result = await maybePickCheckpoint(createCtx({failedCtx: createFailedCtx({checkpoints})}));
     assert.equal(result.checkpoint?.id, 'cp-high');
 });
 
 test('maybePickCheckpoint: checkpoint policy maxAttempts blocks re-entry', async () => {
-    setCheckpoints([
+    const checkpoints: import('../../../../src/runner/checkpoint/types').Checkpoint[] = [
         {
             id: 'cp-limited',
             name: 'limited',
@@ -182,12 +180,14 @@ test('maybePickCheckpoint: checkpoint policy maxAttempts blocks re-entry', async
             },
             content: [],
         },
-    ]);
+    ];
     const result = await maybePickCheckpoint(
         createCtx({
             failedCtx: createFailedCtx({
-                checkpointAttempt: 1,
+                checkpointAttempt: 0,
+                checkpointAttempts: {'cp-limited': 1},
                 checkpointMaxAttempts: 3,
+                checkpoints,
             }),
         }),
     );
@@ -195,8 +195,38 @@ test('maybePickCheckpoint: checkpoint policy maxAttempts blocks re-entry', async
     assert.equal(result.stopReason, 'checkpoint_not_found');
 });
 
+test('maybePickCheckpoint: an exhausted candidate does not consume another checkpoint budget', async () => {
+    const checkpoints: import('../../../../src/runner/checkpoint/types').Checkpoint[] = [
+        {
+            id: 'cp-exhausted',
+            priority: 10,
+            trigger: {matchRules: [{errorCode: 'ERR_NOT_FOUND'}]},
+            policy: {maxAttempts: 1},
+            content: [],
+        },
+        {
+            id: 'cp-fallback',
+            priority: 1,
+            trigger: {matchRules: [{errorCode: 'ERR_NOT_FOUND'}]},
+            policy: {maxAttempts: 1},
+            content: [],
+        },
+    ];
+    const result = await maybePickCheckpoint(createCtx({
+        failedCtx: createFailedCtx({
+            checkpointAttempt: 0,
+            checkpointAttempts: {'cp-exhausted': 1},
+            checkpoints,
+        }),
+    }));
+
+    assert.equal(result.active, true);
+    assert.equal(result.checkpoint?.id, 'cp-fallback');
+    assert.equal(result.meta?.checkpointAttempt, 0);
+});
+
 test('maybePickCheckpoint: entityExists matches by businessTag', async () => {
-    setCheckpoints([
+    const checkpoints: import('../../../../src/runner/checkpoint/types').Checkpoint[] = [
         {
             id: 'cp-entity-tag',
             name: 'entity-tag',
@@ -211,7 +241,7 @@ test('maybePickCheckpoint: entityExists matches by businessTag', async () => {
             ] },
             content: [],
         },
-    ]);
+    ];
     const deps = await createDepsWithBusinessEntity();
     const refreshReasons: Array<'explicit' | undefined> = [];
     deps.pageSession.ensureFresh = async (input) => {
@@ -224,12 +254,39 @@ test('maybePickCheckpoint: entityExists matches by businessTag', async () => {
         createCtx({
             failedCtx: createFailedCtx({
                 deps,
+                checkpoints,
             }),
         }),
     );
     assert.equal(result.active, true);
     assert.equal(result.checkpoint?.id, 'cp-entity-tag');
     assert.deepEqual(refreshReasons, ['explicit']);
+});
+
+test('maybePickCheckpoint: every match rule must match before recovery is selected', async () => {
+    const deps = await createDepsWithBusinessEntity();
+    deps.pageSession.ensureFresh = async (input) => {
+        const cached = deps.pageSession.read(input.pageKey);
+        assert.ok(cached);
+        return cached;
+    };
+    const result = await maybePickCheckpoint(createCtx({
+        failedCtx: createFailedCtx({
+            deps,
+            checkpoints: [{
+                id: 'requires-error-and-entity',
+                trigger: {matchRules: [
+                    {errorCode: 'ERR_NOT_FOUND'},
+                    {entityExists: {query: '', kind: 'panel', businessTag: 'missing.panel'}},
+                ]},
+                content: [],
+            }],
+        }),
+    }));
+
+    assert.equal(result.active, false);
+    assert.equal(result.checkpoint, undefined);
+    assert.equal(result.stopReason, 'checkpoint_not_found');
 });
 
 test('maybeBindCheckpoint: binds variables', async () => {

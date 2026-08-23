@@ -55,13 +55,21 @@
 2. `ERR_WORKFLOW_*` 细节（manifest、路径、workspace 绑定）。
 3. 是否命中 `missing action target`（WS pageless 范围不足时）。
 
-### workflow.dsl.test 失败
+### dsl.validate / dsl.save 失败
 
 优先看：
 
 1. `dsl` 类别中的语法/校验诊断。
+2. entity-rules / resolve import 的 link diagnostic。
+3. checkpoint dependency graph 的 missing/non-callable/body/recursion diagnostic。
+
+### dsl.run 失败
+
+优先看：
+
+1. `dsl` 类别中的运行诊断。
 2. `step` 与 `trace` 的首个失败 step。
-3. 关联 checkpoint 或 resolve 失败码。
+3. 关联 recovery checkpoint 或 resolve 失败码。
 
 ### resolve_scope_from_token.miss
 

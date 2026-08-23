@@ -1,7 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createDslTaskRunner } from '../../../../src/dsl/runtime';
-import type { RunStepsDeps } from '../../../../src/runner/run_steps';
+import {
+    createResultPipe,
+    createSignalChannel,
+    createStepsQueue,
+    runSteps,
+    type Checkpoint,
+    type RunStepsDeps,
+} from '../../../../src/runner/run_steps';
 import type { StepUnion } from '../../../../src/runner/steps/types';
 import { completeRunStepsDeps } from '../../../helpers/run_steps_workspace';
 
@@ -53,7 +60,7 @@ const createDeps = (calls: StubCall[], opts?: { failFill?: boolean; delayMs?: nu
                     },
                 }) as any,
         } as any,
-    });
+    }, { workspaceName: 'ws-dsl-task' });
 
 test('task_runner runs multiple steps through one runId and preserves queue order', async () => {
     const calls: StubCall[] = [];
@@ -168,6 +175,115 @@ test('task_runner close waits for runSteps completion', async () => {
 
     assert.equal(result.ok, true);
     assert.equal(calls.length, 1);
+});
+
+test('task_runner cancel and close terminalize a suspended runner', async () => {
+    const runner = createDslTaskRunner({
+        workspaceName: 'ws-dsl-task',
+        deps: createDeps([]),
+    });
+
+    await runner.start();
+    await runner.suspend();
+    await Promise.race([
+        runner.cancel(),
+        delay(100).then(() => { throw new Error('cancel hung while suspended'); }),
+    ]);
+    await runner.close();
+});
+
+test('task_runner converts an executor throw into a failed terminal step result', async () => {
+    const runner = createDslTaskRunner({
+        workspaceName: 'ws-dsl-task',
+        deps: completeRunStepsDeps({
+            runtime: {
+                ensureActivePage: async () => ({
+                    workspaceName: 'ws-dsl-task', tabName: 'tk-dsl-task', traceCtx: { cache: {} },
+                }),
+            },
+            config: {} as any,
+            pluginHost: {
+                getExecutors: () => ({
+                    'browser.query': async () => { throw new Error('executor exploded'); },
+                }) as any,
+            } as any,
+        }, { workspaceName: 'ws-dsl-task' }),
+    });
+
+    const result = await runner.runStep({
+        id: 'step-query-throw',
+        name: 'browser.query',
+        args: { op: 'entity', businessTag: 'order.list', query: 'table.currentRows' },
+    } as StepUnion);
+    await runner.close();
+
+    assert.equal(result.ok, false);
+    assert.equal(result.error?.code, 'ERR_RUNNER_UNEXPECTED');
+    assert.match(result.error?.message || '', /executor exploded/);
+});
+
+test('runSteps publishes a failed terminal checkpoint when an executor throws', async () => {
+    const step = {
+        id: 'step-query-terminal',
+        name: 'browser.query',
+        args: { op: 'entity', businessTag: 'order.list', query: 'table.currentRows' },
+    } as StepUnion;
+    const queue = createStepsQueue([step], { closed: true });
+    const pipe = createResultPipe();
+    const checkpoints: Checkpoint[] = [];
+    const checkpoint = await runSteps({
+        runId: 'run-terminal',
+        workspaceName: 'ws-dsl-task',
+        stepsQueue: queue,
+        resultPipe: pipe,
+        signalChannel: createSignalChannel(),
+        onCheckpoint: async (value) => { checkpoints.push(value); },
+    }, completeRunStepsDeps({
+        config: {} as any,
+        pluginHost: {
+            getExecutors: () => ({
+                'browser.query': async () => { throw new Error('executor exploded'); },
+            }) as any,
+        } as any,
+    }, { workspaceName: 'ws-dsl-task' }));
+
+    assert.equal(checkpoint.status, 'failed');
+    assert.equal(checkpoints.at(-1)?.status, 'failed');
+    assert.equal(pipe.closed, true);
+    assert.equal(pipe.items.at(-1)?.error?.code, 'ERR_RUNNER_UNEXPECTED');
+});
+
+test('step sink failures do not change successful runner execution', async () => {
+    const step = {
+        id: 'step-query-observer-failure',
+        name: 'browser.query',
+        args: {op: 'entity', businessTag: 'order.list', query: 'table.currentRows'},
+    } as StepUnion;
+    const pipe = createResultPipe();
+    const checkpoint = await runSteps({
+        runId: 'run-observer-failure',
+        workspaceName: 'ws-dsl-task',
+        stepsQueue: createStepsQueue([step], {closed: true}),
+        resultPipe: pipe,
+        signalChannel: createSignalChannel(),
+    }, completeRunStepsDeps({
+        stepSinks: [{
+            write: () => {throw new Error('step sink unavailable');},
+        }],
+        pluginHost: {
+            getExecutors: () => ({
+                'browser.query': async () => ({
+                    stepId: step.id,
+                    ok: true,
+                    data: {rows: []},
+                }),
+            }) as any,
+        } as any,
+    }, {workspaceName: 'ws-dsl-task'}));
+
+    assert.equal(checkpoint.status, 'completed');
+    assert.equal(pipe.items.length, 1);
+    assert.equal(pipe.items[0].ok, true);
 });
 
 const delay = async (ms: number): Promise<void> =>

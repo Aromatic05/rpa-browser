@@ -146,7 +146,7 @@ const saveOrderQueryEntityRule = async (agent: AgentHandle, workspaceName: strin
         annotation: {
             version: 2,
             bindings: [
-                {ruleId: 'root', businessTag: 'orders.query', displayName: '订单查询', legacyCanvas: canvas},
+                {ruleId: 'root', entityKey: 'ordersQuery', businessTag: 'orders.query', displayName: '订单查询', legacyCanvas: canvas},
                 {ruleId: 'order-no', fieldKey: 'orderNo', fieldRole: 'field', fieldName: '订单编号'},
                 {ruleId: 'buyer', fieldKey: 'buyer', fieldRole: 'field', fieldName: '采购人'},
                 {ruleId: 'query', actionIntent: 'query', actionRole: 'form', actionText: '查询'},
@@ -221,6 +221,7 @@ const saveOrderFulfillmentEntityRule = async (agent: AgentHandle, workspaceName:
             bindings: [
                 {
                     ruleId: 'table-root',
+                    entityKey: 'ordersTable',
                     businessTag: 'orders.table',
                     entityKind: 'table',
                     displayName: '订单列表',
@@ -276,7 +277,7 @@ const saveExpiredSessionEntityRule = async (agent: AgentHandle, workspaceName: s
         annotation: {
             version: 2,
             bindings: [
-                {ruleId: 'root', businessTag: 'auth.expired', entityKind: 'panel', displayName: '登录失效提示', legacyCanvas: canvas},
+                {ruleId: 'root', entityKey: 'authExpired', businessTag: 'auth.expired', entityKind: 'panel', displayName: '登录失效提示', legacyCanvas: canvas},
                 {ruleId: 'dismiss', actionIntent: 'dismiss', actionRole: 'form', actionText: '关闭提示'},
             ],
         },
@@ -403,14 +404,16 @@ test('records a business checkpoint through entity-rule highlights without block
             launchText: '录制中',
         });
 
-        expect((await runStep(agent.endpoint, workspaceName, step('record-fill-order', 'browser.fill', {
+        const fillOrder = await runStep(agent.endpoint, workspaceName, step('record-fill-order', 'browser.fill', {
             selector: '#order-no',
             value: 'SO-001',
-        }))).ok).toBe(true);
-        expect((await runStep(agent.endpoint, workspaceName, step('record-fill-buyer', 'browser.fill', {
+        }));
+        expect(fillOrder.ok, JSON.stringify(fillOrder.error || {})).toBe(true);
+        const fillBuyer = await runStep(agent.endpoint, workspaceName, step('record-fill-buyer', 'browser.fill', {
             selector: '#buyer',
             value: '王小虎',
-        }))).ok).toBe(true);
+        }));
+        expect(fillBuyer.ok, JSON.stringify(fillBuyer.error || {})).toBe(true);
         await clickPoint(agent, workspaceName, await pagePoint(agent, workspaceName, '#query-orders'));
         await expect.poll(async () => await evaluate(agent, workspaceName, `
             return {
@@ -488,7 +491,7 @@ test('records a business checkpoint through entity-rule highlights without block
                 name?: string;
                 input?: Record<string, unknown>;
                 trigger?: {matchRules?: unknown[]};
-                content?: unknown[];
+                body?: {language?: string; source?: string};
                 output?: unknown;
             };
         }>}).checkpoints || [];
@@ -501,10 +504,19 @@ test('records a business checkpoint through entity-rule highlights without block
         expect(checkpoint.checkpoint.trigger?.matchRules).toEqual([{
             entityExists: {query: '', kind: 'form', businessTag: 'orders.query'},
         }]);
-        const serialized = JSON.stringify(checkpoint.checkpoint.content);
-        expect(serialized).not.toContain('SO-001');
-        expect(serialized).not.toContain('王小虎');
-        expect(serialized).not.toContain('#order-no');
+        expect(checkpoint.checkpoint.body).toEqual({language: 'dsl', source: 'body.dsl'});
+        const loaded = await dispatch(agent.endpoint, action('checkpoint.get', workspaceName, {
+            checkpointId: checkpoint.checkpointId,
+        }));
+        expect(loaded.type).toBe('checkpoint.get.result');
+        const bodyDsl = (loaded.payload as {bodyDsl?: string}).bodyDsl || '';
+        expect(bodyDsl).toContain('use entity_rules "order-query-rule" as entity');
+        expect(bodyDsl).toContain('fill entity.ordersQuery.orderNo with input.orderNo');
+        expect(bodyDsl).toContain('fill entity.ordersQuery.buyer with input.buyer');
+        expect(bodyDsl).toContain('click entity.ordersQuery.query');
+        expect(bodyDsl).not.toContain('SO-001');
+        expect(bodyDsl).not.toContain('王小虎');
+        expect(bodyDsl).not.toContain('#order-no');
 
         await evaluate(agent, workspaceName, `
             document.querySelector('#order-no').value = '';
@@ -651,16 +663,21 @@ test('records a homogeneous row action and replays it against another primary-ke
         const listed = await dispatch(agent.endpoint, action('checkpoint.list', workspaceName));
         const checkpoints = (listed.payload as {checkpoints?: Array<{
             checkpointId: string;
-            checkpoint: {input?: Record<string, unknown>; content?: unknown[]};
+            checkpoint: {input?: Record<string, unknown>; body?: {language?: string; source?: string}};
         }>}).checkpoints || [];
         expect(checkpoints).toHaveLength(1);
         const checkpoint = checkpoints[0];
         expect(checkpoint.checkpoint.input).toEqual({orderNo: 'SO-002'});
-        const serialized = JSON.stringify(checkpoint.checkpoint.content);
-        expect(serialized).toContain('table.row_action');
-        expect(serialized).toContain('confirmShipment');
-        expect(serialized).not.toContain('SO-002');
-        expect(serialized).not.toContain('.confirm-shipment');
+        expect(checkpoint.checkpoint.body).toEqual({language: 'dsl', source: 'body.dsl'});
+        const loaded = await dispatch(agent.endpoint, action('checkpoint.get', workspaceName, {
+            checkpointId: checkpoint.checkpointId,
+        }));
+        expect(loaded.type).toBe('checkpoint.get.result');
+        const bodyDsl = (loaded.payload as {bodyDsl?: string}).bodyDsl || '';
+        expect(bodyDsl).toContain('use entity_rules "order-fulfillment-rule" as entity');
+        expect(bodyDsl).toContain('click entity.ordersTable.row(input.orderNo).confirmShipment');
+        expect(bodyDsl).not.toContain('SO-002');
+        expect(bodyDsl).not.toContain('.confirm-shipment');
 
         await evaluate(agent, workspaceName, `
             document.querySelector('#order-no').value = '';
@@ -673,6 +690,23 @@ test('records a homogeneous row action and replays it against another primary-ke
                 row.querySelector('.order-status').classList.remove('shipped');
             }
         `);
+        const directTarget = await runStep(
+            agent.endpoint,
+            workspaceName,
+            {
+                ...step('resolve-row-action-target', 'browser.query', {
+                    op: 'entity.target',
+                    businessTag: 'orders.table',
+                    target: {
+                        kind: 'table.row_action',
+                        primaryKey: {fieldKey: 'orderNo', value: 'SO-003'},
+                        actionIntent: 'confirmShipment',
+                    },
+                }),
+                entityRules: {selection: 'explicit', profiles: ['order-fulfillment-rule'], strict: true},
+            },
+        );
+        expect(directTarget.ok, JSON.stringify(directTarget.error || {})).toBe(true);
         const executed = await runStep(
             agent.endpoint,
             workspaceName,
@@ -813,7 +847,7 @@ test('records an entity-rule driven recovery checkpoint and retries the original
         expect(listed.type).toBe('checkpoint.list.result');
         const checkpoints = (listed.payload as {checkpoints?: Array<{
             checkpointId: string;
-            checkpoint: {kind?: string; name?: string; trigger?: {matchRules?: unknown[]}; content?: unknown[]};
+            checkpoint: {kind?: string; name?: string; trigger?: {matchRules?: unknown[]}; body?: {language?: string; source?: string}};
         }>}).checkpoints || [];
         expect(checkpoints).toHaveLength(1);
         const checkpoint = checkpoints[0];
@@ -821,10 +855,15 @@ test('records an entity-rule driven recovery checkpoint and retries the original
         expect(checkpoint.checkpoint.trigger?.matchRules).toEqual([{
             entityExists: {query: '', kind: 'panel', businessTag: 'auth.expired'},
         }]);
-        const serialized = JSON.stringify(checkpoint.checkpoint.content);
-        expect(serialized).not.toContain('#dismiss-session');
-        expect(serialized).toContain('auth.expired');
-        expect(serialized).toContain('dismiss');
+        expect(checkpoint.checkpoint.body).toEqual({language: 'dsl', source: 'body.dsl'});
+        const loaded = await dispatch(agent.endpoint, action('checkpoint.get', workspaceName, {
+            checkpointId: checkpoint.checkpointId,
+        }));
+        expect(loaded.type).toBe('checkpoint.get.result');
+        const bodyDsl = (loaded.payload as {bodyDsl?: string}).bodyDsl || '';
+        expect(bodyDsl).toContain('use entity_rules "expired-session-rule" as entity');
+        expect(bodyDsl).toContain('click entity.authExpired.dismiss');
+        expect(bodyDsl).not.toContain('#dismiss-session');
 
         await evaluate(agent, workspaceName, `
             document.querySelector('#session-alert').style.display = 'flex';

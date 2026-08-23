@@ -38,12 +38,18 @@ export const toFailedAction = (request: Action, error: unknown): Action => {
         return failedAction(request, error.code, error.message, error.details);
     }
     if (error instanceof Error) {
+        const dslError = error as Error & { code?: unknown; diagnostics?: unknown };
+        if (typeof dslError.code === 'string') {
+            return failedAction(request, dslError.code, error.message, dslError.diagnostics === undefined
+                ? undefined
+                : { diagnostics: dslError.diagnostics });
+        }
         if (error.name === 'TimeoutError') {
             return failedAction(request, ERROR_CODES.ERR_TIMEOUT, error.message);
         }
-        return failedAction(request, ERROR_CODES.ERR_BAD_ARGS, error.message);
+        return failedAction(request, ERROR_CODES.ERR_INTERNAL, error.message);
     }
-    return failedAction(request, ERROR_CODES.ERR_BAD_ARGS, String(error));
+    return failedAction(request, ERROR_CODES.ERR_INTERNAL, String(error));
 };
 
 export const unsupportedActionFailure = (request: Action): Action =>

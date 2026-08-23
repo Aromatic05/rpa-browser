@@ -20,6 +20,7 @@ export type WorkspaceMcpRuntimeDeps = {
     runStepsDeps?: RunStepsDeps;
     config?: RunnerConfig;
     log?: (...args: unknown[]) => void;
+    runWorkspaceExecution?: <T>(actionType: string, run: () => Promise<T>) => Promise<T>;
 };
 
 const SERVICE_NAME = 'mcp';
@@ -35,6 +36,7 @@ export const createWorkspaceMcpRuntime = (deps: WorkspaceMcpRuntimeDeps): Worksp
             runStepsDeps: deps.runStepsDeps,
             config: deps.config,
             log: deps.log,
+            runWorkspaceExecution: deps.runWorkspaceExecution,
             awaitTabPage: (tabName: string, timeoutMs: number) => deps.workspace.tabs.awaitTabPage(tabName, timeoutMs),
         });
         const enabledTools = resolveEnabledToolNames(deps.config?.mcpPolicy);

@@ -726,7 +726,9 @@ const preferredComponentBinding = (
     componentId: string,
     domain: 'form' | 'table',
 ): SemanticBusinessBinding | undefined => bindings
-    .filter((binding) => binding.domain === domain && binding.target.componentIds.includes(componentId))
+    .filter((binding) => binding.domain === domain
+        && binding.targetKind === `${domain}-component`
+        && binding.target.componentIds.includes(componentId))
     .sort((left, right) => bindingPriority(right) - bindingPriority(left) || left.id.localeCompare(right.id))[0];
 
 

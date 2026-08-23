@@ -13,7 +13,7 @@ export type MatchRule =
 
 export type Checkpoint = {
     id: string;
-    kind?: 'procedure' | 'recovery' | 'guard';
+    kind?: 'procedure' | 'recovery';
     name?: string;
     input?: Record<string, unknown>;
     trigger?: {
@@ -26,10 +26,10 @@ export type Checkpoint = {
     policy?: {
         maxAttempts?: number;
         retryOriginal?: boolean;
-        stopOnFailure?: boolean;
     };
     enabled?: boolean;
     priority?: number;
+    body?: { language: 'dsl'; source: 'body.dsl' };
 };
 
 export type CheckpointValue = unknown;
@@ -114,3 +114,7 @@ export type CheckpointProcedureOutput = {
 
 export const getCheckpointMatchRules = (checkpoint: Pick<Checkpoint, 'trigger'>): MatchRule[] =>
     checkpoint.trigger?.matchRules || [];
+
+export const isAutomaticRecoveryCheckpoint = (checkpoint: Pick<Checkpoint, 'kind' | 'trigger'>): boolean =>
+    (checkpoint.kind === undefined || checkpoint.kind === 'recovery')
+    && getCheckpointMatchRules(checkpoint).length > 0;

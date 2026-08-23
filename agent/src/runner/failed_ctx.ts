@@ -1,6 +1,8 @@
 import type { RunStepsDeps } from './run_steps_types';
 import type { Checkpoint } from './checkpoint/types';
 import type { StepResolve, StepResult, StepUnion } from './steps/types';
+import type { CheckpointRuntimeSnapshot } from './checkpoint/runtime_snapshot';
+export type { CheckpointRuntimeSnapshot } from './checkpoint/runtime_snapshot';
 
 export type FailedCtx = {
     runId: string;
@@ -11,12 +13,15 @@ export type FailedCtx = {
     stopOnError: boolean;
     checkpointEnabled: boolean;
     checkpointAttempt: number;
+    checkpointAttempts?: Readonly<Record<string, number>>;
     checkpointMaxAttempts: number;
     inCheckpointFlow: boolean;
     deps: RunStepsDeps;
     executeStep: (step: StepUnion, stepResolves?: Record<string, StepResolve>) => Promise<StepResult>;
     checkpoints?: Checkpoint[];
     checkpointStepResolves?: Record<string, Record<string, StepResolve>>;
+    checkpointBodies?: Record<string, string>;
+    checkpointRuntime?: CheckpointRuntimeSnapshot;
     currentUrl?: string;
 };
 
@@ -29,12 +34,15 @@ export const getFailedCtx = async (input: {
     stopOnError: boolean;
     checkpointEnabled: boolean;
     checkpointAttempt: number;
+    checkpointAttempts?: Readonly<Record<string, number>>;
     checkpointMaxAttempts: number;
     inCheckpointFlow: boolean;
     deps: RunStepsDeps;
     executeStep: (step: StepUnion, stepResolves?: Record<string, StepResolve>) => Promise<StepResult>;
     checkpoints?: Checkpoint[];
     checkpointStepResolves?: Record<string, Record<string, StepResolve>>;
+    checkpointBodies?: Record<string, string>;
+    checkpointRuntime?: CheckpointRuntimeSnapshot;
 }): Promise<FailedCtx> => {
     let currentUrl: string | undefined;
     try {
@@ -66,12 +74,15 @@ export const getFailedCtx = async (input: {
         stopOnError: input.stopOnError,
         checkpointEnabled: input.checkpointEnabled,
         checkpointAttempt: input.checkpointAttempt,
+        checkpointAttempts: input.checkpointAttempts,
         checkpointMaxAttempts: input.checkpointMaxAttempts,
         inCheckpointFlow: input.inCheckpointFlow,
         deps: input.deps,
         executeStep: input.executeStep,
         checkpoints: input.checkpoints,
         checkpointStepResolves: input.checkpointStepResolves,
+        checkpointBodies: input.checkpointBodies,
+        checkpointRuntime: input.checkpointRuntime,
         currentUrl,
     };
 };

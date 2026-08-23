@@ -144,7 +144,7 @@ const executeEntityRuleProfile = (
 ): { result: EntityRuleProfileMatchResult; invalid: boolean } => {
     const compiled = compileEntityRuleQueryPlan({
         profileName: profile.name,
-        domain: inferProfileDomain(profile),
+        domain: inferEntityRuleProfileDomain(profile),
         rules: profile.match.rules,
     });
     if (!compiled.ok) {
@@ -153,7 +153,7 @@ const executeEntityRuleProfile = (
             invalid: true,
             result: {
                 profileName: profile.name,
-                domain: inferProfileDomain(profile),
+                domain: inferEntityRuleProfileDomain(profile),
                 bindings: {},
                 semanticBindings: semanticLayer.bindings,
                 semanticSuggestions: semanticLayer.suggestions,
@@ -199,7 +199,7 @@ const executeEntityRuleProfile = (
     };
 };
 
-const inferProfileDomain = (profile: WorkflowEntityRules): EntityRuleProfileDomain => {
+export const inferEntityRuleProfileDomain = (profile: WorkflowEntityRules): EntityRuleProfileDomain => {
     if (profile.page?.kind === 'form' || profile.page?.kind === 'table') {return profile.page.kind;}
     if (profile.page) {return 'node';}
     if (profile.match.rules.some((rule) => rule.match.kind === 'table')) {return 'table';}

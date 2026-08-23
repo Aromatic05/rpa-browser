@@ -45,10 +45,13 @@ export const createAnnotatorClient = (sendAction: AnnotatorActionSender): Annota
         'entity_rules.annotator.check',
         {draft: structuredClone(draft)},
     ),
-    save: async (draft) => await request<AnnotatorSaveReply>(
+    save: async (draft, expectedRevision) => await request<AnnotatorSaveReply>(
         sendAction,
         'entity_rules.annotator.save',
-        {draft: structuredClone(draft)},
+        {
+            draft: structuredClone(draft),
+            ...(expectedRevision === undefined ? {} : {expectedRevision}),
+        },
     ),
 });
 

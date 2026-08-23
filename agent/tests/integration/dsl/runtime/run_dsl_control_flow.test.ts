@@ -31,7 +31,7 @@ const createDeps = (calls: StubCall[]): RunStepsDeps =>
                             return {
                                 stepId: step.id,
                                 ok: true,
-                                data: true,
+                                data: { kind: 'value', value: true },
                             };
                         }
                         return {
@@ -78,7 +78,7 @@ for user in input.users:
         calls.filter((item) => item.name === 'browser.fill').map((item) => item.args.value),
         ['alice', 'bob'],
     );
-    assert.deepEqual(result.scope.vars.user, { name: 'bob' });
+    assert.equal(Object.hasOwn(result.scope.vars, 'user'), false);
 });
 
 test('runDsl throws when for iterable is not an array', async () => {
@@ -126,6 +126,75 @@ else:
 
     assert.deepEqual(trueCalls[0].args, { nodeId: 'submit-btn' });
     assert.deepEqual(falseCalls[0].args, { nodeId: 'cancel-btn' });
+});
+
+test('runDsl promotes a variable assigned by both branches', async () => {
+    const trueCalls: StubCall[] = [];
+    const falseCalls: StubCall[] = [];
+    const program = normalizeDsl({
+        body: [
+            {
+                kind: 'if',
+                condition: { kind: 'ref', ref: 'input.enabled' },
+                then: [{ kind: 'let', name: 'selected', expr: { kind: 'ref', ref: 'input.primary' } }],
+                else: [{ kind: 'let', name: 'selected', expr: { kind: 'ref', ref: 'input.fallback' } }],
+            },
+            { kind: 'act', action: 'click', target: { kind: 'ref', ref: 'selected' } },
+        ],
+    });
+
+    const trueResult = await runDsl(program, {
+        workspaceName: 'ws-dsl-cf',
+        deps: createDeps(trueCalls),
+        input: { enabled: true, primary: 'primary-btn', fallback: 'fallback-btn' },
+    });
+    const falseResult = await runDsl(program, {
+        workspaceName: 'ws-dsl-cf',
+        deps: createDeps(falseCalls),
+        input: { enabled: false, primary: 'primary-btn', fallback: 'fallback-btn' },
+    });
+
+    assert.deepEqual(trueCalls[0].args, { nodeId: 'primary-btn' });
+    assert.deepEqual(falseCalls[0].args, { nodeId: 'fallback-btn' });
+    assert.equal(trueResult.scope.vars.selected, 'primary-btn');
+    assert.equal(falseResult.scope.vars.selected, 'fallback-btn');
+});
+
+test('runDsl promotes a checkpoint result bound by both branches', async () => {
+    const calls: StubCall[] = [];
+    const program = normalizeDsl(parseDsl(`
+if input.enabled:
+  let selected = use checkpoint "primary" with {
+    target: input.primary
+  }
+else:
+  let selected = use checkpoint "fallback" with {
+    target: input.fallback
+  }
+click selected.target
+    `));
+    const checkpointProvider = {
+        getCheckpoint: (id: string) => ({
+            id,
+            kind: 'procedure' as const,
+            body: {language: 'dsl' as const, source: 'body.dsl' as const},
+        }),
+        getCheckpointResolves: () => ({}),
+        getCheckpointBody: () => ({
+            source: 'output target = input.target',
+            stepResolves: {},
+        }),
+    };
+
+    const result = await runDsl(program, {
+        workspaceName: 'ws-dsl-cf',
+        deps: createDeps(calls),
+        input: {enabled: true, primary: 'primary-btn', fallback: 'fallback-btn'},
+        checkpointProvider,
+    });
+
+    assert.deepEqual(calls.at(-1), {name: 'browser.click', args: {nodeId: 'primary-btn'}});
+    assert.deepEqual(result.scope.vars.selected, {target: 'primary-btn'});
 });
 
 test('runDsl can branch on query results and handle nested for/if', async () => {

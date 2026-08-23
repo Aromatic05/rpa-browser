@@ -1,10 +1,12 @@
+import fs from 'node:fs';
 import path from 'node:path';
-import { DslRuntimeError } from '../dsl/diagnostics/errors';
+import { invalidWorkflowArtifact, WorkflowError } from './errors';
 import {
     listDirectories,
     readYamlFile,
     removePath,
-    workflowRootDir,
+    requireArtifactName,
+    workflowArtifactPath,
     writeYamlFile,
 } from './fs';
 import type { WorkflowCodec } from './store';
@@ -55,10 +57,8 @@ export type EntityRuleBundle = {
     annotation: EntityRuleAnnotationArtifact;
 };
 
-const PROFILE_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
-
 const entityRuleDirectory = (workflowName: string, profileName: string): string =>
-    path.join(workflowRootDir(workflowName), 'entity_rules', profileName);
+    workflowArtifactPath(workflowName, 'entity_rules', requireArtifactName(profileName, 'entity-rule profile name'));
 
 export const validateWorkflowEntityRules = (value: unknown): WorkflowEntityRules => {
     if (!isRecord(value) || value.kind !== 'entity_rules') {
@@ -118,13 +118,9 @@ export const createEntityRulesCodec = (workflowName: string): WorkflowCodec<Work
     load: (name) => {
         const profileName = requireProfileName(name);
         const directory = entityRuleDirectory(workflowName, profileName);
+        if (!fs.existsSync(directory)) {return null;}
         try {
-            let page: unknown;
-            try {
-                page = readYamlFile(path.join(directory, 'page.yaml'));
-            } catch {
-                page = undefined;
-            }
+            const page = readOptionalPage(path.join(directory, 'page.yaml'));
             return importWorkflowEntityRules({
                 kind: 'entity_rules',
                 name: profileName,
@@ -132,11 +128,19 @@ export const createEntityRulesCodec = (workflowName: string): WorkflowCodec<Work
                 match: readYamlFile(path.join(directory, 'match.yaml')),
                 annotation: readYamlFile(path.join(directory, 'annotation.yaml')),
             });
-        } catch {
-            return null;
+        } catch (error) {
+            throw invalidWorkflowArtifact('entity_rules', profileName, error);
         }
     },
-    list: () => listDirectories(path.join(workflowRootDir(workflowName), 'entity_rules'))
+    list: () => listDirectories(workflowArtifactPath(workflowName, 'entity_rules'))
+        .filter((name) => {
+            try {
+                requireArtifactName(name, 'entity-rule profile name');
+                return true;
+            } catch {
+                return false;
+            }
+        })
         .map((name) => createEntityRulesCodec(workflowName).load(name))
         .filter((value): value is WorkflowEntityRules => value !== null),
     save: (value) => {
@@ -156,6 +160,18 @@ export const createEntityRulesCodec = (workflowName: string): WorkflowCodec<Work
         return true;
     },
 });
+
+const readOptionalPage = (filePath: string): unknown => {
+    try {
+        return readYamlFile(filePath);
+    } catch (error) {
+        if (isMissingFile(error)) {return undefined;}
+        throw error;
+    }
+};
+
+const isMissingFile = (error: unknown): boolean =>
+    typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT';
 
 export const toEntityRuleBundle = (value: WorkflowEntityRules): EntityRuleBundle => {
     const validated = validateWorkflowEntityRules(value);
@@ -380,10 +396,11 @@ const assertAcyclicDependencies = (rules: readonly EntityRuleMatchRecord[]): voi
 
 const requireProfileName = (value: unknown): string => {
     const name = requireNonEmptyString(value, 'profile name');
-    if (!PROFILE_NAME_PATTERN.test(name)) {
+    try {
+        return requireArtifactName(name, 'entity-rule profile name');
+    } catch {
         throw invalidArtifact(`invalid profile name: ${name}`);
     }
-    return name;
 };
 
 const requireNonEmptyString = (value: unknown, field: string): string => {
@@ -396,7 +413,7 @@ const requireNonEmptyString = (value: unknown, field: string): string => {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
     Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 
-const invalidArtifact = (message: string): DslRuntimeError => new DslRuntimeError(
+const invalidArtifact = (message: string): WorkflowError => new WorkflowError(
     `invalid Snapshot V2 entity_rules artifact: ${message}`,
     'ERR_ENTITY_RULES_INVALID',
 );

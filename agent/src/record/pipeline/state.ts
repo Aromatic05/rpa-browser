@@ -71,6 +71,7 @@ export type RecordingState = {
     pendingChoiceEvents: Map<string, Map<string, PendingChoiceSession>>;
     pendingSuppressedClicks: Map<string, PendingSuppressedClick[]>;
     checkpointRecordings: Map<string, CheckpointRecordingSession>;
+    inFlightRecordEvents: Map<string, Set<Promise<unknown>>>;
 };
 
 export const createRecordingState = (options: {snapshotPort: RecordingSnapshotPort}): RecordingState => ({
@@ -92,6 +93,7 @@ export const createRecordingState = (options: {snapshotPort: RecordingSnapshotPo
     pendingChoiceEvents: new Map(),
     pendingSuppressedClicks: new Map(),
     checkpointRecordings: new Map(),
+    inFlightRecordEvents: new Map(),
 });
 
 const unsavedRecordingToken = (workspaceName: string): string => `unsaved:${workspaceName}`;
@@ -247,12 +249,50 @@ export const enableWorkspaceRecording = (state: RecordingState, workspaceName: s
     state.recordingEnabled.add(getWorkspaceUnsavedToken(state, workspaceName));
 };
 
+export const stopAcceptingWorkspaceRecordingEvents = (
+    state: RecordingState,
+    workspaceName: string,
+): void => {
+    state.recordingEnabled.delete(getWorkspaceUnsavedToken(state, workspaceName));
+};
+
+export const trackWorkspaceRecordingEvent = <T>(
+    state: RecordingState,
+    workspaceName: string,
+    operation: () => Promise<T>,
+): Promise<T> => {
+    let pending = state.inFlightRecordEvents.get(workspaceName);
+    if (!pending) {
+        pending = new Set();
+        state.inFlightRecordEvents.set(workspaceName, pending);
+    }
+    const promise = operation();
+    pending.add(promise);
+    return promise.finally(() => {
+        pending.delete(promise);
+        if (!pending.size) {
+            state.inFlightRecordEvents.delete(workspaceName);
+        }
+    });
+};
+
+export const awaitWorkspaceRecordingEvents = async (
+    state: RecordingState,
+    workspaceName: string,
+): Promise<void> => {
+    while (true) {
+        const pending = state.inFlightRecordEvents.get(workspaceName);
+        if (!pending?.size) {return;}
+        await Promise.allSettled([...pending]);
+    }
+};
+
 export const disableWorkspaceRecording = (state: RecordingState, workspaceName: string): void => {
     const token = getWorkspaceUnsavedToken(state, workspaceName);
     flushPendingFillEvents(state, token);
     state.pendingChoiceEvents.delete(token);
     state.pendingSuppressedClicks.delete(token);
-    state.recordingEnabled.delete(token);
+    stopAcceptingWorkspaceRecordingEvents(state, workspaceName);
 };
 
 export const clearWorkspaceUnsavedRecording = (state: RecordingState, workspaceName: string): void => {

@@ -1,8 +1,19 @@
 export type DslProgram = {
+    imports?: DslImport[];
     body: DslStmt[];
 };
 
-export type DslStmt = LetStmt | ActStmt | FormActStmt | TableActStmt | CheckpointStmt | IfStmt | ForStmt;
+export type DslImport = {
+    kind: 'entity_rules';
+    profileName: string;
+    alias: string;
+} | {
+    kind: 'resolves';
+    bundleName: string;
+    alias: string;
+};
+
+export type DslStmt = LetStmt | OutputStmt | ActStmt | ResolveActStmt | EntityActStmt | LinkedEntityActStmt | FormActStmt | TableActStmt | CheckpointStmt | IfStmt | ForStmt;
 
 export type LetStmt = {
     kind: 'let';
@@ -10,7 +21,9 @@ export type LetStmt = {
     expr: DslExpr;
 };
 
-export type DslExpr = QueryExpr | QuerySugarExpr | RefExpr;
+export type OutputStmt = { kind: 'output'; name: string; expr: DslExpr };
+
+export type DslExpr = QueryExpr | EntityQueryExpr | QuerySugarExpr | RefExpr;
 
 export type RefExpr = {
     kind: 'ref';
@@ -22,6 +35,27 @@ export type QueryExpr = {
     op: 'entity' | 'entity.target';
     businessTag: string;
     payload: unknown;
+    profileName?: string;
+};
+
+export type EntityReference = {
+    kind: 'entity_ref';
+    alias: string;
+    entityKey: string;
+    member: string;
+    rowValue?: RefExpr;
+};
+
+export type ResolveReference = {
+    kind: 'resolve_ref';
+    alias: string;
+    symbol: string;
+    bundleName?: string;
+};
+
+export type EntityQueryExpr = {
+    kind: 'entity_query';
+    reference: EntityReference;
 };
 
 export type QuerySugarExpr =
@@ -44,6 +78,29 @@ export type ActStmt = {
     target?: RefExpr;
     value?: RefExpr;
     durationMs?: number;
+    profileName?: string;
+};
+
+export type EntityActStmt = {
+    kind: 'entity_act';
+    action: 'fill' | 'click' | 'type' | 'select';
+    target: EntityReference;
+    value?: RefExpr;
+};
+
+export type ResolveActStmt = {
+    kind: 'resolve_act';
+    action: 'fill' | 'click' | 'type' | 'select';
+    target: ResolveReference;
+    value?: RefExpr;
+    resolveId?: string;
+};
+
+export type LinkedEntityActStmt = {
+    kind: 'linked_entity_act';
+    action: 'fill' | 'click' | 'type' | 'select';
+    targetQuery: QueryExpr;
+    value?: RefExpr;
 };
 
 export type FormActStmt = {
@@ -82,6 +139,7 @@ export type CheckpointStmt = {
     kind: 'checkpoint';
     id: string;
     input?: Record<string, DslExpr>;
+    bind?: string;
 };
 
 export type IfStmt = {

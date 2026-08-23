@@ -1,0 +1,48 @@
+version: 1
+name: default
+entry:
+  dsl: main
+createdAt: 1700000000000
+updatedAt: 1700000000600
+catalog:
+  - kind: entity_rules
+    name: dsl-login-rule
+    title: dsl-login-rule
+    createdAt: 1700000000100
+    updatedAt: 1700000000100
+    summary: rules=4, bindings=4
+    enabled: true
+  - kind: entity_rules
+    name: dsl-orders-rule
+    title: dsl-orders-rule
+    createdAt: 1700000000200
+    updatedAt: 1700000000200
+    summary: rules=2, bindings=2
+    enabled: true
+  - kind: entity_rules
+    name: dsl-session-rule
+    title: dsl-session-rule
+    createdAt: 1700000000300
+    updatedAt: 1700000000300
+    summary: rules=2, bindings=2
+    enabled: true
+  - kind: checkpoint
+    name: login-to-orders
+    title: login-to-orders
+    createdAt: 1700000000400
+    updatedAt: 1700000000400
+    summary: checkpoint
+  - kind: checkpoint
+    name: renew-expired-session
+    title: renew-expired-session
+    createdAt: 1700000000500
+    updatedAt: 1700000000500
+    summary: checkpoint
+    enabled: true
+    priority: 100
+  - kind: dsl
+    name: main
+    title: main
+    createdAt: 1700000000600
+    updatedAt: 1700000000600
+    summary: bytes=297

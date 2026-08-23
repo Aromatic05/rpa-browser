@@ -9,6 +9,8 @@ import type { Page } from 'playwright';
 import type { WorkspaceEntityRulesProvider } from '../snapshot/rules';
 import type { PageSnapshotSessionPort } from '../snapshot/session';
 import type { SnapshotProjectionBaselinePort } from '../snapshot/projection';
+import type { DslCheckpointProvider } from '../dsl/emit';
+import type { DslEntityRulesResolver, DslResolveResolver } from '../dsl/link';
 
 export type StepEvent =
     | {
@@ -56,6 +58,7 @@ export type StepResult = {
 export type ResultPipe = {
     items: StepResult[];
     waiters: Set<() => void>;
+    closed: boolean;
 };
 
 export type SignalChannel = {
@@ -83,6 +86,12 @@ export type RunStepsDeps = {
     pluginHost: RunnerPluginHost;
 };
 
+export type RunStepsExecutionContext = {
+    checkpointProvider?: DslCheckpointProvider;
+    entityRulesResolver?: DslEntityRulesResolver;
+    resolveResolver?: DslResolveResolver;
+};
+
 export type RunStepsRequest = {
     runId: string;
     workspaceName: string;
@@ -94,6 +103,7 @@ export type RunStepsRequest = {
     onCheckpoint?: (checkpoint: Checkpoint) => void | Promise<void>;
     checkpoints?: RunnerCheckpoint[];
     checkpointStepResolves?: Record<string, Record<string, StepResolve>>;
+    checkpointBodies?: Record<string, string>;
     checkpointEnabled?: boolean;
     checkpointMaxAttempts?: number;
 };

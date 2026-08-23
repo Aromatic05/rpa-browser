@@ -15,7 +15,7 @@ import {
     type AnnotatorSaveReply,
 } from '../../snapshot/annotator';
 import type {EntityRulesAnnotatorPort} from '../../snapshot/rules/runtime/action_handler';
-import type {WorkflowEntityRules} from '../../workflow';
+import {entityRulesArtifactRevision, type WorkflowEntityRules} from '../../workflow';
 import type {RunStepsDeps} from '../run_steps_types';
 import {ensureFreshPageSession} from '../session/capture';
 import {
@@ -28,86 +28,94 @@ import {handleLegacyAnnotatorAction} from './legacy';
 
 export type CreateRunnerAnnotatorControllerInput = {
     runStepsDeps: RunStepsDeps;
+    runWorkspaceExecution?: <T>(actionType: string, run: () => Promise<T>) => Promise<T>;
 };
 
 export const createRunnerAnnotatorController = (
     input: CreateRunnerAnnotatorControllerInput,
 ): EntityRulesAnnotatorPort => ({
-    handle: async ({action, workspace}) => {
-        const rawPayload = requirePayload(action.payload);
-        const protocol = requireAnnotatorProtocol(rawPayload);
-        const payload = withoutAnnotatorProtocol(rawPayload);
-        if (protocol === 'canvas-v1') {
-            return await handleLegacyAnnotatorAction(
-                input.runStepsDeps,
-                {action, workspace},
-                payload,
-            );
-        }
-        switch (action.type) {
-            case 'entity_rules.annotator.open':
-                assertAllowedKeys(payload, ['profileName', 'tabName']);
-                return await projectReply(
+    handle: async (routerInput) => {
+        const run = async (): Promise<ControlPlaneResult> => {
+            const {action, workspace} = routerInput;
+            const rawPayload = requirePayload(action.payload);
+            const protocol = requireAnnotatorProtocol(rawPayload);
+            const payload = withoutAnnotatorProtocol(rawPayload);
+            if (protocol === 'canvas-v1') {
+                return await handleLegacyAnnotatorAction(
                     input.runStepsDeps,
                     {action, workspace},
-                    false,
-                    optionalProfileName(payload),
-                    optionalTabName(payload),
+                    payload,
                 );
-            case 'entity_rules.annotator.visualize':
-                assertAllowedKeys(payload, ['profileName', 'tabName']);
-                return await projectReply(
-                    input.runStepsDeps,
-                    {action, workspace},
-                    true,
-                    optionalProfileName(payload),
-                    optionalTabName(payload),
-                );
-            case 'entity_rules.annotator.recognize':
-                assertAllowedKeys(payload, ['profileName', 'refresh', 'tabName']);
-                assertOptionalBoolean(payload.refresh, 'refresh');
-                return await projectReply(
-                    input.runStepsDeps,
-                    {action, workspace},
-                    true,
-                    optionalProfileName(payload),
-                    optionalTabName(payload),
-                );
-            case 'entity_rules.annotator.pick':
-                assertAllowedKeys(payload, ['point', 'tabName']);
-                return await pickReply(
-                    input.runStepsDeps,
-                    {action, workspace},
-                    requirePoint(payload),
-                    optionalTabName(payload),
-                );
-            case 'entity_rules.annotator.apply':
-                assertAllowedKeys(payload, ['draft', 'targetId', 'semantic', 'tabName']);
-                return await applyReply(
-                    input.runStepsDeps,
-                    {action, workspace},
-                    requireApply(payload),
-                    optionalTabName(payload),
-                );
-            case 'entity_rules.annotator.check':
-                assertAllowedKeys(payload, ['draft', 'tabName']);
-                return await checkReply(
-                    input.runStepsDeps,
-                    {action, workspace},
-                    requireDraft(payload),
-                    optionalTabName(payload),
-                );
-            case 'entity_rules.annotator.save':
-                assertAllowedKeys(payload, ['draft', 'tabName']);
-                return await saveReply(
-                    input.runStepsDeps,
-                    {action, workspace},
-                    requireDraft(payload),
-                    optionalTabName(payload),
-                );
-            default:
-                throw new ActionError(ERROR_CODES.ERR_UNSUPPORTED, `unsupported annotator action: ${action.type}`);
-        }
+            }
+            switch (action.type) {
+                case 'entity_rules.annotator.open':
+                    assertAllowedKeys(payload, ['profileName', 'tabName']);
+                    return await projectReply(
+                        input.runStepsDeps,
+                        {action, workspace},
+                        false,
+                        optionalProfileName(payload),
+                        optionalTabName(payload),
+                    );
+                case 'entity_rules.annotator.visualize':
+                    assertAllowedKeys(payload, ['profileName', 'tabName']);
+                    return await projectReply(
+                        input.runStepsDeps,
+                        {action, workspace},
+                        true,
+                        optionalProfileName(payload),
+                        optionalTabName(payload),
+                    );
+                case 'entity_rules.annotator.recognize':
+                    assertAllowedKeys(payload, ['profileName', 'refresh', 'tabName']);
+                    assertOptionalBoolean(payload.refresh, 'refresh');
+                    return await projectReply(
+                        input.runStepsDeps,
+                        {action, workspace},
+                        true,
+                        optionalProfileName(payload),
+                        optionalTabName(payload),
+                    );
+                case 'entity_rules.annotator.pick':
+                    assertAllowedKeys(payload, ['point', 'tabName']);
+                    return await pickReply(
+                        input.runStepsDeps,
+                        {action, workspace},
+                        requirePoint(payload),
+                        optionalTabName(payload),
+                    );
+                case 'entity_rules.annotator.apply':
+                    assertAllowedKeys(payload, ['draft', 'targetId', 'semantic', 'tabName']);
+                    return await applyReply(
+                        input.runStepsDeps,
+                        {action, workspace},
+                        requireApply(payload),
+                        optionalTabName(payload),
+                    );
+                case 'entity_rules.annotator.check':
+                    assertAllowedKeys(payload, ['draft', 'tabName']);
+                    return await checkReply(
+                        input.runStepsDeps,
+                        {action, workspace},
+                        requireDraft(payload),
+                        optionalTabName(payload),
+                    );
+                case 'entity_rules.annotator.save':
+                    assertAllowedKeys(payload, ['draft', 'tabName', 'expectedRevision']);
+                    return await saveReply(
+                        input.runStepsDeps,
+                        {action, workspace},
+                        requireDraft(payload),
+                        optionalTabName(payload),
+                        optionalExpectedRevision(payload),
+                    );
+                default:
+                    throw new ActionError(ERROR_CODES.ERR_UNSUPPORTED, `unsupported annotator action: ${action.type}`);
+            }
+        };
+        return input.runWorkspaceExecution
+            ? await input.runWorkspaceExecution(routerInput.action.type, run)
+            : await run();
     },
 });
 
@@ -134,6 +142,7 @@ const projectReply = async (
         projection,
         profile,
         validation: evaluation?.validation,
+        artifactRevision: profile ? entityRulesArtifactRevision(profile) : null,
     };
     return {reply: replyAction(input.action, payload), events: []};
 };
@@ -194,6 +203,7 @@ const saveReply = async (
     input: Pick<WorkspaceRouterInput, 'action' | 'workspace'>,
     draft: AnnotatorDraft,
     tabName: string | undefined,
+    expectedRevision: string | null | undefined,
 ): Promise<ControlPlaneResult> => {
     const current = await ensureFreshPageSession(deps, input.workspace.name, {tabName});
     const checked = evaluateAnnotatorDraft(current.entry, draft, 'save');
@@ -204,7 +214,7 @@ const saveReply = async (
             {validation: checked.validation},
         );
     }
-    const saved = input.workspace.workflow.save(checked.profile);
+    const saved = input.workspace.workflow.save(checked.profile, {expectedRevision});
     if (saved.kind !== 'entity_rules') {
         throw new ActionError(ERROR_CODES.ERR_INTERNAL, 'workflow returned a non-entity_rules artifact');
     }
@@ -223,6 +233,7 @@ const saveReply = async (
         projection,
         validation: reopened.validation,
         profile: saved,
+        artifactRevision: entityRulesArtifactRevision(saved),
     };
     return {reply: replyAction(input.action, payload), events: []};
 };
@@ -344,6 +355,17 @@ const optionalTabName = (payload: Readonly<Record<string, unknown>>): string | u
     return payload.tabName.trim();
 };
 
+const optionalExpectedRevision = (
+    payload: Readonly<Record<string, unknown>>,
+): string | null | undefined => {
+    if (payload.expectedRevision === undefined) {return undefined;}
+    if (payload.expectedRevision === null) {return null;}
+    if (typeof payload.expectedRevision !== 'string' || !payload.expectedRevision) {
+        throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'expectedRevision must be a non-empty string or null');
+    }
+    return payload.expectedRevision;
+};
+
 const requirePoint = (payload: Readonly<Record<string, unknown>>): AnnotatorPickPayload => {
     if (!payload.point || typeof payload.point !== 'object' || Array.isArray(payload.point)) {
         throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'annotator pick requires point');
@@ -397,13 +419,17 @@ const requireSemantic = (value: unknown): AnnotatorApplyPayload['semantic'] => {
     const displayName = optionalString(semantic.displayName, 'semantic.displayName');
     switch (semantic.kind) {
         case 'entity': {
-            assertAllowedKeys(semantic, ['kind', 'businessTag', 'displayName', 'entityKind']);
+            assertAllowedKeys(semantic, ['kind', 'businessTag', 'entityKey', 'displayName', 'entityKind']);
             const entityKind = semantic.entityKind === undefined
                 ? undefined
                 : requireEntityKind(semantic.entityKind);
+            const entityKey = semantic.entityKey === undefined
+                ? undefined
+                : requireEntityKey(semantic.entityKey);
             return {
                 kind: 'entity',
                 businessTag: requiredString(semantic.businessTag, 'semantic.businessTag'),
+                ...(entityKey ? {entityKey} : {}),
                 ...(displayName ? {displayName} : {}),
                 ...(entityKind ? {entityKind} : {}),
             };
@@ -467,6 +493,14 @@ const requireEntityKind = (value: unknown): NonNullable<Extract<AnnotatorApplyPa
         throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'semantic.entityKind is invalid');
     }
     return value as NonNullable<Extract<AnnotatorApplyPayload['semantic'], {kind: 'entity'}>['entityKind']>;
+};
+
+const requireEntityKey = (value: unknown): string => {
+    const entityKey = requiredString(value, 'semantic.entityKey');
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(entityKey)) {
+        throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'semantic.entityKey must be a valid identifier');
+    }
+    return entityKey;
 };
 
 const requireColumnKind = (value: unknown): NonNullable<Extract<AnnotatorApplyPayload['semantic'], {kind: 'column'}>['columnKind']> => {

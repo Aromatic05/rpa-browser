@@ -41,6 +41,7 @@ test('runDslSource executes parse normalize validate and run', async () => {
     const calls: Array<Record<string, unknown>> = [];
     const checkpoint: Checkpoint = {
         id: 'ensure_logged_in',
+        kind: 'procedure',
         output: {
             loginState: { ref: 'input.username' },
         },
@@ -79,7 +80,7 @@ for user in input.users:
     );
 
     assert.deepEqual(result.diagnostics, []);
-    assert.deepEqual(result.scope.output, { loginState: 'root' });
+    assert.deepEqual(result.scope.output, {});
     assert.equal(calls.length, 2);
 });
 
@@ -101,4 +102,47 @@ click buyer
             error.diagnostics.length > 0 &&
             error.diagnostics[0].code === 'ERR_DSL_VAR_NOT_DEFINED',
     );
+});
+
+test('runDslSource unwraps production browser.query envelopes before using query values and targets', async () => {
+    const calls: Array<Record<string, unknown>> = [];
+    const result = await runDslSource(
+        `
+let buyer = query entity.target "order.form" {
+  kind: "form.field"
+  fieldKey: "buyer"
+}
+let rows = query table "order.list" currentRows
+fill buyer with rows.0.name
+        `,
+        {
+            workspaceName: 'ws-dsl-source',
+            deps: completeRunStepsDeps({
+                runtime: {
+                    ensureActivePage: async () => ({
+                        workspaceName: 'ws-dsl-source', tabName: 'tk-dsl-source', traceCtx: { cache: {} },
+                    }),
+                },
+                config: {} as any,
+                pluginHost: {
+                    getExecutors: () => ({
+                        'browser.query': async (step: StepUnion) => {
+                            calls.push({ name: step.name, args: step.args });
+                            return (step.args as { op: string }).op === 'entity.target'
+                                ? { stepId: step.id, ok: true, data: { kind: 'nodeId', nodeId: 'buyer-input' } }
+                                : { stepId: step.id, ok: true, data: { kind: 'value', value: [{ name: 'alice' }] } };
+                        },
+                        'browser.fill': async (step: StepUnion) => {
+                            calls.push({ name: step.name, args: step.args });
+                            return { stepId: step.id, ok: true, data: { filled: true } };
+                        },
+                    }) as any,
+                } as any,
+            }),
+            input: {},
+        },
+    );
+
+    assert.deepEqual(result.scope.vars.rows, [{ name: 'alice' }]);
+    assert.deepEqual(calls.at(-1)?.args, { nodeId: 'buyer-input', value: 'alice' });
 });

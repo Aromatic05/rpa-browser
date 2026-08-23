@@ -5,10 +5,14 @@ import type { WorkspaceRouterInput } from '../runtime/workspace/router';
 import type { ControlPlaneResult } from '../runtime/control_plane';
 import type { Checkpoint } from '../runner/checkpoint';
 import type { StepResolve } from '../runner/steps/types';
-import type { Workflow, WorkflowCheckpoint } from '../workflow';
+import {workflowArtifactRevision, type Workflow, type WorkflowCheckpoint} from '../workflow';
 import { createWorkspaceCheckpointRuntime } from './runtime';
 import { createWorkspaceCheckpointProvider } from './provider';
 import type { DslCheckpointProvider } from '../dsl/emit/checkpoint_call';
+import { validateDslSource } from '../dsl/runtime';
+import { createDslEntityRulesResolver, createDslResolveResolver } from '../dsl/link';
+import { DslValidationError } from '../dsl/diagnostics';
+import { validateDslCheckpointGraph } from '../dsl/validate';
 
 export type CheckpointControl = {
     handle: (input: WorkspaceRouterInput) => Promise<ControlPlaneResult>;
@@ -31,27 +35,92 @@ const requireCheckpoint = (payload: Record<string, unknown>): Checkpoint => {
     return checkpoint;
 };
 
-const resolveStepResolves = (payload: Record<string, unknown>): Record<string, StepResolve> => {
+const resolveStepResolves = (payload: Record<string, unknown>): Record<string, StepResolve> | undefined => {
+    if (!Object.prototype.hasOwnProperty.call(payload, 'stepResolves')) {return undefined;}
     const stepResolves = payload.stepResolves;
     if (!stepResolves || typeof stepResolves !== 'object' || Array.isArray(stepResolves)) {
-        return {};
+        throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'stepResolves must be an object');
     }
     return stepResolves as Record<string, StepResolve>;
 };
 
-const resolveHints = (payload: Record<string, unknown>): WorkflowCheckpoint['hints'] => {
+const resolveHints = (payload: Record<string, unknown>): WorkflowCheckpoint['hints'] | undefined => {
+    if (!Object.prototype.hasOwnProperty.call(payload, 'hints')) {return undefined;}
     const hints = payload.hints;
     if (!hints || typeof hints !== 'object' || Array.isArray(hints)) {
-        return {};
+        throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'hints must be an object');
     }
     return hints as WorkflowCheckpoint['hints'];
+};
+
+const resolveBodyDsl = (payload: Record<string, unknown>): string | undefined => {
+    if (!Object.prototype.hasOwnProperty.call(payload, 'bodyDsl')) {return undefined;}
+    if (typeof payload.bodyDsl !== 'string') {
+        throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'bodyDsl must be a string');
+    }
+    return payload.bodyDsl;
+};
+
+const resolveExpectedRevision = (payload: Record<string, unknown>): string | null | undefined => {
+    if (!Object.prototype.hasOwnProperty.call(payload, 'expectedRevision')) {return undefined;}
+    const value = payload.expectedRevision;
+    if (value === null) {return null;}
+    if (typeof value !== 'string' || value.length === 0) {
+        throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'expectedRevision must be a non-empty string or null');
+    }
+    return value;
 };
 
 export const createCheckpointControl = (): CheckpointControl => ({
     getProvider: (workflow) => createWorkspaceCheckpointProvider(workflow),
     handle: async (input) => {
         const { action, workspace } = input;
-        const runtime = createWorkspaceCheckpointRuntime(workspace.workflow);
+        const runtime = createWorkspaceCheckpointRuntime(workspace.workflow, {
+            validateBody: ({checkpoint, bodyDsl, stepResolves}) => {
+                const entityRulesResolver = createDslEntityRulesResolver(
+                    workspace.entityRules.getProvider(workspace.workflow),
+                );
+                const validation = validateDslSource(
+                    bodyDsl,
+                    entityRulesResolver,
+                    createDslResolveResolver(workspace.workflow, new Map([[checkpoint.id, stepResolves]])),
+                    {allowFailureRoot: isRecoveryCheckpoint(checkpoint)},
+                );
+                if (validation.diagnostics.length > 0) {
+                    throw new DslValidationError(validation.diagnostics);
+                }
+                const persistedProvider = createWorkspaceCheckpointProvider(workspace.workflow);
+                const candidateProvider: DslCheckpointProvider = {
+                    getCheckpoint: (id) => id === checkpoint.id ? checkpoint : persistedProvider.getCheckpoint(id),
+                    getCheckpointResolves: (id) => id === checkpoint.id
+                        ? stepResolves
+                        : persistedProvider.getCheckpointResolves?.(id) ?? null,
+                    getCheckpointBody: (id) => id === checkpoint.id
+                        ? {source: bodyDsl, stepResolves}
+                        : persistedProvider.getCheckpointBody?.(id) ?? null,
+                };
+                const checkpointDiagnostics = validateDslCheckpointGraph(
+                    bodyDsl,
+                    candidateProvider,
+                    {
+                        callStack: [checkpoint.id],
+                        path: `checkpoint.${checkpoint.id}.body`,
+                        validateBody: ({checkpoint: nested, source, stepResolves: nestedResolves}) =>
+                            validateDslSource(
+                                source,
+                                entityRulesResolver,
+                                createDslResolveResolver(
+                                    workspace.workflow,
+                                    new Map([[nested.id, nestedResolves]]),
+                                ),
+                            ).diagnostics,
+                    },
+                );
+                if (checkpointDiagnostics.length > 0) {
+                    throw new DslValidationError(checkpointDiagnostics);
+                }
+            },
+        });
 
         if (!action.type.startsWith('checkpoint.')) {
             throw new ActionError(ERROR_CODES.ERR_UNSUPPORTED, `unsupported action: ${action.type}`);
@@ -69,6 +138,7 @@ export const createCheckpointControl = (): CheckpointControl => ({
                         checkpoint: item.checkpoint,
                         stepResolves: item.stepResolves,
                         hints: item.hints,
+                        artifactRevision: workflowArtifactRevision(item),
                     })),
                 }),
                 events: [],
@@ -88,6 +158,8 @@ export const createCheckpointControl = (): CheckpointControl => ({
                     checkpoint: artifact.checkpoint,
                     stepResolves: artifact.stepResolves,
                     hints: artifact.hints,
+                    artifactRevision: workflowArtifactRevision(artifact),
+                    ...(artifact.bodyDsl !== undefined ? {bodyDsl: artifact.bodyDsl} : {}),
                 }),
                 events: [],
             };
@@ -99,7 +171,13 @@ export const createCheckpointControl = (): CheckpointControl => ({
             if (checkpoint.id !== checkpointId) {
                 throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'checkpoint.id must not contain surrounding whitespace');
             }
-            const artifact = runtime.save(checkpoint, resolveStepResolves(payload), resolveHints(payload));
+            const artifact = runtime.save(
+                checkpoint,
+                resolveStepResolves(payload),
+                resolveHints(payload),
+                resolveBodyDsl(payload),
+                resolveExpectedRevision(payload),
+            );
             return {
                 reply: replyAction(action, {
                     workspaceName: workspace.name,
@@ -107,6 +185,7 @@ export const createCheckpointControl = (): CheckpointControl => ({
                     checkpoint: artifact.checkpoint,
                     stepResolves: artifact.stepResolves,
                     hints: artifact.hints,
+                    artifactRevision: workflowArtifactRevision(artifact),
                     saved: true,
                 }),
                 events: [],
@@ -115,7 +194,7 @@ export const createCheckpointControl = (): CheckpointControl => ({
 
         if (action.type === 'checkpoint.delete') {
             const checkpointId = requireCheckpointId(payload);
-            const removed = runtime.delete(checkpointId);
+            const removed = runtime.delete(checkpointId, resolveExpectedRevision(payload));
             return {
                 reply: replyAction(action, {
                     workspaceName: workspace.name,
@@ -129,3 +208,7 @@ export const createCheckpointControl = (): CheckpointControl => ({
         throw new ActionError(ERROR_CODES.ERR_UNSUPPORTED, `unsupported action: ${action.type}`);
     },
 });
+
+const isRecoveryCheckpoint = (checkpoint: Checkpoint): boolean =>
+    checkpoint.kind === 'recovery'
+    || (checkpoint.kind === undefined && (checkpoint.trigger?.matchRules.length ?? 0) > 0);

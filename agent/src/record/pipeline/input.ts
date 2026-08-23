@@ -1,6 +1,6 @@
 import type { Page } from 'playwright';
 import { appendWorkspaceRecordingEvent, appendWorkspaceRecordingStep } from './step';
-import type { RecordingState } from './state';
+import {isWorkspaceRecordingEnabled, type RecordingState} from './state';
 import type { RecorderEvent } from '../capture/recorder';
 import type { StepUnion } from '../../runner/steps/types';
 import { recordFirstTabPageUrl } from '../tab_lifecycle_recorder';
@@ -24,6 +24,9 @@ export const ingestRecorderEvent = async (input: {
     tabName: string;
     navDedupeWindowMs: number;
 }): Promise<RecorderIngestResult> => {
+    if (!isWorkspaceRecordingEnabled(input.state, input.workspaceName)) {
+        return {accepted: false, reason: 'recording_not_enabled'};
+    }
     if (input.event.type !== 'navigate') {
         flushFirstTabGotoAtIngestBoundary({
             state: input.state,
@@ -92,6 +95,13 @@ export const ingestRecordPayload = async (input: {
     workspaceName: string;
     navDedupeWindowMs: number;
 }): Promise<RecordPayloadIngestResult> => {
+    if (!isWorkspaceRecordingEnabled(input.state, input.workspaceName)) {
+        return {
+            accepted: false,
+            mode: isRawRecorderEventPayload(input.payload) ? 'raw-event' : 'step',
+            reason: 'recording_not_enabled',
+        };
+    }
     if (isRawRecorderEventPayload(input.payload)) {
         const sourceTabName = (input.payload.tabName || '').trim() || input.tabName;
         const event = { ...input.payload, tabName: sourceTabName };

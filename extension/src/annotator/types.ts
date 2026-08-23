@@ -84,6 +84,7 @@ export type CanvasEntityDraft = {
     kind: EntityKind;
     name: string;
     businessTag: string;
+    entityKey?: string;
     target: PersistentTargetDraft;
     expect?: EntityRuleExpect;
     annotations: CanvasAnnotationDraft[];

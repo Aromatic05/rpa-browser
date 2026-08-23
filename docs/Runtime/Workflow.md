@@ -1,169 +1,240 @@
-# Workflow 运行时
+# Workflow 持久化与运行时
 
-## 概述
+## 定位
 
-本文件定义 workflow 运行时动作的完整语义，覆盖打开、状态查询、DSL 读写、测试运行、正式运行、录制沉淀。对应实现：`agent/src/actions/workflow.ts`、`agent/src/workflow/*`。
-
-## 规范
-
-### 1. workflow 动作输入与输出
-
-#### workflow.list
-
-输入：空 payload。  
-输出：
-
-- `workflows[]`：`scene/id/name/entryDsl/entryInputs/workspaceBinding/recordCount/checkpointCount`
-- `diagnostics[]`：某 scene 解析失败时返回 `code/message`
-
-#### workflow.open
-
-输入：
-
-- `scene: string`（必填）
-
-输出：
-
-- `scene`
-- `workflowRoot`
-- `workspaceName`
-- `tabName`
-- `tabName`
-- `entryUrl`（若 workspace binding 声明）
-
-#### workflow.record.save
-
-输入：
-
-- `scene`（必填）
-- `recordingName`（可选）
-
-输出：`scene/recordingName/stepCount`。
-
-#### workflow.dsl.get
-
-输入：`scene`。输出：`scene/dslPath/content`。
-
-#### workflow.dsl.save
-
-输入：`scene/content`。输出：`scene/dslPath/saved=true`。
-
-#### workflow.dsl.test
-
-输入：`scene`，可选 `input`。输出：
-
-- `ok`
-- `output`
-- `diagnostics`
-- `workspaceName`
-
-#### workflow.releaseRun
-
-输入：`scene`，可选 `input`。输出：
-
-- `ok`
-- `output`
-- `diagnostics`
-- `workspaceName/tabName/tabName`
-
-### 2. 生命周期执行顺序
-
-推荐顺序：
-
-1. `workflow.list`
-2. `workflow.open`
-3. `workflow.dsl.get` / `workflow.dsl.save`
-5. `workflow.dsl.test`
-6. `workflow.releaseRun`
-7. `record.start/stop` + `workflow.record.save`（按需）
-
-关键约束：
-
-- `workflow.open` 只建立上下文，不运行 DSL。
-- `workflow.releaseRun` 是正式运行入口。
-- `workflow.dsl.test` 是开发态运行入口。
-
-### 3. workspace 绑定机制
-
-- workflow workspace 规则：`workflow:<scene>`。
-- 绑定由 `resolveWorkflowWorkspace` 执行。
-- 策略由 `workspace.yaml` 的 `workspace.strategy` 决定：
-  - `restoreOrCreate`
-  - `createOnly`
-  - `restoreOnly`
-
-URL 规则：
-
-- 若 `entryUrl` 存在，绑定后会确保导航到该 URL。
-- 若 `expectedTabs` 存在，当前实现只校验活动页 URL。
-
-### 4. 录制沉淀规则
-
-`workflow.record.save` 额外约束：
-
-- 当前 action scope 的 workspace 必须等于 `workflow:<scene>`。
-- 否则返回 `ERR_WORKFLOW_WORKSPACE_RESOLVE_FAILED`。
-
-默认录制名：
-
-- `recording-YYYYMMDD-HHmmss`
-
-当前写盘行为：
-
-- 写 `records/<recordingName>/steps.yaml`
-- 写 `records/<recordingName>/manifest.yaml`
-- 默认不写 `step_resolve.yaml`
-
-### 5. DSL 运行输入优先级
-
-在 `dsl.test/releaseRun` 中：
-
-1. 优先使用 action payload `input`
-2. 回退到 workflow `inputs.example.yaml`
-3. 最后回退 `{}`
-
-### 6. checkpoint provider 组装
-
-`workflow.dsl.test` 与 `workflow.releaseRun` 都会：
-
-- 读取 manifest 声明的 checkpoints 列表
-- 解析每个 `checkpoint.yaml`
-- 可选读取 `checkpoint_resolve.yaml`
-- 在 DSL 执行时通过 provider 注入
-
-### 7. 典型失败边界
-
-- `scene` 缺失：`ERR_WORKFLOW_BAD_ARGS`
-- manifest 不存在：`ERR_WORKFLOW_NOT_FOUND`
-- manifest 不合法：`ERR_WORKFLOW_INVALID_MANIFEST`
-- dsl entry 不存在：`ERR_WORKFLOW_DSL_NOT_FOUND`
-- workspace binding 不合法：`ERR_WORKFLOW_WORKSPACE_BINDING_INVALID`
-- path 越界：`ERR_WORKFLOW_PATH_ESCAPE`
-
-## 示例
-
-### 示例 1：最小 open + run
+Workflow 是 workspace 绑定的持久化自动化工程。当前约束：
 
 ```text
-workflow.open(scene=order_scene)
--> workspaceName=workflow:order_scene
--> tabName=tab-1
--> tabName=token-1
-
-workflow.releaseRun(scene=order_scene,input={buyer:"alice"})
--> output={...}
+workspace.name === workflow.name
 ```
 
-### 示例 2：编辑 DSL 后测试运行
+Workflow 负责保存和组织 DSL、checkpoint、recording、entity rules；workspace 负责浏览器会话和运行时控制。
+
+## 目录结构
+
+默认根目录：
 
 ```text
-workflow.dsl.get(scene)
-workflow.dsl.save(scene, content)
-workflow.dsl.test(scene, input)
+agent/.artifacts/workflows/<workflowName>/
 ```
 
-## 限制
+单个 workflow：
 
-- `expectedTabs` 目前不是全 tab 校验，仅当前活动页校验。
-- `workflow.record.save` 目前不自动输出 step resolve sidecar。
-- `dsl.test/releaseRun` 要求 `runStepsDeps` 已初始化。
+```text
+<workflowName>/
+  workflow.yaml
+
+  dsls/
+    main.dsl
+    main.resolve.yaml
+
+  checkpoints/
+    <checkpointId>/
+      checkpoint.yaml
+      body.dsl
+      checkpoint_resolve.yaml
+      checkpoint_hints.yaml
+
+  recordings/
+    <recordingName>/
+      recording.yaml
+      steps.yaml
+      step_resolve.yaml
+
+  entity_rules/
+    <profileName>/
+      page.yaml
+      match.yaml
+      annotation.yaml
+```
+
+## workflow.yaml
+
+核心 source-of-truth 字段：
+
+```yaml
+version: 1
+name: orders
+entry:
+  dsl: main
+createdAt: 1700000000000
+updatedAt: 1700000000000
+```
+
+`entry.dsl` 是默认 DSL 入口。
+
+### catalog
+
+`catalog` 是**可选的 cache / display metadata**，不是 artifact 存在性的 source of truth。
+
+运行时行为：
+
+- `dsls/`、`checkpoints/`、`recordings/`、`entity_rules/` 中真实存在的合法 artifact 可直接被 `workflow.get/list` 发现，即使没有 catalog entry。
+- artifact 已被完整删除但 catalog 仍有 entry 时，该 entry 视为 stale cache，不会把 workflow 判坏。
+- artifact 目录仍存在但内部必需文件损坏/缺失时，仍返回 artifact corruption；不会因为 catalog 可选而吞掉真实损坏。
+- `catalog` 整体缺失时 workflow 仍可加载。
+- 通过 workflow API save/delete 后会清理可确认的 stale cache，并刷新当前 mutation 的派生 metadata。
+
+因此直接 Git/AI 编辑 artifact 时，不需要同步维护 `summary`、checkpoint `enabled/priority` 副本或 catalog membership。
+
+## Artifact facade
+
+Workflow 内部 facade：
+
+```text
+workflow.save(value)
+workflow.get(name, {kind})
+workflow.list({kind})
+workflow.delete(name, {kind})
+```
+
+artifact kind：
+
+- `dsl`
+- `checkpoint`
+- `recording`
+- `entity_rules`
+
+所有 workflow/artifact 名称必须满足安全 artifact-name 边界；path traversal 和 path separator 在 filesystem access 前拒绝。
+
+## Control actions
+
+Control-plane workflow actions：
+
+- `workflow.list`
+- `workflow.create`
+- `workflow.open`
+- `workflow.rename`
+- `workflow.saveAs`
+- `workflow.resetDefault`
+
+命名只来自显式 payload，例如 `workflowName`、`fromName/toName`、`sourceName/targetName`，不使用隐式 active-workspace fallback。
+
+`workflow.open` 会创建/绑定同名 workspace、启动 browser session，并在没有 live tab 时创建一个 `about:blank` tab；它不会自动运行 entry DSL。
+
+## Workspace authoring actions
+
+DSL：
+
+- `dsl.get`
+- `dsl.save`
+- `dsl.validate`
+- `dsl.test`（兼容入口，仅 validate）
+- `dsl.run`
+
+Checkpoint：
+
+- `checkpoint.list`
+- `checkpoint.get`
+- `checkpoint.save`
+- `checkpoint.delete`
+
+Entity rules 和 recording 也通过 workspace-scoped actions 操作。
+
+## DSL 保存边界
+
+`dsl.save` 在持久化前执行：
+
+```text
+parse -> link -> normalize -> validate
+```
+
+并检查引用的 checkpoint graph，包括 missing/non-callable/body-missing/recursion/depth，以及每个被引用 procedure body 的 DSL 语义有效性。
+
+`dsl.run` 在同一个 workspace `executing` 生命周期内完成 snapshot 物化、source + whole checkpoint graph preflight 和实际执行。任何 step 执行前都会先验证本次真正要使用的冻结 checkpoint/entity-rule/resolve snapshot；这既覆盖直接文件编辑绕过 `dsl.save` 的情况，也保证“验证对象”与“实际执行对象”一致。
+
+如果 `stepResolves` 没有显式提供，保存会保留已有 sidecar；显式提供时先验证候选 sidecar，再写入。
+
+`dsl.get` 返回 `artifactRevision`。`dsl.save` 可选接受 `expectedRevision`：
+
+- 省略：保持兼容，执行无条件写入；
+- `null`：要求该 DSL 当前不存在；
+- revision 字符串：要求当前 DSL 的实际内容 revision 完全一致，否则返回 `ERR_CONFLICT`。
+
+revision 是对 DSL 内容和 resolve sidecar 的稳定 SHA-256 语义摘要，不使用 revision sidecar。直接修改 `.dsl` 或 `.resolve.yaml` 会自然使旧 revision 失效。
+
+## Checkpoint 保存边界
+
+`checkpoint.save` 会：
+
+- 保持 `artifact name === checkpoint.id`；
+- 校验 checkpoint serialization；
+- 保留 metadata-only update 未显式替换的 body/resolve/hints；
+- 对 `body.dsl` 做 DSL validation；
+- 校验 nested checkpoint graph。
+
+`checkpoint.list/get/save` 返回 `artifactRevision`；`checkpoint.save/delete` 可接受 `expectedRevision`，语义与 DSL 相同。Checkpoint revision 覆盖 `checkpoint.yaml`、`body.dsl`、resolve sidecar 和 hints 的实际语义内容。
+
+## Entity rules
+
+Entity rules 持久化分为：
+
+- `page.yaml`：页面适用范围；
+- `match.yaml`：如何从 snapshot 找到结构/节点；
+- `annotation.yaml`：业务 `entityKey`、`businessTag`、field/action/primary-key 语义。
+
+业务 DSL 应依赖这些稳定语义，而不是直接依赖 selector。
+
+`entity_rules.save` 不只校验 YAML/artifact 结构，还使用与运行时 matcher 相同的 profile-domain 推导和 QueryPlan compiler 验证候选规则是否可执行；不能编译的 match 规则不会先写入再等运行时报错。
+
+`entity_rules.get/save` 返回 `artifactRevision`，`entity_rules.save/delete` 可接受 `expectedRevision`，语义与 DSL/checkpoint 相同。Annotator 的 projection/canvas 编辑流程也把同一 artifact revision 作为保存 CAS，而不是使用页面 capture revision。
+
+## Recording
+
+Recording 保存真实步骤与 resolve sidecar，主要面向录制、回放和后续生成/维修，不要求人类把 `steps.yaml` / `step_resolve.yaml` 当主业务源码维护。
+
+## 并发与一致性
+
+Workflow mutation 通过 filesystem lock 序列化。stale lock 回收使用 generation-aware handoff，延迟的旧 reclaimer 不能删除后来获得的新 owner lock。
+
+stale generation 会留下很小的 `*.lock.reclaimed/` tombstone；它属于运行时锁协议，不是 workflow artifact，不应在运行中的 agent 下由 authoring 工具自动清理。
+
+save/delete 的 artifact 与 manifest mutation 带 rollback 边界：manifest 更新失败时尝试恢复 mutation 前 artifact snapshot。
+
+`expectedRevision` 的比较发生在同一个 workflow mutation lock 内，和后续 save/delete 对所有遵守 workflow facade/lock 的 writer 形成原子 CAS；不是 control 层的“先读再写”检查。现有 entity-rules annotator 也使用这一锁内 CAS。
+
+直接 filesystem editor 不会自动取得 workflow lock。它在 CAS compare 之前完成的修改会改变 `artifactRevision` 并触发冲突；但一个与 API mutation 真正同时写同一 artifact 的外部进程不属于该事务协议。需要强并发协作时，editor/agent 应通过 workflow authoring API 或遵守同一 lock protocol。
+
+Workspace 同一时刻只有一个 execution owner：
+
+- `dsl.run` 从 snapshot/preflight 开始到执行结束持有 execution lease；
+- `task.run.start/resume` 从 run 创建/恢复开始持有 lease，直到实际执行 promise 静止；显式 halt/runner stop 不会在正在执行的 browser step 收尾前释放 lease，suspend 也不释放；
+- playback 从第一次 page preflight/navigation 到 replay 真正结束持有互斥状态，`play.stop` 会等待正在执行的 replay step 收尾；
+- recording 从 page preflight 到 recorder teardown、已进入的 `record.event`、pending choice/fill flush 和 snapshot enhancement 全部静止后才回到 `idle`；关闭录制入口后的迟到 event 不再触发 page binding；
+- MCP 中除不改变 workspace/tab 状态的 `browser.list_tabs` 外，browser tools 都取得同一 execution lease；annotator 的 capture/pick/check/save 请求也按单次请求取得 lease；
+- `workspace.close`、`workflow.rename`、`workflow.resetDefault` 只允许在 workspace `idle` 时执行，不会在运行中拆掉 browser/runtime；
+- lease 带 owner token，旧 run 的延迟 cleanup 不能释放后来新 run 的 ownership。
+
+rename/copy 在执行前扫描真实存在的 artifact：
+
+- stale catalog 不阻塞；
+- 实际存在但损坏的 artifact 会阻止生命周期 mutation。
+
+## 人类与 AI 编辑建议
+
+适合作为主源码直接编辑：
+
+- `dsls/*.dsl`
+- `checkpoints/*/checkpoint.yaml`
+- `checkpoints/*/body.dsl`
+- `entity_rules/*/page.yaml`
+- `entity_rules/*/match.yaml`
+- `entity_rules/*/annotation.yaml`
+
+偏机器生成/辅助资产：
+
+- `*.resolve.yaml`
+- `checkpoint_hints.yaml`
+- recordings 的 step/resolve 文件
+- `workflow.yaml.catalog`
+
+AI 可以直接新增、删除和修改合法 artifact，而不需要手工同步 catalog；但修改后仍应通过对应 `dsl.validate` / save validation 和实际执行验证。
+
+协作式 AI/editor 应优先执行 `get -> 修改 -> save(expectedRevision=artifactRevision)`。如果用户或另一个 agent 在期间直接修改了文件，旧 save 会得到 `ERR_CONFLICT`，应重新读取而不是覆盖。
+
+## 当前限制
+
+- DSL 尚未覆盖 runner 的全部 browser primitive。
+- `dsl.run` 尚未接入 task runner durable checkpoint store，进程崩溃后不能从 DSL cursor 继续。
+- DSL diagnostic 尚无完整 source span。
+- Workflow transaction 提供进程级 rollback，但当前不是完整的掉电 durability protocol。

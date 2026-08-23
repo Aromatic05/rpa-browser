@@ -54,6 +54,7 @@ test('runDslSource executes the order flow fixture end to end', async () => {
     const calls: StubCall[] = [];
     const checkpoint: Checkpoint = {
         id: 'ensure_logged_in',
+        kind: 'procedure',
         output: {
             loginState: { ref: 'input.username' },
         },
@@ -85,7 +86,5 @@ test('runDslSource executes the order flow fixture end to end', async () => {
         fillCalls.map((item) => item.args.value),
         ['alice', 'cara'],
     );
-    assert.deepEqual(result.scope.output, {
-        loginState: 'root',
-    });
+    assert.deepEqual(result.scope.output, {});
 });
