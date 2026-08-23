@@ -1,4 +1,6 @@
 import type {WorldView, WorldViewDescriptor} from '../../worldview/contracts';
+import type {WorldViewDiffResult} from '../../worldview/diff';
+import type {DebugEffectRecord} from '../effects/contracts';
 
 export type DebugSavepoint = Readonly<{
     id: string;
@@ -19,5 +21,36 @@ export type DebugTransaction = {
     readonly id: string;
     readonly baseline: WorldView;
     savepoint: (world: WorldView, effectSequence: number, name?: string) => DebugSavepoint;
+    readSavepoint: (id: string) => Readonly<{savepoint: DebugSavepoint; world: WorldView}> | null;
     snapshot: (current: WorldView, effectCount: number) => DebugTransactionSnapshot;
 };
+
+export type DebugRollbackResult =
+    | Readonly<{
+        status: 'restored';
+        mode: 'noop';
+        savepoint: DebugSavepoint;
+        world: WorldViewDescriptor;
+    }>
+    | Readonly<{
+        status: 'blocked';
+        reason: 'effects_require_compensation' | 'world_drift';
+        savepoint: DebugSavepoint;
+        world: WorldViewDescriptor;
+        effects: readonly DebugEffectRecord[];
+        diff: WorldViewDiffResult;
+    }>
+    | Readonly<{
+        status: 'conflict';
+        conflict: Readonly<{
+            expected: WorldViewDescriptor;
+            actual: WorldViewDescriptor;
+        }>;
+    }>
+    | Readonly<{
+        status: 'not_found';
+        error: Readonly<{
+            code: 'ERR_NOT_FOUND';
+            message: string;
+        }>;
+    }>;

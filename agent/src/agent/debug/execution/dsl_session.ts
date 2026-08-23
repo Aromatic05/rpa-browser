@@ -21,7 +21,7 @@ import {createDebugEffectJournal} from '../effects/journal';
 import {createDebugQuerySession} from '../query/session';
 import type {DebugQuerySession} from '../query/contracts';
 import {createDebugTransaction} from '../transaction/state';
-import type {DebugTransaction} from '../transaction/contracts';
+import type {DebugRollbackResult, DebugTransaction} from '../transaction/contracts';
 import type {
     DslDebugAdvanceResult,
     DslDebugExecutionSession,
@@ -128,6 +128,57 @@ export const createDslDebugExecutionSession = (
         return exposePause(active);
     };
 
+    const rollback = async (
+        continuationId: string,
+        savepointId: string,
+    ): Promise<DebugRollbackResult> => {
+        const current = requireActive(continuationId);
+        const entry = requireTransaction().readSavepoint(savepointId);
+        if (!entry) {
+            return Object.freeze({
+                status: 'not_found' as const,
+                error: Object.freeze({
+                    code: 'ERR_NOT_FOUND' as const,
+                    message: `transaction savepoint not found: ${savepointId}`,
+                }),
+            });
+        }
+        const actual = describeWorldView(await options.worldViewSource.pin());
+        if (!isSameWorldView(current.debug.world, actual)) {
+            return Object.freeze({
+                status: 'conflict' as const,
+                conflict: Object.freeze({expected: current.debug.world, actual}),
+            });
+        }
+        const effects = journal.list().filter((record) => record.sequence > entry.savepoint.effectSequence);
+        if (effects.length > 0) {
+            return Object.freeze({
+                status: 'blocked' as const,
+                reason: 'effects_require_compensation' as const,
+                savepoint: entry.savepoint,
+                world: current.debug.world,
+                effects: Object.freeze([...effects]),
+                diff: diffWorldViews(entry.world, current.view),
+            });
+        }
+        if (!isSameWorldView(entry.savepoint.world, current.debug.world)) {
+            return Object.freeze({
+                status: 'blocked' as const,
+                reason: 'world_drift' as const,
+                savepoint: entry.savepoint,
+                world: current.debug.world,
+                effects: Object.freeze([]),
+                diff: diffWorldViews(entry.world, current.view),
+            });
+        }
+        return Object.freeze({
+            status: 'restored' as const,
+            mode: 'noop' as const,
+            savepoint: entry.savepoint,
+            world: current.debug.world,
+        });
+    };
+
     const advance = async (
         continuationId: string,
         mode: 'continue' | 'step' | 'abort',
@@ -191,6 +242,7 @@ export const createDslDebugExecutionSession = (
             const current = requireActive(continuationId);
             return diffWorldViews(requireTransaction().baseline, current.view);
         },
+        rollback,
         refresh,
         advance,
         waitForCompletion: async () => await completion,

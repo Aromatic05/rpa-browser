@@ -72,6 +72,7 @@ test('paused DSL Agent tools split pure debugger reads from execution effects', 
         'debug.transaction',
         'debug.transaction_diff',
         'debug.savepoint',
+        'debug.rollback',
         'debug.world',
         'debug.refresh',
         'debug.query',
@@ -84,6 +85,7 @@ test('paused DSL Agent tools split pure debugger reads from execution effects', 
         assert.equal(classifyPausedDslDebugToolCall(name), 'read');
     }
     assert.equal(classifyPausedDslDebugToolCall('debug.savepoint'), 'control');
+    assert.equal(classifyPausedDslDebugToolCall('debug.rollback'), 'control');
     assert.equal(classifyPausedDslDebugToolCall('debug.step'), 'control');
     assert.equal(classifyPausedDslDebugToolCall('debug.continue'), 'control');
     assert.equal(classifyPausedDslDebugToolCall('debug.abort'), 'control');
@@ -107,6 +109,12 @@ test('paused DSL Agent tools split pure debugger reads from execution effects', 
     const saved = await savepointTool.execute('savepoint-1', {name: 'before-snapshot'});
     assert.equal((saved.details as any).savepoint.effectSequence, 0);
     assert.equal((saved.details as any).savepoint.name, 'before-snapshot');
+    const rollbackTool = debuggerTools.tools.find((tool) => tool.name === 'debug.rollback')!;
+    const rollback = await rollbackTool.execute('rollback-1', {
+        savepointId: (saved.details as any).savepoint.id,
+    });
+    assert.equal((rollback.details as any).status, 'restored');
+    assert.equal((rollback.details as any).mode, 'noop');
     const transactionTool = debuggerTools.tools.find((tool) => tool.name === 'debug.transaction')!;
     const transaction = await transactionTool.execute('transaction-1', {});
     assert.equal((transaction.details as any).transaction.effectCount, 0);

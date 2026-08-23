@@ -162,6 +162,19 @@ export const createPausedDslDebugAgentTools = (
             },
         },
         {
+            name: 'debug.rollback',
+            label: 'debug.rollback',
+            description: 'Attempt to restore a transaction savepoint without advancing the DSL continuation. This version reports restored only when no effects or World drift occurred; otherwise it returns blocked/conflict and leaves execution paused.',
+            parameters: Type.Object({
+                savepointId: Type.String({minLength: 1}),
+            }, {additionalProperties: false}),
+            execute: async (_toolCallId, params) => {
+                const current = requirePause();
+                const input = params as {savepointId: string};
+                return toolResult(await execution.rollback(current.continuationId, input.savepointId));
+            },
+        },
+        {
             name: 'debug.world',
             label: 'debug.world',
             description: 'Read the pinned WorldView descriptor for the current paused continuation.',

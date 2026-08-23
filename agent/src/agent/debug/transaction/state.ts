@@ -11,7 +11,7 @@ const assertEffectPosition = (value: number): void => {
 
 export const createDebugTransaction = (baseline: WorldView): DebugTransaction => {
     const id = crypto.randomUUID();
-    const savepoints: DebugSavepoint[] = [];
+    const savepoints: Array<Readonly<{savepoint: DebugSavepoint; world: WorldView}>> = [];
 
     return {
         id,
@@ -28,9 +28,10 @@ export const createDebugTransaction = (baseline: WorldView): DebugTransaction =>
                 effectSequence,
                 world: describeWorldView(world),
             });
-            savepoints.push(savepoint);
+            savepoints.push(Object.freeze({savepoint, world}));
             return savepoint;
         },
+        readSavepoint: (savepointId) => savepoints.find((entry) => entry.savepoint.id === savepointId) ?? null,
         snapshot: (current, effectCount) => {
             assertEffectPosition(effectCount);
             return Object.freeze({
@@ -38,7 +39,7 @@ export const createDebugTransaction = (baseline: WorldView): DebugTransaction =>
                 baseline: describeWorldView(baseline),
                 current: describeWorldView(current),
                 effectCount,
-                savepoints: Object.freeze([...savepoints]),
+                savepoints: Object.freeze(savepoints.map((entry) => entry.savepoint)),
             });
         },
     };

@@ -21,6 +21,7 @@ export const PAUSED_DSL_DEBUG_SYSTEM_PROMPT = [
     'debug.execution location includes programId, execution path, source line range when available, loop frames, and checkpoint callStack.',
     'debug.execution, debug.scope, debug.effects, debug.diff, debug.world, debug.query, and debug.compute are pure reads.',
     'debug.transaction and debug.transaction_diff are pure reads over the retained execution transaction; debug.savepoint records transaction-local metadata without changing the World.',
+    'debug.rollback attempts a savepoint restore without advancing execution. If compensation is unavailable or the World drifted, it returns blocked/conflict instead of pretending rollback succeeded.',
     'debug.effects contains only World effects that actually executed, with outcome and before/after World revisions; pending or aborted effects are absent.',
     'debug.diff materializes the Snapshot V2 semantic delta for one effect sequence only when requested.',
     'debug.step and debug.continue validate the live World revision before advancing. If they return status=conflict, the continuation remains paused on its old WorldView; call debug.refresh, inspect the new World, then decide again.',
