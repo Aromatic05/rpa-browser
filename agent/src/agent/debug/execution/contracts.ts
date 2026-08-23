@@ -12,6 +12,7 @@ import type {DebugComputeResult, DebugQueryReadResult} from '../query/contracts'
 import type {DebugEffectDiffResult, DebugEffectRecord} from '../effects/contracts';
 import type {WorldViewDescriptor} from '../../worldview/contracts';
 import type {WorldViewDiffResult} from '../../worldview/diff';
+import type {DebugValueExplanation} from '../provenance/contracts';
 import type {
     DebugRollbackOptions,
     DebugRollbackResult,
@@ -69,6 +70,7 @@ export type DslDebugExecutionSession = {
         scope?: ComputeEvalScope,
     ) => DebugComputeResult;
     effects: (continuationId: string) => readonly DebugEffectRecord[];
+    explain: (continuationId: string, path: string) => DebugValueExplanation;
     diff: (continuationId: string, effectSequence: number) => DebugEffectDiffResult;
     transaction: (continuationId: string) => DebugTransactionSnapshot;
     savepoint: (continuationId: string, name?: string) => DebugSavepoint;

@@ -89,6 +89,7 @@ test('paused DSL Agent tools split pure debugger reads from execution effects', 
     assert.deepEqual(debuggerTools.tools.map((tool) => tool.name), [
         'debug.execution',
         'debug.scope',
+        'debug.explain',
         'debug.effects',
         'debug.diff',
         'debug.transaction',
@@ -104,7 +105,7 @@ test('paused DSL Agent tools split pure debugger reads from execution effects', 
         'debug.continue',
         'debug.abort',
     ]);
-    for (const name of ['debug.execution', 'debug.scope', 'debug.effects', 'debug.diff', 'debug.transaction', 'debug.transaction_diff', 'debug.world', 'debug.refresh', 'debug.query', 'debug.compute']) {
+    for (const name of ['debug.execution', 'debug.scope', 'debug.explain', 'debug.effects', 'debug.diff', 'debug.transaction', 'debug.transaction_diff', 'debug.world', 'debug.refresh', 'debug.query', 'debug.compute']) {
         assert.equal(classifyPausedDslDebugToolCall(name), 'read');
     }
     assert.equal(classifyPausedDslDebugToolCall('debug.savepoint'), 'control');
@@ -420,4 +421,60 @@ test('debug.cross_barrier refuses stale World approval until the debugger refres
     assert.equal(clickCalls, 1);
     if (crossed.status !== 'paused') {throw new Error('expected pause after barrier effect');}
     await execution.advance(crossed.pause.continuationId, 'abort');
+});
+
+test('debug.explain recursively traces a derived value back through query provenance', async () => {
+    const [view] = await createViews();
+    const execution = createDslDebugExecutionSession({
+        source: `
+            let buyer = query entity.target "order.form" {
+              kind: "form.field"
+              fieldKey: "buyer"
+            }
+            let present = compute exists(buyer)
+            output selected = buyer
+            wait 0
+        `,
+        context: {
+            workspaceName: 'ws-1',
+            deps,
+            stepExecutionPort: {
+                execute: async (step) => step.name === 'browser.query'
+                    ? {
+                        stepId: step.id,
+                        ok: true,
+                        data: {
+                            kind: 'nodeId',
+                            nodeId: 'buyer-input',
+                            meta: {pageEpoch: 'v2-business', captureRevision: 1},
+                        },
+                    }
+                    : {stepId: step.id, ok: true, data: {}},
+            },
+        },
+        worldViewSource: {pin: async () => view},
+        debug: {breakpoints: ['body.3']},
+    });
+
+    const pause = await execution.waitForPause();
+    const tools = createPausedDslDebugAgentTools(execution, pause);
+    const explain = tools.tools.find((tool) => tool.name === 'debug.explain')!;
+    const explained = await explain.execute('explain-present', {path: 'vars.present'});
+    const tree = (explained.details as any).explanation;
+
+    assert.equal(tree.path, 'vars.present');
+    assert.equal(tree.origin, 'derived');
+    assert.equal(tree.provenance.source.kind, 'compute');
+    assert.deepEqual(tree.provenance.source.dependencies, ['vars.buyer']);
+    assert.equal(tree.dependencies.length, 1);
+    assert.equal(tree.dependencies[0].path, 'vars.buyer');
+    assert.equal(tree.dependencies[0].provenance.source.kind, 'query');
+    assert.deepEqual(tree.dependencies[0].provenance.source.observedAt, {
+        pageEpoch: 'v2-business',
+        captureRevision: 1,
+    });
+    assert.equal(classifyPausedDslDebugToolCall('debug.explain'), 'read');
+    assert.equal((explained.details as any).world.revision.captureRevision, 1);
+
+    await execution.advance(pause.continuationId, 'abort');
 });

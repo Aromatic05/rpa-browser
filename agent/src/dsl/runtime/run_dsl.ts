@@ -21,8 +21,15 @@ import type { DslEntityRulesResolver } from '../link';
 import type { DslResolveResolver } from '../link';
 import { injectStepResolve } from '../../runner/step_resolve';
 import {classifyBrowserOperation} from '../../runner/steps/effects';
-import type {DslDebugPort, DslFailureDescriptor, DslLoopFrame, DslStatementLocation} from '../debug/contracts';
+import type {
+    DslDebugPort,
+    DslFailureDescriptor,
+    DslLoopFrame,
+    DslStatementLocation,
+    DslValueProvenanceSource,
+} from '../debug/contracts';
 import {snapshotDslScope} from '../debug/snapshot';
+import {collectDslExpressionDependencies, collectDslExpressionsDependencies} from '../debug/provenance';
 import type {DslSourceMap} from '../parser/source_map';
 import type {EffectSemantics} from '../../effects/contracts';
 import {UNKNOWN_EFFECT_SEMANTICS} from '../../effects/declaration';
@@ -125,9 +132,18 @@ const executeStmt = async (
             if (stmt.expr.kind === 'query') {
                 const step = buildQueryStep(stmt.expr, (ref) => resolveDslValue(ref, scope));
                 const result = await emitStepAndWait(step, execution);
-                const value = adaptDslQueryResult(result as BrowserQueryResult);
-                setDslValue(scope, `vars.${stmt.name}`, value);
-                safeLog(logger, 'debug', 'dsl.scope.write', { key: `vars.${stmt.name}`, valuePreview: previewValue(value) });
+                const queryResult = result as BrowserQueryResult;
+                const value = adaptDslQueryResult(queryResult);
+                const target = `vars.${stmt.name}`;
+                setDslValue(scope, target, value);
+                await notifyValue(ctx, target, location, Object.freeze({
+                    kind: 'query' as const,
+                    expression: structuredClone(stmt.expr),
+                    stepId: step.id,
+                    dependencies: collectDslExpressionDependencies(stmt.expr),
+                    ...queryObservedAt(queryResult),
+                }));
+                safeLog(logger, 'debug', 'dsl.scope.write', { key: target, valuePreview: previewValue(value) });
                 return;
             }
             if (stmt.expr.kind === 'querySugar') {
@@ -137,13 +153,17 @@ const executeStmt = async (
                 );
             }
             const value = evaluatePureDslExpr(stmt.expr, scope);
-            setDslValue(scope, `vars.${stmt.name}`, value);
-            safeLog(logger, 'debug', 'dsl.scope.write', { key: `vars.${stmt.name}`, valuePreview: previewValue(value) });
+            const target = `vars.${stmt.name}`;
+            setDslValue(scope, target, value);
+            await notifyValue(ctx, target, location, pureExpressionProvenance(stmt.expr));
+            safeLog(logger, 'debug', 'dsl.scope.write', { key: target, valuePreview: previewValue(value) });
             return;
         }
         case 'output': {
             const value = evaluatePureDslExpr(stmt.expr, scope);
-            setDslValue(scope, `output.${stmt.name}`, value);
+            const target = `output.${stmt.name}`;
+            setDslValue(scope, target, value);
+            await notifyValue(ctx, target, location, pureExpressionProvenance(stmt.expr));
             return;
         }
         case 'ensure': {
@@ -267,7 +287,13 @@ const executeStmt = async (
                 debugPort: ctx.debugPort,
             });
             if (stmt.bind) {
-                setDslValue(scope, `vars.${stmt.bind}`, output);
+                const target = `vars.${stmt.bind}`;
+                setDslValue(scope, target, output);
+                await notifyValue(ctx, target, location, Object.freeze({
+                    kind: 'checkpoint' as const,
+                    checkpointId: stmt.id,
+                    dependencies: collectDslExpressionsDependencies(Object.values(stmt.input ?? {})),
+                }));
             }
             return;
         }
@@ -294,8 +320,15 @@ const executeStmt = async (
             for (let iteration = 0; iteration < items.length; iteration += 1) {
                 const item = items[iteration];
                 const child = createChildDslScope(scope);
-                setDslValue(child, `vars.${stmt.item}`, item);
-                safeLog(logger, 'debug', 'dsl.scope.write', { key: `vars.${stmt.item}`, valuePreview: previewValue(item) });
+                const target = `vars.${stmt.item}`;
+                setDslValue(child, target, item);
+                await notifyValue(ctx, target, location, Object.freeze({
+                    kind: 'loop' as const,
+                    expression: structuredClone(stmt.iterable),
+                    iteration,
+                    dependencies: collectDslExpressionDependencies(stmt.iterable),
+                }));
+                safeLog(logger, 'debug', 'dsl.scope.write', { key: target, valuePreview: previewValue(item) });
                 await executeStatements(stmt.body, child, ctx, port, logger, {
                     blockPath: `${location.path}.body`,
                     loops: [...location.loops, {path: location.path, iteration}],
@@ -384,6 +417,43 @@ const evaluatePureDslExpr = (expr: DslExpr, scope: DslScope): unknown => {
     }
     if (expr.kind === 'ref') {return resolveDslValue(expr, scope);}
     throw new DslRuntimeError(`DSL expression ${expr.kind} is not a pure runtime expression`, 'ERR_DSL_NOT_NORMALIZED');
+};
+
+const pureExpressionProvenance = (expr: DslExpr): DslValueProvenanceSource => {
+    if (expr.kind === 'compute') {
+        return Object.freeze({
+            kind: 'compute' as const,
+            expression: structuredClone(expr),
+            dependencies: collectDslExpressionDependencies(expr),
+        });
+    }
+    if (expr.kind === 'ref') {
+        return Object.freeze({
+            kind: 'ref' as const,
+            ref: expr.ref,
+            dependencies: Object.freeze([expr.ref]),
+        });
+    }
+    throw new DslRuntimeError(`DSL expression ${expr.kind} cannot produce pure value provenance`, 'ERR_DSL_NOT_NORMALIZED');
+};
+
+const queryObservedAt = (
+    result: BrowserQueryResult,
+): {observedAt?: Readonly<{pageEpoch: string; captureRevision: number}>} => {
+    const pageEpoch = result.meta?.pageEpoch;
+    const captureRevision = result.meta?.captureRevision;
+    return typeof pageEpoch === 'string' && typeof captureRevision === 'number'
+        ? {observedAt: Object.freeze({pageEpoch, captureRevision})}
+        : {};
+};
+
+const notifyValue = async (
+    ctx: RunDslContext,
+    target: string,
+    location: DslStatementLocation,
+    source: DslValueProvenanceSource,
+): Promise<void> => {
+    await ctx.debugPort?.onValue?.(Object.freeze({target, location, source}));
 };
 
 const pauseBeforeEffect = async (

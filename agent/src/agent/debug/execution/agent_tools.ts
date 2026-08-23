@@ -119,6 +119,24 @@ export const createPausedDslDebugAgentTools = (
             execute: async () => toolResult({scope: requirePause().scope, world: requirePause().world}),
         },
         {
+            name: 'debug.explain',
+            label: 'debug.explain',
+            description: 'Explain how one DSL scope path was produced. Returns query/compute/ref/checkpoint/loop provenance and recursively expands dependency paths. This is a pure read.',
+            parameters: Type.Object({
+                path: Type.String({minLength: 1}),
+            }, {additionalProperties: false}),
+            execute: async (_toolCallId, params) => {
+                const current = requirePause();
+                return toolResult({
+                    explanation: execution.explain(
+                        current.continuationId,
+                        (params as {path: string}).path,
+                    ),
+                    world: current.world,
+                });
+            },
+        },
+        {
             name: 'debug.effects',
             label: 'debug.effects',
             description: 'Read the executed World-effect journal. Pending or aborted effects are excluded; records include outcome and before/after World revisions.',

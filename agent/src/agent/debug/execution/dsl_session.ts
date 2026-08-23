@@ -20,6 +20,7 @@ import {diffDebugEffect} from '../effects/diff';
 import {createDebugEffectJournal} from '../effects/journal';
 import {createDebugQuerySession} from '../query/session';
 import type {DebugQuerySession} from '../query/contracts';
+import {createDebugValueProvenanceStore} from '../provenance/store';
 import type {DebugCompensationPort} from '../transaction/compensation/contracts';
 import {executePhysicalCompensations} from '../transaction/compensation/executor';
 import {createDebugTransaction} from '../transaction/state';
@@ -53,6 +54,7 @@ export const createDslDebugExecutionSession = (
 ): DslDebugExecutionSession => {
     const controller = createDslDebugController(options.debug);
     const journal = createDebugEffectJournal();
+    const provenance = createDebugValueProvenanceStore();
     let transaction: DebugTransaction | null = null;
     const ensureTransaction = async (): Promise<DebugTransaction> => {
         transaction ??= createDebugTransaction(await options.worldViewSource.pin());
@@ -77,6 +79,7 @@ export const createDslDebugExecutionSession = (
             await controller.port.afterEffect?.(event);
         },
         onFailure: controller.port.onFailure,
+        onValue: (event) => {provenance.record(event);},
     };
     const completion: Promise<RunDslSourceResult> = runDslSource(options.source, {
         ...options.context,
@@ -337,6 +340,10 @@ export const createDslDebugExecutionSession = (
         effects: (continuationId: string) => {
             requireActive(continuationId);
             return journal.list();
+        },
+        explain: (continuationId: string, path: string) => {
+            const current = requireActive(continuationId);
+            return provenance.explain(current.pause.location.programId, path);
         },
         diff: (continuationId: string, effectSequence: number) => {
             requireActive(continuationId);
