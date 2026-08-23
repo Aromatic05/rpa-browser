@@ -69,6 +69,8 @@ export const createDslDebugExecutionSession = (
         } as const;
         return pause.reason === 'effect'
             ? Object.freeze({...base, reason: 'effect' as const, effect: pause.effect})
+            : pause.reason === 'failure'
+                ? Object.freeze({...base, reason: 'failure' as const, failure: pause.failure})
             : Object.freeze({...base, reason: 'statement' as const});
     };
 
@@ -76,12 +78,17 @@ export const createDslDebugExecutionSession = (
         continuationId: string,
         mode: 'continue' | 'step',
     ): Promise<DslDebugAdvanceResult> => {
+        const current = requireActive(continuationId);
+        const pausedFailure = current.pause.reason === 'failure' ? current.pause.failure : undefined;
         release(continuationId, mode);
         return await Promise.race([
             waitForPause().then((pause) => ({status: 'paused' as const, pause})),
             completion.then((result) => ({
                 status: 'completed' as const,
                 output: structuredClone(result.scope.output),
+            }), (error) => ({
+                status: 'failed' as const,
+                failure: pausedFailure ?? normalizeTerminalFailure(error),
             })),
         ]);
     };
@@ -100,4 +107,19 @@ export const createDslDebugExecutionSession = (
         advance,
         waitForCompletion: async () => await completion,
     };
+};
+
+const normalizeTerminalFailure = (error: unknown) => {
+    if (error && typeof error === 'object') {
+        const value = error as {code?: unknown; message?: unknown; details?: unknown};
+        return Object.freeze({
+            code: typeof value.code === 'string' ? value.code : 'ERR_DSL_RUNTIME',
+            message: typeof value.message === 'string' ? value.message : 'DSL execution failed',
+            ...(value.details === undefined ? {} : {details: structuredClone(value.details)}),
+        });
+    }
+    return Object.freeze({
+        code: 'ERR_DSL_RUNTIME',
+        message: typeof error === 'string' ? error : 'DSL execution failed',
+    });
 };

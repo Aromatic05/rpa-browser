@@ -20,7 +20,7 @@ import type { DslEntityRulesResolver } from '../link';
 import type { DslResolveResolver } from '../link';
 import { injectStepResolve } from '../../runner/step_resolve';
 import {classifyBrowserOperation} from '../../runner/steps/effects';
-import type {DslDebugPort, DslLoopFrame, DslStatementLocation} from '../debug/contracts';
+import type {DslDebugPort, DslFailureDescriptor, DslLoopFrame, DslStatementLocation} from '../debug/contracts';
 import {snapshotDslScope} from '../debug/snapshot';
 import type {DslSourceMap} from '../parser/source_map';
 
@@ -230,6 +230,9 @@ const executeStmt = async (
                 beforeEffect: async (step) => {
                     await pauseBeforeEffect(step, execution);
                 },
+                onStepFailure: async (step, result) => {
+                    await pauseOnFailure(step, result, execution);
+                },
                 workspaceName: ctx.workspaceName,
                 deps: ctx.deps,
                 entityRulesResolver: ctx.entityRulesResolver,
@@ -302,13 +305,41 @@ const emitStepAndWait = async (
         ok: result.ok,
     });
     if (!result.ok) {
+        const failure = await pauseOnFailure(step, result, {scope, ctx, location});
         throw new DslRuntimeError(
-            result.error?.message || `DSL step failed: ${step.name}`,
-            result.error?.code || 'ERR_DSL_STEP_FAILED',
-            result.error?.details,
+            failure.message,
+            failure.code,
+            failure.details,
         );
     }
     return result.data;
+};
+
+const pauseOnFailure = async (
+    step: StepUnion,
+    result: ExecutorStepResult,
+    execution: {
+        scope: DslScope;
+        ctx: RunDslContext;
+        location: DslStatementLocation;
+    },
+): Promise<DslFailureDescriptor> => {
+    const failure: DslFailureDescriptor = Object.freeze({
+        stepId: step.id,
+        stepName: step.name,
+        args: structuredClone(step.args),
+        code: result.error?.code || 'ERR_DSL_STEP_FAILED',
+        message: result.error?.message || `DSL step failed: ${step.name}`,
+        ...(result.error?.details === undefined
+            ? {}
+            : {details: structuredClone(result.error.details)}),
+    });
+    await execution.ctx.debugPort?.onFailure?.({
+        location: execution.location,
+        scope: snapshotDslScope(execution.scope),
+        failure,
+    });
+    return failure;
 };
 
 const pauseBeforeEffect = async (

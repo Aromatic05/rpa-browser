@@ -95,3 +95,65 @@ test('paused DSL Agent runner lets the model inspect, step and continue a retain
     assert.equal(continueCall.worldBefore?.captureRevision, 2);
     assert.equal(continueCall.worldAfter, null);
 });
+
+test('paused DSL Agent runner preserves a structured failed terminal state after failure inspection', async () => {
+    const faux = createFauxCore({provider: 'faux-debugger', models: [{id: 'debugger'}]});
+    faux.setResponses([
+        fauxAssistantMessage(fauxToolCall('debug.execution', {})),
+        fauxAssistantMessage(fauxToolCall('debug.query', {
+            op: 'entity',
+            businessTag: 'order.table.main',
+            query: 'table.rowCount',
+        })),
+        fauxAssistantMessage(fauxToolCall('debug.continue', {})),
+        fauxAssistantMessage('failure inspected'),
+    ]);
+    const [view] = await createViews();
+    let clickCalls = 0;
+    const runner = createPausedDslDebugAgentRunner({
+        source: 'click input.target',
+        context: {
+            workspaceName: 'ws-1',
+            deps: {} as RunStepsDeps,
+            input: {target: {nodeId: 'missing-button'}},
+            stepExecutionPort: {
+                execute: async (step) => {
+                    clickCalls += 1;
+                    return {
+                        stepId: step.id,
+                        ok: false,
+                        error: {code: 'ERR_NOT_FOUND', message: 'missing button', details: {matches: 0}},
+                    };
+                },
+            },
+        },
+        worldViewSource: {pin: async () => view},
+        debug: {breakOnFailure: true},
+        modelRuntime: {
+            resolve: (provider, model) => provider === 'faux-debugger' && model === 'debugger'
+                ? {model: faux.getModel(), streamFn: faux.streamSimple}
+                : null,
+        },
+    });
+
+    const result = await runner.run({
+        provider: 'faux-debugger',
+        model: 'debugger',
+        prompt: 'Inspect the failure and finish.',
+    });
+
+    assert.equal(result.text, 'failure inspected');
+    assert.equal(result.execution.status, 'failed');
+    if (result.execution.status !== 'failed') {throw new Error('expected failed execution');}
+    assert.equal(result.execution.failure.code, 'ERR_NOT_FOUND');
+    assert.equal(result.execution.failure.stepName, 'browser.click');
+    assert.equal(clickCalls, 1);
+    assert.deepEqual(result.trace.metrics, {
+        turns: 4,
+        toolCalls: 3,
+        readCalls: 2,
+        effectCalls: 1,
+        failedToolCalls: 0,
+        postErrorEffectCalls: 0,
+    });
+});

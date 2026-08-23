@@ -40,9 +40,25 @@ export type DslBeforeEffectEvent = Readonly<{
     effect: DslEffectDescriptor;
 }>;
 
+export type DslFailureDescriptor = Readonly<{
+    stepId: string;
+    stepName: StepName;
+    args: unknown;
+    code: string;
+    message: string;
+    details?: unknown;
+}>;
+
+export type DslFailureEvent = Readonly<{
+    location: DslStatementLocation;
+    scope: DslScopeSnapshot;
+    failure: DslFailureDescriptor;
+}>;
+
 export type DslDebugPort = {
     beforeStatement: (event: DslBeforeStatementEvent) => void | Promise<void>;
     beforeEffect?: (event: DslBeforeEffectEvent) => void | Promise<void>;
+    onFailure?: (event: DslFailureEvent) => void | Promise<void>;
 };
 
 type PausedDslExecutionBase = Readonly<{
@@ -53,7 +69,8 @@ type PausedDslExecutionBase = Readonly<{
 
 export type PausedDslExecution =
     | (PausedDslExecutionBase & Readonly<{reason: 'statement'}>)
-    | (PausedDslExecutionBase & Readonly<{reason: 'effect'; effect: DslEffectDescriptor}>);
+    | (PausedDslExecutionBase & Readonly<{reason: 'effect'; effect: DslEffectDescriptor}>)
+    | (PausedDslExecutionBase & Readonly<{reason: 'failure'; failure: DslFailureDescriptor}>);
 
 export type DslDebugController = {
     readonly port: DslDebugPort;

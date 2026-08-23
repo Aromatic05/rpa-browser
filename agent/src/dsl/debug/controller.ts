@@ -3,6 +3,7 @@ import type {
     DslBeforeEffectEvent,
     DslBeforeStatementEvent,
     DslDebugController,
+    DslFailureEvent,
     PausedDslExecution,
 } from './contracts';
 
@@ -10,6 +11,7 @@ export type CreateDslDebugControllerOptions = {
     initialMode?: 'continue' | 'step';
     breakpoints?: readonly string[];
     breakBeforeEffects?: boolean;
+    breakOnFailure?: boolean;
 };
 
 type ActivePause = {
@@ -68,6 +70,16 @@ export const createDslDebugController = (
                     location: event.location,
                     scope: event.scope,
                     effect: event.effect,
+                }));
+            },
+            onFailure: async (event: DslFailureEvent) => {
+                if (!options.breakOnFailure) {return;}
+                await pause(Object.freeze({
+                    continuationId: crypto.randomUUID(),
+                    reason: 'failure',
+                    location: event.location,
+                    scope: event.scope,
+                    failure: event.failure,
                 }));
             },
         },

@@ -1,6 +1,11 @@
 import type {ComputeEvalScope} from '../../../runner/compute/evaluate';
 import type {RunDslSourceResult} from '../../../dsl/runtime/run_dsl_source';
-import type {DslEffectDescriptor, DslScopeSnapshot, DslStatementLocation} from '../../../dsl/debug/contracts';
+import type {
+    DslEffectDescriptor,
+    DslFailureDescriptor,
+    DslScopeSnapshot,
+    DslStatementLocation,
+} from '../../../dsl/debug/contracts';
 import type {ComputeExpr, StepArgsMap} from '../../../runner/steps/types';
 import type {DebugComputeResult, DebugQueryReadResult} from '../query/contracts';
 import type {WorldViewDescriptor} from '../../worldview/contracts';
@@ -14,11 +19,22 @@ type PausedDslDebugExecutionBase = Readonly<{
 
 export type PausedDslDebugExecution =
     | (PausedDslDebugExecutionBase & Readonly<{reason: 'statement'}>)
-    | (PausedDslDebugExecutionBase & Readonly<{reason: 'effect'; effect: DslEffectDescriptor}>);
+    | (PausedDslDebugExecutionBase & Readonly<{reason: 'effect'; effect: DslEffectDescriptor}>)
+    | (PausedDslDebugExecutionBase & Readonly<{reason: 'failure'; failure: DslFailureDescriptor}>);
+
+export type DslDebugTerminalFailure = Readonly<{
+    code: string;
+    message: string;
+    details?: unknown;
+    stepId?: string;
+    stepName?: DslFailureDescriptor['stepName'];
+    args?: unknown;
+}>;
 
 export type DslDebugAdvanceResult =
     | Readonly<{status: 'paused'; pause: PausedDslDebugExecution}>
-    | Readonly<{status: 'completed'; output: Readonly<Record<string, unknown>>}>;
+    | Readonly<{status: 'completed'; output: Readonly<Record<string, unknown>>}>
+    | Readonly<{status: 'failed'; failure: DslDebugTerminalFailure}>;
 
 export type DslDebugExecutionSession = {
     waitForPause: () => Promise<PausedDslDebugExecution>;

@@ -7,12 +7,17 @@ import {
     type DebugComputeToolInput,
     type DebugQueryToolInput,
 } from '../tools/schemas';
-import type {DslDebugExecutionSession, PausedDslDebugExecution} from './contracts';
+import type {
+    DslDebugAdvanceResult,
+    DslDebugExecutionSession,
+    PausedDslDebugExecution,
+} from './contracts';
 
 export type PausedDslDebugAgentTools = {
     tools: AgentTool[];
     readWorldRevision: () => AgentWorldRevision | null;
     readPause: () => PausedDslDebugExecution | null;
+    readTerminal: () => Exclude<DslDebugAdvanceResult, {status: 'paused'}> | null;
 };
 
 const stringify = (value: unknown): string => {
@@ -34,6 +39,7 @@ export const createPausedDslDebugAgentTools = (
     initialPause: PausedDslDebugExecution,
 ): PausedDslDebugAgentTools => {
     let pause: PausedDslDebugExecution | null = initialPause;
+    let terminal: Exclude<DslDebugAdvanceResult, {status: 'paused'}> | null = null;
 
     const requirePause = (): PausedDslDebugExecution => {
         if (!pause) {throw new Error('DSL debug execution is not paused');}
@@ -57,9 +63,11 @@ export const createPausedDslDebugAgentTools = (
         const result = await execution.advance(current.continuationId, mode);
         if (result.status === 'paused') {
             pause = result.pause;
+            terminal = null;
             return toolResult(result);
         }
         pause = null;
+        terminal = result;
         return toolResult(result);
     };
 
@@ -124,7 +132,7 @@ export const createPausedDslDebugAgentTools = (
         {
             name: 'debug.continue',
             label: 'debug.continue',
-            description: 'Resume the current continuation until the next configured breakpoint or program completion.',
+            description: 'Resume until the next configured breakpoint or terminal state. At a failure pause this does not retry the failed step; it terminalizes the original failure.',
             parameters: Type.Object({}, {additionalProperties: false}),
             execute: async () => await advance('continue'),
         },
@@ -138,5 +146,6 @@ export const createPausedDslDebugAgentTools = (
             freshness: 'fresh',
         } : null,
         readPause: () => pause,
+        readTerminal: () => terminal,
     };
 };

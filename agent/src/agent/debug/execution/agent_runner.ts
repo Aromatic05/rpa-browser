@@ -6,12 +6,17 @@ import {
     createDslDebugExecutionSession,
     type CreateDslDebugExecutionSessionOptions,
 } from './dsl_session';
-import type {DslDebugExecutionSession, PausedDslDebugExecution} from './contracts';
+import type {
+    DslDebugExecutionSession,
+    DslDebugTerminalFailure,
+    PausedDslDebugExecution,
+} from './contracts';
 import {classifyPausedDslDebugToolCall} from './tool_policy';
 
 export const PAUSED_DSL_DEBUG_SYSTEM_PROMPT = [
-    'You control a DSL program paused before a statement or a pending browser effect.',
+    'You control a DSL program paused before a statement, before a pending browser effect, or after a browser step failure.',
     'When debug.execution reports reason=effect, inspect the effect descriptor before deciding whether to advance.',
+    'When debug.execution reports reason=failure, inspect the failure, scope, and World freely; debug.continue terminalizes that original failure and does not retry it.',
     'debug.execution location includes programId, execution path, source line range when available, loop frames, and checkpoint callStack.',
     'debug.execution, debug.scope, debug.world, debug.query, and debug.compute are pure reads.',
     'debug.step and debug.continue advance the retained execution and may cause World effects.',
@@ -21,7 +26,8 @@ export const PAUSED_DSL_DEBUG_SYSTEM_PROMPT = [
 export type PausedDslDebugAgentRunResult = AgentRunResult & {
     execution:
         | Readonly<{status: 'paused'; pause: PausedDslDebugExecution}>
-        | Readonly<{status: 'completed'}>;
+        | Readonly<{status: 'completed'}>
+        | Readonly<{status: 'failed'; failure: DslDebugTerminalFailure}>;
     session: DslDebugExecutionSession;
 };
 
@@ -52,10 +58,13 @@ export const createPausedDslDebugAgentRunner = (
             systemPrompt: request.systemPrompt ?? PAUSED_DSL_DEBUG_SYSTEM_PROMPT,
         });
         const pause = debuggerTools.readPause();
+        const terminal = debuggerTools.readTerminal();
         return {
             ...result,
             execution: pause
                 ? {status: 'paused' as const, pause}
+                : terminal?.status === 'failed'
+                    ? {status: 'failed' as const, failure: terminal.failure}
                 : {status: 'completed' as const},
             session,
         };

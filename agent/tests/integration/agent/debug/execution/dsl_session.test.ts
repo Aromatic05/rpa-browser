@@ -168,3 +168,49 @@ test('paused DSL execution exposes the pending browser effect before mutation', 
     await execution.waitForCompletion();
     assert.deepEqual(calls, ['browser.query', 'browser.click']);
 });
+
+test('failure pause keeps WorldView queryable and advance returns a structured failed terminal state', async () => {
+    const [view] = await createViews();
+    let clickCalls = 0;
+    const execution = createDslDebugExecutionSession({
+        source: 'click input.target',
+        context: {
+            workspaceName: 'ws-1',
+            deps,
+            input: {target: {nodeId: 'missing-button'}},
+            stepExecutionPort: {
+                execute: async (step) => {
+                    clickCalls += 1;
+                    return {
+                        stepId: step.id,
+                        ok: false,
+                        error: {code: 'ERR_NOT_FOUND', message: 'missing button', details: {matches: 0}},
+                    };
+                },
+            },
+        },
+        worldViewSource: {pin: async () => view},
+        debug: {breakOnFailure: true},
+    });
+
+    const paused = await execution.waitForPause();
+    assert.equal(paused.reason, 'failure');
+    if (paused.reason !== 'failure') {throw new Error('expected failure pause');}
+    assert.equal(paused.failure.code, 'ERR_NOT_FOUND');
+    assert.equal(clickCalls, 1);
+
+    const rows = execution.query(paused.continuationId, {
+        op: 'entity',
+        businessTag: 'order.table.main',
+        query: 'table.rowCount',
+    });
+    assert.equal(rows.ok, true);
+    assert.deepEqual(rows.world.revision, paused.world.revision);
+
+    const terminal = await execution.advance(paused.continuationId, 'continue');
+    assert.deepEqual(terminal, {
+        status: 'failed',
+        failure: paused.failure,
+    });
+    assert.equal(clickCalls, 1);
+});
