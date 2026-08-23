@@ -48,6 +48,7 @@ test('failure breakpoint suspends after a failed browser step before the DSL err
     assert.deepEqual(paused.failure, {
         stepId: paused.failure.stepId,
         stepName: 'browser.click',
+        classification: 'effect',
         args: {nodeId: 'missing-button'},
         code: 'ERR_NOT_FOUND',
         message: 'button disappeared',
@@ -118,6 +119,7 @@ test('failure breakpoint also guards failed legacy checkpoint steps', async () =
     if (paused.reason !== 'failure') {throw new Error('expected failure pause');}
     assert.equal(paused.location.path, 'body.0');
     assert.equal(paused.failure.stepName, 'browser.click');
+    assert.equal(paused.failure.classification, 'effect');
     assert.equal(paused.failure.code, 'ERR_NOT_FOUND');
     assert.equal(clickCalls, 1);
 
@@ -125,4 +127,39 @@ test('failure breakpoint also guards failed legacy checkpoint steps', async () =
     await assert.rejects(run, (error: unknown) =>
         error instanceof DslRuntimeError && error.code === 'ERR_NOT_FOUND');
     assert.equal(clickCalls, 1);
+});
+
+test('failure descriptor distinguishes read failures from World effects', async () => {
+    const controller = createDslDebugController({breakOnFailure: true});
+    const run = runDsl({body: [{
+        kind: 'let',
+        name: 'rows',
+        expr: {
+            kind: 'query',
+            op: 'entity',
+            businessTag: 'orders.main',
+            payload: 'table.currentRows',
+        },
+    }]}, {
+        workspaceName: 'ws-1',
+        deps,
+        debugPort: controller.port,
+        stepExecutionPort: {
+            execute: async (step) => ({
+                stepId: step.id,
+                ok: false,
+                error: {code: 'ERR_QUERY', message: 'query failed'},
+            }),
+        },
+    });
+
+    const paused = await controller.waitForPause();
+    assert.equal(paused.reason, 'failure');
+    if (paused.reason !== 'failure') {throw new Error('expected failure pause');}
+    assert.equal(paused.failure.stepName, 'browser.query');
+    assert.equal(paused.failure.classification, 'read');
+
+    controller.continue(paused.continuationId);
+    await assert.rejects(run, (error: unknown) =>
+        error instanceof DslRuntimeError && error.code === 'ERR_QUERY');
 });

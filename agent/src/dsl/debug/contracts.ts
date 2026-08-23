@@ -1,5 +1,6 @@
 import type {DslStmt} from '../ast/types';
 import type {StepName} from '../../runner/steps/types';
+import type {BrowserOperationClassification} from '../../runner/steps/effects';
 import type {DslSourceLocation} from '../parser/source_map';
 
 export type DslLoopFrame = Readonly<{
@@ -43,6 +44,7 @@ export type DslBeforeEffectEvent = Readonly<{
 export type DslFailureDescriptor = Readonly<{
     stepId: string;
     stepName: StepName;
+    classification: BrowserOperationClassification;
     args: unknown;
     code: string;
     message: string;

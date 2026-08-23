@@ -327,6 +327,7 @@ const pauseOnFailure = async (
     const failure: DslFailureDescriptor = Object.freeze({
         stepId: step.id,
         stepName: step.name,
+        classification: classifyBrowserOperation(step.name, step.args),
         args: structuredClone(step.args),
         code: result.error?.code || 'ERR_DSL_STEP_FAILED',
         message: result.error?.message || `DSL step failed: ${step.name}`,
