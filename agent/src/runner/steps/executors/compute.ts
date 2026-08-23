@@ -1,4 +1,4 @@
-import {evaluateComputeExpression, type ComputeEvalScope} from '../../compute/evaluate';
+import {evaluateComputeExpression, type ComputeEvalScope} from '../../../compute/evaluate';
 import type {RunLocalStepResults, RunStepsDeps} from '../../run_steps';
 import {awaitPageBoundBinding} from '../helpers/runtime_binding';
 import type {Step, StepResult} from '../types';

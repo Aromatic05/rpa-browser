@@ -9,8 +9,9 @@ import {
     type RunDslContext,
     type RunDslSourceResult,
 } from '../../../dsl/runtime';
-import type {ComputeEvalScope} from '../../../runner/compute/evaluate';
-import type {ComputeExpr, StepArgsMap} from '../../../runner/steps/types';
+import type {ComputeEvalScope} from '../../../compute/evaluate';
+import type {StepArgsMap} from '../../../runner/steps/types';
+import type {ComputeExpr} from '../../../compute/types';
 import type {WorldViewSource} from '../../worldview/contracts';
 import {describeWorldView} from '../../worldview/descriptor';
 import {isSameWorldView} from '../../worldview/revision';

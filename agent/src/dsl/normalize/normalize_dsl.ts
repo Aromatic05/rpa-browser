@@ -8,6 +8,7 @@ import type {
     RefExpr,
     TableActStmt,
 } from '../ast/types';
+import type {ComputeExpr, ComputeValue} from '../../compute/types';
 
 export const normalizeDsl = (program: DslProgram): DslProgram => ({
     imports: program.imports,
@@ -23,6 +24,9 @@ const normalizeStmt = (stmt: DslStmt): DslStmt[] => {
     }
     if (stmt.kind === 'output') {
         return [{...stmt, expr: normalizeExpr(stmt.expr)}];
+    }
+    if (stmt.kind === 'ensure') {
+        return [{...stmt, condition: normalizeExpr(stmt.condition)}];
     }
     if (stmt.kind === 'form_act') {
         return [expandFormActStmt(stmt)];
@@ -83,6 +87,9 @@ const normalizeExpr = <T extends DslExpr>(expr: T): T => {
     if (expr.kind === 'query') {
         return normalizeQueryExpr(expr) as T;
     }
+    if (expr.kind === 'compute') {
+        return {...expr, expr: normalizeComputeExpr(expr.expr)};
+    }
     if (expr.kind !== 'ref') {return expr;}
     return normalizeRef(expr) as T;
 };
@@ -104,6 +111,24 @@ const normalizeRef = (expr: RefExpr): RefExpr => {
         return expr;
     }
     return {...expr, ref: `vars.${expr.ref}`};
+};
+
+const normalizeComputeExpr = (expr: ComputeExpr): ComputeExpr => ({
+    ...expr,
+    args: expr.args.map(normalizeComputeValue),
+});
+
+const normalizeComputeValue = (value: ComputeValue): ComputeValue => {
+    if ('op' in value) {return normalizeComputeExpr(value);}
+    if ('literal' in value) {return value;}
+    return {ref: {path: normalizeRefPath(value.ref.path)}};
+};
+
+const normalizeRefPath = (path: string): string => {
+    if (path.startsWith('input.') || path.startsWith('failure.') || path.startsWith('vars.') || path.startsWith('output.')) {
+        return path;
+    }
+    return `vars.${path}`;
 };
 
 const expandFormActStmt = (stmt: FormActStmt): LinkedEntityActStmt => ({

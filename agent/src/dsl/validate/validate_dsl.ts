@@ -8,6 +8,8 @@ import type {
     RefExpr,
     ResolveActStmt,
 } from '../ast/types';
+import type {ComputeExpr, ComputeValue} from '../../compute/types';
+import {COMPUTE_OP_ARITY} from '../../compute/ops';
 import { createDiagnostic, type DslDiagnostic } from '../diagnostics/diagnostics';
 import { collectDefinitelyAssignedVariables } from '../analysis/definite_assignment';
 
@@ -50,6 +52,9 @@ const validateStmt = (
             return;
         case 'output':
             validateExpr(stmt.expr, scope, diagnostics, `${path}.expr`);
+            return;
+        case 'ensure':
+            validateExpr(stmt.condition, scope, diagnostics, `${path}.condition`);
             return;
         case 'act':
             validateAct(stmt, scope, diagnostics, path);
@@ -282,7 +287,44 @@ const validateExpr = (
         validateRef(expr, scope, diagnostics, path);
         return;
     }
+    if (expr.kind === 'compute') {
+        validateComputeExpr(expr.expr, scope, diagnostics, path);
+        return;
+    }
     validateQueryPayload(expr.payload, scope, diagnostics, `${path}.payload`);
+};
+
+const validateComputeExpr = (
+    expr: ComputeExpr,
+    scope: ValidateScope,
+    diagnostics: DslDiagnostic[],
+    path: string,
+): void => {
+    const expected = COMPUTE_OP_ARITY[expr.op];
+    if (expr.args.length !== expected) {
+        diagnostics.push(createDiagnostic(
+            'ERR_DSL_BAD_COMPUTE_ARITY',
+            `DSL compute ${expr.op} expects ${expected} args`,
+            `${path}.expr`,
+        ));
+    }
+    expr.args.forEach((value, index) => {
+        validateComputeValue(value, scope, diagnostics, `${path}.args.${index}`);
+    });
+};
+
+const validateComputeValue = (
+    value: ComputeValue,
+    scope: ValidateScope,
+    diagnostics: DslDiagnostic[],
+    path: string,
+): void => {
+    if ('op' in value) {
+        validateComputeExpr(value, scope, diagnostics, path);
+        return;
+    }
+    if ('literal' in value) {return;}
+    validateRef({kind: 'ref', ref: value.ref.path}, scope, diagnostics, path);
 };
 
 const validateQueryPayload = (

@@ -14,20 +14,23 @@ const end = (toolCallId: string, toolName: string, isError: boolean): AgentEvent
     result: {content: [], details: {}},
 });
 
-test('trace distinguishes pure reads, effects and post-error effects', async () => {
+test('trace distinguishes pure reads, execution controls, effects and post-error effects', async () => {
     let revision = 0;
     const trace = createAgentTraceCollector({
-        classifyToolCall: (name) => name === 'read' ? 'read' : 'effect',
+        classifyToolCall: (name) => name === 'read' ? 'read' : name === 'control' ? 'control' : 'effect',
         readWorldRevision: () => ({pageEpoch: 'p1', captureRevision: revision++, freshness: 'fresh'}),
     });
     await trace.handle(start('1', 'read'));
     await trace.handle(end('1', 'read', true));
-    await trace.handle(start('2', 'effect'));
-    await trace.handle(end('2', 'effect', false));
+    await trace.handle(start('2', 'control'));
+    await trace.handle(end('2', 'control', false));
+    await trace.handle(start('3', 'effect'));
+    await trace.handle(end('3', 'effect', false));
 
     const snapshot = trace.snapshot();
-    assert.equal(snapshot.metrics.toolCalls, 2);
+    assert.equal(snapshot.metrics.toolCalls, 3);
     assert.equal(snapshot.metrics.readCalls, 1);
+    assert.equal(snapshot.metrics.controlCalls, 1);
     assert.equal(snapshot.metrics.effectCalls, 1);
     assert.equal(snapshot.metrics.failedToolCalls, 1);
     assert.equal(snapshot.metrics.postErrorEffectCalls, 1);

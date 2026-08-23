@@ -1,6 +1,7 @@
-import {evaluateComputeExpression, type ComputeEvalScope} from '../../../runner/compute/evaluate';
+import {evaluateComputeExpression, type ComputeEvalScope} from '../../../compute/evaluate';
 import {queryPageSessionEntry} from '../../../runner/session/query';
-import type {ComputeExpr, StepArgsMap} from '../../../runner/steps/types';
+import type {StepArgsMap} from '../../../runner/steps/types';
+import type {ComputeExpr} from '../../../compute/types';
 import {describeWorldView} from '../../worldview/descriptor';
 import type {WorldView} from '../../worldview/contracts';
 import type {DebugQuerySession} from './contracts';

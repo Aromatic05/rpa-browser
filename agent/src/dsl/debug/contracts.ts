@@ -58,7 +58,8 @@ export type DslAfterEffectEvent = Readonly<{
     outcome: DslEffectOutcome;
 }>;
 
-export type DslFailureDescriptor = Readonly<{
+export type DslStepFailureDescriptor = Readonly<{
+    kind: 'step';
     stepId: string;
     stepName: StepName;
     classification: BrowserOperationClassification;
@@ -67,6 +68,19 @@ export type DslFailureDescriptor = Readonly<{
     message: string;
     details?: unknown;
 }>;
+
+export type DslInvariantFailureDescriptor = Readonly<{
+    kind: 'invariant';
+    code: 'ERR_DSL_ENSURE_FAILED';
+    message: string;
+    details: Readonly<{
+        expected: true;
+        actual: false;
+        condition: unknown;
+    }>;
+}>;
+
+export type DslFailureDescriptor = DslStepFailureDescriptor | DslInvariantFailureDescriptor;
 
 export type DslFailureEvent = Readonly<{
     location: DslStatementLocation;

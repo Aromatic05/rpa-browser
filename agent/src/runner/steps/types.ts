@@ -11,6 +11,7 @@ import type { Rect } from '../../snapshot/observation/model/contracts';
 import type { SelectOptionKind } from './executors/select_option/types';
 import type { StepEntityRulesControl } from '../../snapshot/rules/model';
 import type { SnapshotProjectionViewMode } from '../../snapshot/projection';
+import type {ComputeExpr} from '../../compute/types';
 
 export type BBox = Rect;
 
@@ -109,17 +110,6 @@ export type QueryFromRef =
                 }
           >;
       };
-
-export type ComputeRef = {
-    path: string;
-};
-
-export type ComputeExpr = {
-    op: 'len' | 'exists' | 'first' | 'get' | 'eq' | 'not' | 'and' | 'or';
-    args: ComputeValue[];
-};
-
-export type ComputeValue = { literal: unknown } | { ref: ComputeRef } | ComputeExpr;
 
 export type ResolveHint = {
     entity?: {

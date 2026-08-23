@@ -1,4 +1,4 @@
-import type {ComputeEvalScope} from '../../../runner/compute/evaluate';
+import type {ComputeEvalScope} from '../../../compute/evaluate';
 import type {RunDslSourceResult} from '../../../dsl/runtime/run_dsl_source';
 import type {
     DslEffectDescriptor,
@@ -6,7 +6,8 @@ import type {
     DslScopeSnapshot,
     DslStatementLocation,
 } from '../../../dsl/debug/contracts';
-import type {ComputeExpr, StepArgsMap} from '../../../runner/steps/types';
+import type {StepArgsMap, StepName} from '../../../runner/steps/types';
+import type {ComputeExpr} from '../../../compute/types';
 import type {DebugComputeResult, DebugQueryReadResult} from '../query/contracts';
 import type {DebugEffectDiffResult, DebugEffectRecord} from '../effects/contracts';
 import type {WorldViewDescriptor} from '../../worldview/contracts';
@@ -28,7 +29,7 @@ export type DslDebugTerminalFailure = Readonly<{
     message: string;
     details?: unknown;
     stepId?: string;
-    stepName?: DslFailureDescriptor['stepName'];
+    stepName?: StepName;
     args?: unknown;
 }>;
 

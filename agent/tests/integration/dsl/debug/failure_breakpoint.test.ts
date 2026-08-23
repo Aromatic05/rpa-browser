@@ -43,9 +43,12 @@ test('failure breakpoint suspends after a failed browser step before the DSL err
     const paused = await controller.waitForPause();
     assert.equal(paused.reason, 'failure');
     if (paused.reason !== 'failure') {throw new Error('expected failure pause');}
+    assert.equal(paused.failure.kind, 'step');
+    if (paused.failure.kind !== 'step') {throw new Error('expected step failure');}
     assert.equal(settled, false);
     assert.equal(paused.location.path, 'body.0');
     assert.deepEqual(paused.failure, {
+        kind: 'step',
         stepId: paused.failure.stepId,
         stepName: 'browser.click',
         classification: 'effect',
@@ -117,6 +120,8 @@ test('failure breakpoint also guards failed legacy checkpoint steps', async () =
     const paused = await controller.waitForPause();
     assert.equal(paused.reason, 'failure');
     if (paused.reason !== 'failure') {throw new Error('expected failure pause');}
+    assert.equal(paused.failure.kind, 'step');
+    if (paused.failure.kind !== 'step') {throw new Error('expected step failure');}
     assert.equal(paused.location.path, 'body.0');
     assert.equal(paused.failure.stepName, 'browser.click');
     assert.equal(paused.failure.classification, 'effect');
@@ -156,6 +161,8 @@ test('failure descriptor distinguishes read failures from World effects', async 
     const paused = await controller.waitForPause();
     assert.equal(paused.reason, 'failure');
     if (paused.reason !== 'failure') {throw new Error('expected failure pause');}
+    assert.equal(paused.failure.kind, 'step');
+    if (paused.failure.kind !== 'step') {throw new Error('expected step failure');}
     assert.equal(paused.failure.stepName, 'browser.query');
     assert.equal(paused.failure.classification, 'read');
 

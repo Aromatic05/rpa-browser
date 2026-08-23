@@ -15,9 +15,9 @@ import type {
 import {classifyPausedDslDebugToolCall} from './tool_policy';
 
 export const PAUSED_DSL_DEBUG_SYSTEM_PROMPT = [
-    'You control a DSL program paused before a statement, before a pending browser effect, or after a browser step failure.',
+    'You control a DSL program paused before a statement, before a pending browser effect, or after a runtime failure/invariant violation.',
     'When debug.execution reports reason=effect, inspect the effect descriptor before deciding whether to advance.',
-    'When debug.execution reports reason=failure, inspect the failure, scope, and World freely; debug.continue terminalizes that original failure and does not retry it.',
+    'When debug.execution reports reason=failure, inspect the structured failure, scope, and World freely; kind=step describes an operation failure and kind=invariant describes an ensure violation. debug.continue terminalizes that original failure and does not retry or perform a World effect.',
     'debug.execution location includes programId, execution path, source line range when available, loop frames, and checkpoint callStack.',
     'debug.execution, debug.scope, debug.effects, debug.diff, debug.world, debug.query, and debug.compute are pure reads.',
     'debug.effects contains only World effects that actually executed, with outcome and before/after World revisions; pending or aborted effects are absent.',

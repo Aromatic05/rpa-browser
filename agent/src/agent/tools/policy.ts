@@ -5,7 +5,7 @@ import {
     type BrowserOperationStaticClassification,
 } from '../../runner/steps/effects';
 
-export type AgentToolClassification = BrowserOperationClassification;
+export type AgentToolClassification = BrowserOperationClassification | 'control';
 type AgentToolStaticClassification = BrowserOperationStaticClassification;
 
 export type AgentBrowserTool = {

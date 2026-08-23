@@ -80,9 +80,9 @@ test('paused DSL Agent tools split pure debugger reads from execution effects', 
     for (const name of ['debug.execution', 'debug.scope', 'debug.effects', 'debug.diff', 'debug.world', 'debug.refresh', 'debug.query', 'debug.compute']) {
         assert.equal(classifyPausedDslDebugToolCall(name), 'read');
     }
-    assert.equal(classifyPausedDslDebugToolCall('debug.step'), 'effect');
-    assert.equal(classifyPausedDslDebugToolCall('debug.continue'), 'effect');
-    assert.equal(classifyPausedDslDebugToolCall('debug.abort'), 'effect');
+    assert.equal(classifyPausedDslDebugToolCall('debug.step'), 'control');
+    assert.equal(classifyPausedDslDebugToolCall('debug.continue'), 'control');
+    assert.equal(classifyPausedDslDebugToolCall('debug.abort'), 'control');
 
     const compute = debuggerTools.tools.find((tool) => tool.name === 'debug.compute')!;
     const computed = await compute.execute('compute-1', {

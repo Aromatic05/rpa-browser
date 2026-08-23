@@ -1,10 +1,11 @@
 import type { RunStepsDeps, StepResult as TaskStepResult } from '../../runner/run_steps';
 import type { BrowserQueryResult, StepResolve, StepResult as ExecutorStepResult, StepUnion } from '../../runner/steps/types';
+import {evaluateComputeExpression} from '../../compute/evaluate';
 import { runDslCheckpointCall, type DslCheckpointProvider } from '../emit/checkpoint_call';
 import { getLogger, type Logger } from '../../logging/logger';
 import { buildClickStep, buildFillStep, buildQueryStep, buildSelectStep, buildSnapshotStep, buildTypeStep } from '../emit/step_builder';
 import { DslRuntimeError } from '../diagnostics/errors';
-import type { DslProgram, DslStmt } from '../ast/types';
+import type { DslExpr, DslProgram, DslStmt } from '../ast/types';
 import { collectDefinitelyAssignedVariables } from '../analysis/definite_assignment';
 import { createDslTaskRunner } from './task_runner';
 import {
@@ -133,15 +134,35 @@ const executeStmt = async (
                     'ERR_DSL_NOT_NORMALIZED',
                 );
             }
-            const value = resolveDslValue(stmt.expr, scope);
+            const value = evaluatePureDslExpr(stmt.expr, scope);
             setDslValue(scope, `vars.${stmt.name}`, value);
             safeLog(logger, 'debug', 'dsl.scope.write', { key: `vars.${stmt.name}`, valuePreview: previewValue(value) });
             return;
         }
         case 'output': {
-            const value = resolveDslValue(stmt.expr, scope);
+            const value = evaluatePureDslExpr(stmt.expr, scope);
             setDslValue(scope, `output.${stmt.name}`, value);
             return;
+        }
+        case 'ensure': {
+            const actual = Boolean(evaluatePureDslExpr(stmt.condition, scope));
+            if (actual) {return;}
+            const failure: DslFailureDescriptor = Object.freeze({
+                kind: 'invariant' as const,
+                code: 'ERR_DSL_ENSURE_FAILED' as const,
+                message: 'DSL ensure failed',
+                details: Object.freeze({
+                    expected: true as const,
+                    actual: false as const,
+                    condition: structuredClone(stmt.condition),
+                }),
+            });
+            await ctx.debugPort?.onFailure?.({
+                location,
+                scope: snapshotDslScope(scope),
+                failure,
+            });
+            throw new DslRuntimeError(failure.message, failure.code, failure.details);
         }
         case 'act': {
             if (stmt.action === 'wait') {
@@ -249,7 +270,7 @@ const executeStmt = async (
             return;
         }
         case 'if': {
-            const condition = Boolean(resolveDslValue(stmt.condition, scope));
+            const condition = Boolean(evaluatePureDslExpr(stmt.condition, scope));
             const branch = condition ? stmt.then : stmt.else || [];
             const branchName = condition ? 'then' : 'else';
             const before = new Set(Object.keys(scope.vars));
@@ -263,7 +284,7 @@ const executeStmt = async (
             return;
         }
         case 'for': {
-            const iterable = resolveDslValue(stmt.iterable, scope);
+            const iterable = evaluatePureDslExpr(stmt.iterable, scope);
             if (!Array.isArray(iterable)) {
                 throw new DslRuntimeError('DSL for iterable must resolve to an array', 'ERR_DSL_BAD_ITERABLE');
             }
@@ -329,6 +350,7 @@ const pauseOnFailure = async (
     },
 ): Promise<DslFailureDescriptor> => {
     const failure: DslFailureDescriptor = Object.freeze({
+        kind: 'step' as const,
         stepId: step.id,
         stepName: step.name,
         classification: classifyBrowserOperation(step.name, step.args),
@@ -345,6 +367,20 @@ const pauseOnFailure = async (
         failure,
     });
     return failure;
+};
+
+const evaluatePureDslExpr = (expr: DslExpr, scope: DslScope): unknown => {
+    if (expr.kind === 'compute') {
+        return evaluateComputeExpression(expr.expr, {
+            input: scope.input,
+            vars: scope.vars,
+            local: scope.vars,
+            output: scope.output,
+            ...(scope.failure ? {failure: scope.failure} : {}),
+        });
+    }
+    if (expr.kind === 'ref') {return resolveDslValue(expr, scope);}
+    throw new DslRuntimeError(`DSL expression ${expr.kind} is not a pure runtime expression`, 'ERR_DSL_NOT_NORMALIZED');
 };
 
 const pauseBeforeEffect = async (

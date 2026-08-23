@@ -12,6 +12,7 @@ const result = {
             turns: 1,
             toolCalls: 0,
             readCalls: 0,
+            controlCalls: 0,
             effectCalls: 0,
             failedToolCalls: 0,
             postErrorEffectCalls: 0,

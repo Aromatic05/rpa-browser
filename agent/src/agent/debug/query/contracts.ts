@@ -1,6 +1,7 @@
-import type {ComputeEvalScope} from '../../../runner/compute/evaluate';
+import type {ComputeEvalScope} from '../../../compute/evaluate';
 import type {PageSessionQueryError} from '../../../runner/session/query';
-import type {BrowserQueryResult, ComputeExpr, StepArgsMap} from '../../../runner/steps/types';
+import type {BrowserQueryResult, StepArgsMap} from '../../../runner/steps/types';
+import type {ComputeExpr} from '../../../compute/types';
 import type {WorldViewDescriptor} from '../../worldview/contracts';
 
 export type DebugQueryReadResult =

@@ -1,3 +1,5 @@
+import type {ComputeExpr} from '../../compute/types';
+
 export type DslProgram = {
     imports?: DslImport[];
     body: DslStmt[];
@@ -13,7 +15,7 @@ export type DslImport = {
     alias: string;
 };
 
-export type DslStmt = LetStmt | OutputStmt | ActStmt | ResolveActStmt | EntityActStmt | LinkedEntityActStmt | FormActStmt | TableActStmt | CheckpointStmt | IfStmt | ForStmt;
+export type DslStmt = LetStmt | OutputStmt | EnsureStmt | ActStmt | ResolveActStmt | EntityActStmt | LinkedEntityActStmt | FormActStmt | TableActStmt | CheckpointStmt | IfStmt | ForStmt;
 
 export type LetStmt = {
     kind: 'let';
@@ -23,11 +25,21 @@ export type LetStmt = {
 
 export type OutputStmt = { kind: 'output'; name: string; expr: DslExpr };
 
-export type DslExpr = QueryExpr | EntityQueryExpr | QuerySugarExpr | RefExpr;
+export type DslExpr = QueryExpr | EntityQueryExpr | QuerySugarExpr | DslComputeExpr | RefExpr;
+
+export type DslComputeExpr = {
+    kind: 'compute';
+    expr: ComputeExpr;
+};
 
 export type RefExpr = {
     kind: 'ref';
     ref: string;
+};
+
+export type EnsureStmt = {
+    kind: 'ensure';
+    condition: DslComputeExpr | RefExpr;
 };
 
 export type QueryExpr = {

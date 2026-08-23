@@ -1,7 +1,8 @@
 import YAML from 'yaml';
-import type { CheckpointStmt, DslImport, DslProgram, DslStmt, EntityReference, LetStmt, QueryExpr, RefExpr, ResolveReference } from '../ast/types';
+import type { CheckpointStmt, DslExpr, DslImport, DslProgram, DslStmt, EntityReference, LetStmt, QueryExpr, RefExpr, ResolveReference } from '../ast/types';
 import { DslParseError } from '../diagnostics/errors';
 import type {DslParsedDocument, DslSourceLocation} from './source_map';
+import {parseComputeExpression} from './compute';
 
 type ParsedLine = {
     line: number;
@@ -201,7 +202,7 @@ const parseIfStmt = (
     return {
         stmt: {
             kind: 'if',
-            condition: toRef(conditionSource),
+            condition: parseExpression(conditionSource),
             then: thenBlock.body,
             else: elseBody,
         },
@@ -222,7 +223,7 @@ const parseForStmt = (
     if (!header.endsWith(':')) {
         throw new DslParseError(`for statement must end with ":": ${header}`);
     }
-    const match = header.slice(0, -1).match(/^for\s+([A-Za-z_][A-Za-z0-9_]*)\s+in\s+([A-Za-z0-9_.]+)$/);
+    const match = header.slice(0, -1).match(/^for\s+([A-Za-z_][A-Za-z0-9_]*)\s+in\s+(.+)$/);
     if (!match) {
         throw new DslParseError(`invalid for statement: ${header}`);
     }
@@ -242,7 +243,7 @@ const parseForStmt = (
         stmt: {
             kind: 'for',
             item: match[1],
-            iterable: toRef(match[2]),
+            iterable: parseExpression(match[2].trim()),
             body: bodyBlock.body,
         },
         nextIndex: bodyBlock.nextIndex,
@@ -303,9 +304,16 @@ const parseStatement = (
     resolveAliases: ReadonlySet<string>,
 ): DslStmt => {
     if (statement.startsWith('output ')) {
-        const match = statement.match(/^output\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*([A-Za-z0-9_.]+)$/);
+        const match = statement.match(/^output\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*([\s\S]+)$/);
         if (!match) {throw new DslParseError(`invalid output statement: ${statement}`);}
-        return {kind: 'output', name: match[1], expr: toRef(match[2])};
+        return {kind: 'output', name: match[1], expr: parseExpression(match[2].trim())};
+    }
+    if (statement.startsWith('ensure ')) {
+        const condition = parseExpression(statement.slice('ensure '.length).trim());
+        if (condition.kind !== 'ref' && condition.kind !== 'compute') {
+            throw new DslParseError('ensure requires a ref or compute expression');
+        }
+        return {kind: 'ensure', condition};
     }
     const checkpointLet = statement.match(/^let\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(use\s+checkpoint\s+[\s\S]+)$/);
     if (checkpointLet) {
@@ -446,6 +454,14 @@ const parseStatement = (
 };
 
 const parseLet = (statement: string, entityAliases: ReadonlySet<string>): LetStmt => {
+    const computeMatch = statement.match(/^let\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*compute\s+([\s\S]+)$/);
+    if (computeMatch) {
+        return {
+            kind: 'let',
+            name: computeMatch[1],
+            expr: {kind: 'compute', expr: parseComputeExpression(computeMatch[2])},
+        };
+    }
     const entityQuery = statement.match(/^let\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*query\s+([A-Za-z0-9_.()]+)$/);
     if (entityQuery) {
         const reference = parseEntityReference(entityQuery[2], entityAliases);
@@ -567,6 +583,18 @@ const parseObjectLiteral = (source: string): unknown => {
     } catch (error) {
         throw new DslParseError(`invalid object literal: ${error instanceof Error ? error.message : String(error)}`);
     }
+};
+
+const parseExpression = (source: string): DslExpr => {
+    const trimmed = source.trim();
+    if (!trimmed) {throw new DslParseError('DSL expression is required');}
+    if (trimmed.startsWith('compute ')) {
+        return {kind: 'compute', expr: parseComputeExpression(trimmed.slice('compute '.length))};
+    }
+    if (!/^[A-Za-z_][A-Za-z0-9_.]*$/.test(trimmed)) {
+        throw new DslParseError(`invalid DSL expression: ${source}`);
+    }
+    return toRef(trimmed);
 };
 
 const toRef = (value: string): RefExpr => ({

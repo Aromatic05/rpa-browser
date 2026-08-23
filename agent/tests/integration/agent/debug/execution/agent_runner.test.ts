@@ -83,17 +83,18 @@ test('paused DSL Agent runner lets the model inspect, step and continue a retain
         turns: 6,
         toolCalls: 5,
         readCalls: 3,
-        effectCalls: 2,
+        controlCalls: 2,
+        effectCalls: 0,
         failedToolCalls: 0,
         postErrorEffectCalls: 0,
     });
 
     const step = result.trace.tools.find((tool) => tool.toolName === 'debug.step')!;
-    assert.equal(step.classification, 'effect');
+    assert.equal(step.classification, 'control');
     assert.equal(step.worldBefore?.captureRevision, 1);
     assert.equal(step.worldAfter?.captureRevision, 2);
     const continueCall = result.trace.tools.find((tool) => tool.toolName === 'debug.continue')!;
-    assert.equal(continueCall.classification, 'effect');
+    assert.equal(continueCall.classification, 'control');
     assert.equal(continueCall.worldBefore?.captureRevision, 2);
     assert.equal(continueCall.worldAfter, null);
 });
@@ -154,7 +155,8 @@ test('paused DSL Agent runner preserves a structured failed terminal state after
         turns: 4,
         toolCalls: 3,
         readCalls: 2,
-        effectCalls: 1,
+        controlCalls: 1,
+        effectCalls: 0,
         failedToolCalls: 0,
         postErrorEffectCalls: 0,
     });
@@ -204,7 +206,8 @@ test('paused DSL Agent runner can abort before a pending World effect', async ()
         turns: 3,
         toolCalls: 2,
         readCalls: 1,
-        effectCalls: 1,
+        controlCalls: 1,
+        effectCalls: 0,
         failedToolCalls: 0,
         postErrorEffectCalls: 0,
     });
@@ -268,7 +271,8 @@ test('paused DSL Agent runner exposes executed effects as a pure journal read', 
         turns: 5,
         toolCalls: 4,
         readCalls: 3,
-        effectCalls: 1,
+        controlCalls: 1,
+        effectCalls: 0,
         failedToolCalls: 0,
         postErrorEffectCalls: 0,
     });
@@ -322,7 +326,8 @@ test('paused DSL Agent runner handles World conflict through pure refresh before
         turns: 5,
         toolCalls: 4,
         readCalls: 2,
-        effectCalls: 2,
+        controlCalls: 2,
+        effectCalls: 0,
         failedToolCalls: 0,
         postErrorEffectCalls: 0,
     });
@@ -336,4 +341,64 @@ test('paused DSL Agent runner handles World conflict through pure refresh before
     assert.equal(refresh.worldAfter?.captureRevision, 2);
     assert.equal(continueCalls[1].worldBefore?.captureRevision, 2);
     assert.equal(continueCalls[1].worldAfter, null);
+});
+test('paused DSL Agent runner inspects invariant failure without any World effect', async () => {
+    const faux = createFauxCore({provider: 'faux-debugger', models: [{id: 'debugger'}]});
+    faux.setResponses([
+        fauxAssistantMessage(fauxToolCall('debug.execution', {})),
+        fauxAssistantMessage(fauxToolCall('debug.compute', {
+            expr: {
+                op: 'eq',
+                args: [
+                    {ref: {path: 'input.actual'}},
+                    {ref: {path: 'input.expected'}},
+                ],
+            },
+        })),
+        fauxAssistantMessage(fauxToolCall('debug.effects', {})),
+        fauxAssistantMessage(fauxToolCall('debug.continue', {})),
+        fauxAssistantMessage('invariant inspected'),
+    ]);
+    const [view] = await createViews();
+    const runner = createPausedDslDebugAgentRunner({
+        source: `
+            ensure compute eq(input.actual, input.expected)
+            click input.target
+        `,
+        context: {
+            workspaceName: 'ws-1',
+            deps: {} as RunStepsDeps,
+            input: {actual: 1, expected: 2, target: {nodeId: 'submit'}},
+            stepExecutionPort: {
+                execute: async (step) => ({stepId: step.id, ok: true, data: {}}),
+            },
+        },
+        worldViewSource: {pin: async () => view},
+        debug: {breakOnFailure: true},
+        modelRuntime: {
+            resolve: (provider, model) => provider === 'faux-debugger' && model === 'debugger'
+                ? {model: faux.getModel(), streamFn: faux.streamSimple}
+                : null,
+        },
+    });
+
+    const result = await runner.run({
+        provider: 'faux-debugger',
+        model: 'debugger',
+        prompt: 'Inspect the invariant failure and terminalize it.',
+    });
+
+    assert.equal(result.text, 'invariant inspected');
+    assert.equal(result.execution.status, 'failed');
+    if (result.execution.status !== 'failed') {throw new Error('expected failed execution');}
+    assert.equal(result.execution.failure.code, 'ERR_DSL_ENSURE_FAILED');
+    assert.deepEqual(result.trace.metrics, {
+        turns: 5,
+        toolCalls: 4,
+        readCalls: 3,
+        controlCalls: 1,
+        effectCalls: 0,
+        failedToolCalls: 0,
+        postErrorEffectCalls: 0,
+    });
 });

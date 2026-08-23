@@ -24,6 +24,7 @@ export type AgentTraceSnapshot = {
         turns: number;
         toolCalls: number;
         readCalls: number;
+        controlCalls: number;
         effectCalls: number;
         failedToolCalls: number;
         postErrorEffectCalls: number;
@@ -45,6 +46,7 @@ export const createAgentTraceCollector = (options: AgentTraceCollectorOptions): 
     let turns = 0;
     let toolCalls = 0;
     let readCalls = 0;
+    let controlCalls = 0;
     let effectCalls = 0;
     let failedToolCalls = 0;
     let postErrorEffectCalls = 0;
@@ -72,6 +74,8 @@ export const createAgentTraceCollector = (options: AgentTraceCollectorOptions): 
                 toolCalls += 1;
                 if (classification === 'read') {
                     readCalls += 1;
+                } else if (classification === 'control') {
+                    controlCalls += 1;
                 } else {
                     effectCalls += 1;
                     if (sawToolError) {postErrorEffectCalls += 1;}
@@ -94,7 +98,7 @@ export const createAgentTraceCollector = (options: AgentTraceCollectorOptions): 
             }
         },
         snapshot: () => structuredClone({
-            metrics: {turns, toolCalls, readCalls, effectCalls, failedToolCalls, postErrorEffectCalls},
+            metrics: {turns, toolCalls, readCalls, controlCalls, effectCalls, failedToolCalls, postErrorEffectCalls},
             tools,
         }),
     };

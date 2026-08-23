@@ -11,5 +11,11 @@ const readTools = new Set([
     'debug.compute',
 ]);
 
+const controlTools = new Set([
+    'debug.step',
+    'debug.continue',
+    'debug.abort',
+]);
+
 export const classifyPausedDslDebugToolCall = (name: string): AgentToolClassification =>
-    readTools.has(name) ? 'read' : 'effect';
+    readTools.has(name) ? 'read' : controlTools.has(name) ? 'control' : 'effect';

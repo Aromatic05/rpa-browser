@@ -1,5 +1,6 @@
-import type {ComputeEvalScope} from '../../../runner/compute/evaluate';
-import type {ComputeExpr, StepArgsMap} from '../../../runner/steps/types';
+import type {ComputeEvalScope} from '../../../compute/evaluate';
+import type {StepArgsMap} from '../../../runner/steps/types';
+import type {ComputeExpr} from '../../../compute/types';
 
 const string = {type: 'string'} as const;
 const primaryKey = {

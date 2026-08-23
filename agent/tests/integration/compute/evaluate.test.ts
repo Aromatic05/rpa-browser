@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {evaluateComputeExpression} from '../../../../src/runner/compute/evaluate';
+import {evaluateComputeExpression} from '../../../src/compute/evaluate';
 
 test('compute evaluator is pure over an explicit scope', () => {
     const scope = {

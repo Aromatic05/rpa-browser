@@ -1,5 +1,6 @@
 import {isDeepStrictEqual} from 'node:util';
-import type {ComputeExpr, ComputeValue} from '../steps/types';
+import type {ComputeExpr, ComputeValue} from './types';
+import {COMPUTE_OP_ARITY} from './ops';
 
 export type ComputeEvalScope = {
     steps?: Readonly<Record<string, unknown>>;
@@ -15,30 +16,23 @@ export const evaluateComputeExpression = (
     scope: ComputeEvalScope = {},
 ): unknown => {
     const args = expr.args.map((arg) => evaluateValue(arg, scope));
+    assertArity(expr.op, args);
     switch (expr.op) {
         case 'len':
-            assertArity('len', args, 1);
             return opLen(args[0]);
         case 'exists':
-            assertArity('exists', args, 1);
             return opExists(args[0]);
         case 'first':
-            assertArity('first', args, 1);
             return opFirst(args[0]);
         case 'get':
-            assertArity('get', args, 2);
             return opGet(args[0], args[1]);
         case 'eq':
-            assertArity('eq', args, 2);
             return isDeepStrictEqual(args[0], args[1]);
         case 'not':
-            assertArity('not', args, 1);
             return !toBoolean(args[0]);
         case 'and':
-            assertArity('and', args, 2);
             return toBoolean(args[0]) && toBoolean(args[1]);
         case 'or':
-            assertArity('or', args, 2);
             return toBoolean(args[0]) || toBoolean(args[1]);
         default:
             throw new Error(`unsupported compute op: ${(expr as {op?: string}).op || 'unknown'}`);
@@ -93,6 +87,7 @@ const opGet = (value: unknown, indexValue: unknown): unknown => {
 
 const toBoolean = (value: unknown): boolean => typeof value === 'boolean' ? value : Boolean(value);
 
-const assertArity = (op: string, args: unknown[], expected: number): void => {
+const assertArity = (op: ComputeExpr['op'], args: unknown[]): void => {
+    const expected = COMPUTE_OP_ARITY[op];
     if (args.length !== expected) {throw new Error(`${op} expects ${expected} args`);}
 };
