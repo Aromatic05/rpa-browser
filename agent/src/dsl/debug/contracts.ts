@@ -41,6 +41,23 @@ export type DslBeforeEffectEvent = Readonly<{
     effect: DslEffectDescriptor;
 }>;
 
+export type DslEffectOutcome =
+    | Readonly<{status: 'succeeded'}>
+    | Readonly<{
+        status: 'failed';
+        error: Readonly<{
+            code: string;
+            message: string;
+            details?: unknown;
+        }>;
+    }>;
+
+export type DslAfterEffectEvent = Readonly<{
+    location: DslStatementLocation;
+    effect: DslEffectDescriptor;
+    outcome: DslEffectOutcome;
+}>;
+
 export type DslFailureDescriptor = Readonly<{
     stepId: string;
     stepName: StepName;
@@ -60,6 +77,7 @@ export type DslFailureEvent = Readonly<{
 export type DslDebugPort = {
     beforeStatement: (event: DslBeforeStatementEvent) => void | Promise<void>;
     beforeEffect?: (event: DslBeforeEffectEvent) => void | Promise<void>;
+    afterEffect?: (event: DslAfterEffectEvent) => void | Promise<void>;
     onFailure?: (event: DslFailureEvent) => void | Promise<void>;
 };
 

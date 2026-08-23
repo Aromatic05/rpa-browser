@@ -3,6 +3,7 @@ import type {AgentToolClassification} from '../../tools/policy';
 const readTools = new Set([
     'debug.execution',
     'debug.scope',
+    'debug.effects',
     'debug.world',
     'debug.query',
     'debug.compute',

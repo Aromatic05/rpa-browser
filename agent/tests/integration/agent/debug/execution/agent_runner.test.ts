@@ -207,3 +207,69 @@ test('paused DSL Agent runner can abort before a pending World effect', async ()
         postErrorEffectCalls: 0,
     });
 });
+
+test('paused DSL Agent runner exposes executed effects as a pure journal read', async () => {
+    const faux = createFauxCore({provider: 'faux-debugger', models: [{id: 'debugger'}]});
+    faux.setResponses([
+        fauxAssistantMessage(fauxToolCall('debug.effects', {})),
+        fauxAssistantMessage(fauxToolCall('debug.step', {})),
+        fauxAssistantMessage(fauxToolCall('debug.effects', {})),
+        fauxAssistantMessage('journal inspected'),
+    ]);
+    const [firstView, secondView] = await createViews();
+    let revision = 1;
+    let clickCalls = 0;
+    const runner = createPausedDslDebugAgentRunner({
+        source: `
+            click input.target
+            output done = input.done
+        `,
+        context: {
+            workspaceName: 'ws-1',
+            deps: {} as RunStepsDeps,
+            input: {target: {nodeId: 'submit'}, done: true},
+            stepExecutionPort: {
+                execute: async (step) => {
+                    clickCalls += 1;
+                    revision = 2;
+                    return {stepId: step.id, ok: true, data: {clicked: true}};
+                },
+            },
+        },
+        worldViewSource: {pin: async () => revision === 1 ? firstView : secondView},
+        debug: {breakBeforeEffects: true},
+        modelRuntime: {
+            resolve: (provider, model) => provider === 'faux-debugger' && model === 'debugger'
+                ? {model: faux.getModel(), streamFn: faux.streamSimple}
+                : null,
+        },
+    });
+
+    const result = await runner.run({
+        provider: 'faux-debugger',
+        model: 'debugger',
+        prompt: 'Inspect the effect journal before and after one step.',
+    });
+
+    assert.equal(result.text, 'journal inspected');
+    assert.equal(result.execution.status, 'paused');
+    if (result.execution.status !== 'paused') {throw new Error('expected paused execution');}
+    assert.equal(result.execution.pause.location.path, 'body.1');
+    assert.equal(clickCalls, 1);
+    const effects = result.session.effects(result.execution.pause.continuationId);
+    assert.equal(effects.length, 1);
+    assert.equal(effects[0].effect.stepName, 'browser.click');
+    assert.equal(effects[0].worldBefore.revision.captureRevision, 1);
+    assert.equal(effects[0].worldAfter.revision.captureRevision, 2);
+    assert.deepEqual(result.trace.metrics, {
+        turns: 4,
+        toolCalls: 3,
+        readCalls: 2,
+        effectCalls: 1,
+        failedToolCalls: 0,
+        postErrorEffectCalls: 0,
+    });
+
+    result.session.abort(result.execution.pause.continuationId);
+    await assert.rejects(result.session.waitForCompletion());
+});

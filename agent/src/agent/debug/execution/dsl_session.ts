@@ -2,7 +2,7 @@ import {
     createDslDebugController,
     type CreateDslDebugControllerOptions,
 } from '../../../dsl/debug/controller';
-import type {PausedDslExecution} from '../../../dsl/debug/contracts';
+import type {DslDebugPort, PausedDslExecution} from '../../../dsl/debug/contracts';
 import {DslDebugAbortError} from '../../../dsl/debug/errors';
 import {
     runDslSource,
@@ -12,6 +12,8 @@ import {
 import type {ComputeEvalScope} from '../../../runner/compute/evaluate';
 import type {ComputeExpr, StepArgsMap} from '../../../runner/steps/types';
 import type {WorldViewSource} from '../../worldview/contracts';
+import {describeWorldView} from '../../worldview/descriptor';
+import {createDebugEffectJournal} from '../effects/journal';
 import {createDebugQuerySession} from '../query/session';
 import type {DebugQuerySession} from '../query/contracts';
 import type {
@@ -36,9 +38,27 @@ export const createDslDebugExecutionSession = (
     options: CreateDslDebugExecutionSessionOptions,
 ): DslDebugExecutionSession => {
     const controller = createDslDebugController(options.debug);
+    const journal = createDebugEffectJournal();
+    const debugPort: DslDebugPort = {
+        beforeStatement: controller.port.beforeStatement,
+        beforeEffect: async (event) => {
+            journal.begin(event, describeWorldView(await options.worldViewSource.pin()));
+            try {
+                await controller.port.beforeEffect?.(event);
+            } catch (error) {
+                journal.cancel(event.effect.stepId);
+                throw error;
+            }
+        },
+        afterEffect: async (event) => {
+            journal.finish(event, describeWorldView(await options.worldViewSource.pin()));
+            await controller.port.afterEffect?.(event);
+        },
+        onFailure: controller.port.onFailure,
+    };
     const completion: Promise<RunDslSourceResult> = runDslSource(options.source, {
         ...options.context,
-        debugPort: controller.port,
+        debugPort,
     });
     let active: ActivePause | null = null;
 
@@ -110,6 +130,10 @@ export const createDslDebugExecutionSession = (
             expr: ComputeExpr,
             scope: ComputeEvalScope = {},
         ) => requireActive(continuationId).debug.compute(expr, scope),
+        effects: (continuationId: string) => {
+            requireActive(continuationId);
+            return journal.list();
+        },
         continue: (continuationId: string) => {release(continuationId, 'continue');},
         step: (continuationId: string) => {release(continuationId, 'step');},
         abort: (continuationId: string) => {release(continuationId, 'abort');},

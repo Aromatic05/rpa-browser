@@ -87,6 +87,19 @@ export const createPausedDslDebugAgentTools = (
             execute: async () => toolResult({scope: requirePause().scope, world: requirePause().world}),
         },
         {
+            name: 'debug.effects',
+            label: 'debug.effects',
+            description: 'Read the executed World-effect journal. Pending or aborted effects are excluded; records include outcome and before/after World revisions.',
+            parameters: Type.Object({}, {additionalProperties: false}),
+            execute: async () => {
+                const current = requirePause();
+                return toolResult({
+                    effects: execution.effects(current.continuationId),
+                    world: current.world,
+                });
+            },
+        },
+        {
             name: 'debug.world',
             label: 'debug.world',
             description: 'Read the pinned WorldView descriptor for the current paused continuation.',

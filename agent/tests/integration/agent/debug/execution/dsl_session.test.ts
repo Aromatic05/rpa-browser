@@ -237,7 +237,93 @@ test('aborting an effect pause returns aborted without executing the pending bro
 
     const paused = await execution.waitForPause();
     assert.equal(paused.reason, 'effect');
-    const terminal = await execution.advance(paused.continuationId, 'abort' as never);
+    assert.deepEqual(execution.effects(paused.continuationId), []);
+    const terminal = await execution.advance(paused.continuationId, 'abort');
     assert.equal(terminal.status, 'aborted');
     assert.equal(clickCalls, 0);
+});
+
+test('effect journal records only executed effects with before and after World revisions', async () => {
+    const [firstView, secondView] = await createViews();
+    let revision = 1;
+    const execution = createDslDebugExecutionSession({
+        source: `
+            snapshot
+            click input.target
+            output done = input.done
+        `,
+        context: {
+            workspaceName: 'ws-1',
+            deps,
+            input: {target: {nodeId: 'submit'}, done: true},
+            stepExecutionPort: {
+                execute: async (step) => {
+                    if (step.name === 'browser.click') {revision = 2;}
+                    return {stepId: step.id, ok: true, data: {}};
+                },
+            },
+        },
+        worldViewSource: {pin: async () => revision === 1 ? firstView : secondView},
+        debug: {breakBeforeEffects: true},
+    });
+
+    const beforeEffect = await execution.waitForPause();
+    assert.equal(beforeEffect.reason, 'effect');
+    assert.deepEqual(execution.effects(beforeEffect.continuationId), []);
+
+    const stepped = await execution.advance(beforeEffect.continuationId, 'step');
+    assert.equal(stepped.status, 'paused');
+    if (stepped.status !== 'paused') {throw new Error('expected pause after effect');}
+    const effects = execution.effects(stepped.pause.continuationId);
+    assert.equal(effects.length, 1);
+    assert.equal(effects[0].sequence, 1);
+    assert.equal(effects[0].location.path, 'body.1');
+    assert.equal(effects[0].effect.stepName, 'browser.click');
+    assert.deepEqual(effects[0].effect.args, {nodeId: 'submit'});
+    assert.deepEqual(effects[0].outcome, {status: 'succeeded'});
+    assert.equal(effects[0].worldBefore.revision.captureRevision, 1);
+    assert.equal(effects[0].worldAfter.revision.captureRevision, 2);
+    assert.equal(Object.isFrozen(effects[0]), true);
+
+    execution.continue(stepped.pause.continuationId);
+    await execution.waitForCompletion();
+});
+
+test('failed effects enter the journal before the failure pause', async () => {
+    const [firstView, secondView] = await createViews();
+    let revision = 1;
+    const execution = createDslDebugExecutionSession({
+        source: 'click input.target',
+        context: {
+            workspaceName: 'ws-1',
+            deps,
+            input: {target: {nodeId: 'missing'}},
+            stepExecutionPort: {
+                execute: async (step) => {
+                    revision = 2;
+                    return {
+                        stepId: step.id,
+                        ok: false,
+                        error: {code: 'ERR_NOT_FOUND', message: 'missing', details: {matches: 0}},
+                    };
+                },
+            },
+        },
+        worldViewSource: {pin: async () => revision === 1 ? firstView : secondView},
+        debug: {breakOnFailure: true},
+    });
+
+    const paused = await execution.waitForPause();
+    assert.equal(paused.reason, 'failure');
+    const effects = execution.effects(paused.continuationId);
+    assert.equal(effects.length, 1);
+    assert.equal(effects[0].effect.stepName, 'browser.click');
+    assert.deepEqual(effects[0].outcome, {
+        status: 'failed',
+        error: {code: 'ERR_NOT_FOUND', message: 'missing', details: {matches: 0}},
+    });
+    assert.equal(effects[0].worldBefore.revision.captureRevision, 1);
+    assert.equal(effects[0].worldAfter.revision.captureRevision, 2);
+
+    await execution.advance(paused.continuationId, 'continue');
 });

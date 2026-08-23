@@ -8,6 +8,7 @@ import type {
 } from '../../../dsl/debug/contracts';
 import type {ComputeExpr, StepArgsMap} from '../../../runner/steps/types';
 import type {DebugComputeResult, DebugQueryReadResult} from '../query/contracts';
+import type {DebugEffectRecord} from '../effects/contracts';
 import type {WorldViewDescriptor} from '../../worldview/contracts';
 
 type PausedDslDebugExecutionBase = Readonly<{
@@ -51,6 +52,7 @@ export type DslDebugExecutionSession = {
         expr: ComputeExpr,
         scope?: ComputeEvalScope,
     ) => DebugComputeResult;
+    effects: (continuationId: string) => readonly DebugEffectRecord[];
     continue: (continuationId: string) => void;
     step: (continuationId: string) => void;
     abort: (continuationId: string) => void;

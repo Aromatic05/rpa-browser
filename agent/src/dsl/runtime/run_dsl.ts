@@ -230,6 +230,9 @@ const executeStmt = async (
                 beforeEffect: async (step) => {
                     await pauseBeforeEffect(step, execution);
                 },
+                afterEffect: async (step, result) => {
+                    await notifyAfterEffect(step, result, execution);
+                },
                 onStepFailure: async (step, result) => {
                     await pauseOnFailure(step, result, execution);
                 },
@@ -304,6 +307,7 @@ const emitStepAndWait = async (
         stepId: step.id,
         ok: result.ok,
     });
+    await notifyAfterEffect(step, result, {ctx, location});
     if (!result.ok) {
         const failure = await pauseOnFailure(step, result, {scope, ctx, location});
         throw new DslRuntimeError(
@@ -355,13 +359,42 @@ const pauseBeforeEffect = async (
     await execution.ctx.debugPort?.beforeEffect?.({
         location: execution.location,
         scope: snapshotDslScope(execution.scope),
-        effect: Object.freeze({
-            stepId: step.id,
-            stepName: step.name,
-            args: structuredClone(step.args),
-        }),
+        effect: describeEffect(step),
     });
 };
+
+const notifyAfterEffect = async (
+    step: StepUnion,
+    result: ExecutorStepResult,
+    execution: {
+        ctx: RunDslContext;
+        location: DslStatementLocation;
+    },
+): Promise<void> => {
+    if (classifyBrowserOperation(step.name, step.args) !== 'effect') {return;}
+    await execution.ctx.debugPort?.afterEffect?.({
+        location: execution.location,
+        effect: describeEffect(step),
+        outcome: result.ok
+            ? Object.freeze({status: 'succeeded' as const})
+            : Object.freeze({
+                status: 'failed' as const,
+                error: Object.freeze({
+                    code: result.error?.code || 'ERR_DSL_STEP_FAILED',
+                    message: result.error?.message || `DSL step failed: ${step.name}`,
+                    ...(result.error?.details === undefined
+                        ? {}
+                        : {details: structuredClone(result.error.details)}),
+                }),
+            }),
+    });
+};
+
+const describeEffect = (step: StepUnion) => Object.freeze({
+    stepId: step.id,
+    stepName: step.name,
+    args: structuredClone(step.args),
+});
 
 const toExecutorStepResult = (result: TaskStepResult): ExecutorStepResult => {
     return {

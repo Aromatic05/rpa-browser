@@ -65,6 +65,7 @@ test('paused DSL Agent tools split pure debugger reads from execution effects', 
     assert.deepEqual(debuggerTools.tools.map((tool) => tool.name), [
         'debug.execution',
         'debug.scope',
+        'debug.effects',
         'debug.world',
         'debug.query',
         'debug.compute',
@@ -72,7 +73,7 @@ test('paused DSL Agent tools split pure debugger reads from execution effects', 
         'debug.continue',
         'debug.abort',
     ]);
-    for (const name of ['debug.execution', 'debug.scope', 'debug.world', 'debug.query', 'debug.compute']) {
+    for (const name of ['debug.execution', 'debug.scope', 'debug.effects', 'debug.world', 'debug.query', 'debug.compute']) {
         assert.equal(classifyPausedDslDebugToolCall(name), 'read');
     }
     assert.equal(classifyPausedDslDebugToolCall('debug.step'), 'effect');
@@ -91,6 +92,9 @@ test('paused DSL Agent tools split pure debugger reads from execution effects', 
     });
     assert.equal((computed.details as any).value, true);
     assert.equal((computed.details as any).world.revision.captureRevision, 1);
+    const effects = debuggerTools.tools.find((tool) => tool.name === 'debug.effects')!;
+    const effectResult = await effects.execute('effects-1', {});
+    assert.deepEqual((effectResult.details as any).effects, []);
 
     const step = debuggerTools.tools.find((tool) => tool.name === 'debug.step')!;
     const stepped = await step.execute('step-1', {});
