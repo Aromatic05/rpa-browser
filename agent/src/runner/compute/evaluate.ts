@@ -2,10 +2,12 @@ import {isDeepStrictEqual} from 'node:util';
 import type {ComputeExpr, ComputeValue} from '../steps/types';
 
 export type ComputeEvalScope = {
-    steps?: Record<string, unknown>;
-    input?: Record<string, unknown>;
-    local?: Record<string, unknown>;
-    output?: Record<string, unknown>;
+    steps?: Readonly<Record<string, unknown>>;
+    input?: Readonly<Record<string, unknown>>;
+    local?: Readonly<Record<string, unknown>>;
+    vars?: Readonly<Record<string, unknown>>;
+    output?: Readonly<Record<string, unknown>>;
+    failure?: Readonly<Record<string, unknown>>;
 };
 
 export const evaluateComputeExpression = (

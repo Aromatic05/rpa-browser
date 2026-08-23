@@ -19,6 +19,8 @@ import { adaptDslQueryResult } from './value_adapter';
 import type { DslEntityRulesResolver } from '../link';
 import type { DslResolveResolver } from '../link';
 import { injectStepResolve } from '../../runner/step_resolve';
+import type {DslDebugPort, DslLoopFrame, DslStatementLocation} from '../debug/contracts';
+import {snapshotDslScope} from '../debug/snapshot';
 
 export type RunDslContext = {
     workspaceName: string;
@@ -32,6 +34,8 @@ export type RunDslContext = {
     stepResolves?: Record<string, StepResolve>;
     stepExecutionPort?: StepExecutionPort;
     checkpointCallStack?: string[];
+    debugPort?: DslDebugPort;
+    debugProgramId?: string;
 };
 
 export type StepExecutionPort = { execute(step: StepUnion): Promise<ExecutorStepResult> };
@@ -57,7 +61,7 @@ export const runDsl = async (program: DslProgram, ctx: RunDslContext): Promise<R
 
     await taskRunner?.start();
     try {
-        await executeStatements(program.body, scope, ctx, port, logger);
+        await executeStatements(program.body, scope, ctx, port, logger, {blockPath: 'body', loops: []});
     } finally {
         await taskRunner?.close();
     }
@@ -71,12 +75,23 @@ const executeStatements = async (
     ctx: RunDslContext,
     port: StepExecutionPort,
     logger: Logger,
+    execution: {blockPath: string; loops: readonly DslLoopFrame[]},
 ): Promise<void> => {
     for (let index = 0; index < body.length; index += 1) {
         const stmt = body[index];
+        const location: DslStatementLocation = Object.freeze({
+            programId: ctx.debugProgramId ?? 'main',
+            path: `${execution.blockPath}.${index}`,
+            kind: stmt.kind,
+            loops: execution.loops.map((loop) => Object.freeze({...loop})),
+        });
+        await ctx.debugPort?.beforeStatement({
+            location,
+            scope: snapshotDslScope(scope),
+        });
         safeLog(logger, 'debug', 'dsl.stmt.start', { index, kind: stmt.kind });
         try {
-            await executeStmt(stmt, scope, ctx, port, logger, index);
+            await executeStmt(stmt, scope, ctx, port, logger, index, location);
             safeLog(logger, 'debug', 'dsl.stmt.end', { index, kind: stmt.kind });
         } catch (error) {
             safeLog(logger, 'error', 'dsl.error', { stmtIndex: index, error: toErrorLog(error) });
@@ -92,6 +107,7 @@ const executeStmt = async (
     port: StepExecutionPort,
     logger: Logger,
     stmtIndex: number,
+    location: DslStatementLocation,
 ): Promise<void> => {
     switch (stmt.kind) {
         case 'let': {
@@ -208,6 +224,7 @@ const executeStmt = async (
                 entityRulesResolver: ctx.entityRulesResolver,
                 resolveResolver: ctx.resolveResolver,
                 callStack: ctx.checkpointCallStack,
+                debugPort: ctx.debugPort,
             });
             if (stmt.bind) {
                 setDslValue(scope, `vars.${stmt.bind}`, output);
@@ -215,10 +232,15 @@ const executeStmt = async (
             return;
         }
         case 'if': {
-            const branch = resolveDslValue(stmt.condition, scope) ? stmt.then : stmt.else || [];
+            const condition = Boolean(resolveDslValue(stmt.condition, scope));
+            const branch = condition ? stmt.then : stmt.else || [];
+            const branchName = condition ? 'then' : 'else';
             const before = new Set(Object.keys(scope.vars));
             const child = createChildDslScope(scope);
-            await executeStatements(branch, child, ctx, port, logger);
+            await executeStatements(branch, child, ctx, port, logger, {
+                blockPath: `${location.path}.${branchName}`,
+                loops: location.loops,
+            });
             const after = collectDefinitelyAssignedVariables([stmt], before);
             promoteDslVariables(scope, child, [...after].filter((name) => !before.has(name)));
             return;
@@ -228,11 +250,16 @@ const executeStmt = async (
             if (!Array.isArray(iterable)) {
                 throw new DslRuntimeError('DSL for iterable must resolve to an array', 'ERR_DSL_BAD_ITERABLE');
             }
-            for (const item of iterable) {
+            const items = iterable as unknown[];
+            for (let iteration = 0; iteration < items.length; iteration += 1) {
+                const item = items[iteration];
                 const child = createChildDslScope(scope);
                 setDslValue(child, `vars.${stmt.item}`, item);
                 safeLog(logger, 'debug', 'dsl.scope.write', { key: `vars.${stmt.item}`, valuePreview: previewValue(item) });
-                await executeStatements(stmt.body, child, ctx, port, logger);
+                await executeStatements(stmt.body, child, ctx, port, logger, {
+                    blockPath: `${location.path}.body`,
+                    loops: [...location.loops, {path: location.path, iteration}],
+                });
             }
             return;
         }
