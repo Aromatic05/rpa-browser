@@ -60,13 +60,16 @@ export const createDslDebugExecutionSession = (
         const pause = await controller.waitForPause();
         const debug = createDebugQuerySession(await options.worldViewSource.pin());
         active = {pause, debug};
-        return Object.freeze({
+        const base = {
             continuationId: pause.continuationId,
             reason: pause.reason,
             location: pause.location,
             scope: pause.scope,
             world: debug.world,
-        });
+        } as const;
+        return pause.reason === 'effect'
+            ? Object.freeze({...base, reason: 'effect' as const, effect: pause.effect})
+            : Object.freeze({...base, reason: 'statement' as const});
     };
 
     const advance = async (

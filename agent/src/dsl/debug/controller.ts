@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import type {
+    DslBeforeEffectEvent,
     DslBeforeStatementEvent,
     DslDebugController,
     PausedDslExecution,
@@ -8,6 +9,7 @@ import type {
 export type CreateDslDebugControllerOptions = {
     initialMode?: 'continue' | 'step';
     breakpoints?: readonly string[];
+    breakBeforeEffects?: boolean;
 };
 
 type ActivePause = {
@@ -38,22 +40,35 @@ export const createDslDebugController = (
         active.resume();
     };
 
+    const pause = async (value: PausedDslExecution): Promise<void> => {
+        if (active) {throw new Error('DSL debugger already has an active continuation');}
+        await new Promise<void>((resolve) => {
+            active = {pause: value, resume: resolve};
+            publish(value);
+        });
+        active = null;
+    };
+
     return {
         port: {
             beforeStatement: async (event: DslBeforeStatementEvent) => {
                 if (mode !== 'step' && !breakpoints.has(event.location.path)) {return;}
-                if (active) {throw new Error('DSL debugger already has an active continuation');}
-                const pause: PausedDslExecution = Object.freeze({
+                await pause(Object.freeze({
                     continuationId: crypto.randomUUID(),
                     reason: 'statement',
                     location: event.location,
                     scope: event.scope,
-                });
-                await new Promise<void>((resolve) => {
-                    active = {pause, resume: resolve};
-                    publish(pause);
-                });
-                active = null;
+                }));
+            },
+            beforeEffect: async (event: DslBeforeEffectEvent) => {
+                if (!options.breakBeforeEffects) {return;}
+                await pause(Object.freeze({
+                    continuationId: crypto.randomUUID(),
+                    reason: 'effect',
+                    location: event.location,
+                    scope: event.scope,
+                    effect: event.effect,
+                }));
             },
         },
         waitForPause: async () => {

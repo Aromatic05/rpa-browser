@@ -106,3 +106,46 @@ test('paused DSL Agent tools split pure debugger reads from execution effects', 
     assert.deepEqual((completed.details as any).output, {result: 6});
     assert.equal(snapshotCalls, 1);
 });
+
+test('debug.execution exposes a pending effect before Agent continuation executes it', async () => {
+    const [view] = await createViews();
+    const calls: string[] = [];
+    const execution = createDslDebugExecutionSession({
+        source: `
+            let target = query entity.target "orders.main" {
+              kind: "table.module_action"
+              actionIntent: "approve"
+            }
+            click target
+        `,
+        context: {
+            workspaceName: 'ws-1',
+            deps,
+            stepExecutionPort: {
+                execute: async (step) => {
+                    calls.push(step.name);
+                    if (step.name === 'browser.query') {
+                        return {stepId: step.id, ok: true, data: {kind: 'nodeId', nodeId: 'approve-button'}};
+                    }
+                    return {stepId: step.id, ok: true, data: {clicked: true}};
+                },
+            },
+        },
+        worldViewSource: {pin: async () => view},
+        debug: {breakBeforeEffects: true},
+    });
+    const firstPause = await execution.waitForPause();
+    const debuggerTools = createPausedDslDebugAgentTools(execution, firstPause);
+    const inspect = debuggerTools.tools.find((tool) => tool.name === 'debug.execution')!;
+    const inspected = await inspect.execute('inspect-effect', {});
+
+    assert.equal((inspected.details as any).pause.reason, 'effect');
+    assert.equal((inspected.details as any).pause.effect.stepName, 'browser.click');
+    assert.deepEqual((inspected.details as any).pause.effect.args, {nodeId: 'approve-button'});
+    assert.deepEqual(calls, ['browser.query']);
+
+    const continueTool = debuggerTools.tools.find((tool) => tool.name === 'debug.continue')!;
+    const completed = await continueTool.execute('continue-effect', {});
+    assert.equal((completed.details as any).status, 'completed');
+    assert.deepEqual(calls, ['browser.query', 'browser.click']);
+});

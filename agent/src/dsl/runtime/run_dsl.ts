@@ -19,6 +19,7 @@ import { adaptDslQueryResult } from './value_adapter';
 import type { DslEntityRulesResolver } from '../link';
 import type { DslResolveResolver } from '../link';
 import { injectStepResolve } from '../../runner/step_resolve';
+import {classifyBrowserOperation} from '../../runner/steps/effects';
 import type {DslDebugPort, DslLoopFrame, DslStatementLocation} from '../debug/contracts';
 import {snapshotDslScope} from '../debug/snapshot';
 
@@ -109,11 +110,12 @@ const executeStmt = async (
     stmtIndex: number,
     location: DslStatementLocation,
 ): Promise<void> => {
+    const execution = {scope, ctx, port, logger, stmtIndex, location};
     switch (stmt.kind) {
         case 'let': {
             if (stmt.expr.kind === 'query') {
                 const step = buildQueryStep(stmt.expr, (ref) => resolveDslValue(ref, scope));
-                const result = await emitStepAndWait(step, port, logger, stmtIndex);
+                const result = await emitStepAndWait(step, execution);
                 const value = adaptDslQueryResult(result as BrowserQueryResult);
                 setDslValue(scope, `vars.${stmt.name}`, value);
                 safeLog(logger, 'debug', 'dsl.scope.write', { key: `vars.${stmt.name}`, valuePreview: previewValue(value) });
@@ -141,7 +143,7 @@ const executeStmt = async (
                 return;
             }
             if (stmt.action === 'snapshot') {
-                await emitStepAndWait(buildSnapshotStep(), port, logger, stmtIndex);
+                await emitStepAndWait(buildSnapshotStep(), execution);
                 return;
             }
             if (!stmt.target) {
@@ -149,7 +151,7 @@ const executeStmt = async (
             }
             const target = resolveDslValue(stmt.target, scope);
             if (stmt.action === 'click') {
-                await emitStepAndWait(buildClickStep(target, stmt.profileName), port, logger, stmtIndex);
+                await emitStepAndWait(buildClickStep(target, stmt.profileName), execution);
                 return;
             }
             const value = resolveDslValue(stmt.value, scope);
@@ -159,18 +161,18 @@ const executeStmt = async (
                     : stmt.action === 'type'
                       ? buildTypeStep(target, value, stmt.profileName)
                       : buildSelectStep(target, value, stmt.profileName);
-            await emitStepAndWait(step, port, logger, stmtIndex);
+            await emitStepAndWait(step, execution);
             return;
         }
         case 'linked_entity_act': {
             const queryStep = buildQueryStep(stmt.targetQuery, (ref) => resolveDslValue(ref, scope));
-            const queryResult = await emitStepAndWait(queryStep, port, logger, stmtIndex);
+            const queryResult = await emitStepAndWait(queryStep, execution);
             const target = adaptDslQueryResult(
                 queryResult as BrowserQueryResult,
             );
             const profileName = stmt.targetQuery.profileName;
             if (stmt.action === 'click') {
-                await emitStepAndWait(buildClickStep(target, profileName), port, logger, stmtIndex);
+                await emitStepAndWait(buildClickStep(target, profileName), execution);
                 return;
             }
             const value = resolveDslValue(stmt.value, scope);
@@ -179,7 +181,7 @@ const executeStmt = async (
                 : stmt.action === 'type'
                     ? buildTypeStep(target, value, profileName)
                     : buildSelectStep(target, value, profileName);
-            await emitStepAndWait(step, port, logger, stmtIndex);
+            await emitStepAndWait(step, execution);
             return;
         }
         case 'resolve_act': {
@@ -194,7 +196,7 @@ const executeStmt = async (
                 resolveId: stmt.resolveId,
             });
             if (stmt.action === 'click') {
-                await emitStepAndWait(buildClickStep(target), port, logger, stmtIndex);
+                await emitStepAndWait(buildClickStep(target), execution);
                 return;
             }
             const value = resolveDslValue(stmt.value, scope);
@@ -203,7 +205,7 @@ const executeStmt = async (
                 : stmt.action === 'type'
                     ? buildTypeStep(target, value)
                     : buildSelectStep(target, value);
-            await emitStepAndWait(step, port, logger, stmtIndex);
+            await emitStepAndWait(step, execution);
             return;
         }
         case 'form_act':
@@ -219,6 +221,9 @@ const executeStmt = async (
                 scope,
                 checkpointProvider: ctx.checkpointProvider,
                 executeStep: (step) => port.execute(step),
+                beforeEffect: async (step) => {
+                    await pauseBeforeEffect(step, execution);
+                },
                 workspaceName: ctx.workspaceName,
                 deps: ctx.deps,
                 entityRulesResolver: ctx.entityRulesResolver,
@@ -268,15 +273,22 @@ const executeStmt = async (
 
 const emitStepAndWait = async (
     step: StepUnion,
-    port: StepExecutionPort,
-    logger: Logger,
-    stmtIndex: number,
+    execution: {
+        scope: DslScope;
+        ctx: RunDslContext;
+        port: StepExecutionPort;
+        logger: Logger;
+        stmtIndex: number;
+        location: DslStatementLocation;
+    },
 ): Promise<unknown> => {
+    const {scope, ctx, port, logger, stmtIndex, location} = execution;
     safeLog(logger, 'debug', 'dsl.step.emit', {
         stmtIndex,
         stepId: step.id,
         stepName: step.name,
     });
+    await pauseBeforeEffect(step, {scope, ctx, location});
     const result = await port.execute(step);
     safeLog(logger, 'debug', 'dsl.step.result', {
         stmtIndex,
@@ -291,6 +303,26 @@ const emitStepAndWait = async (
         );
     }
     return result.data;
+};
+
+const pauseBeforeEffect = async (
+    step: StepUnion,
+    execution: {
+        scope: DslScope;
+        ctx: RunDslContext;
+        location: DslStatementLocation;
+    },
+): Promise<void> => {
+    if (classifyBrowserOperation(step.name, step.args) !== 'effect') {return;}
+    await execution.ctx.debugPort?.beforeEffect?.({
+        location: execution.location,
+        scope: snapshotDslScope(execution.scope),
+        effect: Object.freeze({
+            stepId: step.id,
+            stepName: step.name,
+            args: structuredClone(step.args),
+        }),
+    });
 };
 
 const toExecutorStepResult = (result: TaskStepResult): ExecutorStepResult => {

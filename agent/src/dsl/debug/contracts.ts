@@ -1,4 +1,5 @@
 import type {DslStmt} from '../ast/types';
+import type {StepName} from '../../runner/steps/types';
 
 export type DslLoopFrame = Readonly<{
     path: string;
@@ -24,16 +25,32 @@ export type DslBeforeStatementEvent = Readonly<{
     scope: DslScopeSnapshot;
 }>;
 
+export type DslEffectDescriptor = Readonly<{
+    stepId: string;
+    stepName: StepName;
+    args: unknown;
+}>;
+
+export type DslBeforeEffectEvent = Readonly<{
+    location: DslStatementLocation;
+    scope: DslScopeSnapshot;
+    effect: DslEffectDescriptor;
+}>;
+
 export type DslDebugPort = {
     beforeStatement: (event: DslBeforeStatementEvent) => void | Promise<void>;
+    beforeEffect?: (event: DslBeforeEffectEvent) => void | Promise<void>;
 };
 
-export type PausedDslExecution = Readonly<{
+type PausedDslExecutionBase = Readonly<{
     continuationId: string;
-    reason: 'statement';
     location: DslStatementLocation;
     scope: DslScopeSnapshot;
 }>;
+
+export type PausedDslExecution =
+    | (PausedDslExecutionBase & Readonly<{reason: 'statement'}>)
+    | (PausedDslExecutionBase & Readonly<{reason: 'effect'; effect: DslEffectDescriptor}>);
 
 export type DslDebugController = {
     readonly port: DslDebugPort;

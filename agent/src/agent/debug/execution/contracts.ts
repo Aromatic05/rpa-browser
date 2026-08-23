@@ -1,17 +1,20 @@
 import type {ComputeEvalScope} from '../../../runner/compute/evaluate';
 import type {RunDslSourceResult} from '../../../dsl/runtime/run_dsl_source';
-import type {DslScopeSnapshot, DslStatementLocation} from '../../../dsl/debug/contracts';
+import type {DslEffectDescriptor, DslScopeSnapshot, DslStatementLocation} from '../../../dsl/debug/contracts';
 import type {ComputeExpr, StepArgsMap} from '../../../runner/steps/types';
 import type {DebugComputeResult, DebugQueryReadResult} from '../query/contracts';
 import type {WorldViewDescriptor} from '../../worldview/contracts';
 
-export type PausedDslDebugExecution = Readonly<{
+type PausedDslDebugExecutionBase = Readonly<{
     continuationId: string;
-    reason: 'statement';
     location: DslStatementLocation;
     scope: DslScopeSnapshot;
     world: WorldViewDescriptor;
 }>;
+
+export type PausedDslDebugExecution =
+    | (PausedDslDebugExecutionBase & Readonly<{reason: 'statement'}>)
+    | (PausedDslDebugExecutionBase & Readonly<{reason: 'effect'; effect: DslEffectDescriptor}>);
 
 export type DslDebugAdvanceResult =
     | Readonly<{status: 'paused'; pause: PausedDslDebugExecution}>

@@ -127,3 +127,44 @@ test('paused DSL execution exposes pure compute against explicit pause-local sco
     execution.continue(paused.continuationId);
     await execution.waitForCompletion();
 });
+
+test('paused DSL execution exposes the pending browser effect before mutation', async () => {
+    const [view] = await createViews();
+    const calls: string[] = [];
+    const execution = createDslDebugExecutionSession({
+        source: `
+            let target = query entity.target "orders.main" {
+              kind: "table.module_action"
+              actionIntent: "approve"
+            }
+            click target
+        `,
+        context: {
+            workspaceName: 'ws-1',
+            deps,
+            stepExecutionPort: {
+                execute: async (step) => {
+                    calls.push(step.name);
+                    if (step.name === 'browser.query') {
+                        return {stepId: step.id, ok: true, data: {kind: 'nodeId', nodeId: 'approve-button'}};
+                    }
+                    return {stepId: step.id, ok: true, data: {clicked: true}};
+                },
+            },
+        },
+        worldViewSource: {pin: async () => view},
+        debug: {breakBeforeEffects: true},
+    });
+
+    const paused = await execution.waitForPause();
+    assert.equal(paused.reason, 'effect');
+    if (paused.reason !== 'effect') {throw new Error('expected effect pause');}
+    assert.equal(paused.location.path, 'body.1');
+    assert.equal(paused.effect.stepName, 'browser.click');
+    assert.deepEqual(paused.effect.args, {nodeId: 'approve-button'});
+    assert.deepEqual(calls, ['browser.query']);
+
+    execution.continue(paused.continuationId);
+    await execution.waitForCompletion();
+    assert.deepEqual(calls, ['browser.query', 'browser.click']);
+});

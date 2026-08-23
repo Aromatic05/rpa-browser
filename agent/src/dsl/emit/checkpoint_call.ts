@@ -31,6 +31,7 @@ export type RunDslCheckpointOptions = {
     resolveResolver?: DslResolveResolver;
     callStack?: string[];
     debugPort?: DslDebugPort;
+    beforeEffect?: (step: StepUnion) => void | Promise<void>;
 };
 
 export const runDslCheckpointCall = async (
@@ -73,6 +74,7 @@ export const runDslCheckpointCall = async (
         executeStep: async (step) => {
             const runtimeStep = injectStepResolve(step, stepResolves);
             if (!runtimeStep.ok) {return {stepId: step.id, ok: false, error: runtimeStep.error};}
+            await options.beforeEffect?.(runtimeStep.step);
             return await options.executeStep(runtimeStep.step);
         },
     });
