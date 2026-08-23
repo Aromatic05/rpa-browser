@@ -305,8 +305,10 @@ test('protocol lock: read_network.limit is retained', () => {
 });
 
 test('protocol lock: browser.query.limit is retained', () => {
-    const block = readStepArgsBlock('browser.query');
-    assert.equal(block.includes('limit?: number;'), true, 'browser.query should expose limit');
+    const step: Step<'browser.query'> = {
+        id: 'q1', name: 'browser.query', args: {from: 'snapshot', limit: 10},
+    };
+    assert.equal('limit' in step.args ? step.args.limit : undefined, 10);
 });
 
 test('protocol lock: take_screenshot.full_page and inline are retained', () => {

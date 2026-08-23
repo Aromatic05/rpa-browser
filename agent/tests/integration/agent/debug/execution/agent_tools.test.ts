@@ -89,6 +89,7 @@ test('paused DSL Agent tools split pure debugger reads from execution effects', 
     assert.deepEqual(debuggerTools.tools.map((tool) => tool.name), [
         'debug.execution',
         'debug.scope',
+        'debug.catalog',
         'debug.explain',
         'debug.effects',
         'debug.diff',
@@ -105,7 +106,7 @@ test('paused DSL Agent tools split pure debugger reads from execution effects', 
         'debug.continue',
         'debug.abort',
     ]);
-    for (const name of ['debug.execution', 'debug.scope', 'debug.explain', 'debug.effects', 'debug.diff', 'debug.transaction', 'debug.transaction_diff', 'debug.world', 'debug.refresh', 'debug.query', 'debug.compute']) {
+    for (const name of ['debug.execution', 'debug.scope', 'debug.catalog', 'debug.explain', 'debug.effects', 'debug.diff', 'debug.transaction', 'debug.transaction_diff', 'debug.world', 'debug.refresh', 'debug.query', 'debug.compute']) {
         assert.equal(classifyPausedDslDebugToolCall(name), 'read');
     }
     assert.equal(classifyPausedDslDebugToolCall('debug.savepoint'), 'control');
@@ -127,6 +128,21 @@ test('paused DSL Agent tools split pure debugger reads from execution effects', 
     });
     assert.equal((computed.details as any).value, true);
     assert.equal((computed.details as any).world.revision.captureRevision, 1);
+    const catalog = debuggerTools.tools.find((tool) => tool.name === 'debug.catalog')!;
+    const catalogResult = await catalog.execute('catalog-1', {});
+    assert.deepEqual(
+        (catalogResult.details as any).entities.map((entity: any) => entity.businessTag).sort(),
+        ['order.form.main', 'order.table.main'],
+    );
+    assert.equal((catalogResult.details as any).world.revision.captureRevision, 1);
+    const query = debuggerTools.tools.find((tool) => tool.name === 'debug.query')!;
+    const queried = await query.execute('query-1', {
+        op: 'entity',
+        businessTag: 'order.table.main',
+        query: 'table.rowCount',
+    });
+    assert.equal((queried.details as any).result.value, 1);
+    assert.equal((queried.details as any).world.revision.captureRevision, 1);
     const effects = debuggerTools.tools.find((tool) => tool.name === 'debug.effects')!;
     const effectResult = await effects.execute('effects-1', {});
     assert.deepEqual((effectResult.details as any).effects, []);

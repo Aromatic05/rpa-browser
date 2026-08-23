@@ -119,6 +119,16 @@ export const createPausedDslDebugAgentTools = (
             execute: async () => toolResult({scope: requirePause().scope, world: requirePause().world}),
         },
         {
+            name: 'debug.catalog',
+            label: 'debug.catalog',
+            description: 'Read the business schema available in the pinned WorldView: entities, fields, actions, row actions, query capabilities, primary keys, and explicit effect reversibility. This is a pure read.',
+            parameters: Type.Object({}, {additionalProperties: false}),
+            execute: async () => {
+                const current = requirePause();
+                return toolResult(execution.catalog(current.continuationId));
+            },
+        },
+        {
             name: 'debug.explain',
             label: 'debug.explain',
             description: 'Explain how one DSL scope path was produced. Returns query/compute/ref/checkpoint/loop provenance and recursively expands dependency paths. This is a pure read.',

@@ -11,6 +11,7 @@ import type {ComputeExpr} from '../../../compute/types';
 import type {DebugComputeResult, DebugQueryReadResult} from '../query/contracts';
 import type {DebugEffectDiffResult, DebugEffectRecord} from '../effects/contracts';
 import type {WorldViewDescriptor} from '../../worldview/contracts';
+import type {WorldCatalog} from '../../worldview/catalog';
 import type {WorldViewDiffResult} from '../../worldview/diff';
 import type {DebugValueExplanation} from '../provenance/contracts';
 import type {
@@ -69,6 +70,7 @@ export type DslDebugExecutionSession = {
         expr: ComputeExpr,
         scope?: ComputeEvalScope,
     ) => DebugComputeResult;
+    catalog: (continuationId: string) => WorldCatalog;
     effects: (continuationId: string) => readonly DebugEffectRecord[];
     explain: (continuationId: string, path: string) => DebugValueExplanation;
     diff: (continuationId: string, effectSequence: number) => DebugEffectDiffResult;

@@ -14,6 +14,7 @@ import type {StepArgsMap} from '../../../runner/steps/types';
 import type {ComputeExpr} from '../../../compute/types';
 import type {WorldView, WorldViewSource} from '../../worldview/contracts';
 import {describeWorldView} from '../../worldview/descriptor';
+import {buildWorldCatalog} from '../../worldview/catalog';
 import {diffWorldViews} from '../../worldview/diff';
 import {isSameWorldView} from '../../worldview/revision';
 import {diffDebugEffect} from '../effects/diff';
@@ -337,6 +338,7 @@ export const createDslDebugExecutionSession = (
             expr: ComputeExpr,
             scope: ComputeEvalScope = {},
         ) => requireActive(continuationId).debug.compute(expr, scope),
+        catalog: (continuationId: string) => buildWorldCatalog(requireActive(continuationId).view),
         effects: (continuationId: string) => {
             requireActive(continuationId);
             return journal.list();

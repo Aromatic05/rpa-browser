@@ -4,6 +4,7 @@ import {
     type PageSnapshotSessionEntry,
     type SemanticBusinessBinding,
 } from '../../snapshot';
+import type {BusinessQueryName, BusinessTarget} from '../../query/contracts';
 
 export type RuntimeEntityKind = 'form' | 'table' | 'dialog' | 'list' | 'panel' | 'toolbar' | 'kv';
 
@@ -26,31 +27,6 @@ export type PageSessionEntityView = {
     entities: PageSessionEntityRecord[];
     byNodeId: Readonly<Record<ObservationNodeId, readonly PageSessionEntityRecord[]>>;
 };
-
-export type BusinessQueryName =
-    | 'table.rowCount'
-    | 'table.headers'
-    | 'table.primaryKey'
-    | 'table.columns'
-    | 'table.currentRows'
-    | 'table.hasNextPage'
-    | 'table.nextPageTarget'
-    | 'form.fields'
-    | 'form.actions';
-
-export type BusinessTarget =
-    | {kind: 'entity.field'; fieldKey: string}
-    | {kind: 'entity.action'; actionIntent: string}
-    | {kind: 'form.field'; fieldKey: string}
-    | {kind: 'form.action'; actionIntent: string}
-    | {kind: 'table.filter'; fieldKey: string}
-    | {kind: 'table.module_action'; actionIntent: string}
-    | {kind: 'table.row'; primaryKey: {fieldKey: string; value: string}}
-    | {
-        kind: 'table.row_action';
-        primaryKey: {fieldKey: string; value: string};
-        actionIntent: string;
-    };
 
 type EntityOperationError = {
     code: 'ERR_NOT_FOUND' | 'ERR_AMBIGUOUS' | 'ERR_BAD_ARGS';

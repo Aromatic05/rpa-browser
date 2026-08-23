@@ -12,6 +12,7 @@ import type { SelectOptionKind } from './executors/select_option/types';
 import type { StepEntityRulesControl } from '../../snapshot/rules/model';
 import type { SnapshotProjectionViewMode } from '../../snapshot/projection';
 import type {ComputeExpr} from '../../compute/types';
+import type {BrowserQueryRequest} from '../../query/contracts';
 
 export type BBox = Rect;
 
@@ -90,25 +91,6 @@ export type BrowserQueryResult =
           nodeIds: string[];
           count: number;
           meta?: Record<string, unknown>;
-      };
-
-export type QueryFromRef =
-    | 'snapshot'
-    | 'snapshot.latest'
-    | {
-          nodeIds: string[];
-      }
-    | {
-          nodes: Array<
-              | {
-                    id: string;
-                }
-              | {
-                    handle: {
-                        nodeId: string;
-                    };
-                }
-          >;
       };
 
 export type ResolveHint = {
@@ -318,78 +300,7 @@ export type StepArgsMap = {
             businessTag?: string | string[];
         };
     };
-    'browser.query':
-        | {
-              from: QueryFromRef;
-              where?: {
-                  role?: string;
-                  tag?: string;
-                  text?: {
-                      contains?: string;
-                  };
-                  attrs?: Record<string, string>;
-              };
-              relation?: 'child' | 'descendant';
-              limit?: number;
-          }
-        | {
-              op: 'entity';
-              businessTag: string;
-              query:
-                  | 'table.rowCount'
-                  | 'table.headers'
-                  | 'table.primaryKey'
-                  | 'table.columns'
-                  | 'table.currentRows'
-                  | 'table.hasNextPage'
-                  | 'table.nextPageTarget'
-                  | 'form.fields'
-                  | 'form.actions';
-          }
-        | {
-              op: 'entity.target';
-              businessTag: string;
-              target:
-                  | {
-                        kind: 'entity.field';
-                        fieldKey: string;
-                    }
-                  | {
-                        kind: 'entity.action';
-                        actionIntent: string;
-                    }
-                  | {
-                        kind: 'form.field';
-                        fieldKey: string;
-                    }
-                  | {
-                        kind: 'form.action';
-                        actionIntent: string;
-                    }
-                  | {
-                        kind: 'table.filter';
-                        fieldKey: string;
-                    }
-                  | {
-                        kind: 'table.module_action';
-                        actionIntent: string;
-                    }
-                  | {
-                        kind: 'table.row';
-                        primaryKey: {
-                            fieldKey: string;
-                            value: string;
-                        };
-                    }
-                  | {
-                        kind: 'table.row_action';
-                        primaryKey: {
-                            fieldKey: string;
-                            value: string;
-                        };
-                        actionIntent: string;
-                    };
-          };
+    'browser.query': BrowserQueryRequest;
     'browser.compute': {
         expr: ComputeExpr;
     };
