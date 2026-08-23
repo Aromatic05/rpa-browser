@@ -2,13 +2,14 @@ import {contentText} from '@earendil-works/pi-ai';
 import type {AgentTool} from '@earendil-works/pi-agent-core';
 import {createReactAgentSession} from '../loop/react';
 import {getDefaultAgentModelRuntime, type AgentModelRuntime} from '../model/runtime';
-import {classifyAgentToolCall} from '../tools/policy';
+import {classifyAgentToolCall, type AgentToolClassification} from '../tools/policy';
 import {createAgentTraceCollector, type AgentWorldRevision} from '../trace/collector';
 import type {AgentRunner} from './types';
 
 export type CreateReactAgentRunnerDeps = {
     tools: AgentTool[];
     modelRuntime?: AgentModelRuntime;
+    classifyToolCall?: (name: string, args: unknown) => AgentToolClassification;
     readWorldRevision?: () => AgentWorldRevision | null | Promise<AgentWorldRevision | null>;
 };
 
@@ -26,7 +27,7 @@ export const createReactAgentRunner = (deps: CreateReactAgentRunnerDeps): AgentR
         const modelBinding = (deps.modelRuntime ?? getDefaultAgentModelRuntime()).resolve(request.provider, request.model);
         if (!modelBinding) {throw new Error(`model not found: ${request.provider}/${request.model}`);}
         const trace = createAgentTraceCollector({
-            classifyToolCall: classifyAgentToolCall,
+            classifyToolCall: deps.classifyToolCall ?? classifyAgentToolCall,
             readWorldRevision: deps.readWorldRevision,
         });
         const session = createReactAgentSession({
