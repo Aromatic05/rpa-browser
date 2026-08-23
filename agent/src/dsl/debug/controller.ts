@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import {DslDebugAbortError} from './errors';
 import type {
     DslBeforeEffectEvent,
     DslBeforeStatementEvent,
@@ -16,7 +17,7 @@ export type CreateDslDebugControllerOptions = {
 
 type ActivePause = {
     pause: PausedDslExecution;
-    resume: () => void;
+    resume: (action: 'resume' | 'abort') => void;
 };
 
 export const createDslDebugController = (
@@ -39,16 +40,17 @@ export const createDslDebugController = (
             throw new Error(`DSL continuation is not paused: ${continuationId}`);
         }
         mode = nextMode;
-        active.resume();
+        active.resume('resume');
     };
 
     const pause = async (value: PausedDslExecution): Promise<void> => {
         if (active) {throw new Error('DSL debugger already has an active continuation');}
-        await new Promise<void>((resolve) => {
+        const action = await new Promise<'resume' | 'abort'>((resolve) => {
             active = {pause: value, resume: resolve};
             publish(value);
         });
         active = null;
+        if (action === 'abort') {throw new DslDebugAbortError(value.continuationId);}
     };
 
     return {
@@ -90,5 +92,11 @@ export const createDslDebugController = (
         },
         continue: (continuationId) => {release(continuationId, 'continue');},
         step: (continuationId) => {release(continuationId, 'step');},
+        abort: (continuationId) => {
+            if (active?.pause.continuationId !== continuationId) {
+                throw new Error(`DSL continuation is not paused: ${continuationId}`);
+            }
+            active.resume('abort');
+        },
     };
 };

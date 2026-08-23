@@ -7,6 +7,7 @@ import {
     type CreateDslDebugExecutionSessionOptions,
 } from './dsl_session';
 import type {
+    DslDebugAdvanceResult,
     DslDebugExecutionSession,
     DslDebugTerminalFailure,
     PausedDslDebugExecution,
@@ -20,6 +21,7 @@ export const PAUSED_DSL_DEBUG_SYSTEM_PROMPT = [
     'debug.execution location includes programId, execution path, source line range when available, loop frames, and checkpoint callStack.',
     'debug.execution, debug.scope, debug.world, debug.query, and debug.compute are pure reads.',
     'debug.step and debug.continue advance the retained execution and may cause World effects.',
+    'debug.abort terminates the retained execution before the pending statement/effect; it is not rollback and does not undo earlier effects.',
     'Inspect freely, but advance execution only when your reasoning requires it.',
 ].join(' ');
 
@@ -27,7 +29,8 @@ export type PausedDslDebugAgentRunResult = AgentRunResult & {
     execution:
         | Readonly<{status: 'paused'; pause: PausedDslDebugExecution}>
         | Readonly<{status: 'completed'}>
-        | Readonly<{status: 'failed'; failure: DslDebugTerminalFailure}>;
+        | Readonly<{status: 'failed'; failure: DslDebugTerminalFailure}>
+        | Readonly<{status: 'aborted'; at: Extract<DslDebugAdvanceResult, {status: 'aborted'}>['at']}>;
     session: DslDebugExecutionSession;
 };
 
@@ -65,6 +68,8 @@ export const createPausedDslDebugAgentRunner = (
                 ? {status: 'paused' as const, pause}
                 : terminal?.status === 'failed'
                     ? {status: 'failed' as const, failure: terminal.failure}
+                    : terminal?.status === 'aborted'
+                        ? {status: 'aborted' as const, at: terminal.at}
                 : {status: 'completed' as const},
             session,
         };

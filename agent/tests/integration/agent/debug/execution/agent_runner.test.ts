@@ -157,3 +157,53 @@ test('paused DSL Agent runner preserves a structured failed terminal state after
         postErrorEffectCalls: 0,
     });
 });
+
+test('paused DSL Agent runner can abort before a pending World effect', async () => {
+    const faux = createFauxCore({provider: 'faux-debugger', models: [{id: 'debugger'}]});
+    faux.setResponses([
+        fauxAssistantMessage(fauxToolCall('debug.execution', {})),
+        fauxAssistantMessage(fauxToolCall('debug.abort', {})),
+        fauxAssistantMessage('execution aborted'),
+    ]);
+    const [view] = await createViews();
+    let clickCalls = 0;
+    const runner = createPausedDslDebugAgentRunner({
+        source: 'click input.target',
+        context: {
+            workspaceName: 'ws-1',
+            deps: {} as RunStepsDeps,
+            input: {target: {nodeId: 'dangerous-button'}},
+            stepExecutionPort: {
+                execute: async (step) => {
+                    clickCalls += 1;
+                    return {stepId: step.id, ok: true, data: {clicked: true}};
+                },
+            },
+        },
+        worldViewSource: {pin: async () => view},
+        debug: {breakBeforeEffects: true},
+        modelRuntime: {
+            resolve: (provider, model) => provider === 'faux-debugger' && model === 'debugger'
+                ? {model: faux.getModel(), streamFn: faux.streamSimple}
+                : null,
+        },
+    });
+
+    const result = await runner.run({
+        provider: 'faux-debugger',
+        model: 'debugger',
+        prompt: 'Inspect the pending effect and abort it.',
+    });
+
+    assert.equal(result.text, 'execution aborted');
+    assert.equal(result.execution.status, 'aborted');
+    assert.equal(clickCalls, 0);
+    assert.deepEqual(result.trace.metrics, {
+        turns: 3,
+        toolCalls: 2,
+        readCalls: 1,
+        effectCalls: 1,
+        failedToolCalls: 0,
+        postErrorEffectCalls: 0,
+    });
+});

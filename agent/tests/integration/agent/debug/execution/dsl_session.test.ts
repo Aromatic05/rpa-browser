@@ -214,3 +214,30 @@ test('failure pause keeps WorldView queryable and advance returns a structured f
     });
     assert.equal(clickCalls, 1);
 });
+
+test('aborting an effect pause returns aborted without executing the pending browser effect', async () => {
+    const [view] = await createViews();
+    let clickCalls = 0;
+    const execution = createDslDebugExecutionSession({
+        source: 'click input.target',
+        context: {
+            workspaceName: 'ws-1',
+            deps,
+            input: {target: {nodeId: 'dangerous-button'}},
+            stepExecutionPort: {
+                execute: async (step) => {
+                    clickCalls += 1;
+                    return {stepId: step.id, ok: true, data: {clicked: true}};
+                },
+            },
+        },
+        worldViewSource: {pin: async () => view},
+        debug: {breakBeforeEffects: true},
+    });
+
+    const paused = await execution.waitForPause();
+    assert.equal(paused.reason, 'effect');
+    const terminal = await execution.advance(paused.continuationId, 'abort' as never);
+    assert.equal(terminal.status, 'aborted');
+    assert.equal(clickCalls, 0);
+});

@@ -57,7 +57,7 @@ export const createPausedDslDebugAgentTools = (
         };
     };
 
-    const advance = async (mode: 'continue' | 'step') => {
+    const advance = async (mode: 'continue' | 'step' | 'abort') => {
         const current = requirePause();
         pause = null;
         const result = await execution.advance(current.continuationId, mode);
@@ -135,6 +135,13 @@ export const createPausedDslDebugAgentTools = (
             description: 'Resume until the next configured breakpoint or terminal state. At a failure pause this does not retry the failed step; it terminalizes the original failure.',
             parameters: Type.Object({}, {additionalProperties: false}),
             execute: async () => await advance('continue'),
+        },
+        {
+            name: 'debug.abort',
+            label: 'debug.abort',
+            description: 'Terminate the retained execution without executing the currently pending statement/effect. This is not rollback and does not undo effects that already happened.',
+            parameters: Type.Object({}, {additionalProperties: false}),
+            execute: async () => await advance('abort'),
         },
     ];
 

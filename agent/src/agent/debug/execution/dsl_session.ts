@@ -3,6 +3,7 @@ import {
     type CreateDslDebugControllerOptions,
 } from '../../../dsl/debug/controller';
 import type {PausedDslExecution} from '../../../dsl/debug/contracts';
+import {DslDebugAbortError} from '../../../dsl/debug/errors';
 import {
     runDslSource,
     type RunDslContext,
@@ -48,9 +49,10 @@ export const createDslDebugExecutionSession = (
         return active;
     };
 
-    const release = (continuationId: string, mode: 'continue' | 'step'): void => {
+    const release = (continuationId: string, mode: 'continue' | 'step' | 'abort'): void => {
         requireActive(continuationId);
         active = null;
+        if (mode === 'abort') {controller.abort(continuationId); return;}
         if (mode === 'step') {controller.step(continuationId); return;}
         controller.continue(continuationId);
     };
@@ -76,20 +78,26 @@ export const createDslDebugExecutionSession = (
 
     const advance = async (
         continuationId: string,
-        mode: 'continue' | 'step',
+        mode: 'continue' | 'step' | 'abort',
     ): Promise<DslDebugAdvanceResult> => {
         const current = requireActive(continuationId);
         const pausedFailure = current.pause.reason === 'failure' ? current.pause.failure : undefined;
+        const abortedAt = Object.freeze({
+            reason: current.pause.reason,
+            location: current.pause.location,
+        });
         release(continuationId, mode);
         return await Promise.race([
             waitForPause().then((pause) => ({status: 'paused' as const, pause})),
             completion.then((result) => ({
                 status: 'completed' as const,
                 output: structuredClone(result.scope.output),
-            }), (error) => ({
-                status: 'failed' as const,
-                failure: pausedFailure ?? normalizeTerminalFailure(error),
-            })),
+            }), (error) => error instanceof DslDebugAbortError
+                ? {status: 'aborted' as const, at: abortedAt}
+                : {
+                    status: 'failed' as const,
+                    failure: pausedFailure ?? normalizeTerminalFailure(error),
+                }),
         ]);
     };
 
@@ -104,6 +112,7 @@ export const createDslDebugExecutionSession = (
         ) => requireActive(continuationId).debug.compute(expr, scope),
         continue: (continuationId: string) => {release(continuationId, 'continue');},
         step: (continuationId: string) => {release(continuationId, 'step');},
+        abort: (continuationId: string) => {release(continuationId, 'abort');},
         advance,
         waitForCompletion: async () => await completion,
     };

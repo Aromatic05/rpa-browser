@@ -34,7 +34,14 @@ export type DslDebugTerminalFailure = Readonly<{
 export type DslDebugAdvanceResult =
     | Readonly<{status: 'paused'; pause: PausedDslDebugExecution}>
     | Readonly<{status: 'completed'; output: Readonly<Record<string, unknown>>}>
-    | Readonly<{status: 'failed'; failure: DslDebugTerminalFailure}>;
+    | Readonly<{status: 'failed'; failure: DslDebugTerminalFailure}>
+    | Readonly<{
+        status: 'aborted';
+        at: Readonly<{
+            reason: PausedDslDebugExecution['reason'];
+            location: DslStatementLocation;
+        }>;
+    }>;
 
 export type DslDebugExecutionSession = {
     waitForPause: () => Promise<PausedDslDebugExecution>;
@@ -46,6 +53,7 @@ export type DslDebugExecutionSession = {
     ) => DebugComputeResult;
     continue: (continuationId: string) => void;
     step: (continuationId: string) => void;
-    advance: (continuationId: string, mode: 'continue' | 'step') => Promise<DslDebugAdvanceResult>;
+    abort: (continuationId: string) => void;
+    advance: (continuationId: string, mode: 'continue' | 'step' | 'abort') => Promise<DslDebugAdvanceResult>;
     waitForCompletion: () => Promise<RunDslSourceResult>;
 };

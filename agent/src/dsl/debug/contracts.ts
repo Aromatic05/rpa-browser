@@ -79,4 +79,5 @@ export type DslDebugController = {
     waitForPause: () => Promise<PausedDslExecution>;
     continue: (continuationId: string) => void;
     step: (continuationId: string) => void;
+    abort: (continuationId: string) => void;
 };
