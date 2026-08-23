@@ -14,6 +14,7 @@ import type {ComputeExpr, StepArgsMap} from '../../../runner/steps/types';
 import type {WorldViewSource} from '../../worldview/contracts';
 import {describeWorldView} from '../../worldview/descriptor';
 import {isSameWorldView} from '../../worldview/revision';
+import {diffDebugEffect} from '../effects/diff';
 import {createDebugEffectJournal} from '../effects/journal';
 import {createDebugQuerySession} from '../query/session';
 import type {DebugQuerySession} from '../query/contracts';
@@ -44,10 +45,10 @@ export const createDslDebugExecutionSession = (
         beforeStatement: controller.port.beforeStatement,
         beforeEffect: async (event) => {
             await controller.port.beforeEffect?.(event);
-            journal.begin(event, describeWorldView(await options.worldViewSource.pin()));
+            journal.begin(event, await options.worldViewSource.pin());
         },
         afterEffect: async (event) => {
-            journal.finish(event, describeWorldView(await options.worldViewSource.pin()));
+            journal.finish(event, await options.worldViewSource.pin());
             await controller.port.afterEffect?.(event);
         },
         onFailure: controller.port.onFailure,
@@ -152,6 +153,10 @@ export const createDslDebugExecutionSession = (
         effects: (continuationId: string) => {
             requireActive(continuationId);
             return journal.list();
+        },
+        diff: (continuationId: string, effectSequence: number) => {
+            requireActive(continuationId);
+            return diffDebugEffect(journal, effectSequence);
         },
         refresh,
         advance,

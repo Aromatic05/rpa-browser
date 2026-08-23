@@ -216,6 +216,7 @@ test('paused DSL Agent runner exposes executed effects as a pure journal read', 
         fauxAssistantMessage(fauxToolCall('debug.effects', {})),
         fauxAssistantMessage(fauxToolCall('debug.step', {})),
         fauxAssistantMessage(fauxToolCall('debug.effects', {})),
+        fauxAssistantMessage(fauxToolCall('debug.diff', {effectSequence: 1})),
         fauxAssistantMessage('journal inspected'),
     ]);
     const [firstView, secondView] = await createViews();
@@ -264,9 +265,9 @@ test('paused DSL Agent runner exposes executed effects as a pure journal read', 
     assert.equal(effects[0].worldBefore.revision.captureRevision, 1);
     assert.equal(effects[0].worldAfter.revision.captureRevision, 2);
     assert.deepEqual(result.trace.metrics, {
-        turns: 4,
-        toolCalls: 3,
-        readCalls: 2,
+        turns: 5,
+        toolCalls: 4,
+        readCalls: 3,
         effectCalls: 1,
         failedToolCalls: 0,
         postErrorEffectCalls: 0,

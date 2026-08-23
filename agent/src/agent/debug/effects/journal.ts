@@ -1,15 +1,16 @@
 import type {DslBeforeEffectEvent} from '../../../dsl/debug/contracts';
-import type {WorldViewDescriptor} from '../../worldview/contracts';
-import type {DebugEffectJournal, DebugEffectRecord} from './contracts';
+import {describeWorldView} from '../../worldview/descriptor';
+import type {WorldView} from '../../worldview/contracts';
+import type {DebugEffectJournal, DebugEffectJournalEntry} from './contracts';
 
 type PendingEffect = Readonly<{
     event: DslBeforeEffectEvent;
-    worldBefore: WorldViewDescriptor;
+    worldBefore: WorldView;
 }>;
 
 export const createDebugEffectJournal = (): DebugEffectJournal => {
     const pending = new Map<string, PendingEffect>();
-    const records: DebugEffectRecord[] = [];
+    const entries: DebugEffectJournalEntry[] = [];
 
     return {
         begin: (event, worldBefore) => {
@@ -21,15 +22,17 @@ export const createDebugEffectJournal = (): DebugEffectJournal => {
                 throw new Error(`effect journal entry was not started: ${event.effect.stepId}`);
             }
             pending.delete(event.effect.stepId);
-            records.push(Object.freeze({
-                sequence: records.length + 1,
+            const record = Object.freeze({
+                sequence: entries.length + 1,
                 location: started.event.location,
                 effect: started.event.effect,
                 outcome: event.outcome,
-                worldBefore: started.worldBefore,
-                worldAfter,
-            }));
+                worldBefore: describeWorldView(started.worldBefore),
+                worldAfter: describeWorldView(worldAfter),
+            });
+            entries.push(Object.freeze({record, worldBefore: started.worldBefore, worldAfter}));
         },
-        list: () => Object.freeze([...records]),
+        list: () => Object.freeze(entries.map((entry) => entry.record)),
+        read: (sequence) => entries[sequence - 1] ?? null,
     };
 };

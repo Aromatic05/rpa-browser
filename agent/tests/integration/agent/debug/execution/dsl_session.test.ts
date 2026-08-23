@@ -425,3 +425,72 @@ test('effect OCC conflicts before mutation and journal starts from the refreshed
     const completed = await execution.advance(stepped.pause.continuationId, 'continue');
     assert.equal(completed.status, 'completed');
 });
+test('effect delta is materialized on demand from retained WorldViews', async () => {
+    const fixture = createV2BusinessPage();
+    const store = new PageSnapshotSessionStore<object>();
+    const pageKey = {};
+    const beforeEntry = await store.ensureFresh({
+        pageKey,
+        pageUrl: '/orders',
+        capture: async () => fixture.capture,
+    });
+    const changedCapture = structuredClone(fixture.capture);
+    changedCapture.control.observation.identity.captureRevision = 2;
+    (changedCapture.control.observation.text as Record<string, string | undefined>)[fixture.nodeIds.panel] = 'effect updated panel';
+    const afterEntry = await store.ensureFresh({
+        pageKey,
+        pageUrl: '/orders',
+        reason: 'explicit',
+        capture: async () => changedCapture,
+    });
+    const toView = (entry: typeof beforeEntry): WorldView => Object.freeze({
+        workspaceName: 'ws-1',
+        tabName: 'main',
+        pageUrl: entry.pageUrl,
+        revision: Object.freeze({...entry.identity}),
+        entry,
+    });
+    const beforeView = toView(beforeEntry);
+    const afterView = toView(afterEntry);
+    let live = beforeView;
+
+    const execution = createDslDebugExecutionSession({
+        source: `
+            click input.target
+            output done = input.done
+        `,
+        context: {
+            workspaceName: 'ws-1',
+            deps,
+            input: {target: {nodeId: 'submit'}, done: true},
+            stepExecutionPort: {
+                execute: async (step) => {
+                    live = afterView;
+                    return {stepId: step.id, ok: true, data: {clicked: true}};
+                },
+            },
+        },
+        worldViewSource: {pin: async () => live},
+        debug: {breakBeforeEffects: true},
+    });
+
+    const effectPause = await execution.waitForPause();
+    const stepped = await execution.advance(effectPause.continuationId, 'step');
+    assert.equal(stepped.status, 'paused');
+    if (stepped.status !== 'paused') {throw new Error('expected statement pause');}
+
+    const delta = execution.diff(stepped.pause.continuationId, 1);
+    assert.equal(delta.ok, true);
+    if (!delta.ok) {throw new Error('expected effect delta');}
+    assert.equal(delta.effectSequence, 1);
+    assert.equal(delta.diff.mode, 'diff');
+    assert.equal(delta.diff.projection.meta.changedNodeCount, 1);
+
+    const missing = execution.diff(stepped.pause.continuationId, 2);
+    assert.deepEqual(missing, {
+        ok: false,
+        error: {code: 'ERR_NOT_FOUND', message: 'effect journal entry not found: 2'},
+    });
+
+    await execution.advance(stepped.pause.continuationId, 'abort');
+});

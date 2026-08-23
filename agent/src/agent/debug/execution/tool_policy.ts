@@ -4,6 +4,7 @@ const readTools = new Set([
     'debug.execution',
     'debug.scope',
     'debug.effects',
+    'debug.diff',
     'debug.world',
     'debug.refresh',
     'debug.query',

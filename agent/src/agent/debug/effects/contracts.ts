@@ -1,5 +1,6 @@
 import type {DslAfterEffectEvent, DslBeforeEffectEvent, DslEffectDescriptor, DslEffectOutcome, DslStatementLocation} from '../../../dsl/debug/contracts';
-import type {WorldViewDescriptor} from '../../worldview/contracts';
+import type {WorldView, WorldViewDescriptor} from '../../worldview/contracts';
+import type {SnapshotProjectionDiffResult} from '../../../snapshot/projection';
 
 export type DebugEffectRecord = Readonly<{
     sequence: number;
@@ -10,8 +11,32 @@ export type DebugEffectRecord = Readonly<{
     worldAfter: WorldViewDescriptor;
 }>;
 
+export type DebugEffectJournalEntry = Readonly<{
+    record: DebugEffectRecord;
+    worldBefore: WorldView;
+    worldAfter: WorldView;
+}>;
+
+export type DebugEffectDiffResult =
+    | Readonly<{
+        ok: true;
+        effectSequence: number;
+        worldBefore: WorldViewDescriptor;
+        worldAfter: WorldViewDescriptor;
+        diff: SnapshotProjectionDiffResult;
+    }>
+    | Readonly<{
+        ok: false;
+        error: Readonly<{
+            code: 'ERR_NOT_FOUND' | 'ERR_WORLD_DIFF';
+            message: string;
+            details?: unknown;
+        }>;
+    }>;
+
 export type DebugEffectJournal = {
-    begin: (event: DslBeforeEffectEvent, worldBefore: WorldViewDescriptor) => void;
-    finish: (event: DslAfterEffectEvent, worldAfter: WorldViewDescriptor) => void;
+    begin: (event: DslBeforeEffectEvent, worldBefore: WorldView) => void;
+    finish: (event: DslAfterEffectEvent, worldAfter: WorldView) => void;
     list: () => readonly DebugEffectRecord[];
+    read: (sequence: number) => DebugEffectJournalEntry | null;
 };

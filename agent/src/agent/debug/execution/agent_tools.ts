@@ -104,6 +104,23 @@ export const createPausedDslDebugAgentTools = (
             },
         },
         {
+            name: 'debug.diff',
+            label: 'debug.diff',
+            description: 'Materialize the Snapshot V2 semantic World delta for one executed effect journal entry. This is a pure read.',
+            parameters: Type.Object({
+                effectSequence: Type.Number({minimum: 1}),
+            }, {additionalProperties: false}),
+            execute: async (_toolCallId, params) => {
+                const current = requirePause();
+                const result = execution.diff(
+                    current.continuationId,
+                    (params as {effectSequence: number}).effectSequence,
+                );
+                if (!result.ok) {return fail(result);}
+                return toolResult(result);
+            },
+        },
+        {
             name: 'debug.world',
             label: 'debug.world',
             description: 'Read the pinned WorldView descriptor for the current paused continuation.',
