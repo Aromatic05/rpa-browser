@@ -78,6 +78,7 @@ const createRouterWithStubs = () => {
     const entityRulesRuntime = createStubControl();
     const runnerControl = createStubControl();
     const mcpControl = createStubControl();
+    const agentControl = createStubControl();
 
     const deps: WorkspaceRouterDeps = {
         tabsControl: tabsControl as any,
@@ -86,7 +87,8 @@ const createRouterWithStubs = () => {
         checkpointControl: checkpointControl as any,
         entityRulesRuntime: entityRulesRuntime as any,
         runnerControl: runnerControl as any,
-        mcpControl: mcpControl as any
+        mcpControl: mcpControl as any,
+        agentControl: agentControl as any
     };
 
     const router = createWorkspaceRouter(deps);
@@ -99,7 +101,8 @@ const createRouterWithStubs = () => {
         checkpointControl: checkpointControl as any,
         entityRulesRuntime: entityRulesRuntime as any,
         runnerControl: runnerControl as any,
-        mcpControl: mcpControl as any
+        mcpControl: mcpControl as any,
+        agentControl: agentControl as any
     };
 };
 
@@ -114,6 +117,17 @@ test('tab.list is forwarded to tabsControl', async () => {
     await router.handle(action, workspace, registry);
     assert.equal(tabsControl.calls.length, 1);
     assert.equal(tabsControl.calls[0].action.type, 'tab.list');
+});
+
+test('agent.run is forwarded to agentControl', async () => {
+    const { router, agentControl } = createRouterWithStubs();
+    const workspace = createMinimalWorkspace('ws-1');
+    const registry = createMinimalRegistry();
+    const action = stubAction('agent.run', { workspaceName: 'ws-1', payload: { prompt: 'test' } });
+
+    await router.handle(action, workspace, registry);
+    assert.equal(agentControl.calls.length, 1);
+    assert.equal(agentControl.calls[0].action.type, 'agent.run');
 });
 
 test('mcp.start is forwarded to mcpControl', async () => {

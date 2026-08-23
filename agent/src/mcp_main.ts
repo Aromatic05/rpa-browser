@@ -148,6 +148,7 @@ registerControlShutdown({
         await controlServer.close();
         await Promise.allSettled(
             workspaceRegistry.listWorkspaces().map(async (workspace) => {
+                await workspace.agent.stop().catch(() => undefined);
                 await workspace.mcp.stop().catch(() => undefined);
                 await workspace.browserSession.stop();
             }),

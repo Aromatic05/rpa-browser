@@ -6,7 +6,8 @@
         "strict": true,
         "noEmit": true,
         "types": ["node"],
-        "resolveJsonModule": true
+        "resolveJsonModule": true,
+        "skipLibCheck": true
     },
     "include": ["src/**/*.ts", "tests/**/*.ts"],
     "exclude": ["src/**/__tests__/**/*.ts"]

@@ -19,9 +19,14 @@ const randomName = () => crypto.randomUUID();
 const stopWorkspaceRuntime = async (workspace: RuntimeWorkspace): Promise<void> => {
     let firstError: unknown;
     try {
-        await workspace.mcp.stop();
+        await workspace.agent.stop();
     } catch (error) {
         firstError = error;
+    }
+    try {
+        await workspace.mcp.stop();
+    } catch (error) {
+        firstError = firstError || error;
     }
     try {
         await workspace.runner.stop();

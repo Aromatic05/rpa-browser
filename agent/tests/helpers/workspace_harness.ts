@@ -11,6 +11,7 @@ import { createPortAllocator } from '../../src/runtime/service/ports';
 import { createExecutionBindings } from '../../src/runtime/execution/bindings';
 import type { PageRegistry } from '../../src/runtime/browser/page_registry';
 import type { WorkspaceBrowserSession } from '../../src/runtime/browser/browser_session';
+import type { AgentModelRuntime } from '../../src/agent/model/runtime';
 
 export type WorkspaceHarnessOptions = {
     recordingState?: RecordingState;
@@ -18,6 +19,8 @@ export type WorkspaceHarnessOptions = {
     emit?: (action: Action) => void;
     runStepsDeps?: RunStepsDeps;
     pageRegistry?: PageRegistry;
+    agentModelRuntime?: AgentModelRuntime;
+    pluginHost?: RunStepsDeps['pluginHost'];
 };
 
 export const createWorkspaceHarness = (options: WorkspaceHarnessOptions = {}) => {
@@ -61,7 +64,7 @@ export const createWorkspaceHarness = (options: WorkspaceHarnessOptions = {}) =>
         },
         stepSinks: [],
         config: getRunnerConfig(),
-        pluginHost: {
+        pluginHost: options.pluginHost ?? {
             getExecutors: () => ({}),
         },
         dispatchAction: async (action: Action) => ({
@@ -87,6 +90,7 @@ export const createWorkspaceHarness = (options: WorkspaceHarnessOptions = {}) =>
         runnerConfig: getRunnerConfig(),
         portAllocator: createPortAllocator(20000),
         dispatchAction: runStepsDeps.dispatchAction,
+        agentModelRuntime: options.agentModelRuntime,
         createBrowserSession: (sessionOptions): WorkspaceBrowserSession => {
             const session: WorkspaceBrowserSession = {
                 workspaceName: sessionOptions.workspaceName,

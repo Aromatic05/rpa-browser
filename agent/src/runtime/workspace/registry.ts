@@ -8,6 +8,7 @@ import type { Action } from '../../actions/action_protocol';
 import type { PortAllocator } from '../service/ports';
 import type { ExecutionBindings } from '../execution/bindings';
 import { createWorkspaceBrowserSession, type CreateWorkspaceBrowserSessionOptions, type WorkspaceBrowserSession } from '../browser/browser_session';
+import type {AgentModelRuntime} from '../../agent/model/runtime';
 
 export type { RuntimeWorkspace };
 
@@ -41,6 +42,7 @@ export type WorkspaceRuntimeDeps = {
     onWsListening?: CreateWorkspaceBrowserSessionOptions['onListening'];
     wsTap?: CreateWorkspaceBrowserSessionOptions['wsTap'];
     createBrowserSession?: (options: CreateWorkspaceBrowserSessionOptions) => WorkspaceBrowserSession;
+    agentModelRuntime?: AgentModelRuntime;
 };
 
 export const createWorkspaceRegistry = (runtimeDeps: WorkspaceRuntimeDeps): WorkspaceRegistry => {
@@ -80,6 +82,7 @@ export const createWorkspaceRegistry = (runtimeDeps: WorkspaceRuntimeDeps): Work
             runStepsDeps: runtimeDeps.runStepsDeps,
             runnerConfig: runtimeDeps.runnerConfig,
             portAllocator: runtimeDeps.portAllocator,
+            agentModelRuntime: runtimeDeps.agentModelRuntime,
         });
         workspaces.set(workspaceName, workspace);
         if (!activeWorkspaceName) {

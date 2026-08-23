@@ -71,6 +71,10 @@ export const REQUEST_ACTION_TYPES = {
     MCP_START: 'mcp.start',
     MCP_STOP: 'mcp.stop',
     MCP_STATUS: 'mcp.status',
+    AGENT_START: 'agent.start',
+    AGENT_STOP: 'agent.stop',
+    AGENT_STATUS: 'agent.status',
+    AGENT_RUN: 'agent.run',
 
     LOG_EXT: 'log.ext',
 } as const;

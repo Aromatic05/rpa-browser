@@ -1,5 +1,4 @@
-export type WorkspaceServiceName = 'mcp';
-// `agent` will be added in a later phase.
+export type WorkspaceServiceName = 'mcp' | 'agent';
 
 export type WorkspaceServiceStatus = 'stopped' | 'starting' | 'running' | 'stopping' | 'failed';
 
