@@ -1,101 +1,9 @@
 import type {ComputeEvalScope} from '../../../compute/evaluate';
-import type {StepArgsMap} from '../../../runner/steps/types';
 import type {ComputeExpr} from '../../../compute/types';
+import type {QueryIR} from '../../../query/contracts';
+import {queryIrJsonSchema} from '../../../query/schema';
 
-const string = {type: 'string'} as const;
-const primaryKey = {
-    type: 'object',
-    required: ['fieldKey', 'value'],
-    properties: {fieldKey: string, value: string},
-    additionalProperties: false,
-} as const;
-
-const businessTarget = {
-    oneOf: [
-        {type: 'object', required: ['kind', 'fieldKey'], properties: {kind: {const: 'entity.field'}, fieldKey: string}, additionalProperties: false},
-        {type: 'object', required: ['kind', 'actionIntent'], properties: {kind: {const: 'entity.action'}, actionIntent: string}, additionalProperties: false},
-        {type: 'object', required: ['kind', 'fieldKey'], properties: {kind: {const: 'form.field'}, fieldKey: string}, additionalProperties: false},
-        {type: 'object', required: ['kind', 'actionIntent'], properties: {kind: {const: 'form.action'}, actionIntent: string}, additionalProperties: false},
-        {type: 'object', required: ['kind', 'fieldKey'], properties: {kind: {const: 'table.filter'}, fieldKey: string}, additionalProperties: false},
-        {type: 'object', required: ['kind', 'actionIntent'], properties: {kind: {const: 'table.module_action'}, actionIntent: string}, additionalProperties: false},
-        {type: 'object', required: ['kind', 'primaryKey'], properties: {kind: {const: 'table.row'}, primaryKey}, additionalProperties: false},
-        {type: 'object', required: ['kind', 'primaryKey', 'actionIntent'], properties: {kind: {const: 'table.row_action'}, primaryKey, actionIntent: string}, additionalProperties: false},
-    ],
-} as const;
-
-export const debugQueryJsonSchema = {
-    oneOf: [
-        {
-            type: 'object',
-            required: ['from'],
-            properties: {
-                from: {
-                    anyOf: [
-                        {type: 'string', enum: ['snapshot', 'snapshot.latest']},
-                        {type: 'object', required: ['nodeIds'], properties: {nodeIds: {type: 'array', minItems: 1, items: string}}, additionalProperties: false},
-                        {
-                            type: 'object',
-                            required: ['nodes'],
-                            properties: {
-                                nodes: {
-                                    type: 'array',
-                                    minItems: 1,
-                                    items: {
-                                        oneOf: [
-                                            {type: 'object', required: ['id'], properties: {id: string}, additionalProperties: false},
-                                            {type: 'object', required: ['handle'], properties: {handle: {type: 'object', required: ['nodeId'], properties: {nodeId: string}, additionalProperties: false}}, additionalProperties: false},
-                                        ],
-                                    },
-                                },
-                            },
-                            additionalProperties: false,
-                        },
-                    ],
-                },
-                where: {
-                    type: 'object',
-                    properties: {
-                        role: string,
-                        tag: string,
-                        text: {type: 'object', properties: {contains: string}, additionalProperties: false},
-                        attrs: {type: 'object', additionalProperties: string},
-                    },
-                    additionalProperties: false,
-                },
-                relation: {type: 'string', enum: ['child', 'descendant']},
-                limit: {type: 'integer', minimum: 1, maximum: 500},
-            },
-            additionalProperties: false,
-        },
-        {
-            type: 'object',
-            required: ['op', 'businessTag', 'query'],
-            properties: {
-                op: {const: 'entity'},
-                businessTag: string,
-                query: {
-                    type: 'string',
-                    enum: [
-                        'table.rowCount', 'table.headers', 'table.primaryKey', 'table.columns',
-                        'table.currentRows', 'table.hasNextPage', 'table.nextPageTarget',
-                        'form.fields', 'form.actions',
-                    ],
-                },
-            },
-            additionalProperties: false,
-        },
-        {
-            type: 'object',
-            required: ['op', 'businessTag', 'target'],
-            properties: {
-                op: {const: 'entity.target'},
-                businessTag: string,
-                target: businessTarget,
-            },
-            additionalProperties: false,
-        },
-    ],
-} as const satisfies object;
+export const debugQueryJsonSchema = queryIrJsonSchema;
 
 export const debugComputeJsonSchema = {
     type: 'object',
@@ -153,5 +61,5 @@ export const debugComputeJsonSchema = {
     additionalProperties: false,
 } as const satisfies object;
 
-export type DebugQueryToolInput = StepArgsMap['browser.query'];
+export type DebugQueryToolInput = QueryIR;
 export type DebugComputeToolInput = {expr: ComputeExpr; scope?: ComputeEvalScope};

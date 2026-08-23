@@ -25,8 +25,13 @@ const createView = async (): Promise<WorldView> => {
 test('DebugQuerySession composes repeated query and compute reads on one WorldView', async () => {
     const session = createDebugQuerySession(await createView());
     const rows = session.query({
-        from: 'snapshot',
-        where: {attrs: {'data-row-key': 'SO-001'}},
+        op: 'filter',
+        predicate: {active: true, attrsEqual: {'data-row-key': 'SO-001'}},
+        input: {
+            op: 'traverse',
+            relation: 'descendant',
+            input: {op: 'scan', source: {kind: 'roots'}},
+        },
     });
     assert.equal(rows.ok, true);
     if (!rows.ok || rows.result.kind !== 'nodeIds') {return;}
@@ -59,4 +64,32 @@ test('DebugQuerySession reports failures without changing its pinned WorldView',
     assert.match(failed.ok ? '' : failed.error.message, /missing compute ref/);
     assert.equal(after.ok, true);
     assert.deepEqual(failed.world.revision, after.world.revision);
+});
+
+test('DebugQuerySession preserves one cardinality counterexamples on the pinned World', async () => {
+    const session = createDebugQuerySession(await createView());
+    const result = session.query({
+        op: 'one',
+        input: {
+            op: 'filter',
+            predicate: {active: true, attrsEqual: {'data-row-key': 'missing'}},
+            input: {
+                op: 'traverse',
+                relation: 'descendant',
+                input: {op: 'scan', source: {kind: 'roots'}},
+            },
+        },
+    });
+
+    assert.equal(result.ok, false);
+    if (result.ok) {throw new Error('expected cardinality failure');}
+    assert.equal(result.error.code, 'ERR_NOT_FOUND');
+    assert.deepEqual(result.error.details, {
+        operator: 'one',
+        expected: 1,
+        actual: 0,
+        pageEpoch: 'v2-business',
+        captureRevision: 1,
+    });
+    assert.deepEqual(result.world.revision, {pageEpoch: 'v2-business', captureRevision: 1});
 });

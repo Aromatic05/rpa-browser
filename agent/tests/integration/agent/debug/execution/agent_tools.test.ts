@@ -143,6 +143,42 @@ test('paused DSL Agent tools split pure debugger reads from execution effects', 
     });
     assert.equal((queried.details as any).result.value, 1);
     assert.equal((queried.details as any).world.revision.captureRevision, 1);
+    const counted = await query.execute('query-2', {
+        op: 'count',
+        input: {
+            op: 'filter',
+            predicate: {active: true, attrsEqual: {'data-row-key': 'SO-001'}},
+            input: {
+                op: 'traverse',
+                relation: 'descendant',
+                input: {op: 'scan', source: {kind: 'roots'}},
+            },
+        },
+    });
+    assert.equal((counted.details as any).result.value, 1);
+    assert.equal((counted.details as any).world.revision.captureRevision, 1);
+    await assert.rejects(
+        () => query.execute('query-missing', {
+            op: 'one',
+            input: {
+                op: 'filter',
+                predicate: {active: true, attrsEqual: {'data-row-key': 'missing'}},
+                input: {
+                    op: 'traverse',
+                    relation: 'descendant',
+                    input: {op: 'scan', source: {kind: 'roots'}},
+                },
+            },
+        }),
+        (error: unknown) => {
+            const message = error instanceof Error ? error.message : String(error);
+            assert.match(message, /"operator":"one"/);
+            assert.match(message, /"expected":1/);
+            assert.match(message, /"actual":0/);
+            assert.match(message, /"captureRevision":1/);
+            return true;
+        },
+    );
     const effects = debuggerTools.tools.find((tool) => tool.name === 'debug.effects')!;
     const effectResult = await effects.execute('effects-1', {});
     assert.deepEqual((effectResult.details as any).effects, []);

@@ -1,7 +1,7 @@
 import {evaluateComputeExpression, type ComputeEvalScope} from '../../../compute/evaluate';
-import {queryPageSessionEntry} from '../../../runner/session/query';
-import type {StepArgsMap} from '../../../runner/steps/types';
+import {executePageSessionQueryIR} from '../../../runner/session/query_ir';
 import type {ComputeExpr} from '../../../compute/types';
+import type {QueryIR} from '../../../query/contracts';
 import {describeWorldView} from '../../worldview/descriptor';
 import type {WorldView} from '../../worldview/contracts';
 import type {DebugQuerySession} from './contracts';
@@ -10,8 +10,8 @@ export const createDebugQuerySession = (view: WorldView): DebugQuerySession => {
     const world = describeWorldView(view);
     return Object.freeze({
         world,
-        query: (args: StepArgsMap['browser.query']) => {
-            const result = queryPageSessionEntry(view.entry, args);
+        query: (ir: QueryIR) => {
+            const result = executePageSessionQueryIR(view.entry, ir);
             return result.ok
                 ? {ok: true as const, world, result: result.data}
                 : {ok: false as const, world, error: result.error};

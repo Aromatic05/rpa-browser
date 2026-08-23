@@ -24,9 +24,12 @@ type QueryIRValue =
 
 export const executePageSessionQueryIR = (
     entry: PageSnapshotSessionEntry,
-    ir: QueryIR,
+    ir: unknown,
 ): QueryIRExecutionResult => {
-    const evaluated = evaluate(entry, ir);
+    if (!ir || typeof ir !== 'object' || !('op' in ir) || typeof ir.op !== 'string') {
+        return badArgs('invalid QueryIR');
+    }
+    const evaluated = evaluate(entry, ir as QueryIR);
     if (!evaluated.ok) {return evaluated;}
     if (evaluated.value.kind === 'result') {return {ok: true, data: evaluated.value.result};}
     const observation = entry.capture.control.observation;
@@ -93,11 +96,62 @@ const evaluate = (
             },
         };
     }
+    if (ir.op === 'limit') {
+        return {
+            ok: true,
+            value: {kind: 'nodes', nodeIds: input.value.nodeIds.slice(0, ir.count)},
+        };
+    }
+    if (ir.op === 'count') {
+        return resultValue(observation, input.value.nodeIds.length);
+    }
+    if (ir.op === 'exists') {
+        return resultValue(observation, input.value.nodeIds.length > 0);
+    }
+    const actual = input.value.nodeIds.length;
+    if (actual !== 1) {
+        return {
+            ok: false,
+            error: {
+                code: actual === 0 ? 'ERR_NOT_FOUND' : 'ERR_AMBIGUOUS',
+                message: `one expected exactly one result, got ${actual}`,
+                details: {
+                    operator: 'one',
+                    expected: 1,
+                    actual,
+                    ...worldMeta(observation),
+                },
+            },
+        };
+    }
     return {
         ok: true,
-        value: {kind: 'nodes', nodeIds: input.value.nodeIds.slice(0, ir.count)},
+        value: {
+            kind: 'result',
+            result: {
+                kind: 'nodeId',
+                nodeId: input.value.nodeIds[0],
+                meta: worldMeta(observation),
+            },
+        },
     };
 };
+
+const resultValue = (
+    observation: PageObservation,
+    value: unknown,
+): {ok: true; value: QueryIRValue} => ({
+    ok: true,
+    value: {
+        kind: 'result',
+        result: {kind: 'value', value, meta: worldMeta(observation)},
+    },
+});
+
+const worldMeta = (observation: PageObservation): Record<string, unknown> => ({
+    pageEpoch: observation.identity.pageEpoch,
+    captureRevision: observation.identity.captureRevision,
+});
 
 const collectCandidates = (
     observation: PageObservation,

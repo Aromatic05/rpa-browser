@@ -265,7 +265,7 @@ export const createPausedDslDebugAgentTools = (
         {
             name: 'debug.query',
             label: 'debug.query',
-            description: 'Run a pure query against the WorldView pinned to the current paused continuation.',
+            description: 'Execute canonical pure QueryIR against the pinned WorldView. Compose scan/traverse/filter/limit/one/exists/count or use business entity leaves.',
             parameters: Type.Unsafe<DebugQueryToolInput>(debugQueryJsonSchema),
             execute: async (_toolCallId, params) => {
                 const current = requirePause();

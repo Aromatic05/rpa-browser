@@ -6,8 +6,9 @@ import type {
     DslScopeSnapshot,
     DslStatementLocation,
 } from '../../../dsl/debug/contracts';
-import type {StepArgsMap, StepName} from '../../../runner/steps/types';
+import type {StepName} from '../../../runner/steps/types';
 import type {ComputeExpr} from '../../../compute/types';
+import type {QueryIR} from '../../../query/contracts';
 import type {DebugComputeResult, DebugQueryReadResult} from '../query/contracts';
 import type {DebugEffectDiffResult, DebugEffectRecord} from '../effects/contracts';
 import type {WorldViewDescriptor} from '../../worldview/contracts';
@@ -64,7 +65,7 @@ export type DslDebugAdvanceResult =
 
 export type DslDebugExecutionSession = {
     waitForPause: () => Promise<PausedDslDebugExecution>;
-    query: (continuationId: string, args: StepArgsMap['browser.query']) => DebugQueryReadResult;
+    query: (continuationId: string, ir: QueryIR) => DebugQueryReadResult;
     compute: (
         continuationId: string,
         expr: ComputeExpr,

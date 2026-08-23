@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {compileBrowserQuery} from '../../../src/query/compile';
+import {queryIrJsonSchema} from '../../../src/query/schema';
+import {debugQueryJsonSchema} from '../../../src/agent/debug/tools/schemas';
 import {executePageSessionQueryIR} from '../../../src/runner/session/query_ir';
 import {PageSnapshotSessionStore} from '../../../src/snapshot';
 import {createV2BusinessPage} from '../../helpers/v2_business_page';
@@ -106,6 +108,18 @@ test('browser query compiler rejects invalid source, relation and limit before e
     assert.equal(compileBrowserQuery({from: 'snapshot', limit: 0}).ok, false);
 });
 
+test('debug.query publishes the canonical QueryIR schema instead of browser source syntax', () => {
+    assert.equal(debugQueryJsonSchema, queryIrJsonSchema);
+    const operations = (queryIrJsonSchema.$defs.query.oneOf as readonly any[])
+        .map((variant) => variant.properties.op.const);
+    assert.deepEqual(operations, [
+        'scan', 'traverse', 'filter', 'limit', 'one', 'exists', 'count', 'entity', 'entity.target',
+    ]);
+    const serialized = JSON.stringify(queryIrJsonSchema);
+    assert.equal(serialized.includes('"from"'), false);
+    assert.equal(serialized.includes('snapshot.latest'), false);
+});
+
 test('canonical Query IR executes directly over one PageSession entry', async () => {
     const fixture = createV2BusinessPage();
     const store = new PageSnapshotSessionStore<object>();
@@ -149,4 +163,93 @@ test('canonical Query IR executes directly over one PageSession entry', async ()
             componentId: businessResult.data.meta?.componentId,
         },
     });
+});
+
+test('Query IR count, exists and one compose over structural node sets', async () => {
+    const fixture = createV2BusinessPage();
+    const store = new PageSnapshotSessionStore<object>();
+    const entry = await store.ensureFresh({
+        pageKey: {},
+        pageUrl: '/orders',
+        capture: async () => fixture.capture,
+    });
+    const rows = {
+        op: 'filter' as const,
+        predicate: {active: true as const, attrsEqual: {'data-row-key': 'SO-001'}},
+        input: {
+            op: 'traverse' as const,
+            relation: 'descendant' as const,
+            input: {op: 'scan' as const, source: {kind: 'roots' as const}},
+        },
+    };
+
+    for (const [op, expected] of [['count', 1], ['exists', true]] as const) {
+        const result = executePageSessionQueryIR(entry, {op, input: rows});
+        assert.equal(result.ok, true);
+        if (!result.ok) {throw new Error(`${op} failed`);}
+        assert.deepEqual(result.data, {
+            kind: 'value',
+            value: expected,
+            meta: {pageEpoch: 'v2-business', captureRevision: 1},
+        });
+    }
+
+    const one = executePageSessionQueryIR(entry, {op: 'one', input: rows});
+    assert.equal(one.ok, true);
+    if (!one.ok) {throw new Error('one failed');}
+    assert.equal(one.data.kind, 'nodeId');
+    if (one.data.kind !== 'nodeId') {throw new Error('expected nodeId result');}
+    assert.equal(typeof one.data.nodeId, 'string');
+    assert.equal(one.data.nodeId.length > 0, true);
+    assert.deepEqual(one.data.meta, {pageEpoch: 'v2-business', captureRevision: 1});
+});
+
+test('Query IR one returns a structured cardinality counterexample', async () => {
+    const fixture = createV2BusinessPage();
+    const store = new PageSnapshotSessionStore<object>();
+    const entry = await store.ensureFresh({
+        pageKey: {},
+        pageUrl: '/orders',
+        capture: async () => fixture.capture,
+    });
+    const scan = {
+        op: 'traverse' as const,
+        relation: 'descendant' as const,
+        input: {op: 'scan' as const, source: {kind: 'roots' as const}},
+    };
+
+    const missing = executePageSessionQueryIR(entry, {
+        op: 'one',
+        input: {
+            op: 'filter',
+            predicate: {active: true, attrsEqual: {'data-row-key': 'missing'}},
+            input: scan,
+        },
+    });
+    assert.deepEqual(missing, {
+        ok: false,
+        error: {
+            code: 'ERR_NOT_FOUND',
+            message: 'one expected exactly one result, got 0',
+            details: {
+                operator: 'one',
+                expected: 1,
+                actual: 0,
+                pageEpoch: 'v2-business',
+                captureRevision: 1,
+            },
+        },
+    });
+
+    const multiple = executePageSessionQueryIR(entry, {
+        op: 'one',
+        input: {op: 'filter', predicate: {active: true}, input: scan},
+    });
+    assert.equal(multiple.ok, false);
+    if (multiple.ok) {throw new Error('expected ambiguous cardinality');}
+    assert.equal(multiple.error.code, 'ERR_AMBIGUOUS');
+    assert.equal((multiple.error.details as any).operator, 'one');
+    assert.equal((multiple.error.details as any).expected, 1);
+    assert.equal((multiple.error.details as any).actual > 1, true);
+    assert.equal((multiple.error.details as any).captureRevision, 1);
 });

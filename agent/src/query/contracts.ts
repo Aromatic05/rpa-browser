@@ -76,6 +76,9 @@ export type QueryIR =
     | Readonly<{op: 'traverse'; input: QueryIR; relation: 'child' | 'descendant'}>
     | Readonly<{op: 'filter'; input: QueryIR; predicate: QueryPredicate}>
     | Readonly<{op: 'limit'; input: QueryIR; count: number}>
+    | Readonly<{op: 'one'; input: QueryIR}>
+    | Readonly<{op: 'exists'; input: QueryIR}>
+    | Readonly<{op: 'count'; input: QueryIR}>
     | Readonly<{op: 'entity'; businessTag: string; query: BusinessQueryName}>
     | Readonly<{op: 'entity.target'; businessTag: string; target: BusinessTarget}>;
 

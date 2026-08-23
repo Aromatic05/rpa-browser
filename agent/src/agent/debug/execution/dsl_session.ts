@@ -10,8 +10,8 @@ import {
     type RunDslSourceResult,
 } from '../../../dsl/runtime';
 import type {ComputeEvalScope} from '../../../compute/evaluate';
-import type {StepArgsMap} from '../../../runner/steps/types';
 import type {ComputeExpr} from '../../../compute/types';
+import type {QueryIR} from '../../../query/contracts';
 import type {WorldView, WorldViewSource} from '../../worldview/contracts';
 import {describeWorldView} from '../../worldview/descriptor';
 import {buildWorldCatalog} from '../../worldview/catalog';
@@ -331,8 +331,8 @@ export const createDslDebugExecutionSession = (
 
     return {
         waitForPause,
-        query: (continuationId: string, args: StepArgsMap['browser.query']) =>
-            requireActive(continuationId).debug.query(args),
+        query: (continuationId: string, ir: QueryIR) =>
+            requireActive(continuationId).debug.query(ir),
         compute: (
             continuationId: string,
             expr: ComputeExpr,

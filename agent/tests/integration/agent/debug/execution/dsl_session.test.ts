@@ -88,7 +88,7 @@ test('paused DSL execution binds one pinned WorldView to each retained continuat
     assert.equal(second.world.revision.captureRevision, 2);
 
     assert.throws(
-        () => execution.query(first.continuationId, {from: 'snapshot'}),
+        () => execution.query(first.continuationId, {op: 'scan', source: {kind: 'roots'}}),
         /continuation is not active/,
     );
 

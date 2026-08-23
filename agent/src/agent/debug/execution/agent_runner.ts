@@ -21,6 +21,7 @@ export const PAUSED_DSL_DEBUG_SYSTEM_PROMPT = [
     'When debug.execution reports reason=failure, inspect the structured failure, scope, and World freely; kind=step describes an operation failure and kind=invariant describes an ensure violation. debug.continue terminalizes that original failure and does not retry or perform a World effect.',
     'debug.execution location includes programId, execution path, source line range when available, loop frames, and checkpoint callStack.',
     'debug.execution, debug.scope, debug.catalog, debug.explain, debug.effects, debug.diff, debug.world, debug.query, and debug.compute are pure reads.',
+    'debug.query accepts canonical QueryIR and can compose scan, traverse, filter, limit, one, exists, and count over the pinned World.',
     'debug.transaction and debug.transaction_diff are pure reads over the retained execution transaction; debug.savepoint records transaction-local metadata without changing the World.',
     'debug.rollback attempts a savepoint restore without advancing execution. strategy=physical may execute a physical UI compensation when a separate compensation executor can prove a plan, but semanticRisk can remain unknown; compensated is not the same as restored.',
     'debug.effects contains only World effects that actually executed, with outcome and before/after World revisions; pending or aborted effects are absent.',

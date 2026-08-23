@@ -33,7 +33,7 @@ export const createDebugQueryAgentTools = (session: DebugQuerySession): AgentToo
     {
         name: 'debug.query',
         label: 'debug.query',
-        description: 'Run a pure structural or business query against the pinned WorldView. Repeated calls observe the same revision.',
+        description: 'Execute canonical pure QueryIR against the pinned WorldView. Repeated calls observe the same revision.',
         parameters: Type.Unsafe<DebugQueryToolInput>(debugQueryJsonSchema),
         execute: async (_toolCallId, params) => {
             const output = session.query(params as DebugQueryToolInput);

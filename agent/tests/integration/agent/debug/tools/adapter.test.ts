@@ -42,8 +42,13 @@ test('debug Agent tools keep repeated reads on the same pinned revision', async 
 
     const world = await worldTool.execute('world-1', {});
     const rows = await queryTool.execute('query-1', {
-        from: 'snapshot',
-        where: {attrs: {'data-row-key': 'SO-001'}},
+        op: 'filter',
+        predicate: {active: true, attrsEqual: {'data-row-key': 'SO-001'}},
+        input: {
+            op: 'traverse',
+            relation: 'descendant',
+            input: {op: 'scan', source: {kind: 'roots'}},
+        },
     });
     const count = await computeTool.execute('compute-1', {
         expr: {op: 'len', args: [{ref: {path: 'local.rows'}}]},
