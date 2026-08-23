@@ -5,6 +5,7 @@ import {createPausedDslDebugAgentTools} from '../../../../../src/agent/debug/exe
 import {classifyPausedDslDebugToolCall} from '../../../../../src/agent/debug/execution/tool_policy';
 import type {WorldView, WorldViewSource} from '../../../../../src/agent/worldview/contracts';
 import {PageSnapshotSessionStore} from '../../../../../src/snapshot';
+import type {RuntimeStateRecord} from '../../../../../src/snapshot/observation/model/contracts';
 import type {RunStepsDeps} from '../../../../../src/runner/run_steps';
 import {createV2BusinessPage} from '../../../../helpers/v2_business_page';
 
@@ -31,6 +32,27 @@ const createViews = async (): Promise<[WorldView, WorldView]> => {
         entry,
     });
     return [view(first), view(second)];
+};
+
+const withRuntimeValue = (
+    view: WorldView,
+    nodeId: string,
+    value: string,
+    captureRevision: number,
+): WorldView => {
+    const entry = structuredClone(view.entry);
+    const runtimeState = entry.capture.control.observation.runtimeState as unknown as Record<
+        string,
+        RuntimeStateRecord | undefined
+    >;
+    runtimeState[nodeId] = {stateId: `state:${nodeId}`, value};
+    const identity = entry.capture.control.observation.identity as unknown as {captureRevision: number};
+    identity.captureRevision = captureRevision;
+    return Object.freeze({
+        ...view,
+        revision: Object.freeze({...view.revision, captureRevision}),
+        entry,
+    });
 };
 
 test('paused DSL Agent tools split pure debugger reads from execution effects', async () => {
@@ -192,4 +214,65 @@ test('debug.execution exposes a pending effect before Agent continuation execute
     const completed = await continueTool.execute('continue-effect', {});
     assert.equal((completed.details as any).status, 'completed');
     assert.deepEqual(calls, ['browser.query', 'browser.click']);
+});
+
+test('debug.rollback exposes physical compensation as control and refreshes the paused World', async () => {
+    const [base] = await createViews();
+    const before = withRuntimeValue(base, 'buyer-input', 'old value', 1);
+    const afterFill = withRuntimeValue(base, 'buyer-input', 'new value', 2);
+    const afterCompensation = withRuntimeValue(base, 'buyer-input', 'old value', 3);
+    let current = before;
+    const values: string[] = [];
+    const port = {
+        execute: async (step: Parameters<NonNullable<Parameters<typeof createDslDebugExecutionSession>[0]['context']['stepExecutionPort']>['execute']>[0]) => {
+            if (step.name !== 'browser.fill') {throw new Error(`unexpected step: ${step.name}`);}
+            values.push(step.args.value);
+            current = step.args.value === 'new value' ? afterFill : afterCompensation;
+            return {stepId: step.id, ok: true, data: {filled: true}};
+        },
+    };
+    const execution = createDslDebugExecutionSession({
+        source: `
+            fill input.target with input.value
+            output done = input.done
+        `,
+        context: {
+            workspaceName: 'ws-1',
+            deps,
+            input: {target: {nodeId: 'buyer-input'}, value: 'new value', done: true},
+            stepExecutionPort: port,
+        },
+        compensationPort: port,
+        worldViewSource: {pin: async () => current},
+        debug: {breakBeforeEffects: true, breakpoints: ['body.1']},
+    });
+    const beforeEffect = await execution.waitForPause();
+    const tools = createPausedDslDebugAgentTools(execution, beforeEffect);
+    const savepointTool = tools.tools.find((tool) => tool.name === 'debug.savepoint')!;
+    const saved = await savepointTool.execute('savepoint-physical', {name: 'before-fill'});
+    const continueTool = tools.tools.find((tool) => tool.name === 'debug.continue')!;
+    const afterEffect = await continueTool.execute('continue-fill', {});
+    assert.equal((afterEffect.details as any).status, 'paused');
+    assert.deepEqual(values, ['new value']);
+
+    const rollbackTool = tools.tools.find((tool) => tool.name === 'debug.rollback')!;
+    const rollback = await rollbackTool.execute('rollback-physical', {
+        savepointId: (saved.details as any).savepoint.id,
+        strategy: 'physical',
+    });
+    assert.equal((rollback.details as any).status, 'compensated');
+    assert.equal((rollback.details as any).mode, 'physical');
+    assert.equal((rollback.details as any).semanticRisk, 'unknown');
+    assert.deepEqual(values, ['new value', 'old value']);
+    assert.equal(classifyPausedDslDebugToolCall('debug.rollback'), 'control');
+    assert.equal(tools.readPause()?.world.revision.captureRevision, 3);
+
+    const pause = tools.readPause();
+    if (!pause) {throw new Error('expected retained pause after compensation');}
+    const effects = execution.effects(pause.continuationId);
+    assert.equal(effects.length, 2);
+    assert.deepEqual(effects[1].compensates, {effectSequence: 1});
+    assert.equal(effects[1].outcome.status, 'succeeded');
+
+    await execution.advance(pause.continuationId, 'abort');
 });

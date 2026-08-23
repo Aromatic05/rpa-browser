@@ -6,6 +6,7 @@ import type {DebugEffectJournal, DebugEffectJournalEntry} from './contracts';
 type PendingEffect = Readonly<{
     event: DslBeforeEffectEvent;
     worldBefore: WorldView;
+    metadata?: Readonly<{compensates?: Readonly<{effectSequence: number}>}>;
 }>;
 
 export const createDebugEffectJournal = (): DebugEffectJournal => {
@@ -13,8 +14,8 @@ export const createDebugEffectJournal = (): DebugEffectJournal => {
     const entries: DebugEffectJournalEntry[] = [];
 
     return {
-        begin: (event, worldBefore) => {
-            pending.set(event.effect.stepId, Object.freeze({event, worldBefore}));
+        begin: (event, worldBefore, metadata) => {
+            pending.set(event.effect.stepId, Object.freeze({event, worldBefore, metadata}));
         },
         finish: (event, worldAfter) => {
             const started = pending.get(event.effect.stepId);
@@ -29,6 +30,7 @@ export const createDebugEffectJournal = (): DebugEffectJournal => {
                 outcome: event.outcome,
                 worldBefore: describeWorldView(started.worldBefore),
                 worldAfter: describeWorldView(worldAfter),
+                ...(started.metadata?.compensates ? {compensates: started.metadata.compensates} : {}),
             });
             entries.push(Object.freeze({record, worldBefore: started.worldBefore, worldAfter}));
         },

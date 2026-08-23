@@ -164,14 +164,27 @@ export const createPausedDslDebugAgentTools = (
         {
             name: 'debug.rollback',
             label: 'debug.rollback',
-            description: 'Attempt to restore a transaction savepoint without advancing the DSL continuation. This version reports restored only when no effects or World drift occurred; otherwise it returns blocked/conflict and leaves execution paused.',
+            description: 'Attempt to restore a transaction savepoint without advancing the DSL continuation. strategy=physical may execute explicit UI compensation through the configured compensation port, but successful compensation remains semantically unverified and is reported as compensated, never restored.',
             parameters: Type.Object({
                 savepointId: Type.String({minLength: 1}),
+                strategy: Type.Optional(Type.Union([
+                    Type.Literal('none'),
+                    Type.Literal('physical'),
+                ])),
             }, {additionalProperties: false}),
             execute: async (_toolCallId, params) => {
                 const current = requirePause();
-                const input = params as {savepointId: string};
-                return toolResult(await execution.rollback(current.continuationId, input.savepointId));
+                const input = params as {savepointId: string; strategy?: 'none' | 'physical'};
+                const result = await execution.rollback(
+                    current.continuationId,
+                    input.savepointId,
+                    {strategy: input.strategy},
+                );
+                if (result.status === 'compensated' || result.status === 'partial') {
+                    pause = await execution.refresh(current.continuationId);
+                    terminal = null;
+                }
+                return toolResult(result);
             },
         },
         {

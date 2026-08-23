@@ -4,6 +4,7 @@ import {createDslDebugExecutionSession} from '../../../../../src/agent/debug/exe
 import type {WorldView} from '../../../../../src/agent/worldview/contracts';
 import {PageSnapshotSessionStore} from '../../../../../src/snapshot';
 import type {RunStepsDeps} from '../../../../../src/runner/run_steps';
+import type {StepExecutionPort} from '../../../../../src/dsl/runtime/run_dsl';
 import {createV2BusinessPage} from '../../../../helpers/v2_business_page';
 
 const createViews = async (): Promise<[WorldView, WorldView]> => {
@@ -128,4 +129,47 @@ test('rollback returns not-found without changing the retained continuation', as
     });
     assert.deepEqual(execution.transaction(paused.continuationId).current, paused.world);
     await execution.advance(paused.continuationId, 'abort');
+});
+
+test('physical rollback refuses unsupported click compensation before executing anything else', async () => {
+    const [first, second] = await createViews();
+    let current = first;
+    let calls = 0;
+    const port: StepExecutionPort = {
+        execute: async (step) => {
+            calls += 1;
+            current = second;
+            return {stepId: step.id, ok: true, data: {clicked: true}};
+        },
+    };
+    const execution = createDslDebugExecutionSession({
+        source: `
+            click input.target
+            output done = input.done
+        `,
+        context: {
+            workspaceName: 'ws-rollback',
+            deps: {} as RunStepsDeps,
+            input: {target: {nodeId: 'submit'}, done: true},
+            stepExecutionPort: port,
+        },
+        compensationPort: port,
+        worldViewSource: {pin: async () => current},
+        debug: {breakBeforeEffects: true, breakpoints: ['body.1']},
+    });
+
+    const beforeEffect = await execution.waitForPause();
+    const savepoint = execution.savepoint(beforeEffect.continuationId, 'before-click');
+    const next = await execution.advance(beforeEffect.continuationId, 'continue');
+    assert.equal(next.status, 'paused');
+    if (next.status !== 'paused') {throw new Error('expected pause after click');}
+
+    const rollback = await execution.rollback(next.pause.continuationId, savepoint.id, {strategy: 'physical'});
+    assert.equal(rollback.status, 'blocked');
+    if (rollback.status !== 'blocked') {throw new Error('expected blocked rollback');}
+    assert.equal(rollback.reason, 'compensation_unavailable');
+    assert.equal(rollback.plans?.[0]?.status, 'unavailable');
+    assert.equal(calls, 1);
+
+    await execution.advance(next.pause.continuationId, 'abort');
 });

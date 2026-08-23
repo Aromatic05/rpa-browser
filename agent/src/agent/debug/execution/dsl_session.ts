@@ -20,8 +20,14 @@ import {diffDebugEffect} from '../effects/diff';
 import {createDebugEffectJournal} from '../effects/journal';
 import {createDebugQuerySession} from '../query/session';
 import type {DebugQuerySession} from '../query/contracts';
+import type {DebugCompensationPort} from '../transaction/compensation/contracts';
+import {executePhysicalCompensations} from '../transaction/compensation/executor';
 import {createDebugTransaction} from '../transaction/state';
-import type {DebugRollbackResult, DebugTransaction} from '../transaction/contracts';
+import type {
+    DebugRollbackOptions,
+    DebugRollbackResult,
+    DebugTransaction,
+} from '../transaction/contracts';
 import type {
     DslDebugAdvanceResult,
     DslDebugExecutionSession,
@@ -32,6 +38,7 @@ export type CreateDslDebugExecutionSessionOptions = {
     source: string;
     context: Omit<RunDslContext, 'debugPort'>;
     worldViewSource: WorldViewSource;
+    compensationPort?: DebugCompensationPort;
     debug?: CreateDslDebugControllerOptions;
 };
 
@@ -131,6 +138,7 @@ export const createDslDebugExecutionSession = (
     const rollback = async (
         continuationId: string,
         savepointId: string,
+        rollbackOptions: DebugRollbackOptions = {},
     ): Promise<DebugRollbackResult> => {
         const current = requireActive(continuationId);
         const entry = requireTransaction().readSavepoint(savepointId);
@@ -150,8 +158,78 @@ export const createDslDebugExecutionSession = (
                 conflict: Object.freeze({expected: current.debug.world, actual}),
             });
         }
-        const effects = journal.list().filter((record) => record.sequence > entry.savepoint.effectSequence);
+        const sinceSavepoint = journal.list().filter((record) => record.sequence > entry.savepoint.effectSequence);
+        const compensatedSequences = new Set(
+            sinceSavepoint.flatMap((record) =>
+                record.compensates && record.outcome.status === 'succeeded'
+                    ? [record.compensates.effectSequence]
+                    : []),
+        );
+        const effects = sinceSavepoint.filter((record) =>
+            !record.compensates && !compensatedSequences.has(record.sequence));
         if (effects.length > 0) {
+            if (rollbackOptions.strategy === 'physical') {
+                if (!options.compensationPort) {
+                    return Object.freeze({
+                        status: 'blocked' as const,
+                        reason: 'compensation_executor_unavailable' as const,
+                        savepoint: entry.savepoint,
+                        world: current.debug.world,
+                        effects: Object.freeze([...effects]),
+                        diff: diffWorldViews(entry.world, current.view),
+                    });
+                }
+                const journalEntries = effects.map((record) => journal.read(record.sequence));
+                if (journalEntries.some((value) => !value)) {
+                    throw new Error('effect journal entry disappeared during rollback planning');
+                }
+                const compensation = await executePhysicalCompensations({
+                    entries: journalEntries as NonNullable<(typeof journalEntries)[number]>[],
+                    port: options.compensationPort,
+                    worldViewSource: options.worldViewSource,
+                    journal,
+                    location: current.pause.location,
+                    scope: current.pause.scope,
+                });
+                if (compensation.status === 'blocked') {
+                    return Object.freeze({
+                        status: 'blocked' as const,
+                        reason: 'compensation_unavailable' as const,
+                        savepoint: entry.savepoint,
+                        world: current.debug.world,
+                        effects: Object.freeze([...effects]),
+                        diff: diffWorldViews(entry.world, current.view),
+                        plans: compensation.plans,
+                    });
+                }
+                active = {
+                    pause: current.pause,
+                    view: compensation.world,
+                    debug: createDebugQuerySession(compensation.world),
+                };
+                const residualDiff = diffWorldViews(entry.world, compensation.world);
+                if (compensation.status === 'failed') {
+                    return Object.freeze({
+                        status: 'partial' as const,
+                        mode: 'physical' as const,
+                        semanticRisk: compensation.semanticRisk,
+                        savepoint: entry.savepoint,
+                        compensations: compensation.compensations,
+                        failure: compensation.failure,
+                        world: describeWorldView(compensation.world),
+                        residualDiff,
+                    });
+                }
+                return Object.freeze({
+                    status: 'compensated' as const,
+                    mode: 'physical' as const,
+                    semanticRisk: compensation.semanticRisk,
+                    savepoint: entry.savepoint,
+                    compensations: compensation.compensations,
+                    world: describeWorldView(compensation.world),
+                    residualDiff,
+                });
+            }
             return Object.freeze({
                 status: 'blocked' as const,
                 reason: 'effects_require_compensation' as const,

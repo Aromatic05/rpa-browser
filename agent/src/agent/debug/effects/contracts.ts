@@ -9,6 +9,7 @@ export type DebugEffectRecord = Readonly<{
     outcome: DslEffectOutcome;
     worldBefore: WorldViewDescriptor;
     worldAfter: WorldViewDescriptor;
+    compensates?: Readonly<{effectSequence: number}>;
 }>;
 
 export type DebugEffectJournalEntry = Readonly<{
@@ -35,7 +36,11 @@ export type DebugEffectDiffResult =
     }>;
 
 export type DebugEffectJournal = {
-    begin: (event: DslBeforeEffectEvent, worldBefore: WorldView) => void;
+    begin: (
+        event: DslBeforeEffectEvent,
+        worldBefore: WorldView,
+        metadata?: Readonly<{compensates?: Readonly<{effectSequence: number}>}>,
+    ) => void;
     finish: (event: DslAfterEffectEvent, worldAfter: WorldView) => void;
     list: () => readonly DebugEffectRecord[];
     read: (sequence: number) => DebugEffectJournalEntry | null;

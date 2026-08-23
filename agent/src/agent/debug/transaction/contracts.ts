@@ -1,6 +1,7 @@
 import type {WorldView, WorldViewDescriptor} from '../../worldview/contracts';
 import type {WorldViewDiffResult} from '../../worldview/diff';
 import type {DebugEffectRecord} from '../effects/contracts';
+import type {DebugEffectSemanticRisk, DebugPhysicalCompensationPlan} from './compensation/contracts';
 
 export type DebugSavepoint = Readonly<{
     id: string;
@@ -34,11 +35,35 @@ export type DebugRollbackResult =
     }>
     | Readonly<{
         status: 'blocked';
-        reason: 'effects_require_compensation' | 'world_drift';
+        reason:
+            | 'effects_require_compensation'
+            | 'world_drift'
+            | 'compensation_executor_unavailable'
+            | 'compensation_unavailable';
         savepoint: DebugSavepoint;
         world: WorldViewDescriptor;
         effects: readonly DebugEffectRecord[];
         diff: WorldViewDiffResult;
+        plans?: readonly DebugPhysicalCompensationPlan[];
+    }>
+    | Readonly<{
+        status: 'compensated';
+        mode: 'physical';
+        semanticRisk: DebugEffectSemanticRisk;
+        savepoint: DebugSavepoint;
+        compensations: readonly DebugEffectRecord[];
+        world: WorldViewDescriptor;
+        residualDiff: WorldViewDiffResult;
+    }>
+    | Readonly<{
+        status: 'partial';
+        mode: 'physical';
+        semanticRisk: DebugEffectSemanticRisk;
+        savepoint: DebugSavepoint;
+        compensations: readonly DebugEffectRecord[];
+        failure: Readonly<{code: string; message: string; details?: unknown}>;
+        world: WorldViewDescriptor;
+        residualDiff: WorldViewDiffResult;
     }>
     | Readonly<{
         status: 'conflict';
@@ -54,3 +79,7 @@ export type DebugRollbackResult =
             message: string;
         }>;
     }>;
+
+export type DebugRollbackOptions = Readonly<{
+    strategy?: 'none' | 'physical';
+}>;
