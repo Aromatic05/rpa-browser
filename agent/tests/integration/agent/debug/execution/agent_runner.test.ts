@@ -305,7 +305,7 @@ test('paused DSL Agent runner handles World conflict through pure refresh before
                 execute: async (step) => ({stepId: step.id, ok: true, data: {}}),
             },
         },
-        worldViewSource: {pin: async () => pinCalls++ === 0 ? firstView : secondView},
+        worldViewSource: {pin: async () => pinCalls++ < 2 ? firstView : secondView},
         debug: {initialMode: 'step'},
         modelRuntime: {
             resolve: (provider, model) => provider === 'faux-debugger' && model === 'debugger'

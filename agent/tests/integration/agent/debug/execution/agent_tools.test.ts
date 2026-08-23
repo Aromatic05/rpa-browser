@@ -69,6 +69,9 @@ test('paused DSL Agent tools split pure debugger reads from execution effects', 
         'debug.scope',
         'debug.effects',
         'debug.diff',
+        'debug.transaction',
+        'debug.transaction_diff',
+        'debug.savepoint',
         'debug.world',
         'debug.refresh',
         'debug.query',
@@ -77,9 +80,10 @@ test('paused DSL Agent tools split pure debugger reads from execution effects', 
         'debug.continue',
         'debug.abort',
     ]);
-    for (const name of ['debug.execution', 'debug.scope', 'debug.effects', 'debug.diff', 'debug.world', 'debug.refresh', 'debug.query', 'debug.compute']) {
+    for (const name of ['debug.execution', 'debug.scope', 'debug.effects', 'debug.diff', 'debug.transaction', 'debug.transaction_diff', 'debug.world', 'debug.refresh', 'debug.query', 'debug.compute']) {
         assert.equal(classifyPausedDslDebugToolCall(name), 'read');
     }
+    assert.equal(classifyPausedDslDebugToolCall('debug.savepoint'), 'control');
     assert.equal(classifyPausedDslDebugToolCall('debug.step'), 'control');
     assert.equal(classifyPausedDslDebugToolCall('debug.continue'), 'control');
     assert.equal(classifyPausedDslDebugToolCall('debug.abort'), 'control');
@@ -99,6 +103,19 @@ test('paused DSL Agent tools split pure debugger reads from execution effects', 
     const effects = debuggerTools.tools.find((tool) => tool.name === 'debug.effects')!;
     const effectResult = await effects.execute('effects-1', {});
     assert.deepEqual((effectResult.details as any).effects, []);
+    const savepointTool = debuggerTools.tools.find((tool) => tool.name === 'debug.savepoint')!;
+    const saved = await savepointTool.execute('savepoint-1', {name: 'before-snapshot'});
+    assert.equal((saved.details as any).savepoint.effectSequence, 0);
+    assert.equal((saved.details as any).savepoint.name, 'before-snapshot');
+    const transactionTool = debuggerTools.tools.find((tool) => tool.name === 'debug.transaction')!;
+    const transaction = await transactionTool.execute('transaction-1', {});
+    assert.equal((transaction.details as any).transaction.effectCount, 0);
+    assert.equal((transaction.details as any).transaction.savepoints.length, 1);
+    const transactionDiff = debuggerTools.tools.find((tool) => tool.name === 'debug.transaction_diff')!;
+    const delta = await transactionDiff.execute('transaction-diff-1', {});
+    assert.equal((delta.details as any).ok, true);
+    assert.equal((delta.details as any).worldBefore.revision.captureRevision, 1);
+    assert.equal((delta.details as any).worldAfter.revision.captureRevision, 1);
 
     const step = debuggerTools.tools.find((tool) => tool.name === 'debug.step')!;
     const stepped = await step.execute('step-1', {});

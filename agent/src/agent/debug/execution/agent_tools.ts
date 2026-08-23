@@ -121,6 +121,47 @@ export const createPausedDslDebugAgentTools = (
             },
         },
         {
+            name: 'debug.transaction',
+            label: 'debug.transaction',
+            description: 'Read the current execution transaction baseline, current World, executed effect count, and savepoints. This is a pure read.',
+            parameters: Type.Object({}, {additionalProperties: false}),
+            execute: async () => {
+                const current = requirePause();
+                return toolResult({
+                    transaction: execution.transaction(current.continuationId),
+                    world: current.world,
+                });
+            },
+        },
+        {
+            name: 'debug.transaction_diff',
+            label: 'debug.transaction_diff',
+            description: 'Materialize the semantic World delta from the retained execution transaction baseline to the current paused World. This is a pure read.',
+            parameters: Type.Object({}, {additionalProperties: false}),
+            execute: async () => {
+                const current = requirePause();
+                const result = execution.transactionDiff(current.continuationId);
+                if (!result.ok) {return fail(result);}
+                return toolResult(result);
+            },
+        },
+        {
+            name: 'debug.savepoint',
+            label: 'debug.savepoint',
+            description: 'Create transaction-local debugger savepoint metadata at the current pinned World and effect position. This does not change the World.',
+            parameters: Type.Object({
+                name: Type.Optional(Type.String({minLength: 1})),
+            }, {additionalProperties: false}),
+            execute: async (_toolCallId, params) => {
+                const current = requirePause();
+                const input = params as {name?: string};
+                return toolResult({
+                    savepoint: execution.savepoint(current.continuationId, input.name),
+                    world: current.world,
+                });
+            },
+        },
+        {
             name: 'debug.world',
             label: 'debug.world',
             description: 'Read the pinned WorldView descriptor for the current paused continuation.',

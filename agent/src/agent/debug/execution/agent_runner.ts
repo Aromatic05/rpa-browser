@@ -20,6 +20,7 @@ export const PAUSED_DSL_DEBUG_SYSTEM_PROMPT = [
     'When debug.execution reports reason=failure, inspect the structured failure, scope, and World freely; kind=step describes an operation failure and kind=invariant describes an ensure violation. debug.continue terminalizes that original failure and does not retry or perform a World effect.',
     'debug.execution location includes programId, execution path, source line range when available, loop frames, and checkpoint callStack.',
     'debug.execution, debug.scope, debug.effects, debug.diff, debug.world, debug.query, and debug.compute are pure reads.',
+    'debug.transaction and debug.transaction_diff are pure reads over the retained execution transaction; debug.savepoint records transaction-local metadata without changing the World.',
     'debug.effects contains only World effects that actually executed, with outcome and before/after World revisions; pending or aborted effects are absent.',
     'debug.diff materializes the Snapshot V2 semantic delta for one effect sequence only when requested.',
     'debug.step and debug.continue validate the live World revision before advancing. If they return status=conflict, the continuation remains paused on its old WorldView; call debug.refresh, inspect the new World, then decide again.',

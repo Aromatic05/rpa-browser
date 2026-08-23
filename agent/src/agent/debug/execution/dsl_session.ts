@@ -12,13 +12,16 @@ import {
 import type {ComputeEvalScope} from '../../../compute/evaluate';
 import type {StepArgsMap} from '../../../runner/steps/types';
 import type {ComputeExpr} from '../../../compute/types';
-import type {WorldViewSource} from '../../worldview/contracts';
+import type {WorldView, WorldViewSource} from '../../worldview/contracts';
 import {describeWorldView} from '../../worldview/descriptor';
+import {diffWorldViews} from '../../worldview/diff';
 import {isSameWorldView} from '../../worldview/revision';
 import {diffDebugEffect} from '../effects/diff';
 import {createDebugEffectJournal} from '../effects/journal';
 import {createDebugQuerySession} from '../query/session';
 import type {DebugQuerySession} from '../query/contracts';
+import {createDebugTransaction} from '../transaction/state';
+import type {DebugTransaction} from '../transaction/contracts';
 import type {
     DslDebugAdvanceResult,
     DslDebugExecutionSession,
@@ -34,6 +37,7 @@ export type CreateDslDebugExecutionSessionOptions = {
 
 type ActivePause = {
     pause: PausedDslExecution;
+    view: WorldView;
     debug: DebugQuerySession;
 };
 
@@ -42,9 +46,22 @@ export const createDslDebugExecutionSession = (
 ): DslDebugExecutionSession => {
     const controller = createDslDebugController(options.debug);
     const journal = createDebugEffectJournal();
+    let transaction: DebugTransaction | null = null;
+    const ensureTransaction = async (): Promise<DebugTransaction> => {
+        transaction ??= createDebugTransaction(await options.worldViewSource.pin());
+        return transaction;
+    };
+    const requireTransaction = (): DebugTransaction => {
+        if (!transaction) {throw new Error('DSL debug transaction is not initialized');}
+        return transaction;
+    };
     const debugPort: DslDebugPort = {
-        beforeStatement: controller.port.beforeStatement,
+        beforeStatement: async (event) => {
+            await ensureTransaction();
+            await controller.port.beforeStatement(event);
+        },
         beforeEffect: async (event) => {
+            await ensureTransaction();
             await controller.port.beforeEffect?.(event);
             journal.begin(event, await options.worldViewSource.pin());
         },
@@ -94,16 +111,19 @@ export const createDslDebugExecutionSession = (
     const waitForPause = async (): Promise<PausedDslDebugExecution> => {
         if (active) {throw new Error('DSL debug execution is already paused');}
         const pause = await controller.waitForPause();
-        const debug = createDebugQuerySession(await options.worldViewSource.pin());
-        active = {pause, debug};
+        const view = await options.worldViewSource.pin();
+        const debug = createDebugQuerySession(view);
+        active = {pause, view, debug};
         return exposePause(active);
     };
 
     const refresh = async (continuationId: string): Promise<PausedDslDebugExecution> => {
         const current = requireActive(continuationId);
+        const view = await options.worldViewSource.pin();
         active = {
             pause: current.pause,
-            debug: createDebugQuerySession(await options.worldViewSource.pin()),
+            view,
+            debug: createDebugQuerySession(view),
         };
         return exposePause(active);
     };
@@ -158,6 +178,18 @@ export const createDslDebugExecutionSession = (
         diff: (continuationId: string, effectSequence: number) => {
             requireActive(continuationId);
             return diffDebugEffect(journal, effectSequence);
+        },
+        transaction: (continuationId: string) => {
+            const current = requireActive(continuationId);
+            return requireTransaction().snapshot(current.view, journal.list().length);
+        },
+        savepoint: (continuationId: string, name?: string) => {
+            const current = requireActive(continuationId);
+            return requireTransaction().savepoint(current.view, journal.list().length, name);
+        },
+        transactionDiff: (continuationId: string) => {
+            const current = requireActive(continuationId);
+            return diffWorldViews(requireTransaction().baseline, current.view);
         },
         refresh,
         advance,

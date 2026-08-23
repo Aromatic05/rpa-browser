@@ -11,6 +11,8 @@ import type {ComputeExpr} from '../../../compute/types';
 import type {DebugComputeResult, DebugQueryReadResult} from '../query/contracts';
 import type {DebugEffectDiffResult, DebugEffectRecord} from '../effects/contracts';
 import type {WorldViewDescriptor} from '../../worldview/contracts';
+import type {WorldViewDiffResult} from '../../worldview/diff';
+import type {DebugSavepoint, DebugTransactionSnapshot} from '../transaction/contracts';
 
 type PausedDslDebugExecutionBase = Readonly<{
     continuationId: string;
@@ -61,6 +63,9 @@ export type DslDebugExecutionSession = {
     ) => DebugComputeResult;
     effects: (continuationId: string) => readonly DebugEffectRecord[];
     diff: (continuationId: string, effectSequence: number) => DebugEffectDiffResult;
+    transaction: (continuationId: string) => DebugTransactionSnapshot;
+    savepoint: (continuationId: string, name?: string) => DebugSavepoint;
+    transactionDiff: (continuationId: string) => WorldViewDiffResult;
     refresh: (continuationId: string) => Promise<PausedDslDebugExecution>;
     advance: (continuationId: string, mode: 'continue' | 'step' | 'abort') => Promise<DslDebugAdvanceResult>;
     waitForCompletion: () => Promise<RunDslSourceResult>;
