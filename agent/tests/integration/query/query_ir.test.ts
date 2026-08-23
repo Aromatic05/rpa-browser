@@ -161,6 +161,8 @@ test('canonical Query IR executes directly over one PageSession entry', async ()
             entityId: businessResult.data.meta?.entityId,
             entityKind: 'table',
             componentId: businessResult.data.meta?.componentId,
+            pageEpoch: 'v2-business',
+            captureRevision: 1,
         },
     });
 });

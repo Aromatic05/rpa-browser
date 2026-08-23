@@ -60,12 +60,7 @@ export const createPausedDslDebugAgentTools = (
     const advance = async (mode: 'continue' | 'step' | 'abort') => {
         const current = requirePause();
         const result = await execution.advance(current.continuationId, mode);
-        if (result.status === 'paused') {
-            pause = result.pause;
-            terminal = null;
-            return toolResult(result);
-        }
-        if (result.status === 'barrier') {
+        if (result.status === 'paused' || result.status === 'barrier' || result.status === 'recompute_required') {
             pause = result.pause;
             terminal = null;
             return toolResult(result);
@@ -83,12 +78,7 @@ export const createPausedDslDebugAgentTools = (
     const crossBarrier = async () => {
         const current = requirePause();
         const result = await execution.crossBarrier(current.continuationId);
-        if (result.status === 'paused') {
-            pause = result.pause;
-            terminal = null;
-            return toolResult(result);
-        }
-        if (result.status === 'barrier') {
+        if (result.status === 'paused' || result.status === 'barrier' || result.status === 'recompute_required') {
             pause = result.pause;
             terminal = null;
             return toolResult(result);
@@ -260,6 +250,19 @@ export const createPausedDslDebugAgentTools = (
                 pause = await execution.refresh(current.continuationId);
                 terminal = null;
                 return toolResult({status: 'refreshed', pause});
+            },
+        },
+        {
+            name: 'debug.recompute_effect',
+            label: 'debug.recompute_effect',
+            description: 'Re-resolve the current pending logical effect target by executing its stored canonical QueryIR against the pinned WorldView, then rebind the pending effect without mutating the World.',
+            parameters: Type.Object({}, {additionalProperties: false}),
+            execute: async () => {
+                const current = requirePause();
+                const result = execution.recomputeEffect(current.continuationId);
+                pause = result.pause;
+                terminal = null;
+                return toolResult(result);
             },
         },
         {

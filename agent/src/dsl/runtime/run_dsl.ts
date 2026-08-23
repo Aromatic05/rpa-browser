@@ -23,6 +23,7 @@ import { injectStepResolve } from '../../runner/step_resolve';
 import {classifyBrowserOperation} from '../../runner/steps/effects';
 import type {
     DslDebugPort,
+    DslEffectDescriptor,
     DslFailureDescriptor,
     DslLoopFrame,
     DslStatementLocation,
@@ -33,6 +34,7 @@ import {collectDslExpressionDependencies, collectDslExpressionsDependencies} fro
 import type {DslSourceMap} from '../parser/source_map';
 import type {EffectSemantics} from '../../effects/contracts';
 import {UNKNOWN_EFFECT_SEMANTICS} from '../../effects/declaration';
+import {compileBrowserQuery} from '../../query/compile';
 
 export type RunDslContext = {
     workspaceName: string;
@@ -216,12 +218,23 @@ const executeStmt = async (
         case 'linked_entity_act': {
             const queryStep = buildQueryStep(stmt.targetQuery, (ref) => resolveDslValue(ref, scope));
             const queryResult = await emitStepAndWait(queryStep, execution);
+            const compiledTarget = compileBrowserQuery(queryStep.args);
+            if (!compiledTarget.ok) {
+                throw new DslRuntimeError(compiledTarget.error.message, compiledTarget.error.code);
+            }
+            const typedQueryResult = queryResult as BrowserQueryResult;
+            const observedAt = queryObservedAt(typedQueryResult).observedAt;
+            const logicalTarget = Object.freeze({
+                kind: 'query' as const,
+                query: compiledTarget.ir,
+                ...(observedAt ? {resolvedAt: observedAt} : {}),
+            });
             const target = adaptDslQueryResult(
-                queryResult as BrowserQueryResult,
+                typedQueryResult,
             );
             const profileName = stmt.targetQuery.profileName;
             if (stmt.action === 'click') {
-                await emitStepAndWait(buildClickStep(target, profileName), execution, stmt.effect);
+                await emitStepAndWait(buildClickStep(target, profileName), execution, stmt.effect, logicalTarget);
                 return;
             }
             const value = resolveDslValue(stmt.value, scope);
@@ -230,7 +243,7 @@ const executeStmt = async (
                 : stmt.action === 'type'
                     ? buildTypeStep(target, value, profileName)
                     : buildSelectStep(target, value, profileName);
-            await emitStepAndWait(step, execution, stmt.effect);
+            await emitStepAndWait(step, execution, stmt.effect, logicalTarget);
             return;
         }
         case 'resolve_act': {
@@ -274,7 +287,7 @@ const executeStmt = async (
                     await pauseBeforeEffect(step, execution);
                 },
                 afterEffect: async (step, result) => {
-                    await notifyAfterEffect(step, result, execution);
+                    await notifyAfterEffect(describeEffect(step), result, execution);
                 },
                 onStepFailure: async (step, result) => {
                     await pauseOnFailure(step, result, execution);
@@ -350,6 +363,7 @@ const emitStepAndWait = async (
         location: DslStatementLocation;
     },
     semantics?: EffectSemantics,
+    logicalTarget?: DslEffectDescriptor['logicalTarget'],
 ): Promise<unknown> => {
     const {scope, ctx, port, logger, stmtIndex, location} = execution;
     safeLog(logger, 'debug', 'dsl.step.emit', {
@@ -357,16 +371,17 @@ const emitStepAndWait = async (
         stepId: step.id,
         stepName: step.name,
     });
-    await pauseBeforeEffect(step, {scope, ctx, location}, semantics);
-    const result = await port.execute(step);
+    const effect = await pauseBeforeEffect(step, {scope, ctx, location}, semantics, logicalTarget);
+    const runtimeStep = effect ? applyEffectResolution(step, effect) : step;
+    const result = await port.execute(runtimeStep);
     safeLog(logger, 'debug', 'dsl.step.result', {
         stmtIndex,
-        stepId: step.id,
+        stepId: runtimeStep.id,
         ok: result.ok,
     });
-    await notifyAfterEffect(step, result, {ctx, location}, semantics);
+    if (effect) {await notifyAfterEffect(effect, result, {ctx, location});}
     if (!result.ok) {
-        const failure = await pauseOnFailure(step, result, {scope, ctx, location});
+        const failure = await pauseOnFailure(runtimeStep, result, {scope, ctx, location});
         throw new DslRuntimeError(
             failure.message,
             failure.code,
@@ -464,35 +479,36 @@ const pauseBeforeEffect = async (
         location: DslStatementLocation;
     },
     semantics?: EffectSemantics,
-): Promise<void> => {
-    if (classifyBrowserOperation(step.name, step.args) !== 'effect') {return;}
-    await execution.ctx.debugPort?.beforeEffect?.({
+    logicalTarget?: DslEffectDescriptor['logicalTarget'],
+): Promise<DslEffectDescriptor | undefined> => {
+    if (classifyBrowserOperation(step.name, step.args) !== 'effect') {return undefined;}
+    const effect = describeEffect(step, semantics, logicalTarget);
+    const resolution = await execution.ctx.debugPort?.beforeEffect?.({
         location: execution.location,
         scope: snapshotDslScope(execution.scope),
-        effect: describeEffect(step, semantics),
+        effect,
     });
+    return resolution?.effect ?? effect;
 };
 
 const notifyAfterEffect = async (
-    step: StepUnion,
+    effect: DslEffectDescriptor,
     result: ExecutorStepResult,
     execution: {
         ctx: RunDslContext;
         location: DslStatementLocation;
     },
-    semantics?: EffectSemantics,
 ): Promise<void> => {
-    if (classifyBrowserOperation(step.name, step.args) !== 'effect') {return;}
     await execution.ctx.debugPort?.afterEffect?.({
         location: execution.location,
-        effect: describeEffect(step, semantics),
+        effect,
         outcome: result.ok
             ? Object.freeze({status: 'succeeded' as const})
             : Object.freeze({
                 status: 'failed' as const,
                 error: Object.freeze({
                     code: result.error?.code || 'ERR_DSL_STEP_FAILED',
-                    message: result.error?.message || `DSL step failed: ${step.name}`,
+                    message: result.error?.message || `DSL step failed: ${effect.stepName}`,
                     ...(result.error?.details === undefined
                         ? {}
                         : {details: structuredClone(result.error.details)}),
@@ -501,12 +517,24 @@ const notifyAfterEffect = async (
     });
 };
 
-const describeEffect = (step: StepUnion, semantics?: EffectSemantics) => Object.freeze({
+const describeEffect = (
+    step: StepUnion,
+    semantics?: EffectSemantics,
+    logicalTarget?: DslEffectDescriptor['logicalTarget'],
+): DslEffectDescriptor => Object.freeze({
     stepId: step.id,
     stepName: step.name,
     args: structuredClone(step.args),
     semantics: semantics ?? UNKNOWN_EFFECT_SEMANTICS,
+    ...(logicalTarget ? {logicalTarget} : {}),
 });
+
+const applyEffectResolution = (step: StepUnion, effect: DslEffectDescriptor): StepUnion => {
+    if (effect.stepId !== step.id || effect.stepName !== step.name) {
+        throw new DslRuntimeError('debugger effect resolution changed step identity', 'ERR_DSL_DEBUG_EFFECT_IDENTITY');
+    }
+    return {...step, args: structuredClone(effect.args)} as StepUnion;
+};
 
 const toExecutorStepResult = (result: TaskStepResult): ExecutorStepResult => {
     return {

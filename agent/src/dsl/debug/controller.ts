@@ -76,7 +76,7 @@ export const createDslDebugController = (
             },
             beforeEffect: async (event: DslBeforeEffectEvent) => {
                 const isBarrier = barrierOn.has(event.effect.semantics.reversibility);
-                if (!isBarrier && !options.breakBeforeEffects) {return;}
+                if (!isBarrier && !options.breakBeforeEffects) {return undefined;}
                 await pause(Object.freeze({
                     continuationId: crypto.randomUUID(),
                     reason: isBarrier ? 'barrier' as const : 'effect' as const,
@@ -84,6 +84,7 @@ export const createDslDebugController = (
                     scope: event.scope,
                     effect: event.effect,
                 }));
+                return undefined;
             },
             onFailure: async (event: DslFailureEvent) => {
                 if (!options.breakOnFailure) {return;}

@@ -2,6 +2,7 @@ import type {DslComputeExpr, DslExpr, DslStmt, QueryExpr} from '../ast/types';
 import type {StepName} from '../../runner/steps/types';
 import type {BrowserOperationClassification} from '../../runner/steps/effects';
 import type {EffectSemantics} from '../../effects/contracts';
+import type {QueryIR} from '../../query/contracts';
 import type {DslSourceLocation} from '../parser/source_map';
 
 export type DslLoopFrame = Readonly<{
@@ -76,6 +77,15 @@ export type DslEffectDescriptor = Readonly<{
     stepName: StepName;
     args: unknown;
     semantics: EffectSemantics;
+    logicalTarget?: Readonly<{
+        kind: 'query';
+        query: QueryIR;
+        resolvedAt?: DslValueObservedRevision;
+    }>;
+}>;
+
+export type DslBeforeEffectResolution = Readonly<{
+    effect: DslEffectDescriptor;
 }>;
 
 export type DslBeforeEffectEvent = Readonly<{
@@ -133,7 +143,9 @@ export type DslFailureEvent = Readonly<{
 
 export type DslDebugPort = {
     beforeStatement: (event: DslBeforeStatementEvent) => void | Promise<void>;
-    beforeEffect?: (event: DslBeforeEffectEvent) => void | Promise<void>;
+    beforeEffect?: (
+        event: DslBeforeEffectEvent,
+    ) => DslBeforeEffectResolution | undefined | Promise<DslBeforeEffectResolution | undefined>;
     afterEffect?: (event: DslAfterEffectEvent) => void | Promise<void>;
     onFailure?: (event: DslFailureEvent) => void | Promise<void>;
     onValue?: (event: DslValueProvenanceEvent) => void | Promise<void>;

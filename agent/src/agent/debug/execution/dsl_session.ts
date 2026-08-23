@@ -2,7 +2,7 @@ import {
     createDslDebugController,
     type CreateDslDebugControllerOptions,
 } from '../../../dsl/debug/controller';
-import type {DslDebugPort, PausedDslExecution} from '../../../dsl/debug/contracts';
+import type {DslDebugPort, DslEffectDescriptor, PausedDslExecution} from '../../../dsl/debug/contracts';
 import {DslDebugAbortError} from '../../../dsl/debug/errors';
 import {
     runDslSource,
@@ -12,7 +12,7 @@ import {
 import type {ComputeEvalScope} from '../../../compute/evaluate';
 import type {ComputeExpr} from '../../../compute/types';
 import type {QueryIR} from '../../../query/contracts';
-import type {WorldView, WorldViewSource} from '../../worldview/contracts';
+import type {WorldView, WorldViewDescriptor, WorldViewSource} from '../../worldview/contracts';
 import {describeWorldView} from '../../worldview/descriptor';
 import {buildWorldCatalog} from '../../worldview/catalog';
 import {diffWorldViews} from '../../worldview/diff';
@@ -33,8 +33,10 @@ import type {
 import type {
     DslDebugAdvanceResult,
     DslDebugExecutionSession,
+    DslDebugRecomputeEffectResult,
     PausedDslDebugExecution,
 } from './contracts';
+import {rebindLogicalEffectTarget} from './rebind_effect';
 
 export type CreateDslDebugExecutionSessionOptions = {
     source: string;
@@ -48,6 +50,7 @@ type ActivePause = {
     pause: PausedDslExecution;
     view: WorldView;
     debug: DebugQuerySession;
+    effectResolvedAt?: WorldViewDescriptor;
 };
 
 export const createDslDebugExecutionSession = (
@@ -56,6 +59,7 @@ export const createDslDebugExecutionSession = (
     const controller = createDslDebugController(options.debug);
     const journal = createDebugEffectJournal();
     const provenance = createDebugValueProvenanceStore();
+    const pendingEffectOverrides = new Map<string, DslEffectDescriptor>();
     let transaction: DebugTransaction | null = null;
     const ensureTransaction = async (): Promise<DebugTransaction> => {
         transaction ??= createDebugTransaction(await options.worldViewSource.pin());
@@ -72,8 +76,12 @@ export const createDslDebugExecutionSession = (
         },
         beforeEffect: async (event) => {
             await ensureTransaction();
+            pendingEffectOverrides.delete(event.effect.stepId);
             await controller.port.beforeEffect?.(event);
-            journal.begin(event, await options.worldViewSource.pin());
+            const effect = pendingEffectOverrides.get(event.effect.stepId) ?? event.effect;
+            pendingEffectOverrides.delete(event.effect.stepId);
+            journal.begin(Object.freeze({...event, effect}), await options.worldViewSource.pin());
+            return effect === event.effect ? undefined : Object.freeze({effect});
         },
         afterEffect: async (event) => {
             journal.finish(event, await options.worldViewSource.pin());
@@ -126,7 +134,14 @@ export const createDslDebugExecutionSession = (
         const pause = await controller.waitForPause();
         const view = await options.worldViewSource.pin();
         const debug = createDebugQuerySession(view);
-        active = {pause, view, debug};
+        const effectResolvedAt = (pause.reason === 'effect' || pause.reason === 'barrier')
+            && pause.effect.logicalTarget
+            ? Object.freeze({
+                ...debug.world,
+                revision: pause.effect.logicalTarget.resolvedAt ?? debug.world.revision,
+            })
+            : undefined;
+        active = {pause, view, debug, ...(effectResolvedAt ? {effectResolvedAt} : {})};
         return exposePause(active);
     };
 
@@ -137,8 +152,68 @@ export const createDslDebugExecutionSession = (
             pause: current.pause,
             view,
             debug: createDebugQuerySession(view),
+            ...(current.effectResolvedAt ? {effectResolvedAt: current.effectResolvedAt} : {}),
         };
         return exposePause(active);
+    };
+
+    const recomputeEffect = (continuationId: string): DslDebugRecomputeEffectResult => {
+        const current = requireActive(continuationId);
+        if (current.pause.reason !== 'effect' && current.pause.reason !== 'barrier') {
+            return Object.freeze({
+                status: 'unavailable' as const,
+                reason: 'not_effect_pause' as const,
+                pause: exposePause(current),
+            });
+        }
+        const effect = current.pause.effect;
+        if (!effect.logicalTarget) {
+            return Object.freeze({
+                status: 'unavailable' as const,
+                reason: 'no_logical_target' as const,
+                pause: exposePause(current),
+            });
+        }
+        const queried = current.debug.query(effect.logicalTarget.query);
+        if (!queried.ok) {
+            return Object.freeze({
+                status: 'failed' as const,
+                error: queried.error,
+                pause: exposePause(current) as Extract<PausedDslDebugExecution, {reason: 'effect' | 'barrier'}>,
+            });
+        }
+        const rebound = rebindLogicalEffectTarget(effect, queried.result);
+        if (!rebound.ok) {
+            return Object.freeze({
+                status: 'unavailable' as const,
+                reason: 'unsupported_effect' as const,
+                pause: exposePause(current),
+            });
+        }
+        pendingEffectOverrides.set(effect.stepId, rebound.effect);
+        const pause = Object.freeze({...current.pause, effect: rebound.effect});
+        active = {
+            ...current,
+            pause,
+            effectResolvedAt: current.debug.world,
+        };
+        return Object.freeze({
+            status: 'recomputed' as const,
+            pause: exposePause(active) as Extract<PausedDslDebugExecution, {reason: 'effect' | 'barrier'}>,
+        });
+    };
+
+    const recomputeRequired = (current: ActivePause): Extract<DslDebugAdvanceResult, {status: 'recompute_required'}> | null => {
+        if ((current.pause.reason !== 'effect' && current.pause.reason !== 'barrier')
+            || !current.effectResolvedAt
+            || isSameWorldView(current.effectResolvedAt, current.debug.world)) {
+            return null;
+        }
+        return Object.freeze({
+            status: 'recompute_required' as const,
+            pause: exposePause(current) as Extract<PausedDslDebugExecution, {reason: 'effect' | 'barrier'}>,
+            target: Object.freeze({resolvedAt: current.effectResolvedAt, current: current.debug.world}),
+        });
     };
 
     const rollback = async (
@@ -268,6 +343,10 @@ export const createDslDebugExecutionSession = (
         mode: 'continue' | 'step' | 'abort',
     ): Promise<DslDebugAdvanceResult> => {
         const current = requireActive(continuationId);
+        if (mode !== 'abort') {
+            const stale = recomputeRequired(current);
+            if (stale) {return stale;}
+        }
         if (current.pause.reason === 'barrier' && mode !== 'abort') {
             return Object.freeze({
                 status: 'barrier' as const,
@@ -308,6 +387,8 @@ export const createDslDebugExecutionSession = (
         if (current.pause.reason !== 'barrier') {
             throw new Error(`DSL debug continuation is not paused at a commit barrier: ${continuationId}`);
         }
+        const stale = recomputeRequired(current);
+        if (stale) {return stale;}
         const actual = describeWorldView(await options.worldViewSource.pin());
         if (!isSameWorldView(current.debug.world, actual)) {
             return Object.freeze({
@@ -365,6 +446,7 @@ export const createDslDebugExecutionSession = (
         },
         rollback,
         refresh,
+        recomputeEffect,
         crossBarrier,
         advance,
         waitForCompletion: async () => await completion,

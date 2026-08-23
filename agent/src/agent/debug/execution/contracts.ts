@@ -10,6 +10,7 @@ import type {StepName} from '../../../runner/steps/types';
 import type {ComputeExpr} from '../../../compute/types';
 import type {QueryIR} from '../../../query/contracts';
 import type {DebugComputeResult, DebugQueryReadResult} from '../query/contracts';
+import type {QueryIRExecutionError} from '../../../runner/session/query_ir';
 import type {DebugEffectDiffResult, DebugEffectRecord} from '../effects/contracts';
 import type {WorldViewDescriptor} from '../../worldview/contracts';
 import type {WorldCatalog} from '../../worldview/catalog';
@@ -53,6 +54,14 @@ export type DslDebugAdvanceResult =
     | Readonly<{status: 'paused'; pause: PausedDslDebugExecution}>
     | Readonly<{status: 'barrier'; pause: Extract<PausedDslDebugExecution, {reason: 'barrier'}>}>
     | Readonly<{status: 'conflict'; conflict: DslDebugWorldConflict}>
+    | Readonly<{
+        status: 'recompute_required';
+        pause: Extract<PausedDslDebugExecution, {reason: 'effect' | 'barrier'}>;
+        target: Readonly<{
+            resolvedAt: WorldViewDescriptor;
+            current: WorldViewDescriptor;
+        }>;
+    }>
     | Readonly<{status: 'completed'; output: Readonly<Record<string, unknown>>}>
     | Readonly<{status: 'failed'; failure: DslDebugTerminalFailure}>
     | Readonly<{
@@ -61,6 +70,22 @@ export type DslDebugAdvanceResult =
             reason: PausedDslDebugExecution['reason'];
             location: DslStatementLocation;
         }>;
+    }>;
+
+export type DslDebugRecomputeEffectResult =
+    | Readonly<{
+        status: 'recomputed';
+        pause: Extract<PausedDslDebugExecution, {reason: 'effect' | 'barrier'}>;
+    }>
+    | Readonly<{
+        status: 'unavailable';
+        reason: 'not_effect_pause' | 'no_logical_target' | 'unsupported_effect';
+        pause: PausedDslDebugExecution;
+    }>
+    | Readonly<{
+        status: 'failed';
+        error: QueryIRExecutionError;
+        pause: Extract<PausedDslDebugExecution, {reason: 'effect' | 'barrier'}>;
     }>;
 
 export type DslDebugExecutionSession = {
@@ -84,6 +109,7 @@ export type DslDebugExecutionSession = {
         options?: DebugRollbackOptions,
     ) => Promise<DebugRollbackResult>;
     refresh: (continuationId: string) => Promise<PausedDslDebugExecution>;
+    recomputeEffect: (continuationId: string) => DslDebugRecomputeEffectResult;
     crossBarrier: (continuationId: string) => Promise<DslDebugAdvanceResult>;
     advance: (continuationId: string, mode: 'continue' | 'step' | 'abort') => Promise<DslDebugAdvanceResult>;
     waitForCompletion: () => Promise<RunDslSourceResult>;

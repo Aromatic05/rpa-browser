@@ -28,6 +28,8 @@ export const PAUSED_DSL_DEBUG_SYSTEM_PROMPT = [
     'debug.diff materializes the Snapshot V2 semantic delta for one effect sequence only when requested.',
     'debug.step and debug.continue validate the live World revision before advancing. If they return status=conflict, the continuation remains paused on its old WorldView; call debug.refresh, inspect the new World, then decide again.',
     'debug.refresh is a pure read-only rebind of the paused continuation to the latest WorldView and never advances the program.',
+    'If an effect or barrier has a logical target and refresh moves to a new World revision, advancing returns recompute_required. Use debug.recompute_effect to re-resolve the stored QueryIR on the pinned World before continuing or crossing the barrier.',
+    'debug.recompute_effect changes only the pending execution target and never mutates the World.',
     'debug.step and debug.continue advance the retained execution and may cause World effects.',
     'debug.abort terminates the retained execution before the pending statement/effect; it is not rollback and does not undo earlier effects.',
     'Inspect freely, but advance execution only when your reasoning requires it.',

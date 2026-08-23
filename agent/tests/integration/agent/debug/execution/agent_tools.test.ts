@@ -99,6 +99,7 @@ test('paused DSL Agent tools split pure debugger reads from execution effects', 
         'debug.rollback',
         'debug.world',
         'debug.refresh',
+        'debug.recompute_effect',
         'debug.query',
         'debug.compute',
         'debug.cross_barrier',
@@ -111,10 +112,16 @@ test('paused DSL Agent tools split pure debugger reads from execution effects', 
     }
     assert.equal(classifyPausedDslDebugToolCall('debug.savepoint'), 'control');
     assert.equal(classifyPausedDslDebugToolCall('debug.rollback'), 'control');
+    assert.equal(classifyPausedDslDebugToolCall('debug.recompute_effect'), 'control');
     assert.equal(classifyPausedDslDebugToolCall('debug.cross_barrier'), 'control');
     assert.equal(classifyPausedDslDebugToolCall('debug.step'), 'control');
     assert.equal(classifyPausedDslDebugToolCall('debug.continue'), 'control');
     assert.equal(classifyPausedDslDebugToolCall('debug.abort'), 'control');
+
+    const recompute = debuggerTools.tools.find((tool) => tool.name === 'debug.recompute_effect')!;
+    const unavailable = await recompute.execute('recompute-1', {});
+    assert.equal((unavailable.details as any).status, 'unavailable');
+    assert.equal((unavailable.details as any).reason, 'not_effect_pause');
 
     const compute = debuggerTools.tools.find((tool) => tool.name === 'debug.compute')!;
     const computed = await compute.execute('compute-1', {
@@ -468,11 +475,13 @@ test('debug.cross_barrier refuses stale World approval until the debugger refres
     const refreshed = await execution.refresh(barrier.continuationId);
     assert.equal(refreshed.reason, 'barrier');
     assert.equal(refreshed.world.revision.captureRevision, 2);
-    const crossed = await execution.crossBarrier(barrier.continuationId);
-    assert.equal(crossed.status, 'paused');
-    assert.equal(clickCalls, 1);
-    if (crossed.status !== 'paused') {throw new Error('expected pause after barrier effect');}
-    await execution.advance(crossed.pause.continuationId, 'abort');
+    const requiresRecompute = await execution.crossBarrier(barrier.continuationId);
+    assert.equal(requiresRecompute.status, 'recompute_required');
+    assert.equal(clickCalls, 0);
+    const recomputed = execution.recomputeEffect(barrier.continuationId);
+    assert.equal(recomputed.status, 'failed');
+    assert.equal(clickCalls, 0);
+    await execution.advance(barrier.continuationId, 'abort');
 });
 
 test('debug.explain recursively traces a derived value back through query provenance', async () => {

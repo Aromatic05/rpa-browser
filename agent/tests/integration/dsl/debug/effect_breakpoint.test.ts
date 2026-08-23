@@ -52,6 +52,14 @@ test('effect breakpoint pauses after linked query but before the browser mutatio
         stepName: 'browser.click',
         args: {nodeId: 'approve-button'},
         semantics: {reversibility: 'unknown'},
+        logicalTarget: {
+            kind: 'query',
+            query: {
+                op: 'entity.target',
+                businessTag: 'orders.main',
+                target: {kind: 'table.module_action', actionIntent: 'approve'},
+            },
+        },
     });
     assert.deepEqual(calls, ['browser.query']);
 

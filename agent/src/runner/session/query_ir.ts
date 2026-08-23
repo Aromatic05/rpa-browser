@@ -57,13 +57,13 @@ const evaluate = (
     if (ir.op === 'entity') {
         const result = queryPageSessionBusinessEntity(entry, ir.businessTag, ir.query);
         return result.ok
-            ? {ok: true, value: {kind: 'result', result: result.data as BrowserQueryResult}}
+            ? {ok: true, value: {kind: 'result', result: withWorldMeta(observation, result.data as BrowserQueryResult)}}
             : result;
     }
     if (ir.op === 'entity.target') {
         const result = resolvePageSessionBusinessTarget(entry, ir.businessTag, ir.target);
         return result.ok
-            ? {ok: true, value: {kind: 'result', result: result.data as BrowserQueryResult}}
+            ? {ok: true, value: {kind: 'result', result: withWorldMeta(observation, result.data)}}
             : result;
     }
     if (ir.op === 'scan') {
@@ -151,6 +151,14 @@ const resultValue = (
 const worldMeta = (observation: PageObservation): Record<string, unknown> => ({
     pageEpoch: observation.identity.pageEpoch,
     captureRevision: observation.identity.captureRevision,
+});
+
+const withWorldMeta = (
+    observation: PageObservation,
+    result: BrowserQueryResult,
+): BrowserQueryResult => ({
+    ...result,
+    meta: {...(result.meta ?? {}), ...worldMeta(observation)},
 });
 
 const collectCandidates = (
