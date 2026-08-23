@@ -30,7 +30,54 @@ test('afterEffect reports only executed World effects and excludes read steps', 
     assert.equal(events[0].location.path, 'body.1');
     assert.equal(events[0].effect.stepName, 'browser.click');
     assert.deepEqual(events[0].effect.args, {nodeId: 'submit'});
+    assert.deepEqual(events[0].effect.semantics, {reversibility: 'unknown'});
     assert.deepEqual(events[0].outcome, {status: 'succeeded'});
+});
+
+test('linked entity effects preserve explicit business semantics through execution lifecycle', async () => {
+    const events: DslAfterEffectEvent[] = [];
+    await runDsl({body: [{
+        kind: 'linked_entity_act',
+        action: 'click',
+        targetQuery: {
+            kind: 'query',
+            op: 'entity.target',
+            businessTag: 'order.form',
+            profileName: 'order-page',
+            payload: {kind: 'form.action', actionIntent: 'submit'},
+        },
+        effect: {
+            reversibility: 'irreversible',
+            source: {
+                kind: 'entity_rules',
+                profileName: 'order-page',
+                entityKey: 'orderForm',
+                memberKind: 'action',
+                member: 'submit',
+            },
+        },
+    }]}, {
+        workspaceName: 'ws-1',
+        deps,
+        debugPort: debugPort(events),
+        stepExecutionPort: {
+            execute: async (step) => step.name === 'browser.query'
+                ? {stepId: step.id, ok: true, data: {kind: 'nodeId', nodeId: 'submit'}}
+                : {stepId: step.id, ok: true, data: {clicked: true}},
+        },
+    });
+
+    assert.equal(events.length, 1);
+    assert.deepEqual(events[0].effect.semantics, {
+        reversibility: 'irreversible',
+        source: {
+            kind: 'entity_rules',
+            profileName: 'order-page',
+            entityKey: 'orderForm',
+            memberKind: 'action',
+            member: 'submit',
+        },
+    });
 });
 
 test('failed effect result is emitted before the failure notification', async () => {

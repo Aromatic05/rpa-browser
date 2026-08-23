@@ -10,6 +10,7 @@ import {
     writeYamlFile,
 } from './fs';
 import type { WorkflowCodec } from './store';
+import {isEffectReversibility} from '../effects/declaration';
 
 export type EntityRulePageKind = 'form' | 'table' | 'dialog' | 'list' | 'panel' | 'toolbar' | 'kv';
 
@@ -320,9 +321,31 @@ const validateAnnotationArtifact = (
             throw invalidArtifact(`duplicate annotation ruleId: ${ruleId}`);
         }
         seen.add(ruleId);
-        return { ...structuredClone(binding), ruleId };
+        const cloned: EntityRuleAnnotationBinding = {...structuredClone(binding), ruleId};
+        validateOptionalEffect(cloned.effect, `annotation.bindings[${index}].effect`);
+        const columns = cloned.columns;
+        if (Array.isArray(columns)) {
+            columns.forEach((column: unknown, columnIndex: number) => {
+                if (!isRecord(column) || !Array.isArray(column.actions)) {return;}
+                column.actions.forEach((action, actionIndex) => {
+                    if (!isRecord(action)) {return;}
+                    validateOptionalEffect(
+                        action.effect,
+                        `annotation.bindings[${index}].columns[${columnIndex}].actions[${actionIndex}].effect`,
+                    );
+                });
+            });
+        }
+        return cloned;
     });
     return { version: 2, bindings };
+};
+
+const validateOptionalEffect = (value: unknown, field: string): void => {
+    if (value === undefined) {return;}
+    if (!isRecord(value) || !isEffectReversibility(value.reversibility)) {
+        throw invalidArtifact(`${field}.reversibility must be unknown, reversible, compensatable or irreversible`);
+    }
 };
 
 const isLegacyMatchArtifact = (value: unknown): value is {

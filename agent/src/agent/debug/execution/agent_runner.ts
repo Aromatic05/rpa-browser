@@ -15,8 +15,9 @@ import type {
 import {classifyPausedDslDebugToolCall} from './tool_policy';
 
 export const PAUSED_DSL_DEBUG_SYSTEM_PROMPT = [
-    'You control a DSL program paused before a statement, before a pending browser effect, or after a runtime failure/invariant violation.',
+    'You control a DSL program paused before a statement, before a pending browser effect, at a commit barrier, or after a runtime failure/invariant violation.',
     'When debug.execution reports reason=effect, inspect the effect descriptor before deciding whether to advance.',
+    'When debug.execution reports reason=barrier, ordinary debug.step/debug.continue cannot cross it. Inspect the explicit effect semantics and use debug.cross_barrier only if you deliberately authorize that one effect.',
     'When debug.execution reports reason=failure, inspect the structured failure, scope, and World freely; kind=step describes an operation failure and kind=invariant describes an ensure violation. debug.continue terminalizes that original failure and does not retry or perform a World effect.',
     'debug.execution location includes programId, execution path, source line range when available, loop frames, and checkpoint callStack.',
     'debug.execution, debug.scope, debug.effects, debug.diff, debug.world, debug.query, and debug.compute are pure reads.',

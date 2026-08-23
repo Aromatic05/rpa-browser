@@ -51,6 +51,7 @@ test('effect breakpoint pauses after linked query but before the browser mutatio
         stepId: (paused as any).effect.stepId,
         stepName: 'browser.click',
         args: {nodeId: 'approve-button'},
+        semantics: {reversibility: 'unknown'},
     });
     assert.deepEqual(calls, ['browser.query']);
 
@@ -125,4 +126,77 @@ test('effect breakpoint also guards legacy checkpoint action steps before execut
     controller.continue(paused.continuationId);
     await run;
     assert.deepEqual(calls, ['browser.click']);
+});
+
+test('commit barrier requires explicit crossing for an irreversible effect', async () => {
+    const controller = createDslDebugController({barrierOn: ['irreversible']});
+    const calls: string[] = [];
+    const run = runDsl({body: [{
+        kind: 'linked_entity_act',
+        action: 'click',
+        targetQuery: {
+            kind: 'query',
+            op: 'entity.target',
+            businessTag: 'orders.main',
+            payload: {kind: 'table.module_action', actionIntent: 'submit'},
+        },
+        effect: {
+            reversibility: 'irreversible',
+            source: {
+                kind: 'entity_rules',
+                profileName: 'orders',
+                entityKey: 'orderForm',
+                memberKind: 'action',
+                member: 'submit',
+            },
+        },
+    }]}, {
+        workspaceName: 'ws-1',
+        deps,
+        debugPort: controller.port,
+        stepExecutionPort: {
+            execute: async (step) => {
+                calls.push(step.name);
+                return step.name === 'browser.query'
+                    ? {stepId: step.id, ok: true, data: {kind: 'nodeId', nodeId: 'submit-button'}}
+                    : {stepId: step.id, ok: true, data: {clicked: true}};
+            },
+        },
+    });
+
+    const paused = await controller.waitForPause();
+    assert.equal(paused.reason, 'barrier');
+    if (paused.reason !== 'barrier') {throw new Error('expected commit barrier');}
+    assert.equal(paused.effect.semantics.reversibility, 'irreversible');
+    assert.deepEqual(calls, ['browser.query']);
+    assert.throws(() => controller.continue(paused.continuationId), /commit barrier/);
+    assert.throws(() => controller.step(paused.continuationId), /commit barrier/);
+    assert.deepEqual(calls, ['browser.query']);
+
+    controller.crossBarrier(paused.continuationId);
+    await run;
+    assert.deepEqual(calls, ['browser.query', 'browser.click']);
+});
+
+test('commit barrier policy does not infer irreversibility from a raw click', async () => {
+    const controller = createDslDebugController({barrierOn: ['irreversible']});
+    let clickCalls = 0;
+    await runDsl({body: [{
+        kind: 'act',
+        action: 'click',
+        target: {kind: 'ref', ref: 'input.target'},
+    }]}, {
+        workspaceName: 'ws-1',
+        deps,
+        input: {target: {nodeId: 'raw-click'}},
+        debugPort: controller.port,
+        stepExecutionPort: {
+            execute: async (step) => {
+                clickCalls += 1;
+                return {stepId: step.id, ok: true, data: {clicked: true}};
+            },
+        },
+    });
+
+    assert.equal(clickCalls, 1);
 });

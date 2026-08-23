@@ -300,3 +300,59 @@ test('runDslSource uses strict explicit profile steps and runtime input for row 
         },
     ]);
 });
+
+test('linkDsl carries explicit entity-rule effect semantics onto linked actions', () => {
+    const semanticProfile: DslEntityRulesProfile = {
+        profileName: 'semantic-order-page',
+        entities: [{
+            entityKey: 'orderForm',
+            businessTag: 'order.form',
+            kind: 'form',
+            fields: [{
+                fieldKey: 'buyer',
+                targetKind: 'form.field',
+                effect: {reversibility: 'reversible'},
+            }],
+            actions: [{
+                actionIntent: 'submit',
+                targetKind: 'form.action',
+                effect: {reversibility: 'irreversible'},
+            }],
+            columns: [],
+            rowActions: [],
+            supportedQueries: ['form.fields'],
+        }],
+    };
+    const semanticResolver: DslEntityRulesResolver = {
+        resolveProfile: (name) => name === semanticProfile.profileName
+            ? {profile: semanticProfile, diagnostics: []}
+            : {profile: null, diagnostics: []},
+    };
+    const linked = linkDsl(parseDsl(`
+use entity_rules "semantic-order-page" as order
+fill order.orderForm.buyer with input.buyer
+click order.orderForm.submit
+`), semanticResolver);
+
+    assert.deepEqual(linked.diagnostics, []);
+    assert.deepEqual((linked.program.body[0] as any).effect, {
+        reversibility: 'reversible',
+        source: {
+            kind: 'entity_rules',
+            profileName: 'semantic-order-page',
+            entityKey: 'orderForm',
+            memberKind: 'field',
+            member: 'buyer',
+        },
+    });
+    assert.deepEqual((linked.program.body[1] as any).effect, {
+        reversibility: 'irreversible',
+        source: {
+            kind: 'entity_rules',
+            profileName: 'semantic-order-page',
+            entityKey: 'orderForm',
+            memberKind: 'action',
+            member: 'submit',
+        },
+    });
+});

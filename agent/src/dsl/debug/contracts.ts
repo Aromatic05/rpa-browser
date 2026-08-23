@@ -1,6 +1,7 @@
 import type {DslStmt} from '../ast/types';
 import type {StepName} from '../../runner/steps/types';
 import type {BrowserOperationClassification} from '../../runner/steps/effects';
+import type {EffectSemantics} from '../../effects/contracts';
 import type {DslSourceLocation} from '../parser/source_map';
 
 export type DslLoopFrame = Readonly<{
@@ -33,6 +34,7 @@ export type DslEffectDescriptor = Readonly<{
     stepId: string;
     stepName: StepName;
     args: unknown;
+    semantics: EffectSemantics;
 }>;
 
 export type DslBeforeEffectEvent = Readonly<{
@@ -104,6 +106,7 @@ type PausedDslExecutionBase = Readonly<{
 export type PausedDslExecution =
     | (PausedDslExecutionBase & Readonly<{reason: 'statement'}>)
     | (PausedDslExecutionBase & Readonly<{reason: 'effect'; effect: DslEffectDescriptor}>)
+    | (PausedDslExecutionBase & Readonly<{reason: 'barrier'; effect: DslEffectDescriptor}>)
     | (PausedDslExecutionBase & Readonly<{reason: 'failure'; failure: DslFailureDescriptor}>);
 
 export type DslDebugController = {
@@ -111,5 +114,6 @@ export type DslDebugController = {
     waitForPause: () => Promise<PausedDslExecution>;
     continue: (continuationId: string) => void;
     step: (continuationId: string) => void;
+    crossBarrier: (continuationId: string) => void;
     abort: (continuationId: string) => void;
 };

@@ -1,4 +1,5 @@
 import type {ComputeExpr} from '../../compute/types';
+import type {EffectSemantics} from '../../effects/contracts';
 
 export type DslProgram = {
     imports?: DslImport[];
@@ -113,6 +114,7 @@ export type LinkedEntityActStmt = {
     action: 'fill' | 'click' | 'type' | 'select';
     targetQuery: QueryExpr;
     value?: RefExpr;
+    effect?: EffectSemantics;
 };
 
 export type FormActStmt = {

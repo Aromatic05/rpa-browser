@@ -10,6 +10,8 @@ import type {
     EntityRuleRowActionView,
 } from '../../../../../shared/entity-rules-contract/index.js';
 import type {WorkflowEntityRules} from '../../../workflow';
+import {readEffectDeclaration} from '../../../effects/declaration';
+import type {EffectDeclaration} from '../../../effects/contracts';
 
 export const projectEntityRuleProfileSummary = (
     profile: WorkflowEntityRules,
@@ -49,17 +51,21 @@ export const projectEntityRuleEntities = (
             ?? profile.page?.kind,
         );
         if (!entityKind) {return [];}
-        const fallbackBindings = legacyEntity ? [] : scopedBindings(profile, root.ruleId);
-        const fields = legacyEntity
+        const semanticBindings = scopedBindings(profile, root.ruleId);
+        const fallbackBindings = legacyEntity ? [] : semanticBindings;
+        const fields = (legacyEntity
             ? legacyFields(legacyEntity, entityKind)
-            : fallbackFields(fallbackBindings, entityKind);
-        const actions = legacyEntity
+            : fallbackFields(fallbackBindings, entityKind))
+            .map((field) => withEffect(field, effectForField(semanticBindings, field.fieldKey)));
+        const actions = (legacyEntity
             ? legacyActions(legacyEntity, entityKind)
-            : fallbackActions(fallbackBindings, entityKind);
+            : fallbackActions(fallbackBindings, entityKind))
+            .map((action) => withEffect(action, effectForAction(semanticBindings, action.actionIntent)));
         const columns = legacyEntity ? legacyColumns(legacyEntity) : fallbackColumns(root);
-        const rowActions = legacyEntity
+        const rowActions = (legacyEntity
             ? legacyRowActions(legacyEntity)
-            : fallbackRowActions(root, fallbackBindings);
+            : fallbackRowActions(root, fallbackBindings))
+            .map((action) => withEffect(action, effectForRowAction(root, semanticBindings, action.actionIntent)));
         const primaryKey = primaryKeyView(legacyEntity ?? root, columns);
         const label = text(root.displayName)
             ?? text(root.businessName)
@@ -213,6 +219,37 @@ const nestedColumnActions = (value: unknown): EntityRuleRowActionView[] => {
         }) : []);
 };
 
+const withEffect = <T extends object>(value: T, effect: EffectDeclaration | undefined): T & {effect?: EffectDeclaration} =>
+    effect ? {...value, effect} : value;
+
+const effectForField = (
+    bindings: readonly Record<string, unknown>[],
+    fieldKey: string,
+): EffectDeclaration | undefined => readEffectDeclaration(
+    bindings.find((binding) => binding.fieldKey === fieldKey)?.effect,
+);
+
+const effectForAction = (
+    bindings: readonly Record<string, unknown>[],
+    actionIntent: string,
+): EffectDeclaration | undefined => readEffectDeclaration(
+    bindings.find((binding) => binding.actionRole !== 'row' && binding.actionIntent === actionIntent)?.effect,
+);
+
+const effectForRowAction = (
+    root: Record<string, unknown>,
+    bindings: readonly Record<string, unknown>[],
+    actionIntent: string,
+): EffectDeclaration | undefined => {
+    const binding = bindings.find((item) => item.actionRole === 'row' && item.actionIntent === actionIntent);
+    if (binding) {return readEffectDeclaration(binding.effect);}
+    for (const column of records(root.columns)) {
+        const action = records(column.actions).find((item) => item.actionIntent === actionIntent);
+        if (action) {return readEffectDeclaration(action.effect);}
+    }
+    return undefined;
+};
+
 const primaryKeyView = (
     entity: Record<string, unknown>,
     columns: readonly EntityRuleColumnView[],
@@ -289,6 +326,9 @@ const text = (value: unknown): string | undefined =>
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
     typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const records = (value: unknown): Record<string, unknown>[] =>
+    Array.isArray(value) ? value.filter(isRecord) : [];
 
 const uniqueBy = <T>(items: readonly T[], key: (item: T) => string): T[] => {
     const seen = new Set<string>();

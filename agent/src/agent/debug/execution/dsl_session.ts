@@ -102,9 +102,11 @@ export const createDslDebugExecutionSession = (
         } as const;
         return pause.reason === 'effect'
             ? Object.freeze({...base, reason: 'effect' as const, effect: pause.effect})
-            : pause.reason === 'failure'
-                ? Object.freeze({...base, reason: 'failure' as const, failure: pause.failure})
-                : Object.freeze({...base, reason: 'statement' as const});
+            : pause.reason === 'barrier'
+                ? Object.freeze({...base, reason: 'barrier' as const, effect: pause.effect})
+                : pause.reason === 'failure'
+                    ? Object.freeze({...base, reason: 'failure' as const, failure: pause.failure})
+                    : Object.freeze({...base, reason: 'statement' as const});
     };
 
     const release = (continuationId: string, mode: 'continue' | 'step' | 'abort'): void => {
@@ -262,6 +264,12 @@ export const createDslDebugExecutionSession = (
         mode: 'continue' | 'step' | 'abort',
     ): Promise<DslDebugAdvanceResult> => {
         const current = requireActive(continuationId);
+        if (current.pause.reason === 'barrier' && mode !== 'abort') {
+            return Object.freeze({
+                status: 'barrier' as const,
+                pause: exposePause(current) as Extract<PausedDslDebugExecution, {reason: 'barrier'}>,
+            });
+        }
         const pausedFailure = current.pause.reason === 'failure' ? current.pause.failure : undefined;
         const abortedAt = Object.freeze({
             reason: current.pause.reason,
@@ -288,6 +296,32 @@ export const createDslDebugExecutionSession = (
                     status: 'failed' as const,
                     failure: pausedFailure ?? normalizeTerminalFailure(error),
                 }),
+        ]);
+    };
+
+    const crossBarrier = async (continuationId: string): Promise<DslDebugAdvanceResult> => {
+        const current = requireActive(continuationId);
+        if (current.pause.reason !== 'barrier') {
+            throw new Error(`DSL debug continuation is not paused at a commit barrier: ${continuationId}`);
+        }
+        const actual = describeWorldView(await options.worldViewSource.pin());
+        if (!isSameWorldView(current.debug.world, actual)) {
+            return Object.freeze({
+                status: 'conflict' as const,
+                conflict: Object.freeze({expected: current.debug.world, actual}),
+            });
+        }
+        active = null;
+        controller.crossBarrier(continuationId);
+        return await Promise.race([
+            waitForPause().then((pause) => ({status: 'paused' as const, pause})),
+            completion.then((result) => ({
+                status: 'completed' as const,
+                output: structuredClone(result.scope.output),
+            }), (error) => ({
+                status: 'failed' as const,
+                failure: normalizeTerminalFailure(error),
+            })),
         ]);
     };
 
@@ -322,6 +356,7 @@ export const createDslDebugExecutionSession = (
         },
         rollback,
         refresh,
+        crossBarrier,
         advance,
         waitForCompletion: async () => await completion,
     };

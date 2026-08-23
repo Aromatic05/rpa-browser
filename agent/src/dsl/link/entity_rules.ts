@@ -2,6 +2,7 @@ import type { DslImport, DslExpr, EntityActStmt, EntityReference, LinkedEntityAc
 import type { DslDiagnostic } from '../diagnostics';
 import { createDiagnostic } from '../diagnostics';
 import type { DslEntityRulesProfile, DslEntityRulesResolver } from './types';
+import type {EffectDeclaration, EffectSemantics} from '../../effects/contracts';
 
 export type EntityRulesLinkContext = {
     profiles: ReadonlyMap<string, DslEntityRulesProfile>;
@@ -13,6 +14,7 @@ type LinkedReference = {
     businessTag: string;
     target?: unknown;
     query?: string;
+    effect?: EffectSemantics;
 };
 
 export const resolveEntityRuleImports = (
@@ -94,6 +96,7 @@ export const linkEntityAction = (
             profileName: linked.profileName,
         },
         value: stmt.value,
+        ...(linked.effect ? {effect: linked.effect} : {}),
     };
 };
 
@@ -191,7 +194,7 @@ const linkReference = (
             kind: rowActions[0].targetKind,
             primaryKey: {fieldKey: primaryKey, value: reference.rowValue},
             actionIntent: reference.member,
-        });
+        }, effectSemantics(rowActions[0].effect, profile.profileName, entity.entityKey, 'rowAction', reference.member));
     }
 
     if (operation === 'query') {
@@ -225,7 +228,7 @@ const linkReference = (
         return linkedTarget(profile.profileName, entity.businessTag, {
             kind: fields[0].targetKind,
             fieldKey: reference.member,
-        });
+        }, effectSemantics(fields[0].effect, profile.profileName, entity.entityKey, 'field', reference.member));
     }
     if (actions.length === 1) {
         if (operation !== 'click') {
@@ -235,18 +238,41 @@ const linkReference = (
         return linkedTarget(profile.profileName, entity.businessTag, {
             kind: actions[0].targetKind,
             actionIntent: reference.member,
-        });
+        }, effectSemantics(actions[0].effect, profile.profileName, entity.entityKey, 'action', reference.member));
     }
 
     diagnostics.push(createDiagnostic('ERR_DSL_ENTITY_MEMBER_NOT_FOUND', `entity member not found: ${prefix}`, path));
     return null;
 };
 
-const linkedTarget = (profileName: string, businessTag: string, target: unknown): LinkedReference => ({
+const linkedTarget = (
+    profileName: string,
+    businessTag: string,
+    target: unknown,
+    effect?: EffectSemantics,
+): LinkedReference => ({
     profileName,
     businessTag,
     target,
+    ...(effect ? {effect} : {}),
 });
+
+const effectSemantics = (
+    declaration: EffectDeclaration | undefined,
+    profileName: string,
+    entityKey: string,
+    memberKind: 'field' | 'action' | 'rowAction',
+    member: string,
+): EffectSemantics | undefined => declaration ? Object.freeze({
+    ...declaration,
+    source: Object.freeze({
+        kind: 'entity_rules' as const,
+        profileName,
+        entityKey,
+        memberKind,
+        member,
+    }),
+}) : undefined;
 
 const resolvePrimaryKey = (
     entity: DslEntityRulesProfile['entities'][number],

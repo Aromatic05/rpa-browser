@@ -7,12 +7,14 @@ import type {
     DslFailureEvent,
     PausedDslExecution,
 } from './contracts';
+import type {EffectReversibility} from '../../effects/contracts';
 
 export type CreateDslDebugControllerOptions = {
     initialMode?: 'continue' | 'step';
     breakpoints?: readonly string[];
     breakBeforeEffects?: boolean;
     breakOnFailure?: boolean;
+    barrierOn?: readonly EffectReversibility[];
 };
 
 type ActivePause = {
@@ -24,6 +26,7 @@ export const createDslDebugController = (
     options: CreateDslDebugControllerOptions = {},
 ): DslDebugController => {
     const breakpoints = new Set(options.breakpoints ?? []);
+    const barrierOn = new Set(options.barrierOn ?? []);
     const queued: PausedDslExecution[] = [];
     const waiters: Array<(pause: PausedDslExecution) => void> = [];
     let mode = options.initialMode ?? 'continue';
@@ -35,9 +38,16 @@ export const createDslDebugController = (
         queued.push(pause);
     };
 
-    const release = (continuationId: string, nextMode: 'continue' | 'step'): void => {
+    const release = (
+        continuationId: string,
+        nextMode: 'continue' | 'step',
+        allowBarrier = false,
+    ): void => {
         if (active?.pause.continuationId !== continuationId) {
             throw new Error(`DSL continuation is not paused: ${continuationId}`);
+        }
+        if (active.pause.reason === 'barrier' && !allowBarrier) {
+            throw new Error(`DSL continuation is paused at a commit barrier: ${continuationId}`);
         }
         mode = nextMode;
         active.resume('resume');
@@ -65,10 +75,11 @@ export const createDslDebugController = (
                 }));
             },
             beforeEffect: async (event: DslBeforeEffectEvent) => {
-                if (!options.breakBeforeEffects) {return;}
+                const isBarrier = barrierOn.has(event.effect.semantics.reversibility);
+                if (!isBarrier && !options.breakBeforeEffects) {return;}
                 await pause(Object.freeze({
                     continuationId: crypto.randomUUID(),
-                    reason: 'effect',
+                    reason: isBarrier ? 'barrier' as const : 'effect' as const,
                     location: event.location,
                     scope: event.scope,
                     effect: event.effect,
@@ -92,6 +103,7 @@ export const createDslDebugController = (
         },
         continue: (continuationId) => {release(continuationId, 'continue');},
         step: (continuationId) => {release(continuationId, 'step');},
+        crossBarrier: (continuationId) => {release(continuationId, 'step', true);},
         abort: (continuationId) => {
             if (active?.pause.continuationId !== continuationId) {
                 throw new Error(`DSL continuation is not paused: ${continuationId}`);

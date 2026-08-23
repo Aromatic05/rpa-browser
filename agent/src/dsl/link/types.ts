@@ -1,3 +1,5 @@
+import type {EffectDeclaration} from '../../effects/contracts';
+
 export type DslEntityRulesEntityKind = 'form' | 'table' | 'dialog' | 'list' | 'panel' | 'toolbar' | 'kv';
 
 export type DslEntityRulesProfile = {
@@ -6,10 +8,10 @@ export type DslEntityRulesProfile = {
         entityKey: string;
         businessTag: string;
         kind: DslEntityRulesEntityKind;
-        fields: readonly {fieldKey: string; targetKind: 'form.field' | 'table.filter' | 'entity.field'}[];
-        actions: readonly {actionIntent: string; targetKind: 'form.action' | 'table.module_action' | 'entity.action'}[];
+        fields: readonly {fieldKey: string; targetKind: 'form.field' | 'table.filter' | 'entity.field'; effect?: EffectDeclaration}[];
+        actions: readonly {actionIntent: string; targetKind: 'form.action' | 'table.module_action' | 'entity.action'; effect?: EffectDeclaration}[];
         columns: readonly {fieldKey: string}[];
-        rowActions: readonly {actionIntent: string; targetKind: 'table.row_action'}[];
+        rowActions: readonly {actionIntent: string; targetKind: 'table.row_action'; effect?: EffectDeclaration}[];
         supportedQueries: readonly string[];
         primaryKey?: {fieldKey: string};
     }[];

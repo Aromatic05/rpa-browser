@@ -29,6 +29,7 @@ type PausedDslDebugExecutionBase = Readonly<{
 export type PausedDslDebugExecution =
     | (PausedDslDebugExecutionBase & Readonly<{reason: 'statement'}>)
     | (PausedDslDebugExecutionBase & Readonly<{reason: 'effect'; effect: DslEffectDescriptor}>)
+    | (PausedDslDebugExecutionBase & Readonly<{reason: 'barrier'; effect: DslEffectDescriptor}>)
     | (PausedDslDebugExecutionBase & Readonly<{reason: 'failure'; failure: DslFailureDescriptor}>);
 
 export type DslDebugTerminalFailure = Readonly<{
@@ -47,6 +48,7 @@ export type DslDebugWorldConflict = Readonly<{
 
 export type DslDebugAdvanceResult =
     | Readonly<{status: 'paused'; pause: PausedDslDebugExecution}>
+    | Readonly<{status: 'barrier'; pause: Extract<PausedDslDebugExecution, {reason: 'barrier'}>}>
     | Readonly<{status: 'conflict'; conflict: DslDebugWorldConflict}>
     | Readonly<{status: 'completed'; output: Readonly<Record<string, unknown>>}>
     | Readonly<{status: 'failed'; failure: DslDebugTerminalFailure}>
@@ -77,6 +79,7 @@ export type DslDebugExecutionSession = {
         options?: DebugRollbackOptions,
     ) => Promise<DebugRollbackResult>;
     refresh: (continuationId: string) => Promise<PausedDslDebugExecution>;
+    crossBarrier: (continuationId: string) => Promise<DslDebugAdvanceResult>;
     advance: (continuationId: string, mode: 'continue' | 'step' | 'abort') => Promise<DslDebugAdvanceResult>;
     waitForCompletion: () => Promise<RunDslSourceResult>;
 };

@@ -17,7 +17,7 @@ export type PausedDslDebugAgentTools = {
     tools: AgentTool[];
     readWorldRevision: () => AgentWorldRevision | null;
     readPause: () => PausedDslDebugExecution | null;
-    readTerminal: () => Exclude<DslDebugAdvanceResult, {status: 'paused'}> | null;
+    readTerminal: () => Extract<DslDebugAdvanceResult, {status: 'completed' | 'failed' | 'aborted'}> | null;
 };
 
 const stringify = (value: unknown): string => {
@@ -39,7 +39,7 @@ export const createPausedDslDebugAgentTools = (
     initialPause: PausedDslDebugExecution,
 ): PausedDslDebugAgentTools => {
     let pause: PausedDslDebugExecution | null = initialPause;
-    let terminal: Exclude<DslDebugAdvanceResult, {status: 'paused'}> | null = null;
+    let terminal: Extract<DslDebugAdvanceResult, {status: 'completed' | 'failed' | 'aborted'}> | null = null;
 
     const requirePause = (): PausedDslDebugExecution => {
         if (!pause) {throw new Error('DSL debug execution is not paused');}
@@ -61,6 +61,34 @@ export const createPausedDslDebugAgentTools = (
         const current = requirePause();
         const result = await execution.advance(current.continuationId, mode);
         if (result.status === 'paused') {
+            pause = result.pause;
+            terminal = null;
+            return toolResult(result);
+        }
+        if (result.status === 'barrier') {
+            pause = result.pause;
+            terminal = null;
+            return toolResult(result);
+        }
+        if (result.status === 'conflict') {
+            pause = current;
+            terminal = null;
+            return toolResult(result);
+        }
+        pause = null;
+        terminal = result;
+        return toolResult(result);
+    };
+
+    const crossBarrier = async () => {
+        const current = requirePause();
+        const result = await execution.crossBarrier(current.continuationId);
+        if (result.status === 'paused') {
+            pause = result.pause;
+            terminal = null;
+            return toolResult(result);
+        }
+        if (result.status === 'barrier') {
             pause = result.pause;
             terminal = null;
             return toolResult(result);
@@ -234,6 +262,13 @@ export const createPausedDslDebugAgentTools = (
                 if (!result.ok) {return fail(result);}
                 return toolResult(result);
             },
+        },
+        {
+            name: 'debug.cross_barrier',
+            label: 'debug.cross_barrier',
+            description: 'Explicitly authorize only the current commit barrier effect. The runtime executes that effect and immediately returns to step mode; later barriers still require separate authorization.',
+            parameters: Type.Object({}, {additionalProperties: false}),
+            execute: async () => await crossBarrier(),
         },
         {
             name: 'debug.step',

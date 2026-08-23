@@ -2,5 +2,11 @@ import type {DslEffectDescriptor} from '../../../../dsl/debug/contracts';
 import type {DebugEffectSemanticRisk} from './contracts';
 
 export const classifyEffectSemanticRisk = (
-    _effect: DslEffectDescriptor,
-): DebugEffectSemanticRisk => 'unknown';
+    effect: DslEffectDescriptor,
+): DebugEffectSemanticRisk => {
+    if (effect.semantics.reversibility === 'irreversible') {return 'irreversible';}
+    if (effect.semantics.reversibility === 'compensatable' || effect.semantics.reversibility === 'reversible') {
+        return 'compensatable';
+    }
+    return 'unknown';
+};

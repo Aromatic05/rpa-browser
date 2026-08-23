@@ -145,3 +145,43 @@ test('workflow provider resolves a named profile through the export contract', (
     assert.equal(provider.resolveExports('orders').index?.resolve('orders', 'export')?.kind, 'action');
     assert.equal(provider.resolveExports('missing').diagnostics[0]?.code, 'entity_rule_exports.profile_not_found');
 });
+
+test('exports explicit effect reversibility for fields, actions and row actions', () => {
+    const rules = profile();
+    rules.annotation.bindings[1].effect = {reversibility: 'reversible'};
+    rules.annotation.bindings[2].effect = {reversibility: 'irreversible'};
+    (rules.annotation.bindings[0].columns as Array<Record<string, unknown>>)[0].actions = [{
+        actionIntent: 'approve',
+        effect: {reversibility: 'compensatable'},
+    }];
+
+    const validated = validateWorkflowEntityRules(rules);
+    const result = buildEntityRuleExportIndex(validated);
+
+    assert.deepEqual(result.diagnostics, []);
+    assert.deepEqual(result.index?.entities[0]?.fields, [{
+        fieldKey: 'orderNo',
+        targetKind: 'table.filter',
+        effect: {reversibility: 'reversible'},
+    }]);
+    assert.deepEqual(result.index?.entities[0]?.actions, [{
+        actionIntent: 'export',
+        targetKind: 'table.module_action',
+        effect: {reversibility: 'irreversible'},
+    }]);
+    assert.deepEqual(result.index?.entities[0]?.rowActions, [{
+        actionIntent: 'approve',
+        targetKind: 'table.row_action',
+        effect: {reversibility: 'compensatable'},
+    }]);
+});
+
+test('rejects invalid explicit effect reversibility in entity-rule annotations', () => {
+    const rules = profile();
+    rules.annotation.bindings[2].effect = {reversibility: 'probably-safe'};
+
+    assert.throws(
+        () => validateWorkflowEntityRules(rules),
+        /effect\.reversibility/,
+    );
+});

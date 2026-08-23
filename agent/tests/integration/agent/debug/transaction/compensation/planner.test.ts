@@ -38,7 +38,11 @@ const withRuntimeValue = (view: WorldView, nodeId: string, value: string): World
 
 const effectEntry = (
     before: WorldView,
-    effect: {stepName: 'browser.fill' | 'browser.click'; args: unknown},
+    effect: {
+        stepName: 'browser.fill' | 'browser.click';
+        args: unknown;
+        reversibility?: 'unknown' | 'reversible' | 'compensatable' | 'irreversible';
+    },
 ): DebugEffectJournalEntry => Object.freeze({
     record: Object.freeze({
         sequence: 1,
@@ -53,6 +57,7 @@ const effectEntry = (
             stepId: 'effect-1',
             stepName: effect.stepName,
             args: effect.args,
+            semantics: Object.freeze({reversibility: effect.reversibility ?? 'unknown'}),
         }),
         outcome: Object.freeze({status: 'succeeded' as const}),
         worldBefore: describeWorldView(before),
@@ -88,6 +93,23 @@ test('fill with explicit nodeId can produce a physical restore-value compensatio
             name: 'browser.fill',
             args: {nodeId: 'buyer-input', value: 'old value'},
         },
+    });
+});
+
+test('explicit irreversible semantics block physical compensation even for a fill with a recoverable value', async () => {
+    const view = withRuntimeValue(await createView(), 'buyer-input', 'old value');
+    const entry = effectEntry(view, {
+        stepName: 'browser.fill',
+        args: {nodeId: 'buyer-input', value: 'new value'},
+        reversibility: 'irreversible',
+    });
+
+    assert.equal(classifyEffectSemanticRisk(entry.record.effect), 'irreversible');
+    assert.deepEqual(planPhysicalCompensation(entry), {
+        status: 'unavailable',
+        semanticRisk: 'irreversible',
+        reason: 'explicit_irreversible',
+        effectSequence: 1,
     });
 });
 

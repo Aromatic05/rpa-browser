@@ -198,3 +198,82 @@ test('pure V2 multi-entity presentation keeps fallback fields and actions scoped
         },
     ]);
 });
+
+test('rule presentation exposes explicit effect reversibility from current V2 bindings', () => {
+    const semanticProfile: WorkflowEntityRules = {
+        kind: 'entity_rules',
+        name: 'semantic-orders',
+        page: {kind: 'table'},
+        match: {version: 2, rules: [
+            {ruleId: 'root', source: 'region', expect: 'unique', match: {kind: 'table'}},
+            {ruleId: 'filter', source: 'node', expect: 'unique', within: 'root', match: {nameEquals: 'buyer'}},
+            {ruleId: 'export', source: 'node', expect: 'unique', within: 'root', match: {nameEquals: 'export'}},
+        ]},
+        annotation: {version: 2, bindings: [
+            {
+                ruleId: 'root',
+                entityKey: 'orders',
+                businessTag: 'orders.table',
+                entityKind: 'table',
+                primaryKey: {fieldKey: 'orderNo'},
+                columns: [
+                    {fieldKey: 'orderNo', name: 'Order No'},
+                    {fieldKey: 'actions', name: 'Actions', actions: [{
+                        actionIntent: 'approve',
+                        effect: {reversibility: 'compensatable'},
+                    }]},
+                ],
+                legacyCanvas: {
+                    entities: [{
+                        kind: 'table',
+                        name: 'Legacy Orders',
+                        businessTag: 'orders.table',
+                        annotations: [
+                            {type: 'field', businessKey: 'buyer', name: 'Buyer', disposition: 'active'},
+                            {type: 'action', businessKey: 'export', name: 'Export', disposition: 'active'},
+                        ],
+                        primaryKey: {fieldKey: 'orderNo'},
+                        columns: [{
+                            fieldKey: 'actions',
+                            name: 'Actions',
+                            disposition: 'active',
+                            actions: [{actionIntent: 'approve', disposition: 'active'}],
+                        }],
+                    }],
+                },
+            },
+            {
+                ruleId: 'filter',
+                fieldKey: 'buyer',
+                fieldName: 'Buyer',
+                effect: {reversibility: 'reversible'},
+            },
+            {
+                ruleId: 'export',
+                actionIntent: 'export',
+                actionText: 'Export',
+                effect: {reversibility: 'irreversible'},
+            },
+        ]},
+    };
+
+    const entity = projectEntityRuleEntities(semanticProfile)[0];
+    assert.deepEqual(entity.fields, [{
+        fieldKey: 'buyer',
+        label: 'Buyer',
+        targetKind: 'table.filter',
+        effect: {reversibility: 'reversible'},
+    }]);
+    assert.deepEqual(entity.actions, [{
+        actionIntent: 'export',
+        label: 'Export',
+        targetKind: 'table.module_action',
+        effect: {reversibility: 'irreversible'},
+    }]);
+    assert.deepEqual(entity.rowActions, [{
+        actionIntent: 'approve',
+        label: 'approve',
+        targetKind: 'table.row_action',
+        effect: {reversibility: 'compensatable'},
+    }]);
+});

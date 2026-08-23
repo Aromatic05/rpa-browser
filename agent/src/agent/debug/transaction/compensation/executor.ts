@@ -3,6 +3,7 @@ import type {DslEffectDescriptor, DslEffectOutcome, DslScopeSnapshot, DslStateme
 import type {StepResult, StepUnion} from '../../../../runner/steps/types';
 import type {WorldView, WorldViewSource} from '../../../worldview/contracts';
 import type {DebugEffectJournal, DebugEffectJournalEntry, DebugEffectRecord} from '../../effects/contracts';
+import {UNKNOWN_EFFECT_SEMANTICS} from '../../../../effects/declaration';
 import type {
     DebugCompensationPort,
     DebugEffectSemanticRisk,
@@ -99,6 +100,7 @@ export const executePhysicalCompensations = async (
             stepId: step.id,
             stepName: step.name,
             args: structuredClone(step.args),
+            semantics: UNKNOWN_EFFECT_SEMANTICS,
         });
         const before = await options.worldViewSource.pin();
         options.journal.begin(Object.freeze({

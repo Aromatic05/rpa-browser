@@ -10,22 +10,35 @@ export declare const ENTITY_RULE_ENTITY_KINDS: readonly [
 
 export type EntityRuleEntityKind = typeof ENTITY_RULE_ENTITY_KINDS[number];
 
+export type EntityRuleEffectReversibility =
+    | 'unknown'
+    | 'reversible'
+    | 'compensatable'
+    | 'irreversible';
+
+export type EntityRuleEffectView = {
+    reversibility: EntityRuleEffectReversibility;
+};
+
 export type EntityRuleFieldView = {
     fieldKey: string;
     label: string;
     targetKind: 'entity.field' | 'form.field' | 'table.filter';
+    effect?: EntityRuleEffectView;
 };
 
 export type EntityRuleActionView = {
     actionIntent: string;
     label: string;
     targetKind: 'entity.action' | 'form.action' | 'table.module_action';
+    effect?: EntityRuleEffectView;
 };
 
 export type EntityRuleRowActionView = {
     actionIntent: string;
     label: string;
     targetKind: 'table.row_action';
+    effect?: EntityRuleEffectView;
 };
 
 export type EntityRulePrimaryKeyView = {

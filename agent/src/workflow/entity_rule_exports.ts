@@ -1,4 +1,6 @@
 import type {EntityRulePageKind, WorkflowEntityRules} from './entity_rules';
+import type {EffectDeclaration} from '../effects/contracts';
+import {readEffectDeclaration} from '../effects/declaration';
 
 export type EntityRuleExportDiagnostic = {
     code: string;
@@ -16,16 +18,19 @@ export type EntityRuleExportMember =
 export type EntityRuleExportField = {
     fieldKey: string;
     targetKind: 'form.field' | 'table.filter' | 'entity.field';
+    effect?: EffectDeclaration;
 };
 
 export type EntityRuleExportAction = {
     actionIntent: string;
     targetKind: 'form.action' | 'table.module_action' | 'entity.action';
+    effect?: EffectDeclaration;
 };
 
 export type EntityRuleExportRowAction = {
     actionIntent: string;
     targetKind: 'table.row_action';
+    effect?: EffectDeclaration;
 };
 
 export type EntityRuleExportColumn = {
@@ -113,10 +118,10 @@ const buildEntry = (
 
     const scoped = profile.annotation.bindings.filter((binding) => binding.ruleId !== ruleId && belongsToRoot(binding.ruleId, ruleId, rules));
     const fields = uniqueFields(
-        scoped.flatMap((binding) => field(binding.fieldKey, kind, entityKey, binding.ruleId, diagnostics)),
+        scoped.flatMap((binding) => field(binding.fieldKey, kind, entityKey, binding.ruleId, diagnostics, binding.effect)),
     );
     const actions = uniqueActions(scoped.flatMap((binding) => binding.actionRole === 'row' || binding.paginationRole
-        ? [] : action(binding.actionIntent, kind, entityKey, binding.ruleId, diagnostics)));
+        ? [] : action(binding.actionIntent, kind, entityKey, binding.ruleId, diagnostics, binding.effect)));
     const columns = uniqueColumns(columnFields(root.columns, entityKey, ruleId, diagnostics));
     const primaryKey = primaryKeyFor(root.primaryKey, kind, root.columns, context, diagnostics);
     const rowActions = uniqueRowActions(rowActionSymbols(root, scoped, primaryKey, entityKey, ruleId, diagnostics));
@@ -157,21 +162,32 @@ const uniqueMembers = (
 
 const rowActionSymbols = (root: Record<string, unknown>, scoped: readonly Record<string, unknown>[], primaryKey: EntityRuleExportEntry['primaryKey'], entityKey: string, ruleId: string | undefined, diagnostics: EntityRuleExportDiagnostic[]): EntityRuleExportRowAction[] => {
     const values = [
-        ...scoped.filter((binding) => binding.actionRole === 'row').map((binding) => binding.actionIntent),
-        ...arrayRecords(root.columns).flatMap((column) => arrayRecords(column.actions).map((action) => action.actionIntent)),
+        ...scoped.filter((binding) => binding.actionRole === 'row').map((binding) => ({
+            actionIntent: binding.actionIntent,
+            effect: binding.effect,
+        })),
+        ...arrayRecords(root.columns).flatMap((column) => arrayRecords(column.actions).map((action) => ({
+            actionIntent: action.actionIntent,
+            effect: action.effect,
+        }))),
     ];
     if (values.length > 0 && !primaryKey) {
         diagnostics.push(diagnostic('malformed_primary_key', 'table row actions require a valid primaryKey', {entityKey, ruleId}));
         return [];
     }
     return values.flatMap((value) => {
-        const member = text(value);
+        const member = text(value.actionIntent);
         if (!member) {return [];}
         if (!identifier.test(member)) {
             diagnostics.push(diagnostic('invalid_identifier', `rowAction symbol is not a valid identifier: ${member}`, {entityKey, ruleId}));
             return [];
         }
-        return [{actionIntent: member, targetKind: 'table.row_action' as const}];
+        const effect = readEffectDeclaration(value.effect);
+        return [{
+            actionIntent: member,
+            targetKind: 'table.row_action' as const,
+            ...(effect ? {effect} : {}),
+        }];
     });
 };
 
@@ -199,14 +215,24 @@ const columnFields = (value: unknown, entityKey: string, ruleId: string | undefi
         return fieldKey ? [{fieldKey}] : [];
     });
 
-const field = (value: unknown, kind: EntityRulePageKind, entityKey: string, ruleId: string | undefined, diagnostics: EntityRuleExportDiagnostic[]): EntityRuleExportField[] => {
+const field = (value: unknown, kind: EntityRulePageKind, entityKey: string, ruleId: string | undefined, diagnostics: EntityRuleExportDiagnostic[], effectValue?: unknown): EntityRuleExportField[] => {
     const fieldKey = checkedIdentifier(value, 'field', entityKey, ruleId, diagnostics);
-    return fieldKey ? [{fieldKey, targetKind: kind === 'table' ? 'table.filter' : kind === 'form' ? 'form.field' : 'entity.field'}] : [];
+    const effect = readEffectDeclaration(effectValue);
+    return fieldKey ? [{
+        fieldKey,
+        targetKind: kind === 'table' ? 'table.filter' : kind === 'form' ? 'form.field' : 'entity.field',
+        ...(effect ? {effect} : {}),
+    }] : [];
 };
 
-const action = (value: unknown, kind: EntityRulePageKind, entityKey: string, ruleId: string | undefined, diagnostics: EntityRuleExportDiagnostic[]): EntityRuleExportAction[] => {
+const action = (value: unknown, kind: EntityRulePageKind, entityKey: string, ruleId: string | undefined, diagnostics: EntityRuleExportDiagnostic[], effectValue?: unknown): EntityRuleExportAction[] => {
     const actionIntent = checkedIdentifier(value, 'action', entityKey, ruleId, diagnostics);
-    return actionIntent ? [{actionIntent, targetKind: kind === 'table' ? 'table.module_action' : kind === 'form' ? 'form.action' : 'entity.action'}] : [];
+    const effect = readEffectDeclaration(effectValue);
+    return actionIntent ? [{
+        actionIntent,
+        targetKind: kind === 'table' ? 'table.module_action' : kind === 'form' ? 'form.action' : 'entity.action',
+        ...(effect ? {effect} : {}),
+    }] : [];
 };
 
 const checkedIdentifier = (value: unknown, kind: string, entityKey: string, ruleId: string | undefined, diagnostics: EntityRuleExportDiagnostic[]): string | undefined => {

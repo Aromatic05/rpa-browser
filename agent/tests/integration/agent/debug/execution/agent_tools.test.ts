@@ -99,6 +99,7 @@ test('paused DSL Agent tools split pure debugger reads from execution effects', 
         'debug.refresh',
         'debug.query',
         'debug.compute',
+        'debug.cross_barrier',
         'debug.step',
         'debug.continue',
         'debug.abort',
@@ -108,6 +109,7 @@ test('paused DSL Agent tools split pure debugger reads from execution effects', 
     }
     assert.equal(classifyPausedDslDebugToolCall('debug.savepoint'), 'control');
     assert.equal(classifyPausedDslDebugToolCall('debug.rollback'), 'control');
+    assert.equal(classifyPausedDslDebugToolCall('debug.cross_barrier'), 'control');
     assert.equal(classifyPausedDslDebugToolCall('debug.step'), 'control');
     assert.equal(classifyPausedDslDebugToolCall('debug.continue'), 'control');
     assert.equal(classifyPausedDslDebugToolCall('debug.abort'), 'control');
@@ -275,4 +277,147 @@ test('debug.rollback exposes physical compensation as control and refreshes the 
     assert.equal(effects[1].outcome.status, 'succeeded');
 
     await execution.advance(pause.continuationId, 'abort');
+});
+
+test('commit barrier remains paused under continue and only debug.cross_barrier authorizes the effect', async () => {
+    const [view] = await createViews();
+    const calls: string[] = [];
+    const execution = createDslDebugExecutionSession({
+        source: `
+            use entity_rules "orders" as order
+            click order.orderForm.submit
+            output done = input.done
+        `,
+        context: {
+            workspaceName: 'ws-1',
+            deps,
+            input: {done: true},
+            entityRulesResolver: {
+                resolveProfile: () => ({
+                    diagnostics: [],
+                    profile: {
+                        profileName: 'orders',
+                        entities: [{
+                            entityKey: 'orderForm',
+                            businessTag: 'order.form',
+                            kind: 'form',
+                            fields: [],
+                            actions: [{
+                                actionIntent: 'submit',
+                                targetKind: 'form.action',
+                                effect: {reversibility: 'irreversible'},
+                            }],
+                            columns: [],
+                            rowActions: [],
+                            supportedQueries: [],
+                        }],
+                    },
+                }),
+            },
+            stepExecutionPort: {
+                execute: async (step) => {
+                    calls.push(step.name);
+                    return step.name === 'browser.query'
+                        ? {stepId: step.id, ok: true, data: {kind: 'nodeId', nodeId: 'submit'}}
+                        : {stepId: step.id, ok: true, data: {clicked: true}};
+                },
+            },
+        },
+        worldViewSource: {pin: async () => view},
+        debug: {barrierOn: ['irreversible']},
+    });
+
+    const barrier = await execution.waitForPause();
+    assert.equal(barrier.reason, 'barrier');
+    if (barrier.reason !== 'barrier') {throw new Error('expected barrier pause');}
+    const tools = createPausedDslDebugAgentTools(execution, barrier);
+    const continueTool = tools.tools.find((tool) => tool.name === 'debug.continue')!;
+    const blocked = await continueTool.execute('continue-barrier', {});
+    assert.equal((blocked.details as any).status, 'barrier');
+    assert.equal(tools.readPause()?.continuationId, barrier.continuationId);
+    assert.deepEqual(calls, ['browser.query']);
+
+    const cross = tools.tools.find((tool) => tool.name === 'debug.cross_barrier')!;
+    const crossed = await cross.execute('cross-barrier', {});
+    assert.equal((crossed.details as any).status, 'paused');
+    assert.equal((crossed.details as any).pause.location.path, 'body.1');
+    assert.deepEqual(calls, ['browser.query', 'browser.click']);
+    assert.equal(classifyPausedDslDebugToolCall('debug.cross_barrier'), 'control');
+
+    const pause = tools.readPause();
+    if (!pause) {throw new Error('expected pause after crossing barrier');}
+    const effects = execution.effects(pause.continuationId);
+    assert.equal(effects.length, 1);
+    assert.equal(effects[0].effect.semantics.reversibility, 'irreversible');
+    await execution.advance(pause.continuationId, 'abort');
+});
+
+test('debug.cross_barrier refuses stale World approval until the debugger refreshes', async () => {
+    const [firstView, secondView] = await createViews();
+    let current = firstView;
+    let clickCalls = 0;
+    const execution = createDslDebugExecutionSession({
+        source: `
+            use entity_rules "orders" as order
+            click order.orderForm.submit
+            output done = input.done
+        `,
+        context: {
+            workspaceName: 'ws-1',
+            deps,
+            input: {done: true},
+            entityRulesResolver: {
+                resolveProfile: () => ({
+                    diagnostics: [],
+                    profile: {
+                        profileName: 'orders',
+                        entities: [{
+                            entityKey: 'orderForm',
+                            businessTag: 'order.form',
+                            kind: 'form',
+                            fields: [],
+                            actions: [{
+                                actionIntent: 'submit',
+                                targetKind: 'form.action',
+                                effect: {reversibility: 'irreversible'},
+                            }],
+                            columns: [],
+                            rowActions: [],
+                            supportedQueries: [],
+                        }],
+                    },
+                }),
+            },
+            stepExecutionPort: {
+                execute: async (step) => {
+                    if (step.name === 'browser.query') {
+                        return {stepId: step.id, ok: true, data: {kind: 'nodeId', nodeId: 'submit'}};
+                    }
+                    clickCalls += 1;
+                    return {stepId: step.id, ok: true, data: {clicked: true}};
+                },
+            },
+        },
+        worldViewSource: {pin: async () => current},
+        debug: {barrierOn: ['irreversible']},
+    });
+
+    const barrier = await execution.waitForPause();
+    assert.equal(barrier.reason, 'barrier');
+    current = secondView;
+    const stale = await execution.crossBarrier(barrier.continuationId);
+    assert.equal(stale.status, 'conflict');
+    if (stale.status !== 'conflict') {throw new Error('expected World conflict');}
+    assert.equal(stale.conflict.expected.revision.captureRevision, 1);
+    assert.equal(stale.conflict.actual.revision.captureRevision, 2);
+    assert.equal(clickCalls, 0);
+
+    const refreshed = await execution.refresh(barrier.continuationId);
+    assert.equal(refreshed.reason, 'barrier');
+    assert.equal(refreshed.world.revision.captureRevision, 2);
+    const crossed = await execution.crossBarrier(barrier.continuationId);
+    assert.equal(crossed.status, 'paused');
+    assert.equal(clickCalls, 1);
+    if (crossed.status !== 'paused') {throw new Error('expected pause after barrier effect');}
+    await execution.advance(crossed.pause.continuationId, 'abort');
 });

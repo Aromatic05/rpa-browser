@@ -23,6 +23,10 @@ export const planPhysicalCompensation = (
         effectSequence: entry.record.sequence,
     });
 
+    if (semanticRisk === 'irreversible') {
+        return unavailable('explicit_irreversible');
+    }
+
     if (entry.record.effect.stepName !== 'browser.fill') {
         return unavailable('unsupported_effect');
     }

@@ -20,6 +20,6 @@ export type DebugPhysicalCompensationPlan =
     | Readonly<{
         status: 'unavailable';
         semanticRisk: DebugEffectSemanticRisk;
-        reason: 'unsupported_effect' | 'explicit_target_required' | 'previous_value_unavailable';
+        reason: 'unsupported_effect' | 'explicit_target_required' | 'previous_value_unavailable' | 'explicit_irreversible';
         effectSequence: number;
     }>;

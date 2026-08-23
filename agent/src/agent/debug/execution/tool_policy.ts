@@ -14,6 +14,7 @@ const readTools = new Set([
 ]);
 
 const controlTools = new Set([
+    'debug.cross_barrier',
     'debug.step',
     'debug.continue',
     'debug.abort',
