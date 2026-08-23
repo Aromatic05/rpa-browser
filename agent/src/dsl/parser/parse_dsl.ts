@@ -1,15 +1,20 @@
 import YAML from 'yaml';
 import type { CheckpointStmt, DslImport, DslProgram, DslStmt, EntityReference, LetStmt, QueryExpr, RefExpr, ResolveReference } from '../ast/types';
 import { DslParseError } from '../diagnostics/errors';
+import type {DslParsedDocument, DslSourceLocation} from './source_map';
 
 type ParsedLine = {
+    line: number;
     indent: number;
     content: string;
 };
 
-export const parseDsl = (source: string): DslProgram => {
+export const parseDsl = (source: string): DslProgram => parseDslDocument(source).program;
+
+export const parseDslDocument = (source: string): DslParsedDocument => {
     const lines = tokenizeDsl(source);
     const imports = parseImports(lines);
+    const sourceMap: Record<string, DslSourceLocation> = {};
     const parsed = parseBlock(
         lines,
         imports.length,
@@ -17,11 +22,16 @@ export const parseDsl = (source: string): DslProgram => {
         { allowElse: false },
         new Set(imports.filter((item) => item.kind === 'entity_rules').map((item) => item.alias)),
         new Set(imports.filter((item) => item.kind === 'resolves').map((item) => item.alias)),
+        'body',
+        sourceMap,
     );
     if (parsed.nextIndex !== lines.length) {
         throw new DslParseError('unexpected trailing DSL content');
     }
-    return { imports, body: parsed.body };
+    return {
+        program: {imports, body: parsed.body},
+        sourceMap: Object.freeze({...sourceMap}),
+    };
 };
 
 const parseImports = (lines: ParsedLine[]): DslImport[] => {
@@ -50,24 +60,25 @@ const parseImports = (lines: ParsedLine[]): DslImport[] => {
 const tokenizeDsl = (source: string): ParsedLine[] => {
     const rawLines = source
         .split(/\r?\n/)
-        .map((rawLine) => rawLine.replace(/\s+$/, ''))
-        .filter((line) => line.trim().length > 0);
-    const baseIndent = rawLines.reduce((min, line) => {
-        const indent = line.length - line.trimStart().length;
+        .map((rawLine, index) => ({line: index + 1, content: rawLine.replace(/\s+$/, '')}))
+        .filter((item) => item.content.trim().length > 0);
+    const baseIndent = rawLines.reduce((min, item) => {
+        const indent = item.content.length - item.content.trimStart().length;
         return Math.min(min, indent);
     }, Number.POSITIVE_INFINITY);
 
-    return rawLines.map((line) => {
-            if (line.includes('\t')) {
+    return rawLines.map((item) => {
+            if (item.content.includes('\t')) {
                 throw new DslParseError('tabs are not supported in DSL indentation');
             }
-            const indent = line.length - line.trimStart().length - (Number.isFinite(baseIndent) ? baseIndent : 0);
+            const indent = item.content.length - item.content.trimStart().length - (Number.isFinite(baseIndent) ? baseIndent : 0);
             if (indent % 2 !== 0) {
-                throw new DslParseError(`invalid DSL indentation: ${line}`);
+                throw new DslParseError(`invalid DSL indentation: ${item.content}`);
             }
             return {
+                line: item.line,
                 indent,
-                content: line.trimStart(),
+                content: item.content.trimStart(),
             };
         });
 };
@@ -79,6 +90,8 @@ const parseBlock = (
     opts: { allowElse: boolean },
     entityAliases: ReadonlySet<string>,
     resolveAliases: ReadonlySet<string>,
+    blockPath: string,
+    sourceMap: Record<string, DslSourceLocation>,
 ): { body: DslStmt[]; nextIndex: number } => {
     const body: DslStmt[] = [];
     let index = startIndex;
@@ -98,15 +111,32 @@ const parseBlock = (
             throw new DslParseError('else without matching if');
         }
 
+        const stmtPath = `${blockPath}.${body.length}`;
         if (line.content.startsWith('if ')) {
-            const parsedIf = parseIfStmt(lines, index, indent, entityAliases, resolveAliases);
+            const parsedIf = parseIfStmt(
+                lines,
+                index,
+                indent,
+                entityAliases,
+                resolveAliases,
+                stmtPath,
+                sourceMap,
+            );
             body.push(parsedIf.stmt);
             index = parsedIf.nextIndex;
             continue;
         }
 
         if (line.content.startsWith('for ')) {
-            const parsedFor = parseForStmt(lines, index, indent, entityAliases, resolveAliases);
+            const parsedFor = parseForStmt(
+                lines,
+                index,
+                indent,
+                entityAliases,
+                resolveAliases,
+                stmtPath,
+                sourceMap,
+            );
             body.push(parsedFor.stmt);
             index = parsedFor.nextIndex;
             continue;
@@ -114,6 +144,7 @@ const parseBlock = (
 
         const collected = collectStatement(lines, index, indent);
         body.push(parseStatement(collected.statement, entityAliases, resolveAliases));
+        sourceMap[stmtPath] = sourceLocation(lines[index], lines[collected.nextIndex - 1]);
         index = collected.nextIndex;
     }
 
@@ -126,6 +157,8 @@ const parseIfStmt = (
     indent: number,
     entityAliases: ReadonlySet<string>,
     resolveAliases: ReadonlySet<string>,
+    path: string,
+    sourceMap: Record<string, DslSourceLocation>,
 ): { stmt: DslStmt; nextIndex: number } => {
     const header = lines[startIndex].content;
     if (!header.endsWith(':')) {
@@ -136,12 +169,31 @@ const parseIfStmt = (
         throw new DslParseError(`invalid if statement: ${header}`);
     }
 
-    const thenBlock = parseBlock(lines, startIndex + 1, indent + 2, { allowElse: true }, entityAliases, resolveAliases);
+    sourceMap[path] = sourceLocation(lines[startIndex], lines[startIndex]);
+    const thenBlock = parseBlock(
+        lines,
+        startIndex + 1,
+        indent + 2,
+        {allowElse: true},
+        entityAliases,
+        resolveAliases,
+        `${path}.then`,
+        sourceMap,
+    );
     let nextIndex = thenBlock.nextIndex;
     let elseBody: DslStmt[] | undefined;
 
     if (nextIndex < lines.length && lines[nextIndex].indent === indent && lines[nextIndex].content === 'else:') {
-        const elseBlock = parseBlock(lines, nextIndex + 1, indent + 2, { allowElse: false }, entityAliases, resolveAliases);
+        const elseBlock = parseBlock(
+            lines,
+            nextIndex + 1,
+            indent + 2,
+            {allowElse: false},
+            entityAliases,
+            resolveAliases,
+            `${path}.else`,
+            sourceMap,
+        );
         elseBody = elseBlock.body;
         nextIndex = elseBlock.nextIndex;
     }
@@ -163,6 +215,8 @@ const parseForStmt = (
     indent: number,
     entityAliases: ReadonlySet<string>,
     resolveAliases: ReadonlySet<string>,
+    path: string,
+    sourceMap: Record<string, DslSourceLocation>,
 ): { stmt: DslStmt; nextIndex: number } => {
     const header = lines[startIndex].content;
     if (!header.endsWith(':')) {
@@ -173,7 +227,17 @@ const parseForStmt = (
         throw new DslParseError(`invalid for statement: ${header}`);
     }
 
-    const bodyBlock = parseBlock(lines, startIndex + 1, indent + 2, { allowElse: false }, entityAliases, resolveAliases);
+    sourceMap[path] = sourceLocation(lines[startIndex], lines[startIndex]);
+    const bodyBlock = parseBlock(
+        lines,
+        startIndex + 1,
+        indent + 2,
+        {allowElse: false},
+        entityAliases,
+        resolveAliases,
+        `${path}.body`,
+        sourceMap,
+    );
     return {
         stmt: {
             kind: 'for',
@@ -225,6 +289,13 @@ const collectStatement = (
         nextIndex: index,
     };
 };
+
+const sourceLocation = (start: ParsedLine, end: ParsedLine): DslSourceLocation => Object.freeze({
+    line: start.line,
+    column: start.indent + 1,
+    endLine: end.line,
+    endColumn: end.indent + end.content.length + 1,
+});
 
 const parseStatement = (
     statement: string,

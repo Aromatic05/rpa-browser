@@ -27,6 +27,8 @@ test('DSL debugger pauses before statements and step continues from the retained
     const first = await controller.waitForPause();
     assert.equal(first.location.path, 'body.0');
     assert.equal(first.location.kind, 'output');
+    assert.deepEqual(first.location.source, {line: 2, column: 1, endLine: 2, endColumn: 27});
+    assert.deepEqual(first.location.callStack, []);
     assert.deepEqual(first.scope.vars, {});
     assert.equal(Object.isFrozen(first.scope.vars), true);
 
@@ -153,8 +155,48 @@ test('DSL debugger steps into checkpoint DSL bodies with an independent program 
     const body = await controller.waitForPause();
     assert.equal(body.location.programId, 'checkpoint:ensure');
     assert.equal(body.location.path, 'body.0');
+    assert.deepEqual(body.location.source, {line: 1, column: 1, endLine: 1, endColumn: 28});
+    assert.deepEqual(body.location.callStack, ['ensure']);
     assert.deepEqual(body.scope.input, {value: 5});
     controller.continue(body.continuationId);
+
+    await run;
+});
+
+test('DSL debugger preserves the full nested checkpoint call stack', async () => {
+    const controller = createDslDebugController({initialMode: 'step'});
+    const checkpoints = new Map([
+        ['outer', {id: 'outer', kind: 'procedure' as const, body: {language: 'dsl' as const, source: 'body.dsl' as const}}],
+        ['inner', {id: 'inner', kind: 'procedure' as const, input: {value: true}, body: {language: 'dsl' as const, source: 'body.dsl' as const}}],
+    ]);
+    const run = runDslSource('use checkpoint "outer"', {
+        workspaceName: 'ws-1',
+        deps,
+        stepExecutionPort: noopPort,
+        checkpointProvider: {
+            getCheckpoint: (id) => checkpoints.get(id) ?? null,
+            getCheckpointResolves: () => ({}),
+            getCheckpointBody: (id) => id === 'outer'
+                ? {source: 'use checkpoint "inner"', stepResolves: {}}
+                : {source: 'output nested = input.value', stepResolves: {}},
+        },
+        debugPort: controller.port,
+    });
+
+    const main = await controller.waitForPause();
+    assert.deepEqual(main.location.callStack, []);
+    controller.step(main.continuationId);
+
+    const outer = await controller.waitForPause();
+    assert.equal(outer.location.programId, 'checkpoint:outer');
+    assert.deepEqual(outer.location.callStack, ['outer']);
+    controller.step(outer.continuationId);
+
+    const inner = await controller.waitForPause();
+    assert.equal(inner.location.programId, 'checkpoint:inner');
+    assert.deepEqual(inner.location.callStack, ['outer', 'inner']);
+    assert.deepEqual(inner.location.source, {line: 1, column: 1, endLine: 1, endColumn: 28});
+    controller.continue(inner.continuationId);
 
     await run;
 });

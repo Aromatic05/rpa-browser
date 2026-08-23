@@ -1,5 +1,6 @@
 import type {DslStmt} from '../ast/types';
 import type {StepName} from '../../runner/steps/types';
+import type {DslSourceLocation} from '../parser/source_map';
 
 export type DslLoopFrame = Readonly<{
     path: string;
@@ -11,6 +12,8 @@ export type DslStatementLocation = Readonly<{
     path: string;
     kind: DslStmt['kind'];
     loops: readonly DslLoopFrame[];
+    source?: DslSourceLocation;
+    callStack: readonly string[];
 }>;
 
 export type DslScopeSnapshot = Readonly<{

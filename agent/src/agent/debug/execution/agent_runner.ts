@@ -12,6 +12,7 @@ import {classifyPausedDslDebugToolCall} from './tool_policy';
 export const PAUSED_DSL_DEBUG_SYSTEM_PROMPT = [
     'You control a DSL program paused before a statement or a pending browser effect.',
     'When debug.execution reports reason=effect, inspect the effect descriptor before deciding whether to advance.',
+    'debug.execution location includes programId, execution path, source line range when available, loop frames, and checkpoint callStack.',
     'debug.execution, debug.scope, debug.world, debug.query, and debug.compute are pure reads.',
     'debug.step and debug.continue advance the retained execution and may cause World effects.',
     'Inspect freely, but advance execution only when your reasoning requires it.',

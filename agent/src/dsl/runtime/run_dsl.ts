@@ -22,6 +22,7 @@ import { injectStepResolve } from '../../runner/step_resolve';
 import {classifyBrowserOperation} from '../../runner/steps/effects';
 import type {DslDebugPort, DslLoopFrame, DslStatementLocation} from '../debug/contracts';
 import {snapshotDslScope} from '../debug/snapshot';
+import type {DslSourceMap} from '../parser/source_map';
 
 export type RunDslContext = {
     workspaceName: string;
@@ -37,6 +38,7 @@ export type RunDslContext = {
     checkpointCallStack?: string[];
     debugPort?: DslDebugPort;
     debugProgramId?: string;
+    debugSourceMap?: DslSourceMap;
 };
 
 export type StepExecutionPort = { execute(step: StepUnion): Promise<ExecutorStepResult> };
@@ -80,11 +82,15 @@ const executeStatements = async (
 ): Promise<void> => {
     for (let index = 0; index < body.length; index += 1) {
         const stmt = body[index];
+        const path = `${execution.blockPath}.${index}`;
+        const source = ctx.debugSourceMap?.[path];
         const location: DslStatementLocation = Object.freeze({
             programId: ctx.debugProgramId ?? 'main',
-            path: `${execution.blockPath}.${index}`,
+            path,
             kind: stmt.kind,
             loops: execution.loops.map((loop) => Object.freeze({...loop})),
+            ...(source ? {source} : {}),
+            callStack: Object.freeze([...(ctx.checkpointCallStack ?? [])]),
         });
         await ctx.debugPort?.beforeStatement({
             location,

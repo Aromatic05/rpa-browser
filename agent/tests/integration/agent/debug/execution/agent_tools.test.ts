@@ -59,6 +59,8 @@ test('paused DSL Agent tools split pure debugger reads from execution effects', 
     });
     const firstPause = await execution.waitForPause();
     const debuggerTools = createPausedDslDebugAgentTools(execution, firstPause);
+    assert.deepEqual(firstPause.location.source, {line: 2, column: 1, endLine: 2, endColumn: 9});
+    assert.deepEqual(firstPause.location.callStack, []);
 
     assert.deepEqual(debuggerTools.tools.map((tool) => tool.name), [
         'debug.execution',
@@ -142,6 +144,13 @@ test('debug.execution exposes a pending effect before Agent continuation execute
     assert.equal((inspected.details as any).pause.reason, 'effect');
     assert.equal((inspected.details as any).pause.effect.stepName, 'browser.click');
     assert.deepEqual((inspected.details as any).pause.effect.args, {nodeId: 'approve-button'});
+    assert.deepEqual((inspected.details as any).pause.location.source, {
+        line: 6,
+        column: 1,
+        endLine: 6,
+        endColumn: 13,
+    });
+    assert.deepEqual((inspected.details as any).pause.location.callStack, []);
     assert.deepEqual(calls, ['browser.query']);
 
     const continueTool = debuggerTools.tools.find((tool) => tool.name === 'debug.continue')!;

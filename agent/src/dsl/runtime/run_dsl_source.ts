@@ -1,5 +1,5 @@
 import { normalizeDsl } from '../normalize';
-import { parseDsl } from '../parser';
+import {parseDsl, parseDslDocument} from '../parser';
 import { validateDsl } from '../validate';
 import { linkDsl, type DslEntityRulesResolver, type DslResolveResolver } from '../link';
 import { DslValidationError } from '../diagnostics/errors';
@@ -33,8 +33,8 @@ export const runDslSource = async (
     source: string,
     ctx: RunDslContext,
 ): Promise<RunDslSourceResult> => {
-    const parsed = parseDsl(source);
-    const linked = linkDsl(parsed, ctx.entityRulesResolver, ctx.resolveResolver);
+    const parsed = parseDslDocument(source);
+    const linked = linkDsl(parsed.program, ctx.entityRulesResolver, ctx.resolveResolver);
     if (linked.diagnostics.length > 0) {
         throw new DslValidationError(linked.diagnostics);
     }
@@ -43,7 +43,11 @@ export const runDslSource = async (
     if (diagnostics.length > 0) {
         throw new DslValidationError(diagnostics);
     }
-    const result = await runDsl(normalized, {...ctx, stepResolves: linked.stepResolves});
+    const result = await runDsl(normalized, {
+        ...ctx,
+        stepResolves: linked.stepResolves,
+        debugSourceMap: parsed.sourceMap,
+    });
     return {
         ...result,
         diagnostics,
