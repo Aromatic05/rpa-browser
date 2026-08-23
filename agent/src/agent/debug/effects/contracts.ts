@@ -13,6 +13,5 @@ export type DebugEffectRecord = Readonly<{
 export type DebugEffectJournal = {
     begin: (event: DslBeforeEffectEvent, worldBefore: WorldViewDescriptor) => void;
     finish: (event: DslAfterEffectEvent, worldAfter: WorldViewDescriptor) => void;
-    cancel: (stepId: string) => void;
     list: () => readonly DebugEffectRecord[];
 };

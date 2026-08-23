@@ -5,6 +5,7 @@ const readTools = new Set([
     'debug.scope',
     'debug.effects',
     'debug.world',
+    'debug.refresh',
     'debug.query',
     'debug.compute',
 ]);

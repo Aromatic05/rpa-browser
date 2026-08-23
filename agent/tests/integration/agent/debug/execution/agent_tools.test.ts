@@ -35,8 +35,7 @@ const createViews = async (): Promise<[WorldView, WorldView]> => {
 
 test('paused DSL Agent tools split pure debugger reads from execution effects', async () => {
     const [firstView, secondView] = await createViews();
-    const views = [firstView, secondView];
-    let pinIndex = 0;
+    let live = firstView;
     let snapshotCalls = 0;
     const execution = createDslDebugExecutionSession({
         source: `
@@ -49,12 +48,15 @@ test('paused DSL Agent tools split pure debugger reads from execution effects', 
             input: {value: 6},
             stepExecutionPort: {
                 execute: async (step) => {
-                    if (step.name === 'browser.snapshot') {snapshotCalls += 1;}
+                    if (step.name === 'browser.snapshot') {
+                        snapshotCalls += 1;
+                        live = secondView;
+                    }
                     return {stepId: step.id, ok: true, data: {}};
                 },
             },
         },
-        worldViewSource: {pin: async () => views[pinIndex++] ?? secondView} satisfies WorldViewSource,
+        worldViewSource: {pin: async () => live} satisfies WorldViewSource,
         debug: {initialMode: 'step'},
     });
     const firstPause = await execution.waitForPause();
@@ -67,13 +69,14 @@ test('paused DSL Agent tools split pure debugger reads from execution effects', 
         'debug.scope',
         'debug.effects',
         'debug.world',
+        'debug.refresh',
         'debug.query',
         'debug.compute',
         'debug.step',
         'debug.continue',
         'debug.abort',
     ]);
-    for (const name of ['debug.execution', 'debug.scope', 'debug.effects', 'debug.world', 'debug.query', 'debug.compute']) {
+    for (const name of ['debug.execution', 'debug.scope', 'debug.effects', 'debug.world', 'debug.refresh', 'debug.query', 'debug.compute']) {
         assert.equal(classifyPausedDslDebugToolCall(name), 'read');
     }
     assert.equal(classifyPausedDslDebugToolCall('debug.step'), 'effect');

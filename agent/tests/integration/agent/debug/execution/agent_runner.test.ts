@@ -41,8 +41,7 @@ test('paused DSL Agent runner lets the model inspect, step and continue a retain
         fauxAssistantMessage('execution complete'),
     ]);
     const [firstView, secondView] = await createViews();
-    const views = [firstView, secondView];
-    let pinIndex = 0;
+    let live = firstView;
     let snapshotCalls = 0;
     const runner = createPausedDslDebugAgentRunner({
         source: `
@@ -55,12 +54,15 @@ test('paused DSL Agent runner lets the model inspect, step and continue a retain
             input: {value: 8},
             stepExecutionPort: {
                 execute: async (step) => {
-                    if (step.name === 'browser.snapshot') {snapshotCalls += 1;}
+                    if (step.name === 'browser.snapshot') {
+                        snapshotCalls += 1;
+                        live = secondView;
+                    }
                     return {stepId: step.id, ok: true, data: {}};
                 },
             },
         },
-        worldViewSource: {pin: async () => views[pinIndex++] ?? secondView},
+        worldViewSource: {pin: async () => live},
         modelRuntime: {
             resolve: (provider, model) => provider === 'faux-debugger' && model === 'debugger'
                 ? {model: faux.getModel(), streamFn: faux.streamSimple}
@@ -270,6 +272,67 @@ test('paused DSL Agent runner exposes executed effects as a pure journal read', 
         postErrorEffectCalls: 0,
     });
 
-    result.session.abort(result.execution.pause.continuationId);
-    await assert.rejects(result.session.waitForCompletion());
+    const aborted = await result.session.advance(result.execution.pause.continuationId, 'abort');
+    assert.equal(aborted.status, 'aborted');
+});
+test('paused DSL Agent runner handles World conflict through pure refresh before retrying advance', async () => {
+    const faux = createFauxCore({provider: 'faux-debugger', models: [{id: 'debugger'}]});
+    faux.setResponses([
+        fauxAssistantMessage(fauxToolCall('debug.continue', {})),
+        fauxAssistantMessage(fauxToolCall('debug.refresh', {})),
+        fauxAssistantMessage(fauxToolCall('debug.query', {
+            op: 'entity',
+            businessTag: 'order.table.main',
+            query: 'table.rowCount',
+        })),
+        fauxAssistantMessage(fauxToolCall('debug.continue', {})),
+        fauxAssistantMessage('world refreshed'),
+    ]);
+    const [firstView, secondView] = await createViews();
+    let pinCalls = 0;
+    const runner = createPausedDslDebugAgentRunner({
+        source: 'output result = input.value',
+        context: {
+            workspaceName: 'ws-1',
+            deps: {} as RunStepsDeps,
+            input: {value: 12},
+            stepExecutionPort: {
+                execute: async (step) => ({stepId: step.id, ok: true, data: {}}),
+            },
+        },
+        worldViewSource: {pin: async () => pinCalls++ === 0 ? firstView : secondView},
+        debug: {initialMode: 'step'},
+        modelRuntime: {
+            resolve: (provider, model) => provider === 'faux-debugger' && model === 'debugger'
+                ? {model: faux.getModel(), streamFn: faux.streamSimple}
+                : null,
+        },
+    });
+
+    const result = await runner.run({
+        provider: 'faux-debugger',
+        model: 'debugger',
+        prompt: 'Handle a World conflict by refreshing and inspecting before continuing.',
+    });
+
+    assert.equal(result.text, 'world refreshed');
+    assert.equal(result.execution.status, 'completed');
+    assert.deepEqual(result.trace.metrics, {
+        turns: 5,
+        toolCalls: 4,
+        readCalls: 2,
+        effectCalls: 2,
+        failedToolCalls: 0,
+        postErrorEffectCalls: 0,
+    });
+    const continueCalls = result.trace.tools.filter((tool) => tool.toolName === 'debug.continue');
+    assert.equal(continueCalls.length, 2);
+    assert.equal(continueCalls[0].worldBefore?.captureRevision, 1);
+    assert.equal(continueCalls[0].worldAfter?.captureRevision, 1);
+    const refresh = result.trace.tools.find((tool) => tool.toolName === 'debug.refresh')!;
+    assert.equal(refresh.classification, 'read');
+    assert.equal(refresh.worldBefore?.captureRevision, 1);
+    assert.equal(refresh.worldAfter?.captureRevision, 2);
+    assert.equal(continueCalls[1].worldBefore?.captureRevision, 2);
+    assert.equal(continueCalls[1].worldAfter, null);
 });

@@ -13,6 +13,7 @@ import type {ComputeEvalScope} from '../../../runner/compute/evaluate';
 import type {ComputeExpr, StepArgsMap} from '../../../runner/steps/types';
 import type {WorldViewSource} from '../../worldview/contracts';
 import {describeWorldView} from '../../worldview/descriptor';
+import {isSameWorldView} from '../../worldview/revision';
 import {createDebugEffectJournal} from '../effects/journal';
 import {createDebugQuerySession} from '../query/session';
 import type {DebugQuerySession} from '../query/contracts';
@@ -42,13 +43,8 @@ export const createDslDebugExecutionSession = (
     const debugPort: DslDebugPort = {
         beforeStatement: controller.port.beforeStatement,
         beforeEffect: async (event) => {
+            await controller.port.beforeEffect?.(event);
             journal.begin(event, describeWorldView(await options.worldViewSource.pin()));
-            try {
-                await controller.port.beforeEffect?.(event);
-            } catch (error) {
-                journal.cancel(event.effect.stepId);
-                throw error;
-            }
         },
         afterEffect: async (event) => {
             journal.finish(event, describeWorldView(await options.worldViewSource.pin()));
@@ -69,6 +65,22 @@ export const createDslDebugExecutionSession = (
         return active;
     };
 
+    const exposePause = (value: ActivePause): PausedDslDebugExecution => {
+        const {pause, debug} = value;
+        const base = {
+            continuationId: pause.continuationId,
+            reason: pause.reason,
+            location: pause.location,
+            scope: pause.scope,
+            world: debug.world,
+        } as const;
+        return pause.reason === 'effect'
+            ? Object.freeze({...base, reason: 'effect' as const, effect: pause.effect})
+            : pause.reason === 'failure'
+                ? Object.freeze({...base, reason: 'failure' as const, failure: pause.failure})
+                : Object.freeze({...base, reason: 'statement' as const});
+    };
+
     const release = (continuationId: string, mode: 'continue' | 'step' | 'abort'): void => {
         requireActive(continuationId);
         active = null;
@@ -82,18 +94,16 @@ export const createDslDebugExecutionSession = (
         const pause = await controller.waitForPause();
         const debug = createDebugQuerySession(await options.worldViewSource.pin());
         active = {pause, debug};
-        const base = {
-            continuationId: pause.continuationId,
-            reason: pause.reason,
-            location: pause.location,
-            scope: pause.scope,
-            world: debug.world,
-        } as const;
-        return pause.reason === 'effect'
-            ? Object.freeze({...base, reason: 'effect' as const, effect: pause.effect})
-            : pause.reason === 'failure'
-                ? Object.freeze({...base, reason: 'failure' as const, failure: pause.failure})
-            : Object.freeze({...base, reason: 'statement' as const});
+        return exposePause(active);
+    };
+
+    const refresh = async (continuationId: string): Promise<PausedDslDebugExecution> => {
+        const current = requireActive(continuationId);
+        active = {
+            pause: current.pause,
+            debug: createDebugQuerySession(await options.worldViewSource.pin()),
+        };
+        return exposePause(active);
     };
 
     const advance = async (
@@ -106,6 +116,15 @@ export const createDslDebugExecutionSession = (
             reason: current.pause.reason,
             location: current.pause.location,
         });
+        if (mode !== 'abort' && current.pause.reason !== 'failure') {
+            const actual = describeWorldView(await options.worldViewSource.pin());
+            if (!isSameWorldView(current.debug.world, actual)) {
+                return Object.freeze({
+                    status: 'conflict' as const,
+                    conflict: Object.freeze({expected: current.debug.world, actual}),
+                });
+            }
+        }
         release(continuationId, mode);
         return await Promise.race([
             waitForPause().then((pause) => ({status: 'paused' as const, pause})),
@@ -134,9 +153,7 @@ export const createDslDebugExecutionSession = (
             requireActive(continuationId);
             return journal.list();
         },
-        continue: (continuationId: string) => {release(continuationId, 'continue');},
-        step: (continuationId: string) => {release(continuationId, 'step');},
-        abort: (continuationId: string) => {release(continuationId, 'abort');},
+        refresh,
         advance,
         waitForCompletion: async () => await completion,
     };

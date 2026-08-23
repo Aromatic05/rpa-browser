@@ -32,8 +32,14 @@ export type DslDebugTerminalFailure = Readonly<{
     args?: unknown;
 }>;
 
+export type DslDebugWorldConflict = Readonly<{
+    expected: WorldViewDescriptor;
+    actual: WorldViewDescriptor;
+}>;
+
 export type DslDebugAdvanceResult =
     | Readonly<{status: 'paused'; pause: PausedDslDebugExecution}>
+    | Readonly<{status: 'conflict'; conflict: DslDebugWorldConflict}>
     | Readonly<{status: 'completed'; output: Readonly<Record<string, unknown>>}>
     | Readonly<{status: 'failed'; failure: DslDebugTerminalFailure}>
     | Readonly<{
@@ -53,9 +59,7 @@ export type DslDebugExecutionSession = {
         scope?: ComputeEvalScope,
     ) => DebugComputeResult;
     effects: (continuationId: string) => readonly DebugEffectRecord[];
-    continue: (continuationId: string) => void;
-    step: (continuationId: string) => void;
-    abort: (continuationId: string) => void;
+    refresh: (continuationId: string) => Promise<PausedDslDebugExecution>;
     advance: (continuationId: string, mode: 'continue' | 'step' | 'abort') => Promise<DslDebugAdvanceResult>;
     waitForCompletion: () => Promise<RunDslSourceResult>;
 };

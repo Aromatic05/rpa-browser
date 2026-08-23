@@ -30,7 +30,6 @@ export const createDebugEffectJournal = (): DebugEffectJournal => {
                 worldAfter,
             }));
         },
-        cancel: (stepId) => {pending.delete(stepId);},
         list: () => Object.freeze([...records]),
     };
 };

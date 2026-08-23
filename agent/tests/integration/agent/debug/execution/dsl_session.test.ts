@@ -38,10 +38,9 @@ const createViews = async (): Promise<[WorldView, WorldView]> => {
 
 test('paused DSL execution binds one pinned WorldView to each retained continuation', async () => {
     const [firstView, secondView] = await createViews();
-    const views = [firstView, secondView];
-    let pinCalls = 0;
+    let live = firstView;
     const source: WorldViewSource = {
-        pin: async () => views[pinCalls++] ?? secondView,
+        pin: async () => live,
     };
     let snapshotCalls = 0;
     const execution = createDslDebugExecutionSession({
@@ -55,7 +54,10 @@ test('paused DSL execution binds one pinned WorldView to each retained continuat
             input: {value: 9},
             stepExecutionPort: {
                 execute: async (step: StepUnion) => {
-                    if (step.name === 'browser.snapshot') {snapshotCalls += 1;}
+                    if (step.name === 'browser.snapshot') {
+                        snapshotCalls += 1;
+                        live = secondView;
+                    }
                     return {stepId: step.id, ok: true, data: {}};
                 },
             },
@@ -77,21 +79,23 @@ test('paused DSL execution binds one pinned WorldView to each retained continuat
     assert.equal(rows.ok, true);
     assert.equal(rows.world.revision.captureRevision, 1);
 
-    execution.step(first.continuationId);
-    const second = await execution.waitForPause();
+    const stepResult = await execution.advance(first.continuationId, 'step');
+    assert.equal(stepResult.status, 'paused');
+    if (stepResult.status !== 'paused') {throw new Error('expected second pause');}
+    const second = stepResult.pause;
     assert.equal(snapshotCalls, 1);
     assert.equal(second.location.path, 'body.1');
     assert.equal(second.world.revision.captureRevision, 2);
-    assert.equal(pinCalls, 2);
 
     assert.throws(
         () => execution.query(first.continuationId, {from: 'snapshot'}),
         /continuation is not active/,
     );
 
-    execution.continue(second.continuationId);
-    const completed = await execution.waitForCompletion();
-    assert.deepEqual(completed.scope.output, {result: 9});
+    const completed = await execution.advance(second.continuationId, 'continue');
+    assert.equal(completed.status, 'completed');
+    if (completed.status !== 'completed') {throw new Error('expected completion');}
+    assert.deepEqual(completed.output, {result: 9});
     assert.equal(snapshotCalls, 1);
 });
 
@@ -124,8 +128,8 @@ test('paused DSL execution exposes pure compute against explicit pause-local sco
     if (computed.ok) {assert.equal(computed.value, true);}
     assert.deepEqual(computed.world.revision, paused.world.revision);
 
-    execution.continue(paused.continuationId);
-    await execution.waitForCompletion();
+    const completed = await execution.advance(paused.continuationId, 'continue');
+    assert.equal(completed.status, 'completed');
 });
 
 test('paused DSL execution exposes the pending browser effect before mutation', async () => {
@@ -164,8 +168,8 @@ test('paused DSL execution exposes the pending browser effect before mutation', 
     assert.deepEqual(paused.effect.args, {nodeId: 'approve-button'});
     assert.deepEqual(calls, ['browser.query']);
 
-    execution.continue(paused.continuationId);
-    await execution.waitForCompletion();
+    const completed = await execution.advance(paused.continuationId, 'continue');
+    assert.equal(completed.status, 'completed');
     assert.deepEqual(calls, ['browser.query', 'browser.click']);
 });
 
@@ -285,8 +289,8 @@ test('effect journal records only executed effects with before and after World r
     assert.equal(effects[0].worldAfter.revision.captureRevision, 2);
     assert.equal(Object.isFrozen(effects[0]), true);
 
-    execution.continue(stepped.pause.continuationId);
-    await execution.waitForCompletion();
+    const completed = await execution.advance(stepped.pause.continuationId, 'continue');
+    assert.equal(completed.status, 'completed');
 });
 
 test('failed effects enter the journal before the failure pause', async () => {
@@ -326,4 +330,98 @@ test('failed effects enter the journal before the failure pause', async () => {
     assert.equal(effects[0].worldAfter.revision.captureRevision, 2);
 
     await execution.advance(paused.continuationId, 'continue');
+});
+test('advance keeps a stale continuation frozen until explicit World refresh', async () => {
+    const [firstView, secondView] = await createViews();
+    let live = firstView;
+    const execution = createDslDebugExecutionSession({
+        source: 'output result = input.value',
+        context: {
+            workspaceName: 'ws-1',
+            deps,
+            input: {value: 11},
+            stepExecutionPort: {
+                execute: async (step) => ({stepId: step.id, ok: true, data: {}}),
+            },
+        },
+        worldViewSource: {pin: async () => live},
+        debug: {initialMode: 'step'},
+    });
+
+    const paused = await execution.waitForPause();
+    assert.equal(paused.world.revision.captureRevision, 1);
+    live = secondView;
+
+    const conflict = await execution.advance(paused.continuationId, 'continue');
+    assert.equal(conflict.status, 'conflict');
+    if (conflict.status !== 'conflict') {throw new Error('expected World conflict');}
+    assert.equal(conflict.conflict.expected.revision.captureRevision, 1);
+    assert.equal(conflict.conflict.actual.revision.captureRevision, 2);
+
+    const stillPinned = execution.query(paused.continuationId, {
+        op: 'entity',
+        businessTag: 'order.table.main',
+        query: 'table.rowCount',
+    });
+    assert.equal(stillPinned.world.revision.captureRevision, 1);
+
+    const refreshed = await execution.refresh(paused.continuationId);
+    assert.equal(refreshed.continuationId, paused.continuationId);
+    assert.equal(refreshed.location.path, paused.location.path);
+    assert.equal(refreshed.world.revision.captureRevision, 2);
+
+    const completed = await execution.advance(paused.continuationId, 'continue');
+    assert.equal(completed.status, 'completed');
+    if (completed.status !== 'completed') {throw new Error('expected completion');}
+    assert.deepEqual(completed.output, {result: 11});
+});
+
+test('effect OCC conflicts before mutation and journal starts from the refreshed World', async () => {
+    const [firstView, secondView] = await createViews();
+    let live = firstView;
+    let clickCalls = 0;
+    const execution = createDslDebugExecutionSession({
+        source: `
+            click input.target
+            output done = input.done
+        `,
+        context: {
+            workspaceName: 'ws-1',
+            deps,
+            input: {target: {nodeId: 'submit'}, done: true},
+            stepExecutionPort: {
+                execute: async (step) => {
+                    clickCalls += 1;
+                    return {stepId: step.id, ok: true, data: {clicked: true}};
+                },
+            },
+        },
+        worldViewSource: {pin: async () => live},
+        debug: {breakBeforeEffects: true},
+    });
+
+    const paused = await execution.waitForPause();
+    assert.equal(paused.reason, 'effect');
+    assert.equal(paused.world.revision.captureRevision, 1);
+    live = secondView;
+
+    const conflict = await execution.advance(paused.continuationId, 'step');
+    assert.equal(conflict.status, 'conflict');
+    assert.equal(clickCalls, 0);
+    assert.deepEqual(execution.effects(paused.continuationId), []);
+
+    const refreshed = await execution.refresh(paused.continuationId);
+    assert.equal(refreshed.world.revision.captureRevision, 2);
+    const stepped = await execution.advance(paused.continuationId, 'step');
+    assert.equal(stepped.status, 'paused');
+    if (stepped.status !== 'paused') {throw new Error('expected next statement pause');}
+    assert.equal(clickCalls, 1);
+
+    const effects = execution.effects(stepped.pause.continuationId);
+    assert.equal(effects.length, 1);
+    assert.equal(effects[0].worldBefore.revision.captureRevision, 2);
+    assert.equal(effects[0].worldAfter.revision.captureRevision, 2);
+
+    const completed = await execution.advance(stepped.pause.continuationId, 'continue');
+    assert.equal(completed.status, 'completed');
 });

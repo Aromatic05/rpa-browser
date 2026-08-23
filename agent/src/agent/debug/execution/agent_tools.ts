@@ -59,10 +59,14 @@ export const createPausedDslDebugAgentTools = (
 
     const advance = async (mode: 'continue' | 'step' | 'abort') => {
         const current = requirePause();
-        pause = null;
         const result = await execution.advance(current.continuationId, mode);
         if (result.status === 'paused') {
             pause = result.pause;
+            terminal = null;
+            return toolResult(result);
+        }
+        if (result.status === 'conflict') {
+            pause = current;
             terminal = null;
             return toolResult(result);
         }
@@ -105,6 +109,18 @@ export const createPausedDslDebugAgentTools = (
             description: 'Read the pinned WorldView descriptor for the current paused continuation.',
             parameters: Type.Object({}, {additionalProperties: false}),
             execute: async () => toolResult({world: requirePause().world}),
+        },
+        {
+            name: 'debug.refresh',
+            label: 'debug.refresh',
+            description: 'Refresh only the debugger WorldView for the retained continuation. This is a read-only rebind and does not advance the DSL program.',
+            parameters: Type.Object({}, {additionalProperties: false}),
+            execute: async () => {
+                const current = requirePause();
+                pause = await execution.refresh(current.continuationId);
+                terminal = null;
+                return toolResult({status: 'refreshed', pause});
+            },
         },
         {
             name: 'debug.query',

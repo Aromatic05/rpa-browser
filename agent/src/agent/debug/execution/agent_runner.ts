@@ -21,6 +21,8 @@ export const PAUSED_DSL_DEBUG_SYSTEM_PROMPT = [
     'debug.execution location includes programId, execution path, source line range when available, loop frames, and checkpoint callStack.',
     'debug.execution, debug.scope, debug.effects, debug.world, debug.query, and debug.compute are pure reads.',
     'debug.effects contains only World effects that actually executed, with outcome and before/after World revisions; pending or aborted effects are absent.',
+    'debug.step and debug.continue validate the live World revision before advancing. If they return status=conflict, the continuation remains paused on its old WorldView; call debug.refresh, inspect the new World, then decide again.',
+    'debug.refresh is a pure read-only rebind of the paused continuation to the latest WorldView and never advances the program.',
     'debug.step and debug.continue advance the retained execution and may cause World effects.',
     'debug.abort terminates the retained execution before the pending statement/effect; it is not rollback and does not undo earlier effects.',
     'Inspect freely, but advance execution only when your reasoning requires it.',
