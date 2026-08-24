@@ -1,5 +1,5 @@
 import type { StepUnion } from '../../runner/steps/types';
-import { getLogger } from '../../../logging/logger';
+import { getLogger } from '../../../platform/logging/logger';
 import type { RecorderEvent } from '../capture/recorder';
 import {
     readControlOptionByNodeId,

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {getRunnerConfig} from '../../../../src/config';
+import {getRunnerConfig} from '../../../../src/platform/config';
 import {executeBrowserMouse} from '../../../../src/automation/runner/steps/executors/mouse';
 import {normalizeBrowserPressKey} from '../../../../src/automation/runner/steps/executors/press_key';
 import type {Step} from '../../../../src/automation/runner/steps/types';

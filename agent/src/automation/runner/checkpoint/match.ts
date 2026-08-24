@@ -1,4 +1,4 @@
-import { getLogger } from '../../../logging/logger';
+import { getLogger } from '../../../platform/logging/logger';
 import { ensureFreshPageSession } from '../session/capture';
 import { buildPageSessionEntityView, filterPageSessionEntities } from '../session/entity_view';
 import type { EntityKind } from '../steps/types';

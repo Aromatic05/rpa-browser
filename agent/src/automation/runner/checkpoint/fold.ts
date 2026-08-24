@@ -1,4 +1,4 @@
-import { getLogger } from '../../../logging/logger';
+import { getLogger } from '../../../platform/logging/logger';
 import type { CheckpointCtx } from './types';
 
 const log = getLogger('step');

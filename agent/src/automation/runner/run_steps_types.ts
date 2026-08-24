@@ -2,7 +2,7 @@ import type { StepName, StepResolve, StepResult as ExecStepResult, StepUnion } f
 import type { Checkpoint as RunnerCheckpoint } from './checkpoint/types';
 import type { ExecutionBindings } from '../../app/runtime/execution/bindings';
 import type { RunnerPluginHost } from './hotreload/plugin_host';
-import type { RunnerConfig } from '../../config';
+import type { RunnerConfig } from '../../platform/config';
 import type { RuntimeWorkspace } from '../../app/runtime/workspace/workspace';
 import type { Action } from '../../interface/actions/action_protocol';
 import type { Page } from 'playwright';

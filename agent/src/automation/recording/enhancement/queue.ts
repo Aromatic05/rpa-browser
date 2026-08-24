@@ -1,5 +1,5 @@
 import type { Page } from 'playwright';
-import { getLogger } from '../../../logging/logger';
+import { getLogger } from '../../../platform/logging/logger';
 import type { StepName } from '../../runner/steps/types';
 import { enrichRecordedStepWithSnapshot } from './build';
 import type { RecorderEvent } from '../capture/recorder';

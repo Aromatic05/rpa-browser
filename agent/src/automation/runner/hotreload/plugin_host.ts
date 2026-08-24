@@ -2,7 +2,7 @@ import { pathToFileURL } from 'node:url';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import chokidar from 'chokidar';
-import { getLogger } from '../../../logging/logger';
+import { getLogger } from '../../../platform/logging/logger';
 import type { RunnerPlugin, CreateTraceToolsFn } from '../plugin_entry';
 import type { ExecutorFn } from '../steps/executors';
 

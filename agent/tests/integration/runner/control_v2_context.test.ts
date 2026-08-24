@@ -6,7 +6,7 @@ import type {StepResolve, StepResult, StepUnion} from '../../../src/automation/r
 import type {Checkpoint} from '../../../src/automation/runner/checkpoint';
 import type {Action} from '../../../src/interface/actions/action_protocol';
 import {ActionError, ERROR_CODES} from '../../../src/interface/actions/results';
-import {getRunnerConfig} from '../../../src/config';
+import {getRunnerConfig} from '../../../src/platform/config';
 import {completeRunStepsDeps} from '../../helpers/run_steps_workspace';
 import {executeBrowserCheckpoint} from '../../../src/automation/runner/steps/executors/checkpoint';
 import type {ExecutorFn} from '../../../src/automation/runner/steps/executors';

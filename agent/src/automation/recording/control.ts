@@ -44,8 +44,8 @@ import {
 import { persistRecordedStep } from './checkpoint/common';
 import type { ExecutionBindings } from '../../app/runtime/execution/bindings';
 import type { PageRegistry } from '../../app/runtime/browser/page_registry';
-import type { Logger } from '../../logging/logger';
-import { getLogger } from '../../logging/logger';
+import type { Logger } from '../../platform/logging/logger';
+import { getLogger } from '../../platform/logging/logger';
 
 const RECORDING_DUMMY: WorkflowDummy = { kind: 'recording' };
 

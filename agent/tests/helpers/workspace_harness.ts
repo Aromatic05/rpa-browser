@@ -5,7 +5,7 @@ import {createRecordingSnapshotPort} from '../../src/automation/recording/pipeli
 import {SnapshotProjectionBaselineStore} from '../../src/automation/runner/session';
 import {PageSnapshotSessionStore} from '../../src/automation/snapshot';
 import type { RunStepsDeps } from '../../src/automation/runner/run_steps';
-import { getRunnerConfig } from '../../src/config';
+import { getRunnerConfig } from '../../src/platform/config';
 import type { Action } from '../../src/interface/actions/action_protocol';
 import { createPortAllocator } from '../../src/app/runtime/service/ports';
 import { createExecutionBindings } from '../../src/app/runtime/execution/bindings';

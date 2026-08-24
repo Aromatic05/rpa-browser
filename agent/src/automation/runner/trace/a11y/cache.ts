@@ -1,5 +1,5 @@
 import type { TraceCache, TraceTags } from '../types';
-import { getLogger } from '../../../../logging/logger';
+import { getLogger } from '../../../../platform/logging/logger';
 
 const log = getLogger('trace');
 

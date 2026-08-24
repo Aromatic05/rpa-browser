@@ -7,7 +7,7 @@ import { createWorkflowOnFs } from '../../src/automation/workflow';
 import { createExecutionBindings } from '../../src/app/runtime/execution/bindings';
 import { createNoopHooks } from '../../src/automation/runner/trace/hooks';
 import { runStepList } from '../../src/automation/runner/run_steps';
-import { getRunnerConfig } from '../../src/config';
+import { getRunnerConfig } from '../../src/platform/config';
 import type { StepArgsMap, StepName, StepUnion } from '../../src/automation/runner/steps/types';
 import { RunnerPluginHost } from '../../src/automation/runner/hotreload/plugin_host';
 import {PageSnapshotSessionStore} from '../../src/automation/snapshot/session';

@@ -16,9 +16,9 @@ import { failedAction, type Action } from '../../interface/actions/action_protoc
 import { ERROR_CODES } from '../../interface/actions/results';
 import { createRunnerScopeRegistry } from '../../automation/runner/runner_scope';
 import { createConsoleStepSink, setRunStepsDeps } from '../../automation/runner/run_steps';
-import { getRunnerConfig } from '../../config';
+import { getRunnerConfig } from '../../platform/config';
 import { FileSink, createLoggingHooks, createNoopHooks } from '../../automation/runner/trace';
-import { initLogger, getLogger, resolveLogPath } from '../../logging/logger';
+import { initLogger, getLogger, resolveLogPath } from '../../platform/logging/logger';
 import { RunnerPluginHost } from '../../automation/runner/hotreload/plugin_host';
 import { createActionDispatcher } from '../../interface/actions/dispatcher';
 import { createControlServer, registerControlShutdown } from '../../interface/control';

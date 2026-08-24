@@ -5,7 +5,7 @@ import {SnapshotProjectionBaselineStore} from '../../src/automation/runner/sessi
 import type { ExecutionBinding } from '../../src/app/runtime/execution/bindings';
 import type { PageRegistry } from '../../src/app/runtime/browser/page_registry';
 import type { RuntimeWorkspace } from '../../src/app/runtime/workspace/workspace';
-import { getRunnerConfig } from '../../src/config';
+import { getRunnerConfig } from '../../src/platform/config';
 
 export type TestExecutionBinding = Omit<Partial<ExecutionBinding>, 'page' | 'pageRegistry' | 'traceTools' | 'traceCtx'> & {
     workspaceName?: string;

@@ -1,4 +1,4 @@
-import { getLogger } from '../../../logging/logger';
+import { getLogger } from '../../../platform/logging/logger';
 import type { StepUnion } from '../steps/types';
 import type { SerializedStepUnion } from '../serialization/types';
 import type { CheckpointCtx } from './types';

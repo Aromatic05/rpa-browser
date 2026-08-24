@@ -1,5 +1,5 @@
 import type { StepName, StepUnion } from '../../runner/steps/types';
-import { getLogger } from '../../../logging/logger';
+import { getLogger } from '../../../platform/logging/logger';
 
 const isTabLifecycleStep = (stepName: StepName): boolean =>
     stepName === 'browser.create_tab' || stepName === 'browser.switch_tab' || stepName === 'browser.close_tab';

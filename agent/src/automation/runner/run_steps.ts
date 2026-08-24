@@ -4,7 +4,7 @@ import { validateCheckpointFileForSerialization } from './serialization/types';
 import { resolveStepArgsRefs } from './step_refs';
 import { isAutomaticRecoveryCheckpoint, runCheckpoint, materializeReferencedCheckpointRuntimeSnapshot, type Checkpoint as RunnerCheckpoint } from './checkpoint';
 import { getFailedCtx } from './failed_ctx';
-import { getLogger } from '../../logging/logger';
+import { getLogger } from '../../platform/logging/logger';
 import {shouldMarkPageSessionDirtyByStep} from './session';
 import type {
     Checkpoint,

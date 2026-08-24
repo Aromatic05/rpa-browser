@@ -1,5 +1,5 @@
 import type { Action } from '../actions/action_protocol';
-import type { RunnerConfig } from '../../config';
+import type { RunnerConfig } from '../../platform/config';
 import { runDslSource } from '../../program/dsl/runtime';
 import type { DslCheckpointProvider } from '../../program/dsl/emit';
 import type { RunStepsDeps } from '../../automation/runner/run_steps';

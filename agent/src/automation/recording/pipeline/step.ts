@@ -1,6 +1,6 @@
 import type { Page } from 'playwright';
 import crypto from 'crypto';
-import { getLogger } from '../../../logging/logger';
+import { getLogger } from '../../../platform/logging/logger';
 import type { ResolveHint, ResolvePolicy, Step, StepArgsMap, StepMeta, StepName, StepResolve, StepUnion } from '../../runner/steps/types';
 import type { RecorderEvent } from '../capture/recorder';
 import { startRecordedStepEnrichment } from '../enhancement/queue';

@@ -1,4 +1,4 @@
-import { getLogger } from '../../../logging/logger';
+import { getLogger } from '../../../platform/logging/logger';
 import type { FailedCtx } from '../failed_ctx';
 import { maybeBindCheckpoint } from './bind';
 import { foldCheckpointResult, maybeRetryOriginalStep } from './fold';

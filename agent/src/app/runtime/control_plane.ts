@@ -3,7 +3,7 @@ import { replyAction, type Action } from '../../interface/actions/action_protoco
 import { ActionError } from '../../interface/actions/results';
 import { ERROR_CODES } from '../../interface/actions/results';
 import { copyWorkflowOnFs, createWorkflowOnFs, deleteWorkflowFromFs, listWorkflowNames, loadWorkflowFromFs, renameWorkflowAfterPreparationOnFs } from '../../automation/workflow';
-import { getLogger } from '../../logging/logger';
+import { getLogger } from '../../platform/logging/logger';
 import type { RuntimeWorkspace, WorkspaceRegistry } from './workspace/registry';
 import {requireWorkspaceState} from './workspace/workspace';
 

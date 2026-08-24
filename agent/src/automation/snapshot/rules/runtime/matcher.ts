@@ -1,4 +1,4 @@
-import type { EntityRuleConfig } from '../../../../config';
+import type { EntityRuleConfig } from '../../../../platform/config';
 import type {
     EntityRuleAnnotationBinding,
     WorkflowEntityRules,

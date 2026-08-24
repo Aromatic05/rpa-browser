@@ -6,7 +6,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { TraceEvent, TraceSink } from './types';
-import { getLogger } from '../../../logging/logger';
+import { getLogger } from '../../../platform/logging/logger';
 
 /**
  * MemorySink：将事件存入内存数组，便于测试与调试。

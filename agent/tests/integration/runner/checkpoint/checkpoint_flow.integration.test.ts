@@ -10,7 +10,7 @@ import {
     sendSignal,
     setRunStepsDeps,
 } from '../../../../src/automation/runner/run_steps';
-import { loadRunnerConfig } from '../../../../src/config/loader';
+import { loadRunnerConfig } from '../../../../src/platform/config/loader';
 import type { StepResolve, StepUnion } from '../../../../src/automation/runner/steps/types';
 import type { Checkpoint } from '../../../../src/automation/runner/checkpoint';
 import { completeRunStepsDeps } from '../../../helpers/run_steps_workspace';

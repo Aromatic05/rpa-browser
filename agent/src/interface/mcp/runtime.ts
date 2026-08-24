@@ -2,7 +2,7 @@ import type { WorkspaceServiceStatus } from '../../app/runtime/service/types';
 import type { PortAllocator } from '../../app/runtime/service/ports';
 import type { WorkspaceTabs } from '../../app/runtime/workspace/tabs';
 import type { RunStepsDeps } from '../../automation/runner/run_steps_types';
-import type { RunnerConfig } from '../../config';
+import type { RunnerConfig } from '../../platform/config';
 import { createWorkspaceToolHandlers } from './tool_handlers';
 import { resolveEnabledToolNames, getToolSpecs } from './tool_registry';
 import { createMcpHttpServer } from './server_runtime';

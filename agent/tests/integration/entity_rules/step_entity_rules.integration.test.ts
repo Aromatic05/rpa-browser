@@ -6,7 +6,7 @@ import {
     createWorkspaceEntityRulesProvider,
     resolveStepEntityRulesExecution,
 } from '../../../src/automation/snapshot/rules/runtime';
-import type { EntityRuleConfig } from '../../../src/config';
+import type { EntityRuleConfig } from '../../../src/platform/config';
 import {
     createWorkflowOnFs,
     deleteWorkflowFromFs,

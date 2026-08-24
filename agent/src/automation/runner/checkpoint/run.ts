@@ -1,4 +1,4 @@
-import { getLogger } from '../../../logging/logger';
+import { getLogger } from '../../../platform/logging/logger';
 import type { Checkpoint, CheckpointCtx } from './types';
 import { runCheckpointProcedure } from './runtime';
 import { runCheckpointDslBody } from './dsl_body';

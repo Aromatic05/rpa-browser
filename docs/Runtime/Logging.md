@@ -2,7 +2,7 @@
 
 ## 概述
 
-日志系统位于 `agent/src/logging/logger.ts`，用于统一 Action、record、trace、step、entity、dsl 六类日志输出，并支持 console/file 双通道。
+日志系统位于 `agent/src/platform/logging/logger.ts`，用于统一 Action、record、trace、step、entity、dsl 六类日志输出，并支持 console/file 双通道。
 
 ## 日志类别
 

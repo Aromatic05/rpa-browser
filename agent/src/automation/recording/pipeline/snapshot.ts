@@ -1,5 +1,5 @@
 import type {Page} from 'playwright';
-import {getLogger} from '../../../logging/logger';
+import {getLogger} from '../../../platform/logging/logger';
 import type {RunStepsDeps} from '../../runner/run_steps_types';
 import {ensurePageSessionForPage} from '../../runner/session/capture';
 import type {PageSnapshotCapture} from '../../snapshot';

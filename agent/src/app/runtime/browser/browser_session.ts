@@ -1,6 +1,6 @@
 import path from 'node:path';
 import type { BrowserContext, Page, Worker } from 'playwright';
-import {getLogger} from '../../../logging/logger';
+import {getLogger} from '../../../platform/logging/logger';
 import { createContextManager } from './context_manager';
 import { createPageRegistry, type PageRegistry } from './page_registry';
 import { startActionWsClient, type ActionWsClient, type ActionWsTap } from '../../../interface/actions/ws_client';

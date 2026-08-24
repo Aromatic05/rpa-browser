@@ -14,7 +14,7 @@ import { chromium, type BrowserContext, type Page } from 'playwright';
 import fs from 'node:fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { getLogger } from '../../../logging/logger';
+import { getLogger } from '../../../platform/logging/logger';
 import { launchLocalChromeForCdp, resolveChromeExecutable } from './cdp_launcher';
 
 const __filename = fileURLToPath(import.meta.url);

@@ -13,7 +13,7 @@ import {
     PageSnapshotSessionStore,
     type RawPageCapture,
 } from '../../../src/automation/snapshot';
-import type { EntityRuleConfig } from '../../../src/config';
+import type { EntityRuleConfig } from '../../../src/platform/config';
 import {importWorkflowEntityRules, type Workflow, type WorkflowEntityRules} from '../../../src/automation/workflow';
 import {queryPageSessionBusinessEntity, resolvePageSessionBusinessTarget} from '../../../src/automation/runner/session/entity_view';
 import { createEntityRulesRuntime, createWorkspaceEntityRulesProvider } from '../../../src/automation/snapshot/rules/runtime';

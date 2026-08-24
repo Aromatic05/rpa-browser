@@ -8,7 +8,7 @@ import {
     observeStaleDirectoryLockSync,
     readDirectoryLockOwnerSync,
     reclaimObservedDirectoryLockSync,
-} from '../../storage/directory_lock';
+} from '../../platform/storage/directory_lock';
 
 export type WorkflowArtifactSnapshot = {
     root: string;

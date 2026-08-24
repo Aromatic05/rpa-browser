@@ -2,7 +2,7 @@
 
 ## 概述
 
-配置系统定义 agent 运行时策略，代码位于 `agent/src/config/*`。配置源由默认值、本地文件、环境变量三级合并，最终产出 `RunnerConfig`。
+配置系统定义 agent 运行时策略，代码位于 `agent/src/platform/config/*`。配置源由默认值、本地文件、环境变量三级合并，最终产出 `RunnerConfig`。
 
 ## 配置职责
 

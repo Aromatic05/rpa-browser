@@ -23,7 +23,7 @@ import {
 import type { StepResolve, StepUnion } from './steps/types';
 import type {Checkpoint as RunnerCheckpoint} from './checkpoint';
 import { createTaskCheckpointStore, type TaskCheckpointStore, type TaskRunCheckpoint } from './checkpoint_store';
-import { getRunnerConfig, type RunnerConfig } from '../../config';
+import { getRunnerConfig, type RunnerConfig } from '../../platform/config';
 import {
     readCheckpointBodies,
     readCheckpoints,

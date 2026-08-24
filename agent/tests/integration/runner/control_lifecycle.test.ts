@@ -8,7 +8,7 @@ import {setRunStepsDeps} from '../../../src/automation/runner/run_steps';
 import type {StepResult, StepUnion} from '../../../src/automation/runner/steps/types';
 import type {Action} from '../../../src/interface/actions/action_protocol';
 import {ActionError, ERROR_CODES} from '../../../src/interface/actions/results';
-import {getRunnerConfig} from '../../../src/config';
+import {getRunnerConfig} from '../../../src/platform/config';
 import {completeRunStepsDeps} from '../../helpers/run_steps_workspace';
 import type {TaskCheckpointStore} from '../../../src/automation/runner/checkpoint_store';
 

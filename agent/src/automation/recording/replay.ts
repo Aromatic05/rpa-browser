@@ -17,7 +17,7 @@ import type { RuntimeWorkspace } from '../../app/runtime/workspace/workspace';
 import type { ExecutionBindings } from '../../app/runtime/execution/bindings';
 import type { PageRegistry } from '../../app/runtime/browser/page_registry';
 import { isValidStepResolve } from '../runner/steps/resolve_utils';
-import { getLogger } from '../../logging/logger';
+import { getLogger } from '../../platform/logging/logger';
 
 export type ReplayOptions = {
     clickDelayMs: number;

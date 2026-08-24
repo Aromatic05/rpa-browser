@@ -7,7 +7,7 @@
  */
 
 import type { TraceEvent, TraceHooks } from './types';
-import { getLogger } from '../../../logging/logger';
+import { getLogger } from '../../../platform/logging/logger';
 
 const traceLog = getLogger('trace');
 

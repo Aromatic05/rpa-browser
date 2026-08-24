@@ -2,7 +2,7 @@ import type { RunStepsDeps, StepResult as TaskStepResult } from '../../../automa
 import type { BrowserQueryResult, StepResolve, StepResult as ExecutorStepResult, StepUnion } from '../../../automation/runner/steps/types';
 import {evaluateComputeExpression} from '../../compute/evaluate';
 import { runDslCheckpointCall, type DslCheckpointProvider } from '../emit/checkpoint_call';
-import { getLogger, type Logger } from '../../../logging/logger';
+import { getLogger, type Logger } from '../../../platform/logging/logger';
 import { buildClickStep, buildFillStep, buildQueryStep, buildSelectStep, buildSnapshotStep, buildTypeStep } from '../emit/step_builder';
 import { DslRuntimeError } from '../diagnostics/errors';
 import type { DslExpr, DslProgram, DslStmt } from '../ast/types';

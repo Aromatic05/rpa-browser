@@ -6,7 +6,7 @@ import {
     observeStaleDirectoryLock,
     readDirectoryLockOwner,
     reclaimObservedDirectoryLock,
-} from '../../storage/directory_lock';
+} from '../../platform/storage/directory_lock';
 
 export type TaskRunCheckpoint = Checkpoint & {
     workspaceName: string;
