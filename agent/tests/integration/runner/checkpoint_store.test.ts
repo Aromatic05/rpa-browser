@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {spawn} from 'node:child_process';
 import {pathToFileURL} from 'node:url';
-import {createTaskCheckpointStore} from '../../../src/runner/checkpoint_store';
+import {createTaskCheckpointStore} from '../../../src/automation/runner/checkpoint_store';
 
 const checkpoint = (status: 'running' | 'completed', cursor: number) => ({
     runId: 'run-1',
@@ -136,7 +136,7 @@ test('checkpoint stores in separate processes merge concurrent flushes', async (
     const root = await fs.mkdtemp(path.join(os.tmpdir(), 'rpa-checkpoint-processes-'));
     const filePath = path.join(root, 'checkpoints.json');
     const goFile = path.join(root, 'go');
-    const moduleUrl = pathToFileURL(path.resolve('src/runner/checkpoint_store.ts')).href;
+    const moduleUrl = pathToFileURL(path.resolve('src/automation/runner/checkpoint_store.ts')).href;
     const fileExists = async (file: string): Promise<boolean> => await fs.stat(file).then(() => true, () => false);
     const runChild = (runId: string, workspaceName: string, readyFile: string) =>
         new Promise<{code: number | null; stderr: string}>((resolve) => {

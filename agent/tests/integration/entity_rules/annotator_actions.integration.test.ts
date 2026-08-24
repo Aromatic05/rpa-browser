@@ -2,11 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import {chromium} from 'playwright';
-import {createRunnerAnnotatorController} from '../../../src/runner/annotator';
-import {createEntityRulesRuntime} from '../../../src/snapshot/rules/runtime';
+import {createRunnerAnnotatorController} from '../../../src/automation/runner/annotator';
+import {createEntityRulesRuntime} from '../../../src/automation/snapshot/rules/runtime';
 import {ActionError, ERROR_CODES} from '../../../src/interface/actions/results';
 import type {Action} from '../../../src/interface/actions/action_protocol';
-import {entityRulesArtifactRevision, type Workflow, type WorkflowArtifact, type WorkflowEntityRules} from '../../../src/workflow';
+import {entityRulesArtifactRevision, type Workflow, type WorkflowArtifact, type WorkflowEntityRules} from '../../../src/automation/workflow';
 import type {
     AnnotatorCheckReply,
     AnnotatorDraft,

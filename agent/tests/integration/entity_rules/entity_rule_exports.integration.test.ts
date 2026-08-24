@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {buildEntityRuleExportIndex, validateWorkflowEntityRules} from '../../../src/workflow';
-import {createWorkspaceEntityRulesProvider} from '../../../src/snapshot/rules/runtime';
-import type {WorkflowEntityRules} from '../../../src/workflow';
+import {buildEntityRuleExportIndex, validateWorkflowEntityRules} from '../../../src/automation/workflow';
+import {createWorkspaceEntityRulesProvider} from '../../../src/automation/snapshot/rules/runtime';
+import type {WorkflowEntityRules} from '../../../src/automation/workflow';
 
 const profile = (overrides: Partial<WorkflowEntityRules> = {}): WorkflowEntityRules => ({
     kind: 'entity_rules',

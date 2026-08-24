@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
-import { captureTableSnapshot } from '../../../src/snapshot';
+import { captureTableSnapshot } from '../../../src/automation/snapshot';
 
 test('real portal cell editor moves from unresolved closed revision to resolved open revision', async () => {
     const browser = await chromium.launch({ headless: true });

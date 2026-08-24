@@ -12,11 +12,11 @@ import {
     type RawCapturedNode,
     PageSnapshotSessionStore,
     type RawPageCapture,
-} from '../../../src/snapshot';
+} from '../../../src/automation/snapshot';
 import type { EntityRuleConfig } from '../../../src/config';
-import {importWorkflowEntityRules, type Workflow, type WorkflowEntityRules} from '../../../src/workflow';
-import {queryPageSessionBusinessEntity, resolvePageSessionBusinessTarget} from '../../../src/runner/session/entity_view';
-import { createEntityRulesRuntime, createWorkspaceEntityRulesProvider } from '../../../src/snapshot/rules/runtime';
+import {importWorkflowEntityRules, type Workflow, type WorkflowEntityRules} from '../../../src/automation/workflow';
+import {queryPageSessionBusinessEntity, resolvePageSessionBusinessTarget} from '../../../src/automation/runner/session/entity_view';
+import { createEntityRulesRuntime, createWorkspaceEntityRulesProvider } from '../../../src/automation/snapshot/rules/runtime';
 
 const config: EntityRuleConfig = {
     enabled: false,

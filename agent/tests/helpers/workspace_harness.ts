@@ -1,10 +1,10 @@
 import type { Page } from 'playwright';
 import { createWorkspaceRegistry } from '../../src/runtime/workspace/registry';
-import { createRecordingState, type RecordingState } from '../../src/record/recording';
-import {createRecordingSnapshotPort} from '../../src/record/pipeline/snapshot';
-import {SnapshotProjectionBaselineStore} from '../../src/runner/session';
-import {PageSnapshotSessionStore} from '../../src/snapshot';
-import type { RunStepsDeps } from '../../src/runner/run_steps';
+import { createRecordingState, type RecordingState } from '../../src/automation/recording/recording';
+import {createRecordingSnapshotPort} from '../../src/automation/recording/pipeline/snapshot';
+import {SnapshotProjectionBaselineStore} from '../../src/automation/runner/session';
+import {PageSnapshotSessionStore} from '../../src/automation/snapshot';
+import type { RunStepsDeps } from '../../src/automation/runner/run_steps';
 import { getRunnerConfig } from '../../src/config';
 import type { Action } from '../../src/interface/actions/action_protocol';
 import { createPortAllocator } from '../../src/runtime/service/ports';

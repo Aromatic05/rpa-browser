@@ -8,7 +8,7 @@ import {
     resolveControlRef,
     type RawCapturedNode,
     type RawPageCapture,
-} from '../../../src/snapshot';
+} from '../../../src/automation/snapshot';
 
 const active = () => ({
     hiddenByStyle: false,
@@ -252,7 +252,7 @@ test('ambiguous popup ownership and incomplete facts suppress executable capabil
 });
 
 test('control collector registry has deterministic order and rejects duplicate collector ids', async () => {
-    const { ControlCollectorRegistry, createDefaultControlCollectorRegistry } = await import('../../../src/snapshot');
+    const { ControlCollectorRegistry, createDefaultControlCollectorRegistry } = await import('../../../src/automation/snapshot');
     assert.deepEqual(createDefaultControlCollectorRegistry().list(), [
         'radio-groups',
         'checkbox-groups',

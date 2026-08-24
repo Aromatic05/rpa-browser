@@ -3,14 +3,14 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import {createRunnerControl} from '../../../src/runner/control';
-import {setRunStepsDeps} from '../../../src/runner/run_steps';
-import type {StepResult, StepUnion} from '../../../src/runner/steps/types';
+import {createRunnerControl} from '../../../src/automation/runner/control';
+import {setRunStepsDeps} from '../../../src/automation/runner/run_steps';
+import type {StepResult, StepUnion} from '../../../src/automation/runner/steps/types';
 import type {Action} from '../../../src/interface/actions/action_protocol';
 import {ActionError, ERROR_CODES} from '../../../src/interface/actions/results';
 import {getRunnerConfig} from '../../../src/config';
 import {completeRunStepsDeps} from '../../helpers/run_steps_workspace';
-import type {TaskCheckpointStore} from '../../../src/runner/checkpoint_store';
+import type {TaskCheckpointStore} from '../../../src/automation/runner/checkpoint_store';
 
 const action = (type: string, payload: Record<string, unknown>): Action => ({
     v: 1,

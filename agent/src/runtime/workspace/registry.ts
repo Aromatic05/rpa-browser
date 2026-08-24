@@ -1,8 +1,8 @@
 import { createRuntimeWorkspace, type RuntimeWorkspace } from './workspace';
-import type { Workflow } from '../../workflow';
-import type { RecordingState } from '../../record/recording';
-import type { ReplayOptions } from '../../record/replay';
-import type { RunStepsDeps } from '../../runner/run_steps';
+import type { Workflow } from '../../automation/workflow';
+import type { RecordingState } from '../../automation/recording/recording';
+import type { ReplayOptions } from '../../automation/recording/replay';
+import type { RunStepsDeps } from '../../automation/runner/run_steps';
 import type { RunnerConfig } from '../../config';
 import type { Action } from '../../interface/actions/action_protocol';
 import type { PortAllocator } from '../service/ports';

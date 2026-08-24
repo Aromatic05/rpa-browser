@@ -1,5 +1,5 @@
 import type {DebugEffectJournalEntry} from '../../effects/contracts';
-import type {RuntimeStateRecord} from '../../../../snapshot/observation/model/contracts';
+import type {RuntimeStateRecord} from '../../../../automation/snapshot/observation/model/contracts';
 import type {DebugPhysicalCompensationPlan} from './contracts';
 import {classifyEffectSemanticRisk} from './semantics';
 

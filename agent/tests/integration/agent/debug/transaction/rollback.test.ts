@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createDslDebugExecutionSession} from '../../../../../src/agent/debug/execution/dsl_session';
 import type {WorldView} from '../../../../../src/agent/worldview/contracts';
-import {PageSnapshotSessionStore} from '../../../../../src/snapshot';
-import type {RunStepsDeps} from '../../../../../src/runner/run_steps';
+import {PageSnapshotSessionStore} from '../../../../../src/automation/snapshot';
+import type {RunStepsDeps} from '../../../../../src/automation/runner/run_steps';
 import type {StepExecutionPort} from '../../../../../src/program/dsl/runtime/run_dsl';
 import {createV2BusinessPage} from '../../../../helpers/v2_business_page';
 

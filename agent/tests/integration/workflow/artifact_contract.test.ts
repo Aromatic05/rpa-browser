@@ -6,12 +6,12 @@ import {spawn} from 'node:child_process';
 import {pathToFileURL} from 'node:url';
 import YAML from 'yaml';
 import { createWorkspaceHarness } from '../../helpers/workspace_harness';
-import { copyWorkflowOnFs, createWorkflowOnFs, deleteWorkflowFromFs, loadWorkflowFromFs, renameWorkflowOnFs } from '../../../src/workflow';
-import { createDslCodec } from '../../../src/workflow/dsl';
-import { workflowRootDir, workflowsRootDir } from '../../../src/workflow/fs';
-import {withWorkflowMutationLock, withWorkflowMutationLocksAsync} from '../../../src/workflow/transaction';
-import { runStepList, type RunStepsDeps } from '../../../src/runner/run_steps';
-import type { StepUnion } from '../../../src/runner/steps/types';
+import { copyWorkflowOnFs, createWorkflowOnFs, deleteWorkflowFromFs, loadWorkflowFromFs, renameWorkflowOnFs } from '../../../src/automation/workflow';
+import { createDslCodec } from '../../../src/automation/workflow/dsl';
+import { workflowRootDir, workflowsRootDir } from '../../../src/automation/workflow/fs';
+import {withWorkflowMutationLock, withWorkflowMutationLocksAsync} from '../../../src/automation/workflow/transaction';
+import { runStepList, type RunStepsDeps } from '../../../src/automation/runner/run_steps';
+import type { StepUnion } from '../../../src/automation/runner/steps/types';
 import { completeRunStepsDeps } from '../../helpers/run_steps_workspace';
 
 const uniqueName = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
@@ -401,7 +401,7 @@ test('concurrent ensureWorkflowOnFs calls both resolve the same workflow', async
         path.join(workflowsRootDir(), `.ready-${name}-1`),
         path.join(workflowsRootDir(), `.ready-${name}-2`),
     ];
-    const moduleUrl = pathToFileURL(path.resolve('src/workflow/index.ts')).href;
+    const moduleUrl = pathToFileURL(path.resolve('src/automation/workflow/index.ts')).href;
     const runEnsure = (readyFile: string) => new Promise<{code: number | null; stderr: string}>((resolve) => {
         const script = `
             import fs from 'node:fs';
@@ -452,7 +452,7 @@ test('workflow artifact reads wait for an active mutation lock', async () => {
     const lockDir = path.join(workflowsRootDir(), '.locks', `${name}.lock`);
     const readyFile = path.join(workflowsRootDir(), `.ready-${name}`);
     const doneFile = path.join(workflowsRootDir(), `.done-${name}`);
-    const moduleUrl = pathToFileURL(path.resolve('src/workflow/index.ts')).href;
+    const moduleUrl = pathToFileURL(path.resolve('src/automation/workflow/index.ts')).href;
     try {
         const workflow = createWorkflowOnFs(name);
         workflow.save({kind: 'dsl', name: 'read-target', content: 'wait 1', stepResolves: {}});

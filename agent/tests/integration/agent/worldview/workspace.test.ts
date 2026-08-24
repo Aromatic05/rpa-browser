@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createWorkspaceWorldViewSource} from '../../../../src/agent/worldview/workspace';
-import {queryPageSessionEntry} from '../../../../src/runner/session/query';
+import {queryPageSessionEntry} from '../../../../src/automation/runner/session/query';
 import {createV2BusinessPage} from '../../../helpers/v2_business_page';
 import {completeRunStepsDeps} from '../../../helpers/run_steps_workspace';
 

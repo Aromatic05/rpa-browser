@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import type { StepUnion } from '../../../src/runner/steps/types';
-import { replayRecording } from '../../../src/record/replay';
+import type { StepUnion } from '../../../src/automation/runner/steps/types';
+import { replayRecording } from '../../../src/automation/recording/replay';
 import { createWorkspaceTabs } from '../../../src/runtime/workspace/tabs';
 import { getRunnerConfig } from '../../../src/config';
 

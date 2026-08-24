@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
     classifyBrowserOperation,
     getBrowserOperationStaticClassification,
-} from '../../../../src/runner/steps/effects';
+} from '../../../../src/automation/runner/steps/effects';
 
 test('browser operation classification belongs to the runner step layer', () => {
     for (const name of [

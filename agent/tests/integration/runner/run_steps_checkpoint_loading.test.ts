@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { runStepList } from '../../../src/runner/run_steps';
-import type { StepUnion } from '../../../src/runner/steps/types';
-import { WorkflowError } from '../../../src/workflow/errors';
+import { runStepList } from '../../../src/automation/runner/run_steps';
+import type { StepUnion } from '../../../src/automation/runner/steps/types';
+import { WorkflowError } from '../../../src/automation/workflow/errors';
 import { completeRunStepsDeps } from '../../helpers/run_steps_workspace';
 
 test('runSteps fails before executing when persisted checkpoint artifacts are invalid', async () => {

@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import {dispatch, runStep, startAgent} from '../../helpers/e2e_multitab_helper';
 import {startFixtureServer} from '../../helpers/server';
 import type {Action} from '../../../src/interface/actions/action_protocol';
-import type {StepUnion} from '../../../src/runner/steps/types';
+import type {StepUnion} from '../../../src/automation/runner/steps/types';
 
 const action = (
     type: string,

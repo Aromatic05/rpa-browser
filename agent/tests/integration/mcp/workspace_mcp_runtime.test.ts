@@ -9,7 +9,7 @@ import type { RuntimeWorkspace } from '../../../src/runtime/workspace/workspace'
 import type { WorkspaceRegistry } from '../../../src/runtime/workspace/registry';
 import type { WorkspaceService } from '../../../src/runtime/service/types';
 import type { Action } from '../../../src/interface/actions/action_protocol';
-import type { Workflow } from '../../../src/workflow';
+import type { Workflow } from '../../../src/automation/workflow';
 
 const stubWorkflow = (name: string) => ({ name }) as Workflow;
 

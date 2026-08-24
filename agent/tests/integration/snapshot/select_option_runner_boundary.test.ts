@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 
-const executorModulePath = '../../../src/runner/steps/executors/select_option/index.ts';
+const executorModulePath = '../../../src/automation/runner/steps/executors/select_option/index.ts';
 
 test('runner select_option adapter executes only through Snapshot V2 control action', async () => {
     const { executeBrowserSelectOption } = await import(executorModulePath) as {

@@ -1,4 +1,4 @@
-import type {PageSnapshotSessionEntry} from '../../snapshot';
+import type {PageSnapshotSessionEntry} from '../../automation/snapshot';
 
 export type WorldRevision = Readonly<{
     pageEpoch: string;

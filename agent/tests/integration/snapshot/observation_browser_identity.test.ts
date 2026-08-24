@@ -5,7 +5,7 @@ import {
     capturePageObservation,
     createObservationAnchor,
     resolveObservationAnchor,
-} from '../../../src/snapshot';
+} from '../../../src/automation/snapshot';
 
 test('browser captures increment revision in one document and rotate epoch after navigation', async () => {
     const browser = await chromium.launch({ headless: true });

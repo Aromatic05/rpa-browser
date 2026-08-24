@@ -1,9 +1,9 @@
 import test from 'node:test';
 import {chromium} from 'playwright';
 import assert from 'node:assert/strict';
-import type {RunStepsDeps} from '../../../../src/runner/run_steps';
-import {executeBrowserEntity} from '../../../../src/runner/steps/executors/entity';
-import type {Step} from '../../../../src/runner/steps/types';
+import type {RunStepsDeps} from '../../../../src/automation/runner/run_steps';
+import {executeBrowserEntity} from '../../../../src/automation/runner/steps/executors/entity';
+import type {Step} from '../../../../src/automation/runner/steps/types';
 import {completeRunStepsDeps} from '../../../helpers/run_steps_workspace';
 import {createV2BusinessPage} from '../../../helpers/v2_business_page';
 

@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {chromium} from 'playwright';
-import {getDomTree, type DomTreeNode} from '../../../src/runner/trace/dom/getDomTree';
+import {getDomTree, type DomTreeNode} from '../../../src/automation/runner/trace/dom/getDomTree';
 import {
     PageSnapshotSessionStore,
     buildEntityRuleComponentSnapshots,
@@ -9,7 +9,7 @@ import {
     captureControlSnapshot,
     resolveSnapshotContentRef,
     type SnapshotProjectionNode,
-} from '../../../src/snapshot';
+} from '../../../src/automation/snapshot';
 
 const COMPLEX_HTML = `
 <!doctype html>

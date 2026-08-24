@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeDsl, parseDsl, runDsl } from '../../../../src/program/dsl';
 import { DslRuntimeError } from '../../../../src/program/dsl/diagnostics/errors';
-import type { RunStepsDeps } from '../../../../src/runner/run_steps';
-import type { StepUnion } from '../../../../src/runner/steps/types';
+import type { RunStepsDeps } from '../../../../src/automation/runner/run_steps';
+import type { StepUnion } from '../../../../src/automation/runner/steps/types';
 import { completeRunStepsDeps } from '../../../helpers/run_steps_workspace';
 
 type StubCall = {

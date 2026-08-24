@@ -5,7 +5,7 @@ import {
     capturePageObservation,
     createObservationAnchor,
     resolveObservationAnchor,
-} from '../../../src/snapshot';
+} from '../../../src/automation/snapshot';
 
 test('browser capture preserves page-owned markers and keeps exact runtime identity stable', async () => {
     const browser = await chromium.launch({ headless: true });

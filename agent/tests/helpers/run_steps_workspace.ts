@@ -1,7 +1,7 @@
 import type { Action } from '../../src/interface/actions/action_protocol';
-import type { RunStepsDeps } from '../../src/runner/run_steps';
-import {PageSnapshotSessionStore} from '../../src/snapshot/session';
-import {SnapshotProjectionBaselineStore} from '../../src/runner/session';
+import type { RunStepsDeps } from '../../src/automation/runner/run_steps';
+import {PageSnapshotSessionStore} from '../../src/automation/snapshot/session';
+import {SnapshotProjectionBaselineStore} from '../../src/automation/runner/session';
 import type { ExecutionBinding } from '../../src/runtime/execution/bindings';
 import type { PageRegistry } from '../../src/runtime/browser/page_registry';
 import type { RuntimeWorkspace } from '../../src/runtime/workspace/workspace';

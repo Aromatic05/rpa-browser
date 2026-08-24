@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {diffWorldViews} from '../../../../src/agent/worldview/diff';
 import type {WorldView} from '../../../../src/agent/worldview/contracts';
-import {PageSnapshotSessionStore} from '../../../../src/snapshot';
+import {PageSnapshotSessionStore} from '../../../../src/automation/snapshot';
 import {createV2BusinessPage} from '../../../helpers/v2_business_page';
 
 test('WorldView diff reuses Snapshot V2 semantic diff across pinned revisions', async () => {

@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import {
     importWorkflowEntityRules,
     validateWorkflowEntityRules,
-} from '../../../src/workflow';
-import {compileEntityRuleQueryPlan} from '../../../src/snapshot';
+} from '../../../src/automation/workflow';
+import {compileEntityRuleQueryPlan} from '../../../src/automation/snapshot';
 
 const legacyMatch = {
     version: 1,

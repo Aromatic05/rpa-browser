@@ -1,7 +1,7 @@
 import type { WorkspaceServiceStatus } from '../../runtime/service/types';
 import type { PortAllocator } from '../../runtime/service/ports';
 import type { WorkspaceTabs } from '../../runtime/workspace/tabs';
-import type { RunStepsDeps } from '../../runner/run_steps_types';
+import type { RunStepsDeps } from '../../automation/runner/run_steps_types';
 import type { RunnerConfig } from '../../config';
 import { createWorkspaceToolHandlers } from './tool_handlers';
 import { resolveEnabledToolNames, getToolSpecs } from './tool_registry';

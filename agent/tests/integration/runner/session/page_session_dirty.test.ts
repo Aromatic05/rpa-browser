@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {shouldMarkPageSessionDirtyByStep} from '../../../../src/runner/session/dirty';
+import {shouldMarkPageSessionDirtyByStep} from '../../../../src/automation/runner/session/dirty';
 
 test('page session dirty policy distinguishes page writes from high-frequency reads', () => {
     for (const step of ['browser.goto', 'browser.go_back', 'browser.reload', 'browser.click', 'browser.fill',

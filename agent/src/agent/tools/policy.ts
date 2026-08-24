@@ -3,7 +3,7 @@ import {
     getBrowserOperationStaticClassification,
     type BrowserOperationClassification,
     type BrowserOperationStaticClassification,
-} from '../../runner/steps/effects';
+} from '../../automation/runner/steps/effects';
 
 export type AgentToolClassification = BrowserOperationClassification | 'control';
 type AgentToolStaticClassification = BrowserOperationStaticClassification;

@@ -5,7 +5,7 @@ import { promises as fs } from 'node:fs';
 import YAML from 'yaml';
 import { sendControlEval } from '../../../src/interface/control/client';
 import type { Action } from '../../../src/interface/actions/action_protocol';
-import type { StepUnion } from '../../../src/runner/steps/types';
+import type { StepUnion } from '../../../src/automation/runner/steps/types';
 import { dispatch, runStep, startAgent } from '../../helpers/e2e_multitab_helper';
 import { startFixtureServer } from '../../helpers/server';
 

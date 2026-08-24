@@ -7,7 +7,7 @@ import { runDsl, type RunDslContext, type RunDslResult } from './run_dsl';
 import type { DslDiagnostic } from '../diagnostics';
 import type {DslProgram} from '../ast/types';
 import type {DslSourceMap} from '../parser/source_map';
-import type {StepResolve} from '../../../runner/steps/types';
+import type {StepResolve} from '../../../automation/runner/steps/types';
 
 export type RunDslSourceResult = RunDslResult & {
     diagnostics: DslDiagnostic[];

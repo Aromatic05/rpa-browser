@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {createFauxCore, fauxAssistantMessage, fauxToolCall} from '@earendil-works/pi-ai';
 import {createDebugQueryAgentRunner} from '../../../../src/agent/execution/debug_query_runner';
 import type {WorldView, WorldViewSource} from '../../../../src/agent/worldview/contracts';
-import {PageSnapshotSessionStore} from '../../../../src/snapshot';
+import {PageSnapshotSessionStore} from '../../../../src/automation/snapshot';
 import {createV2BusinessPage} from '../../../helpers/v2_business_page';
 
 const createWorldView = async (): Promise<WorldView> => {

@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createDslDebugController} from '../../../../src/program/dsl/debug/controller';
 import {runDslSource} from '../../../../src/program/dsl/runtime';
-import type {RunStepsDeps} from '../../../../src/runner/run_steps';
-import type {StepUnion} from '../../../../src/runner/steps/types';
+import type {RunStepsDeps} from '../../../../src/automation/runner/run_steps';
+import type {StepUnion} from '../../../../src/automation/runner/steps/types';
 
 const deps = {} as RunStepsDeps;
 const noopPort = {

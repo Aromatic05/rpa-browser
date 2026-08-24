@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ObservationIdentityTracker } from '../../../src/snapshot';
+import { ObservationIdentityTracker } from '../../../src/automation/snapshot';
 
 test('ObservationIdentityTracker increments revision within one document and rotates epoch for a new document', () => {
     let sequence = 0;

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {createDebugQuerySession} from '../../../../../src/agent/debug/query/session';
 import {createDebugQueryAgentTools} from '../../../../../src/agent/debug/tools/adapter';
 import type {WorldView} from '../../../../../src/agent/worldview/contracts';
-import {PageSnapshotSessionStore} from '../../../../../src/snapshot';
+import {PageSnapshotSessionStore} from '../../../../../src/automation/snapshot';
 import {createV2BusinessPage} from '../../../../helpers/v2_business_page';
 
 const createSession = async () => {

@@ -5,7 +5,7 @@ import { createWorkspaceToolHandlers } from '../../../src/interface/mcp/tool_han
 import { createWorkspaceTabs } from '../../../src/runtime/workspace/tabs';
 import type { RuntimeWorkspace } from '../../../src/runtime/workspace/workspace';
 import { runWorkspaceExecution } from '../../../src/runtime/workspace/execution_coordinator';
-import type { StepUnion } from '../../../src/runner/steps/types';
+import type { StepUnion } from '../../../src/automation/runner/steps/types';
 import { completeRunStepsDeps } from '../../helpers/run_steps_workspace';
 import {ActionError, ERROR_CODES} from '../../../src/interface/actions/results';
 

@@ -9,14 +9,14 @@ import {
     type PageSnapshotCapture,
     type RawCapturedNode,
     type RawPageCapture,
-} from '../../../src/snapshot';
+} from '../../../src/automation/snapshot';
 import {
     readControlOptionByNodeId,
     readSelectedValuesFromControl,
     resolveRecordNodeBinding,
     resolveRecordTargetBinding,
-} from '../../../src/record/pipeline/target_binding';
-import type {RecorderEvent} from '../../../src/record/capture/recorder';
+} from '../../../src/automation/recording/pipeline/target_binding';
+import type {RecorderEvent} from '../../../src/automation/recording/capture/recorder';
 import {createTestRecordingState} from '../../helpers/recording_state';
 
 const active = () => ({hiddenByStyle: false, inert: false, selfHasBox: true, rendered: true});
@@ -146,7 +146,7 @@ test('record target binding resolves V2 custom-select trigger and option nodes',
 test('record enhancement emits V2 identity and canonical target facts', async () => {
     const {capture, nodeIds} = createCapture();
     const resolveSnapshot = async () => capture;
-        const {enrichRecordedStepWithSnapshot} = await import('../../../src/record/enhancement/build');
+        const {enrichRecordedStepWithSnapshot} = await import('../../../src/automation/recording/enhancement/build');
         const enhancement = await enrichRecordedStepWithSnapshot({
             event: event('#Status'),
             state: createTestRecordingState(),
@@ -183,7 +183,7 @@ test('record enhancement keeps pre-action marker semantics when the target disap
         businessTag: 'auth.expired',
         entityKind: 'form',
     });
-    const {enrichRecordedStepWithSnapshot} = await import('../../../src/record/enhancement/build');
+    const {enrichRecordedStepWithSnapshot} = await import('../../../src/automation/recording/enhancement/build');
     const enhancement = await enrichRecordedStepWithSnapshot({
         event: {
             ...event('#dismiss-session'),

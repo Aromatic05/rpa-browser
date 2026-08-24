@@ -4,8 +4,8 @@ import {
     buildPageSessionEntityView,
     queryPageSessionBusinessEntity,
     resolvePageSessionBusinessTarget,
-} from '../../../../src/runner/session/entity_view';
-import {PageSnapshotSessionStore} from '../../../../src/snapshot';
+} from '../../../../src/automation/runner/session/entity_view';
+import {PageSnapshotSessionStore} from '../../../../src/automation/snapshot';
 import {createV2BusinessPage} from '../../../helpers/v2_business_page';
 
 const createEntry = async () => {

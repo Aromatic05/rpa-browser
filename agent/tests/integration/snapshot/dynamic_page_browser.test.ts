@@ -4,8 +4,8 @@ import {chromium} from 'playwright';
 import {
     buildSnapshotProjection,
     diffSnapshotProjection,
-} from '../../../src/snapshot';
-import {ensureFreshPageSession} from '../../../src/runner/session/capture';
+} from '../../../src/automation/snapshot';
+import {ensureFreshPageSession} from '../../../src/automation/runner/session/capture';
 import {completeRunStepsDeps} from '../../helpers/run_steps_workspace';
 
 const fullProjection = (entry: Awaited<ReturnType<typeof ensureFreshPageSession>>['entry']) => {

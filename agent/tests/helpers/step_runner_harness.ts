@@ -3,15 +3,15 @@ import type { Page } from '@playwright/test';
 import path from 'node:path';
 import { createPageRegistry } from '../../src/runtime/browser/page_registry';
 import { createWorkspaceHarness } from './workspace_harness';
-import { createWorkflowOnFs } from '../../src/workflow';
+import { createWorkflowOnFs } from '../../src/automation/workflow';
 import { createExecutionBindings } from '../../src/runtime/execution/bindings';
-import { createNoopHooks } from '../../src/runner/trace/hooks';
-import { runStepList } from '../../src/runner/run_steps';
+import { createNoopHooks } from '../../src/automation/runner/trace/hooks';
+import { runStepList } from '../../src/automation/runner/run_steps';
 import { getRunnerConfig } from '../../src/config';
-import type { StepArgsMap, StepName, StepUnion } from '../../src/runner/steps/types';
-import { RunnerPluginHost } from '../../src/runner/hotreload/plugin_host';
-import {PageSnapshotSessionStore} from '../../src/snapshot/session';
-import {SnapshotProjectionBaselineStore} from '../../src/runner/session';
+import type { StepArgsMap, StepName, StepUnion } from '../../src/automation/runner/steps/types';
+import { RunnerPluginHost } from '../../src/automation/runner/hotreload/plugin_host';
+import {PageSnapshotSessionStore} from '../../src/automation/snapshot/session';
+import {SnapshotProjectionBaselineStore} from '../../src/automation/runner/session';
 
 export const createStep = <TName extends StepName>(name: TName, args: StepArgsMap[TName]): StepUnion => ({
     id: crypto.randomUUID(),
@@ -20,7 +20,7 @@ export const createStep = <TName extends StepName>(name: TName, args: StepArgsMa
 } as StepUnion);
 
 export const createTestPluginHost = async () => {
-    const entryFile = path.resolve(process.cwd(), 'src/runner/plugin_entry.ts');
+    const entryFile = path.resolve(process.cwd(), 'src/automation/runner/plugin_entry.ts');
     const host = new RunnerPluginHost(entryFile);
     await host.load();
     return host;

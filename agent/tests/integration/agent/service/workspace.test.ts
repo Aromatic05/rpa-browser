@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import {createFauxCore, fauxAssistantMessage, fauxToolCall} from '@earendil-works/pi-ai';
 import {createWorkspaceHarness} from '../../../helpers/workspace_harness';
-import {createWorkflowOnFs} from '../../../../src/workflow';
-import {stepExecutors} from '../../../../src/runner/steps/executors';
+import {createWorkflowOnFs} from '../../../../src/automation/workflow';
+import {stepExecutors} from '../../../../src/automation/runner/steps/executors';
 
 test('workspace routes agent.run through pi baseline and existing browser handlers', async () => {
     const faux = createFauxCore({provider: 'workspace-faux', models: [{id: 'baseline'}]});

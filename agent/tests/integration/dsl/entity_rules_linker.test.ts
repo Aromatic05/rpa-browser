@@ -9,9 +9,9 @@ import {
     type DslResolveResolver,
 } from '../../../src/program/dsl/link';
 import { runDslSource, validateDslSource } from '../../../src/program/dsl/runtime';
-import { createWorkspaceEntityRulesProvider } from '../../../src/snapshot/rules/runtime';
-import type { RunStepsDeps } from '../../../src/runner/run_steps';
-import type { BrowserQueryResult, StepUnion } from '../../../src/runner/steps/types';
+import { createWorkspaceEntityRulesProvider } from '../../../src/automation/snapshot/rules/runtime';
+import type { RunStepsDeps } from '../../../src/automation/runner/run_steps';
+import type { BrowserQueryResult, StepUnion } from '../../../src/automation/runner/steps/types';
 import { completeRunStepsDeps } from '../../helpers/run_steps_workspace';
 
 const profile: DslEntityRulesProfile = {

@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { Page } from 'playwright';
-import { executeBrowserCreateTab } from '../../../../src/runner/steps/executors/create_tab';
-import { executeBrowserGoto } from '../../../../src/runner/steps/executors/goto';
+import { executeBrowserCreateTab } from '../../../../src/automation/runner/steps/executors/create_tab';
+import { executeBrowserGoto } from '../../../../src/automation/runner/steps/executors/goto';
 import { createWorkspaceTabs } from '../../../../src/runtime/workspace/tabs';
 import type { RuntimeWorkspace } from '../../../../src/runtime/workspace/workspace';
-import type { RunStepsDeps } from '../../../../src/runner/run_steps';
+import type { RunStepsDeps } from '../../../../src/automation/runner/run_steps';
 import { completeRunStepsDeps } from '../../../helpers/run_steps_workspace';
 
 const createPage = (): Page => ({

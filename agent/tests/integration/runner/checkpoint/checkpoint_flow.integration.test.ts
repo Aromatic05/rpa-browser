@@ -9,10 +9,10 @@ import {
     runSteps,
     sendSignal,
     setRunStepsDeps,
-} from '../../../../src/runner/run_steps';
+} from '../../../../src/automation/runner/run_steps';
 import { loadRunnerConfig } from '../../../../src/config/loader';
-import type { StepResolve, StepUnion } from '../../../../src/runner/steps/types';
-import type { Checkpoint } from '../../../../src/runner/checkpoint';
+import type { StepResolve, StepUnion } from '../../../../src/automation/runner/steps/types';
+import type { Checkpoint } from '../../../../src/automation/runner/checkpoint';
 import { completeRunStepsDeps } from '../../../helpers/run_steps_workspace';
 
 const createRuntime = () => ({

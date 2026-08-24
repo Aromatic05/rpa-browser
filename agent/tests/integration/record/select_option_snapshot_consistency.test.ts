@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {normalizeSelectOption} from '../../../src/record/normalizer/select_option';
-import type {NormalizeContext} from '../../../src/record/normalizer/types';
+import {normalizeSelectOption} from '../../../src/automation/recording/normalizer/select_option';
+import type {NormalizeContext} from '../../../src/automation/recording/normalizer/types';
 import {createTestRecordingState} from '../../helpers/recording_state';
-import type {RecorderEvent} from '../../../src/record/capture/recorder';
+import type {RecorderEvent} from '../../../src/automation/recording/capture/recorder';
 
 const triggerEvent: RecorderEvent = {
     tabName: 'tab-1',

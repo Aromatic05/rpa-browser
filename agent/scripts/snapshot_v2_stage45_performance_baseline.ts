@@ -4,7 +4,7 @@ import {fileURLToPath} from 'node:url';
 import {
     loadObservationFixtures,
     runSnapshotFullPipelineBenchmark,
-} from '../src/snapshot';
+} from '../src/automation/snapshot';
 import {createV2BusinessPage} from '../tests/helpers/v2_business_page';
 
 const agentDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');

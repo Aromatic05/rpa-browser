@@ -1,5 +1,5 @@
-import type {RunStepsDeps} from '../../runner/run_steps';
-import {ensureFreshPageSession} from '../../runner/session';
+import type {RunStepsDeps} from '../../automation/runner/run_steps';
+import {ensureFreshPageSession} from '../../automation/runner/session';
 import type {WorldViewSource} from './contracts';
 
 export const createWorkspaceWorldViewSource = (input: {

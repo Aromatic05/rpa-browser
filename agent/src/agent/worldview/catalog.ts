@@ -4,9 +4,9 @@ import {
     buildPageSessionEntityView,
     type PageSessionEntityRecord,
     type RuntimeEntityKind,
-} from '../../runner/session/entity_view';
+} from '../../automation/runner/session/entity_view';
 import type {BusinessQueryName} from '../../program/query/contracts';
-import type {SemanticBusinessBinding} from '../../snapshot';
+import type {SemanticBusinessBinding} from '../../automation/snapshot';
 import {describeWorldView} from './descriptor';
 import type {WorldView, WorldViewDescriptor} from './contracts';
 

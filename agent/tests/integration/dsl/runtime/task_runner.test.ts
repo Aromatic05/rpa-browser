@@ -8,8 +8,8 @@ import {
     runSteps,
     type Checkpoint,
     type RunStepsDeps,
-} from '../../../../src/runner/run_steps';
-import type { StepUnion } from '../../../../src/runner/steps/types';
+} from '../../../../src/automation/runner/run_steps';
+import type { StepUnion } from '../../../../src/automation/runner/steps/types';
 import { completeRunStepsDeps } from '../../../helpers/run_steps_workspace';
 
 type StubCall = {

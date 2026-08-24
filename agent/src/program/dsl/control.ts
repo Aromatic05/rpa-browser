@@ -6,12 +6,12 @@ import { runDslSource, validateDslSource } from './runtime';
 import { createDslEntityRulesResolver, createDslResolveResolver, type DslEntityRulesResolver, type DslResolveResolver } from './link';
 import { DslValidationError } from './diagnostics';
 import { runWorkspaceExecution } from '../../runtime/workspace/execution_coordinator';
-import type { RunStepsDeps } from '../../runner/run_steps';
-import type { WorkspaceEntityRulesProvider } from '../../snapshot/rules/runtime/contracts';
-import {workflowArtifactRevision, type Workflow, type WorkflowDsl, type WorkflowDummy} from '../../workflow';
-import type { StepResolve } from '../../runner/steps/types';
-import { validateStepResolveFileForSerialization } from '../../runner/serialization/types';
-import { materializeReferencedCheckpointRuntimeSnapshot } from '../../runner/checkpoint';
+import type { RunStepsDeps } from '../../automation/runner/run_steps';
+import type { WorkspaceEntityRulesProvider } from '../../automation/snapshot/rules/runtime/contracts';
+import {workflowArtifactRevision, type Workflow, type WorkflowDsl, type WorkflowDummy} from '../../automation/workflow';
+import type { StepResolve } from '../../automation/runner/steps/types';
+import { validateStepResolveFileForSerialization } from '../../automation/runner/serialization/types';
+import { materializeReferencedCheckpointRuntimeSnapshot } from '../../automation/runner/checkpoint';
 import { validateDslCheckpointGraph } from './validate';
 import type { DslCheckpointProvider } from './emit';
 

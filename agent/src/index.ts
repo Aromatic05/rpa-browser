@@ -10,26 +10,26 @@ import {
     isWorkspaceRecordingEnabled,
     attachTabToRecordingManifest,
     cleanupRecording,
-} from './record/recording';
-import { setRecorderRuntimeEnabled } from './record/capture/recorder';
+} from './automation/recording/recording';
+import { setRecorderRuntimeEnabled } from './automation/recording/capture/recorder';
 import { failedAction, type Action } from './interface/actions/action_protocol';
 import { ERROR_CODES } from './interface/actions/results';
-import { createRunnerScopeRegistry } from './runner/runner_scope';
-import { createConsoleStepSink, setRunStepsDeps } from './runner/run_steps';
+import { createRunnerScopeRegistry } from './automation/runner/runner_scope';
+import { createConsoleStepSink, setRunStepsDeps } from './automation/runner/run_steps';
 import { getRunnerConfig } from './config';
-import { FileSink, createLoggingHooks, createNoopHooks } from './runner/trace';
+import { FileSink, createLoggingHooks, createNoopHooks } from './automation/runner/trace';
 import { initLogger, getLogger, resolveLogPath } from './logging/logger';
-import { RunnerPluginHost } from './runner/hotreload/plugin_host';
+import { RunnerPluginHost } from './automation/runner/hotreload/plugin_host';
 import { createActionDispatcher } from './interface/actions/dispatcher';
 import { createControlServer, registerControlShutdown } from './interface/control';
-import { ensureWorkflowOnFs } from './workflow';
+import { ensureWorkflowOnFs } from './automation/workflow';
 import { createRuntimeLifecycle } from './runtime/browser/lifecycle';
-import { installRecorderEventSink } from './record/sink';
+import { installRecorderEventSink } from './automation/recording/sink';
 import { createPortAllocator } from './runtime/service/ports';
-import type { RunStepsDeps } from './runner/run_steps_types';
-import {PageSnapshotSessionStore} from './snapshot/session';
-import {SnapshotProjectionBaselineStore} from './runner/session';
-import {createRecordingSnapshotPort} from './record/pipeline/snapshot';
+import type { RunStepsDeps } from './automation/runner/run_steps_types';
+import {PageSnapshotSessionStore} from './automation/snapshot/session';
+import {SnapshotProjectionBaselineStore} from './automation/runner/session';
+import {createRecordingSnapshotPort} from './automation/recording/pipeline/snapshot';
 
 const TAB_NAME_KEY = '__rpa_tab_name';
 const TAB_PING_TIMEOUT_MS = 45000;

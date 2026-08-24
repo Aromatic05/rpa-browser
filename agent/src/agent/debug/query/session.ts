@@ -1,5 +1,5 @@
 import {evaluateComputeExpression, type ComputeEvalScope} from '../../../program/compute/evaluate';
-import {executePageSessionQueryIR} from '../../../runner/session/query_ir';
+import {executePageSessionQueryIR} from '../../../automation/runner/session/query_ir';
 import type {ComputeExpr} from '../../../program/compute/types';
 import type {QueryIR} from '../../../program/query/contracts';
 import {describeWorldView} from '../../worldview/descriptor';

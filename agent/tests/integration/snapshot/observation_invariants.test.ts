@@ -7,7 +7,7 @@ import {
     type PageObservation,
     type RawPageCapture,
     type RelationIndex,
-} from '../../../src/snapshot';
+} from '../../../src/automation/snapshot';
 
 test('validator rejects broken scope forests and cross-scope DOM parent links', () => {
     const valid = buildPageObservation(baseCapture());

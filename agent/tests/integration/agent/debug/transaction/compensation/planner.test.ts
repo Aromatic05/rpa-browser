@@ -5,8 +5,8 @@ import {classifyEffectSemanticRisk} from '../../../../../../src/agent/debug/tran
 import type {DebugEffectJournalEntry} from '../../../../../../src/agent/debug/effects/contracts';
 import type {WorldView} from '../../../../../../src/agent/worldview/contracts';
 import {describeWorldView} from '../../../../../../src/agent/worldview/descriptor';
-import {PageSnapshotSessionStore} from '../../../../../../src/snapshot';
-import type {RuntimeStateRecord} from '../../../../../../src/snapshot/observation/model/contracts';
+import {PageSnapshotSessionStore} from '../../../../../../src/automation/snapshot';
+import type {RuntimeStateRecord} from '../../../../../../src/automation/snapshot/observation/model/contracts';
 import {createV2BusinessPage} from '../../../../../helpers/v2_business_page';
 
 const createView = async (): Promise<WorldView> => {

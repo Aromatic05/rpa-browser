@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {normalizeDsl, parseDsl, runDsl} from '../../../src/program/dsl';
-import {runStepList} from '../../../src/runner/run_steps';
-import {stepExecutors} from '../../../src/runner/steps/executors';
-import type {Checkpoint} from '../../../src/runner/checkpoint';
-import type {StepUnion} from '../../../src/runner/steps/types';
+import {runStepList} from '../../../src/automation/runner/run_steps';
+import {stepExecutors} from '../../../src/automation/runner/steps/executors';
+import type {Checkpoint} from '../../../src/automation/runner/checkpoint';
+import type {StepUnion} from '../../../src/automation/runner/steps/types';
 import {completeRunStepsDeps} from '../../helpers/run_steps_workspace';
 import {createV2BusinessPage} from '../../helpers/v2_business_page';
 

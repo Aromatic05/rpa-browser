@@ -2,7 +2,7 @@ import {
     buildSnapshotProjection,
     diffSnapshotProjection,
     type SnapshotProjectionDiffResult,
-} from '../../snapshot/projection';
+} from '../../automation/snapshot/projection';
 import type {WorldView, WorldViewDescriptor} from './contracts';
 import {describeWorldView} from './descriptor';
 

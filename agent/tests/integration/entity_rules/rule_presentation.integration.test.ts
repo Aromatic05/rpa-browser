@@ -4,8 +4,8 @@ import {
     projectEntityRuleEntities,
     projectEntityRuleProfileSummary,
     projectEntityRuleProfileView,
-} from '../../../src/snapshot/rules/runtime/presentation';
-import type {WorkflowEntityRules} from '../../../src/workflow';
+} from '../../../src/automation/snapshot/rules/runtime/presentation';
+import type {WorkflowEntityRules} from '../../../src/automation/workflow';
 
 const profile: WorkflowEntityRules = {
     kind: 'entity_rules',

@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { runDslSource } from '../../../../src/program/dsl/runtime';
 import { DslValidationError } from '../../../../src/program/dsl/diagnostics/errors';
 import type { DslCheckpointProvider } from '../../../../src/program/dsl/emit';
-import type { RunStepsDeps } from '../../../../src/runner/run_steps';
-import type { Checkpoint } from '../../../../src/runner/checkpoint';
-import type { StepUnion } from '../../../../src/runner/steps/types';
+import type { RunStepsDeps } from '../../../../src/automation/runner/run_steps';
+import type { Checkpoint } from '../../../../src/automation/runner/checkpoint';
+import type { StepUnion } from '../../../../src/automation/runner/steps/types';
 import { completeRunStepsDeps } from '../../../helpers/run_steps_workspace';
 
 const createDeps = (calls: Array<Record<string, unknown>>): RunStepsDeps =>

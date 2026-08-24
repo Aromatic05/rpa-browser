@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {queryPageSessionEntry} from '../../../../src/runner/session/query';
-import {PageSnapshotSessionStore} from '../../../../src/snapshot';
+import {queryPageSessionEntry} from '../../../../src/automation/runner/session/query';
+import {PageSnapshotSessionStore} from '../../../../src/automation/snapshot';
 import {createV2BusinessPage} from '../../../helpers/v2_business_page';
 
 const createEntry = async () => {

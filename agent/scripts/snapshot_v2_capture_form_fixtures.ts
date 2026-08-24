@@ -9,7 +9,7 @@ import {
     type FormFixture,
     type FormFixtureTruth,
     type RawPageCapture,
-} from '../src/snapshot';
+} from '../src/automation/snapshot';
 
 const agentDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const repositoryDirectory = path.resolve(agentDirectory, '..');

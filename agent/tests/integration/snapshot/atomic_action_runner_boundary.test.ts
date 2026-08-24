@@ -1,17 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
-import { captureControlSnapshot } from '../../../src/snapshot';
+import { captureControlSnapshot } from '../../../src/automation/snapshot';
 
 const executorPaths = {
-    click: '../../../src/runner/steps/executors/click.ts',
-    fill: '../../../src/runner/steps/executors/fill.ts',
-    type: '../../../src/runner/steps/executors/type.ts',
-    hover: '../../../src/runner/steps/executors/hover.ts',
-    pressKey: '../../../src/runner/steps/executors/press_key.ts',
-    scroll: '../../../src/runner/steps/executors/scroll.ts',
-    screenshot: '../../../src/runner/steps/executors/take_screenshot.ts',
-    drag: '../../../src/runner/steps/executors/drag_and_drop.ts',
+    click: '../../../src/automation/runner/steps/executors/click.ts',
+    fill: '../../../src/automation/runner/steps/executors/fill.ts',
+    type: '../../../src/automation/runner/steps/executors/type.ts',
+    hover: '../../../src/automation/runner/steps/executors/hover.ts',
+    pressKey: '../../../src/automation/runner/steps/executors/press_key.ts',
+    scroll: '../../../src/automation/runner/steps/executors/scroll.ts',
+    screenshot: '../../../src/automation/runner/steps/executors/take_screenshot.ts',
+    drag: '../../../src/automation/runner/steps/executors/drag_and_drop.ts',
 };
 
 const importExecutors = async () => ({

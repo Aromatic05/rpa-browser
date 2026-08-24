@@ -5,8 +5,8 @@ import {createPausedDslDebugAgentTools} from '../../../../../src/agent/debug/exe
 import type {WorldView} from '../../../../../src/agent/worldview/contracts';
 import type {DslEntityRulesResolver} from '../../../../../src/program/dsl/link';
 import type {StepExecutionPort} from '../../../../../src/program/dsl/runtime/run_dsl';
-import type {RunStepsDeps} from '../../../../../src/runner/run_steps';
-import {PageSnapshotSessionStore} from '../../../../../src/snapshot';
+import type {RunStepsDeps} from '../../../../../src/automation/runner/run_steps';
+import {PageSnapshotSessionStore} from '../../../../../src/automation/snapshot';
 import {createV2BusinessPage} from '../../../../helpers/v2_business_page';
 
 const source = `

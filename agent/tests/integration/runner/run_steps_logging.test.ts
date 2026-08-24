@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { MemoryStepSink, runStepList } from '../../../src/runner/run_steps';
-import type { StepUnion } from '../../../src/runner/steps/types';
+import { MemoryStepSink, runStepList } from '../../../src/automation/runner/run_steps';
+import type { StepUnion } from '../../../src/automation/runner/steps/types';
 import { completeRunStepsDeps } from '../../helpers/run_steps_workspace';
 
 test('step start events redact user-entered values and nested credentials', async () => {

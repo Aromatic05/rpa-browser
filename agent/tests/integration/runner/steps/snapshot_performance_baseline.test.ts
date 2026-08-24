@@ -7,7 +7,7 @@ import {
     loadObservationFixtures,
     runObservationReplayBenchmark,
     type ObservationReplayBenchmarkReport,
-} from '../../../../src/snapshot';
+} from '../../../../src/automation/snapshot';
 
 const enabled = process.env.SNAPSHOT_V2_PERF_BASELINE === '1';
 const iterations = positiveInteger(process.env.SNAPSHOT_V2_PERF_ITERATIONS, 20);

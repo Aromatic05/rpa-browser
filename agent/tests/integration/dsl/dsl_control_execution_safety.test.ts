@@ -4,8 +4,8 @@ import { createDslControl } from '../../../src/program/dsl/control';
 import { ActionError, toFailedAction } from '../../../src/interface/actions/results';
 import { DslValidationError } from '../../../src/program/dsl/diagnostics';
 import { completeRunStepsDeps } from '../../helpers/run_steps_workspace';
-import type { StepUnion } from '../../../src/runner/steps/types';
-import type { EntityRuleExportIndex } from '../../../src/workflow';
+import type { StepUnion } from '../../../src/automation/runner/steps/types';
+import type { EntityRuleExportIndex } from '../../../src/automation/workflow';
 
 const exportIndex: EntityRuleExportIndex = {
     profileName: 'orders',

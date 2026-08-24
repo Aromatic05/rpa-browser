@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createDebugTransaction} from '../../../../../src/agent/debug/transaction/state';
 import type {WorldView} from '../../../../../src/agent/worldview/contracts';
-import {PageSnapshotSessionStore} from '../../../../../src/snapshot';
+import {PageSnapshotSessionStore} from '../../../../../src/automation/snapshot';
 import {createV2BusinessPage} from '../../../../helpers/v2_business_page';
 
 const createViews = async (): Promise<[WorldView, WorldView]> => {

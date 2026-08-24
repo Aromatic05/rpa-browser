@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
-import { captureAndAnalyzePageObservation, resolveLocatorScopePath } from '../../../src/snapshot';
+import { captureAndAnalyzePageObservation, resolveLocatorScopePath } from '../../../src/automation/snapshot';
 
 test('browser capture distinguishes shadow and captured without candidate iframe scopes and composes geometry', async () => {
     const browser = await chromium.launch({ headless: true });

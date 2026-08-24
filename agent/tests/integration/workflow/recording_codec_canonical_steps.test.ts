@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import YAML from 'yaml';
-import { createWorkflowOnFs, deleteWorkflowFromFs, loadWorkflowFromFs } from '../../../src/workflow';
-import { workflowRootDir } from '../../../src/workflow/fs';
-import type { WorkflowRecording } from '../../../src/workflow';
+import { createWorkflowOnFs, deleteWorkflowFromFs, loadWorkflowFromFs } from '../../../src/automation/workflow';
+import { workflowRootDir } from '../../../src/automation/workflow/fs';
+import type { WorkflowRecording } from '../../../src/automation/workflow';
 
 const uniqueName = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
 

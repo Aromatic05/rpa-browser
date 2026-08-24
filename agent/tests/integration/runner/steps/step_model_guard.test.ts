@@ -2,19 +2,19 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { validateStepFileForSerialization, validateStepResolveFileForSerialization } from '../../../../src/runner/serialization/types';
-import type { Step } from '../../../../src/runner/steps/types';
+import { validateStepFileForSerialization, validateStepResolveFileForSerialization } from '../../../../src/automation/runner/serialization/types';
+import type { Step } from '../../../../src/automation/runner/steps/types';
 
 const repoRoot = process.cwd();
 const read = (relativePath: string) => fs.readFileSync(path.join(repoRoot, relativePath), 'utf8');
 
-const stepTypesSource = read('src/runner/steps/types.ts');
-const legacyResolveTargetPath = path.join(repoRoot, 'src/runner/steps/helpers/resolve_target.ts');
-const serializationSource = read('src/runner/serialization/types.ts');
-const runStepsTypesSource = read('src/runner/run_steps_types.ts');
-const runStepsSource = read('src/runner/run_steps.ts');
-const captureResolveExecutorSource = read('src/runner/steps/executors/capture_resolve.ts');
-const checkpointRuntimeSource = read('src/runner/checkpoint/runtime.ts');
+const stepTypesSource = read('src/automation/runner/steps/types.ts');
+const legacyResolveTargetPath = path.join(repoRoot, 'src/automation/runner/steps/helpers/resolve_target.ts');
+const serializationSource = read('src/automation/runner/serialization/types.ts');
+const runStepsTypesSource = read('src/automation/runner/run_steps_types.ts');
+const runStepsSource = read('src/automation/runner/run_steps.ts');
+const captureResolveExecutorSource = read('src/automation/runner/steps/executors/capture_resolve.ts');
+const checkpointRuntimeSource = read('src/automation/runner/checkpoint/runtime.ts');
 
 const readStepArgsBlock = (stepName: string): string => {
     const start = stepTypesSource.indexOf(`'${stepName}':`);

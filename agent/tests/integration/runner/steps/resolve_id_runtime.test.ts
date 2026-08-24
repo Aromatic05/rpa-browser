@@ -9,13 +9,13 @@ import {
     runStepList,
     runSteps,
     setRunStepsDeps,
-} from '../../../../src/runner/run_steps';
+} from '../../../../src/automation/runner/run_steps';
 import { loadRunnerConfig } from '../../../../src/config/loader';
 import { completeRunStepsDeps } from '../../../helpers/run_steps_workspace';
-import type { Checkpoint } from '../../../../src/runner/checkpoint';
-import type { RunStepsDeps } from '../../../../src/runner/run_steps';
-import type { StepResolve, StepUnion } from '../../../../src/runner/steps/types';
-import {executeBrowserCheckpoint} from '../../../../src/runner/steps/executors/checkpoint';
+import type { Checkpoint } from '../../../../src/automation/runner/checkpoint';
+import type { RunStepsDeps } from '../../../../src/automation/runner/run_steps';
+import type { StepResolve, StepUnion } from '../../../../src/automation/runner/steps/types';
+import {executeBrowserCheckpoint} from '../../../../src/automation/runner/steps/executors/checkpoint';
 
 const createRuntime = () => ({
     ensureActivePage: async () => ({

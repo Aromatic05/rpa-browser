@@ -1,5 +1,5 @@
-import type { RunStepsDeps, StepResult as TaskStepResult } from '../../../runner/run_steps';
-import type { BrowserQueryResult, StepResolve, StepResult as ExecutorStepResult, StepUnion } from '../../../runner/steps/types';
+import type { RunStepsDeps, StepResult as TaskStepResult } from '../../../automation/runner/run_steps';
+import type { BrowserQueryResult, StepResolve, StepResult as ExecutorStepResult, StepUnion } from '../../../automation/runner/steps/types';
 import {evaluateComputeExpression} from '../../compute/evaluate';
 import { runDslCheckpointCall, type DslCheckpointProvider } from '../emit/checkpoint_call';
 import { getLogger, type Logger } from '../../../logging/logger';
@@ -19,8 +19,8 @@ import { resolveDslValue } from './refs';
 import { adaptDslQueryResult } from './value_adapter';
 import type { DslEntityRulesResolver } from '../link';
 import type { DslResolveResolver } from '../link';
-import { injectStepResolve } from '../../../runner/step_resolve';
-import {classifyBrowserOperation} from '../../../runner/steps/effects';
+import { injectStepResolve } from '../../../automation/runner/step_resolve';
+import {classifyBrowserOperation} from '../../../automation/runner/steps/effects';
 import type {
     DslDebugPort,
     DslEffectDescriptor,

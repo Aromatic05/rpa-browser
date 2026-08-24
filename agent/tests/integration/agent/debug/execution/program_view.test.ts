@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import {createDslDebugExecutionSession} from '../../../../../src/agent/debug/execution/dsl_session';
 import {createPausedDslDebugAgentTools} from '../../../../../src/agent/debug/execution/agent_tools';
 import type {WorldView} from '../../../../../src/agent/worldview/contracts';
-import type {RunStepsDeps} from '../../../../../src/runner/run_steps';
-import {PageSnapshotSessionStore} from '../../../../../src/snapshot';
+import type {RunStepsDeps} from '../../../../../src/automation/runner/run_steps';
+import {PageSnapshotSessionStore} from '../../../../../src/automation/snapshot';
 import {createV2BusinessPage} from '../../../../helpers/v2_business_page';
 
 const createView = async (): Promise<WorldView> => {

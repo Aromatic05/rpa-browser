@@ -7,7 +7,7 @@ import {
     loadObservationFixtures,
     runSnapshotFullPipelineBenchmark,
     type SnapshotFullPipelineBenchmarkReport,
-} from '../../../../src/snapshot';
+} from '../../../../src/automation/snapshot';
 import {createV2BusinessPage} from '../../../helpers/v2_business_page';
 
 const enabled = process.env.SNAPSHOT_V2_FULL_PERF_BASELINE === '1';

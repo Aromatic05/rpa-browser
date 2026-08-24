@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type {Page} from 'playwright';
-import {createPageTools} from '../../../../src/runner/trace/tools/page';
-import type {ToolsBuildContext} from '../../../../src/runner/trace/tools/context';
+import {createPageTools} from '../../../../src/automation/runner/trace/tools/page';
+import type {ToolsBuildContext} from '../../../../src/automation/runner/trace/tools/context';
 
 const createTools = () => {
     const page = {

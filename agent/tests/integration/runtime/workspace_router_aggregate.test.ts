@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createWorkspaceHarness } from '../../helpers/workspace_harness';
-import { createWorkflowOnFs } from '../../../src/workflow';
+import { createWorkflowOnFs } from '../../../src/automation/workflow';
 
 const action = (type: string, extra: Record<string, unknown> = {}) => ({ v: 1 as const, id: crypto.randomUUID(), type, ...extra });
 

@@ -1,4 +1,4 @@
-import type { WorkspaceEntityRulesProvider } from '../../../snapshot/rules/runtime';
+import type { WorkspaceEntityRulesProvider } from '../../../automation/snapshot/rules/runtime';
 import type { DslEntityRulesProfile, DslEntityRulesResolver } from './types';
 
 export const createDslEntityRulesResolver = (

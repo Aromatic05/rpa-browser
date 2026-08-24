@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import {createFauxCore, fauxAssistantMessage, fauxToolCall} from '@earendil-works/pi-ai';
 import {createPausedDslDebugAgentRunner} from '../../../../../src/agent/debug/execution/agent_runner';
 import type {WorldView} from '../../../../../src/agent/worldview/contracts';
-import {PageSnapshotSessionStore} from '../../../../../src/snapshot';
-import type {RunStepsDeps} from '../../../../../src/runner/run_steps';
+import {PageSnapshotSessionStore} from '../../../../../src/automation/snapshot';
+import type {RunStepsDeps} from '../../../../../src/automation/runner/run_steps';
 import {createV2BusinessPage} from '../../../../helpers/v2_business_page';
 
 const createViews = async (): Promise<[WorldView, WorldView]> => {

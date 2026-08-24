@@ -8,9 +8,9 @@ import {
     browserSwitchTabInputSchema,
     toolInputJsonSchemas,
 } from '../../../src/interface/mcp/schemas';
-import type { RecordingManifest } from '../../../src/record/recording';
-import type { RecordingTabManifest } from '../../../src/record/recording';
-import type { RecordedStepEnhancement } from '../../../src/record/types';
+import type { RecordingManifest } from '../../../src/automation/recording/recording';
+import type { RecordingTabManifest } from '../../../src/automation/recording/recording';
+import type { RecordedStepEnhancement } from '../../../src/automation/recording/types';
 
 type ExpectTrue<T extends true> = T;
 // eslint-disable-next-line @typescript-eslint/no-unused-vars

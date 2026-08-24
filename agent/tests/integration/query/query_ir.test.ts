@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import {compileBrowserQuery} from '../../../src/program/query/compile';
 import {queryIrJsonSchema} from '../../../src/program/query/schema';
 import {debugQueryJsonSchema} from '../../../src/agent/debug/tools/schemas';
-import {executePageSessionQueryIR} from '../../../src/runner/session/query_ir';
-import {PageSnapshotSessionStore} from '../../../src/snapshot';
+import {executePageSessionQueryIR} from '../../../src/automation/runner/session/query_ir';
+import {PageSnapshotSessionStore} from '../../../src/automation/snapshot';
 import {createV2BusinessPage} from '../../helpers/v2_business_page';
 
 test('structural browser.query compiles to scan/traverse/filter/limit IR', () => {

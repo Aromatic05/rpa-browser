@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import crypto from 'node:crypto';
 import type { Action } from '../../../src/interface/actions/action_protocol';
 import { dispatch, startAgent } from '../../helpers/e2e_multitab_helper';
-import { deleteWorkflowFromFs } from '../../../src/workflow';
+import { deleteWorkflowFromFs } from '../../../src/automation/workflow';
 
 const controlAction = (type: string, payload: Record<string, unknown> = {}): Action => ({
   v: 1,

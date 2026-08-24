@@ -6,12 +6,12 @@ import type {
     DslScopeSnapshot,
     DslStatementLocation,
 } from '../../../program/dsl/debug/contracts';
-import type {StepName} from '../../../runner/steps/types';
+import type {StepName} from '../../../automation/runner/steps/types';
 import type {ComputeExpr} from '../../../program/compute/types';
 import type {QueryIR} from '../../../program/query/contracts';
 import type {DslStmt} from '../../../program/dsl/ast/types';
 import type {DebugComputeResult, DebugQueryReadResult} from '../query/contracts';
-import type {QueryIRExecutionError} from '../../../runner/session/query_ir';
+import type {QueryIRExecutionError} from '../../../automation/runner/session/query_ir';
 import type {DebugEffectDiffResult, DebugEffectRecord} from '../effects/contracts';
 import type {WorldViewDescriptor} from '../../worldview/contracts';
 import type {WorldCatalog} from '../../worldview/catalog';

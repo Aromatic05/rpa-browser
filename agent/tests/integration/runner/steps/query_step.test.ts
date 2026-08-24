@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import type {RunStepsDeps} from '../../../../src/runner/run_steps';
-import {executeBrowserQuery} from '../../../../src/runner/steps/executors/query';
-import type {Step} from '../../../../src/runner/steps/types';
+import type {RunStepsDeps} from '../../../../src/automation/runner/run_steps';
+import {executeBrowserQuery} from '../../../../src/automation/runner/steps/executors/query';
+import type {Step} from '../../../../src/automation/runner/steps/types';
 import {completeRunStepsDeps} from '../../../helpers/run_steps_workspace';
 import {createV2BusinessPage} from '../../../helpers/v2_business_page';
 

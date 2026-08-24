@@ -4,10 +4,10 @@ import {promises as fs} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {chromium, type Page} from 'playwright';
-import {createRunnerAnnotatorController} from '../../../src/runner/annotator';
-import {createEntityRulesRuntime} from '../../../src/snapshot/rules/runtime';
+import {createRunnerAnnotatorController} from '../../../src/automation/runner/annotator';
+import {createEntityRulesRuntime} from '../../../src/automation/snapshot/rules/runtime';
 import type {Action} from '../../../src/interface/actions/action_protocol';
-import type {Workflow} from '../../../src/workflow';
+import type {Workflow} from '../../../src/automation/workflow';
 import type {
     AnnotatorPickReply,
     AnnotatorProjection,

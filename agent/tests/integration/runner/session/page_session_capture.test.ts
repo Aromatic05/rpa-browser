@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {chromium} from 'playwright';
-import {ensureFreshPageSession} from '../../../../src/runner/session/capture';
+import {ensureFreshPageSession} from '../../../../src/automation/runner/session/capture';
 import {
     createRecordingSnapshotPort,
     resolveRecordSnapshotForEvent,
-} from '../../../../src/record/pipeline/snapshot';
-import {createRecordingState} from '../../../../src/record/pipeline/state';
+} from '../../../../src/automation/recording/pipeline/snapshot';
+import {createRecordingState} from '../../../../src/automation/recording/pipeline/state';
 import {completeRunStepsDeps} from '../../../helpers/run_steps_workspace';
 
 test('runner page session captures one V2 component bundle and refreshes it after dirty interaction', async () => {

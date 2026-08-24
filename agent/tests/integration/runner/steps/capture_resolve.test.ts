@@ -12,9 +12,9 @@ import {
     type RawPageCapture,
     type SemanticBusinessBinding,
     type SemanticBindings,
-} from '../../../../src/snapshot';
-import {executeBrowserCaptureResolve} from '../../../../src/runner/steps/executors/capture_resolve';
-import type {Step} from '../../../../src/runner/steps/types';
+} from '../../../../src/automation/snapshot';
+import {executeBrowserCaptureResolve} from '../../../../src/automation/runner/steps/executors/capture_resolve';
+import type {Step} from '../../../../src/automation/runner/steps/types';
 import {completeRunStepsDeps} from '../../../helpers/run_steps_workspace';
 
 const active = () => ({hiddenByStyle: false, inert: false, selfHasBox: true, rendered: true});

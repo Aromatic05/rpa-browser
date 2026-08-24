@@ -4,7 +4,7 @@ import {
     cleanupTaggedRuntimeState,
     collectTaggedRuntimeState,
     collectTaggedRuntimeStateCapture,
-} from '../../../src/snapshot/observation/model/runtime_state';
+} from '../../../src/automation/snapshot/observation/model/runtime_state';
 
 type FakeElement = {
     nodeType: number;

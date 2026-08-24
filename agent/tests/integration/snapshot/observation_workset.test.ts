@@ -5,7 +5,7 @@ import {
     buildPageObservation,
     type RawCapturedNode,
     type RawPageCapture,
-} from '../../../src/snapshot';
+} from '../../../src/automation/snapshot';
 
 test('part candidates do not each create a quotient and pass visits reflect actual work', () => {
     const capture = largeNativeTableCapture(50, 10);

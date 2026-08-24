@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import {workflowRootDir, workflowsRootDir} from '../../../src/workflow/fs';
+import {workflowRootDir, workflowsRootDir} from '../../../src/automation/workflow/fs';
 
 test('workflow storage honors RPA_WORKFLOW_ROOT', () => {
     const previous = process.env.RPA_WORKFLOW_ROOT;

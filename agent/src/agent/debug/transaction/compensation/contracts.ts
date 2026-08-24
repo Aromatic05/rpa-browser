@@ -1,4 +1,4 @@
-import type {StepArgsMap, StepResult, StepUnion} from '../../../../runner/steps/types';
+import type {StepArgsMap, StepResult, StepUnion} from '../../../../automation/runner/steps/types';
 
 export type DebugCompensationPort = {
     execute: (step: StepUnion) => Promise<StepResult>;

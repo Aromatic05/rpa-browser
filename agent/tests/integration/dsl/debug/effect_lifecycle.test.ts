@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {runDsl} from '../../../../src/program/dsl/runtime/run_dsl';
 import {DslRuntimeError} from '../../../../src/program/dsl/diagnostics/errors';
 import type {DslAfterEffectEvent, DslDebugPort} from '../../../../src/program/dsl/debug/contracts';
-import type {RunStepsDeps} from '../../../../src/runner/run_steps';
+import type {RunStepsDeps} from '../../../../src/automation/runner/run_steps';
 
 const deps = {} as RunStepsDeps;
 const debugPort = (events: DslAfterEffectEvent[]): DslDebugPort => ({

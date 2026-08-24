@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {buildControlSlots} from '../../../src/snapshot/components/table/assembly/control_slots';
-import type {ControlIndex} from '../../../src/snapshot/components/control/model/contracts';
-import type {PageObservation} from '../../../src/snapshot/observation/model/contracts';
-import type {TableCell, TableRow} from '../../../src/snapshot/components/table/model/contracts';
+import {buildControlSlots} from '../../../src/automation/snapshot/components/table/assembly/control_slots';
+import type {ControlIndex} from '../../../src/automation/snapshot/components/control/model/contracts';
+import type {PageObservation} from '../../../src/automation/snapshot/observation/model/contracts';
+import type {TableCell, TableRow} from '../../../src/automation/snapshot/components/table/model/contracts';
 
 const control = (id: string, nodeId: string) => ({
     id,

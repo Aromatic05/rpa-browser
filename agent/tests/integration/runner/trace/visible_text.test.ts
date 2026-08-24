@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {chromium, type Page} from 'playwright';
-import {visibleTextEvaluation} from '../../../../src/runner/page/visible_text';
+import {visibleTextEvaluation} from '../../../../src/automation/runner/page/visible_text';
 
 const evaluateVisibleText = async (page: Page, needle: string): Promise<unknown> =>
     await page.evaluate(

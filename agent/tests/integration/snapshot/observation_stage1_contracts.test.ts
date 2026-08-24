@@ -14,7 +14,7 @@ import {
     type CandidateClassification,
     type ObservationFixture,
     type RawPageCapture,
-} from '../../../src/snapshot';
+} from '../../../src/automation/snapshot';
 
 const fixtureDirectory = path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),

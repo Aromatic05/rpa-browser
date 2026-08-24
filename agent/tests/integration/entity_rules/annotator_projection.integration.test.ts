@@ -4,7 +4,7 @@ import {
     PageSnapshotSessionStore,
     buildAnnotatorProjection,
     resolveAnnotatorPoint,
-} from '../../../src/snapshot';
+} from '../../../src/automation/snapshot';
 import {createV2BusinessPage} from '../../helpers/v2_business_page';
 
 test('AnnotatorProjection separates selection scope, host and structural root with agent geometry', async () => {

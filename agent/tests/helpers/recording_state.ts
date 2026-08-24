@@ -1,8 +1,8 @@
 import {
     createRecordingState,
     type RecordingState,
-} from '../../src/record/recording';
-import type {RecordingSnapshotPort} from '../../src/record/pipeline/snapshot';
+} from '../../src/automation/recording/recording';
+import type {RecordingSnapshotPort} from '../../src/automation/recording/pipeline/snapshot';
 
 export const unavailableRecordingSnapshotPort = (): RecordingSnapshotPort => ({
     markDirty: () => undefined,
