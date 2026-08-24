@@ -146,10 +146,10 @@ flowchart TD
 - `src/entry/newtab.ts`
 - agent
 - `src/app/entrypoints/agent.ts`
-- `src/app/runtime/workspace/workspace.ts`
-- `src/app/runtime/workspace/tabs.ts`
-- `src/app/runtime/workspace/router.ts`
-- `src/app/runtime/browser/page_registry.ts`
+- `src/automation/runtime/workspace/workspace.ts`
+- `src/automation/runtime/workspace/tabs.ts`
+- `src/automation/runtime/workspace/router.ts`
+- `src/automation/runtime/browser/page_registry.ts`
 
 ## 10. 当前运行时边界
 

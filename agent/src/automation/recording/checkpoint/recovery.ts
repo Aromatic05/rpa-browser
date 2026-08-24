@@ -1,5 +1,5 @@
 import {ActionError, ERROR_CODES} from '../../../interface/actions/results';
-import type {WorkspaceRouterInput} from '../../../app/runtime/workspace/router';
+import type {WorkspaceRouterInput} from '../../runtime/workspace/router';
 import type {Checkpoint, MatchRule} from '../../runner/checkpoint';
 import type {StepName, StepResolve, StepUnion} from '../../runner/steps/types';
 import type {WorkflowCheckpoint} from '../../workflow';

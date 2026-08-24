@@ -1,10 +1,10 @@
 import crypto from 'crypto';
 import type { Page } from '@playwright/test';
 import path from 'node:path';
-import { createPageRegistry } from '../../src/app/runtime/browser/page_registry';
+import { createPageRegistry } from '../../src/automation/runtime/browser/page_registry';
 import { createWorkspaceHarness } from './workspace_harness';
 import { createWorkflowOnFs } from '../../src/automation/workflow';
-import { createExecutionBindings } from '../../src/app/runtime/execution/bindings';
+import { createExecutionBindings } from '../../src/automation/runtime/execution/bindings';
 import { createNoopHooks } from '../../src/automation/runner/trace/hooks';
 import { runStepList } from '../../src/automation/runner/run_steps';
 import { getRunnerConfig } from '../../src/platform/config';

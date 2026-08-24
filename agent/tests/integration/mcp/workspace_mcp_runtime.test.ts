@@ -2,12 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import { createMcpControl } from '../../../src/interface/mcp/control';
-import { createPortAllocator } from '../../../src/app/runtime/service/ports';
+import { createPortAllocator } from '../../../src/automation/runtime/service/ports';
 import { createWorkspaceToolHandlers } from '../../../src/interface/mcp/tool_handlers';
-import { createWorkspaceTabs } from '../../../src/app/runtime/workspace/tabs';
-import type { RuntimeWorkspace } from '../../../src/app/runtime/workspace/workspace';
-import type { WorkspaceRegistry } from '../../../src/app/runtime/workspace/registry';
-import type { WorkspaceService } from '../../../src/app/runtime/service/types';
+import { createWorkspaceTabs } from '../../../src/automation/runtime/workspace/tabs';
+import type { RuntimeWorkspace } from '../../../src/automation/runtime/workspace/workspace';
+import type { WorkspaceRegistry } from '../../../src/automation/runtime/workspace/registry';
+import type { WorkspaceService } from '../../../src/automation/runtime/service/types';
 import type { Action } from '../../../src/interface/actions/action_protocol';
 import type { Workflow } from '../../../src/automation/workflow';
 

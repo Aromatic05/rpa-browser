@@ -1,8 +1,8 @@
 import { replyAction } from '../../interface/actions/action_protocol';
 import { ActionError } from '../../interface/actions/results';
 import { ERROR_CODES } from '../../interface/actions/results';
-import type { WorkspaceRouterInput } from '../../app/runtime/workspace/router';
-import type { ControlPlaneResult } from '../../app/runtime/control_plane';
+import type { WorkspaceRouterInput } from '../runtime/workspace/router';
+import type { ControlPlaneResult } from '../runtime/control_plane';
 import type { Checkpoint } from '../runner/checkpoint';
 import type { StepResolve } from '../runner/steps/types';
 import {workflowArtifactRevision, type Workflow, type WorkflowCheckpoint} from '../workflow';

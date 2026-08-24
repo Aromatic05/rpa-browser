@@ -3,9 +3,9 @@ import { replyAction, type Action } from '../../interface/actions/action_protoco
 import { ActionError } from '../../interface/actions/results';
 import { ACTION_TYPES } from '../../interface/actions/action_types';
 import { ERROR_CODES } from '../../interface/actions/results';
-import type { WorkspaceRouterInput } from '../../app/runtime/workspace/router';
-import type { ControlPlaneResult } from '../../app/runtime/control_plane';
-import { acquireWorkspaceExecution, enterWorkspaceState, getWorkspaceState, leaveWorkspaceState, requireWorkspaceState } from '../../app/runtime/workspace/workspace';
+import type { WorkspaceRouterInput } from '../runtime/workspace/router';
+import type { ControlPlaneResult } from '../runtime/control_plane';
+import { acquireWorkspaceExecution, enterWorkspaceState, getWorkspaceState, leaveWorkspaceState, requireWorkspaceState } from '../runtime/workspace/workspace';
 import {
     awaitRecordingEnhancements,
     awaitWorkspaceRecordingEvents,
@@ -42,8 +42,8 @@ import {
     requireCheckpointEntityRuleOption,
 } from './checkpoint_recording';
 import { persistRecordedStep } from './checkpoint/common';
-import type { ExecutionBindings } from '../../app/runtime/execution/bindings';
-import type { PageRegistry } from '../../app/runtime/browser/page_registry';
+import type { ExecutionBindings } from '../runtime/execution/bindings';
+import type { PageRegistry } from '../runtime/browser/page_registry';
 import type { Logger } from '../../platform/logging/logger';
 import { getLogger } from '../../platform/logging/logger';
 

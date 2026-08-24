@@ -3,7 +3,7 @@ import {createDslEntityRulesResolver, createDslResolveResolver} from '../../../p
 import {validateDslSource} from '../../../program/dsl/runtime';
 import {createWorkspaceEntityRulesProvider} from '../../snapshot/rules/runtime';
 import {buildEntityRuleExportIndex} from '../../workflow';
-import type {WorkspaceRouterInput} from '../../../app/runtime/workspace/router';
+import type {WorkspaceRouterInput} from '../../runtime/workspace/router';
 import type {StepResolve} from '../../runner/steps/types';
 import type {CheckpointEntityRuleOption} from './types';
 

@@ -3,8 +3,8 @@ import path from 'node:path';
 import { replyAction } from '../../interface/actions/action_protocol';
 import { ActionError } from '../../interface/actions/results';
 import { ERROR_CODES } from '../../interface/actions/results';
-import type { WorkspaceRouterInput } from '../../app/runtime/workspace/router';
-import type { ControlPlaneResult } from '../../app/runtime/control_plane';
+import type { WorkspaceRouterInput } from '../runtime/workspace/router';
+import type { ControlPlaneResult } from '../runtime/control_plane';
 import {
     closeStepsQueue,
     createResultPipe,
@@ -33,7 +33,7 @@ import {
     readStepResolves,
     readSteps,
 } from './control_input';
-import {acquireWorkspaceExecution, type WorkspaceExecutionRelease} from '../../app/runtime/workspace/execution_coordinator';
+import {acquireWorkspaceExecution, type WorkspaceExecutionRelease} from '../runtime/workspace/execution_coordinator';
 
 type TaskRunState = {
     runId: string;

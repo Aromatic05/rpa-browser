@@ -16,7 +16,7 @@ workspace
 
 ## Workspace service lifecycle
 
-Each workspace carries a `serviceLifecycle` (see `agent/src/app/runtime/service.ts`).
+Each workspace carries a `serviceLifecycle` (see `agent/src/automation/runtime/service/types.ts`).
 Services expose `start()`, `stop()`, and `status()`. The lifecycle manages a flat
 set of services identified by `WorkspaceServiceName`.
 
@@ -26,7 +26,7 @@ Status values: `stopped`, `starting`, `running`, `stopping`, `failed`.
 
 ## Port allocator
 
-`agent/src/app/runtime/port_allocator.ts` maps `(workspaceName, serviceName)` to a
+`agent/src/automation/runtime/service/ports.ts` maps `(workspaceName, serviceName)` to a
 port. It detects port conflicts, auto-increments, and releases ports on `stop()`.
 The allocator has no MCP or agent knowledge and does not start servers.
 

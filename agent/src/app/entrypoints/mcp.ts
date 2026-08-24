@@ -1,8 +1,8 @@
 import path from 'node:path';
 import type { Page } from 'playwright';
-import { resolvePaths } from '../runtime/browser/context_manager';
-import { createWorkspaceRegistry } from '../runtime/workspace/registry';
-import { createExecutionBindings } from '../runtime/execution/bindings';
+import { resolvePaths } from '../../automation/runtime/browser/context_manager';
+import { createWorkspaceRegistry } from '../../automation/runtime/workspace/registry';
+import { createExecutionBindings } from '../../automation/runtime/execution/bindings';
 import { createRecordingState, cleanupRecording, ensureRecorder, isWorkspaceRecordingEnabled } from '../../automation/recording/recording';
 import { createConsoleStepSink, setRunStepsDeps } from '../../automation/runner/run_steps';
 import { getRunnerConfig } from '../../platform/config';
@@ -12,7 +12,7 @@ import { RunnerPluginHost } from '../../automation/runner/hotreload/plugin_host'
 import { createActionDispatcher } from '../../interface/actions/dispatcher';
 import { createControlServer, registerControlShutdown } from '../../interface/control';
 import { ensureWorkflowOnFs } from '../../automation/workflow';
-import { createPortAllocator } from '../runtime/service/ports';
+import { createPortAllocator } from '../../automation/runtime/service/ports';
 import type { RunStepsDeps } from '../../automation/runner/run_steps_types';
 import {PageSnapshotSessionStore} from '../../automation/snapshot/session';
 import {SnapshotProjectionBaselineStore} from '../../automation/runner/session';

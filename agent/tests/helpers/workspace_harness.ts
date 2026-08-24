@@ -1,5 +1,5 @@
 import type { Page } from 'playwright';
-import { createWorkspaceRegistry } from '../../src/app/runtime/workspace/registry';
+import { createWorkspaceRegistry } from '../../src/automation/runtime/workspace/registry';
 import { createRecordingState, type RecordingState } from '../../src/automation/recording/recording';
 import {createRecordingSnapshotPort} from '../../src/automation/recording/pipeline/snapshot';
 import {SnapshotProjectionBaselineStore} from '../../src/automation/runner/session';
@@ -7,10 +7,10 @@ import {PageSnapshotSessionStore} from '../../src/automation/snapshot';
 import type { RunStepsDeps } from '../../src/automation/runner/run_steps';
 import { getRunnerConfig } from '../../src/platform/config';
 import type { Action } from '../../src/interface/actions/action_protocol';
-import { createPortAllocator } from '../../src/app/runtime/service/ports';
-import { createExecutionBindings } from '../../src/app/runtime/execution/bindings';
-import type { PageRegistry } from '../../src/app/runtime/browser/page_registry';
-import type { WorkspaceBrowserSession } from '../../src/app/runtime/browser/browser_session';
+import { createPortAllocator } from '../../src/automation/runtime/service/ports';
+import { createExecutionBindings } from '../../src/automation/runtime/execution/bindings';
+import type { PageRegistry } from '../../src/automation/runtime/browser/page_registry';
+import type { WorkspaceBrowserSession } from '../../src/automation/runtime/browser/browser_session';
 import type { AgentModelRuntime } from '../../src/agent/model/runtime';
 
 export type WorkspaceHarnessOptions = {

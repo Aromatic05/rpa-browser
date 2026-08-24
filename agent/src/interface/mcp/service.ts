@@ -3,7 +3,7 @@ import type {
     WorkspaceServiceStartResult,
     WorkspaceServiceStopResult,
     WorkspaceServiceStatusResult,
-} from '../../app/runtime/service/types';
+} from '../../automation/runtime/service/types';
 import { createWorkspaceMcpRuntime, type WorkspaceMcpRuntimeDeps } from './runtime';
 
 export type WorkspaceMcpServiceDeps = WorkspaceMcpRuntimeDeps;

@@ -13,9 +13,9 @@ import type { RunStepsDeps } from '../runner/run_steps';
 import { runStepList } from '../runner/run_steps';
 import type { RecordingManifest } from './recording';
 import type { RecordingEnhancementMap } from './types';
-import type { RuntimeWorkspace } from '../../app/runtime/workspace/workspace';
-import type { ExecutionBindings } from '../../app/runtime/execution/bindings';
-import type { PageRegistry } from '../../app/runtime/browser/page_registry';
+import type { RuntimeWorkspace } from '../runtime/workspace/workspace';
+import type { ExecutionBindings } from '../runtime/execution/bindings';
+import type { PageRegistry } from '../runtime/browser/page_registry';
 import { isValidStepResolve } from '../runner/steps/resolve_utils';
 import { getLogger } from '../../platform/logging/logger';
 

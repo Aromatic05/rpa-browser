@@ -7,11 +7,11 @@ import test from 'node:test';
 import net from 'node:net';
 
 import {startActionWsClient} from '../../../src/interface/actions/ws_client';
-import {readBrowserProfileOwner} from '../../../src/app/runtime/browser/cdp_launcher';
+import {readBrowserProfileOwner} from '../../../src/automation/runtime/browser/cdp_launcher';
 import {
     buildStartExtensionUrl,
     resolveInteractiveStartUrl,
-} from '../../../src/app/runtime/browser/browser_session';
+} from '../../../src/automation/runtime/browser/browser_session';
 
 const reservePort = async (): Promise<number> => await new Promise((resolve, reject) => {
     const server = net.createServer();

@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { createWorkspaceRouter } from '../../../src/app/runtime/workspace/router';
-import type { WorkspaceRouterInput, WorkspaceRouterDeps } from '../../../src/app/runtime/workspace/router';
-import type { RuntimeWorkspace } from '../../../src/app/runtime/workspace/workspace';
-import type { WorkspaceRegistry } from '../../../src/app/runtime/workspace/registry';
-import type { ControlPlaneResult } from '../../../src/app/runtime/control_plane';
+import { createWorkspaceRouter } from '../../../src/automation/runtime/workspace/router';
+import type { WorkspaceRouterInput, WorkspaceRouterDeps } from '../../../src/automation/runtime/workspace/router';
+import type { RuntimeWorkspace } from '../../../src/automation/runtime/workspace/workspace';
+import type { WorkspaceRegistry } from '../../../src/automation/runtime/workspace/registry';
+import type { ControlPlaneResult } from '../../../src/automation/runtime/control_plane';
 import type { Action } from '../../../src/interface/actions/action_protocol';
 import { replyAction } from '../../../src/interface/actions/action_protocol';
 
@@ -341,8 +341,8 @@ test('unknown action returns unsupported action', async () => {
 });
 
 // ---- TabsControl boundary tests ----
-import { createTabsControl } from '../../../src/app/runtime/workspace/tabs';
-import { createWorkspaceTabs } from '../../../src/app/runtime/workspace/tabs';
+import { createTabsControl } from '../../../src/automation/runtime/workspace/tabs';
+import { createWorkspaceTabs } from '../../../src/automation/runtime/workspace/tabs';
 import { createTestRecordingState } from '../../helpers/recording_state';
 
 test('TabsControl handles tab.list', async () => {
@@ -428,7 +428,7 @@ test('TabsControl rejects inbound tab.bind', async () => {
 
 // ---- McpControl boundary tests ----
 import { createMcpControl } from '../../../src/interface/mcp/control';
-import type { WorkspaceService } from '../../../src/app/runtime/service/types';
+import type { WorkspaceService } from '../../../src/automation/runtime/service/types';
 
 test('McpControl handles mcp.start', async () => {
     let started = false;
@@ -550,7 +550,7 @@ test('WorkspaceRouter does not handle workflow.create', async () => {
 
 test('WorkspaceRouter source has prefix-forwarder discipline comment', () => {
     const src = fs.readFileSync(
-        path.resolve(process.cwd(), 'src/app/runtime/workspace/router.ts'),
+        path.resolve(process.cwd(), 'src/automation/runtime/workspace/router.ts'),
         'utf-8',
     );
     assert.ok(src.includes('prefix-only forwarder'));

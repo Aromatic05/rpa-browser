@@ -295,7 +295,7 @@ test('RuntimeWorkspace does not have serviceLifecycle', () => {
 
 test('workspace.ts has no null as unknown', () => {
     const src = fs.readFileSync(
-        path.resolve(process.cwd(), 'src/app/runtime/workspace/workspace.ts'),
+        path.resolve(process.cwd(), 'src/automation/runtime/workspace/workspace.ts'),
         'utf-8',
     );
     assert.equal(src.includes('null as unknown'), false);
@@ -303,7 +303,7 @@ test('workspace.ts has no null as unknown', () => {
 
 test('workspace.ts has no mcp router backfill', () => {
     const src = fs.readFileSync(
-        path.resolve(process.cwd(), 'src/app/runtime/workspace/workspace.ts'),
+        path.resolve(process.cwd(), 'src/automation/runtime/workspace/workspace.ts'),
         'utf-8',
     );
     assert.equal(src.includes('workspace.mcp ='), false);

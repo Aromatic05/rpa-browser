@@ -1,7 +1,7 @@
 import { type z } from 'zod';
 import crypto from 'crypto';
 import type { Page } from 'playwright';
-import type { WorkspaceTabs } from '../../app/runtime/workspace/tabs';
+import type { WorkspaceTabs } from '../../automation/runtime/workspace/tabs';
 import type { RunnerConfig } from '../../platform/config';
 import { runStepList } from '../../automation/runner/run_steps';
 import type { RunStepsDeps } from '../../automation/runner/run_steps_types';

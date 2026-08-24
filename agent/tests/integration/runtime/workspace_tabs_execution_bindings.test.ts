@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { BrowserContext, Page } from 'playwright';
-import { createWorkspaceTabs } from '../../../src/app/runtime/workspace/tabs';
-import { createExecutionBindings } from '../../../src/app/runtime/execution/bindings';
+import { createWorkspaceTabs } from '../../../src/automation/runtime/workspace/tabs';
+import { createExecutionBindings } from '../../../src/automation/runtime/execution/bindings';
 import { awaitPageBoundBinding } from '../../../src/automation/runner/steps/helpers/runtime_binding';
 import type { RunStepsDeps } from '../../../src/automation/runner/run_steps_types';
-import type { PageRegistry } from '../../../src/app/runtime/browser/page_registry';
-import type { RuntimeWorkspace } from '../../../src/app/runtime/workspace/workspace';
+import type { PageRegistry } from '../../../src/automation/runtime/browser/page_registry';
+import type { RuntimeWorkspace } from '../../../src/automation/runtime/workspace/workspace';
 
 type StubPage = Page & { emitTest: (event: string, ...args: unknown[]) => void };
 

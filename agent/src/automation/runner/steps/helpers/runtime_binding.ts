@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import type { RunStepsDeps } from '../../run_steps_types';
-import type { ExecutionBinding } from '../../../../app/runtime/execution/bindings';
-import type { RuntimeWorkspace } from '../../../../app/runtime/workspace/workspace';
+import type { ExecutionBinding } from '../../../runtime/execution/bindings';
+import type { RuntimeWorkspace } from '../../../runtime/workspace/workspace';
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 

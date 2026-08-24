@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import type { Page } from 'playwright';
 import { executeBrowserCreateTab } from '../../../../src/automation/runner/steps/executors/create_tab';
 import { executeBrowserGoto } from '../../../../src/automation/runner/steps/executors/goto';
-import { createWorkspaceTabs } from '../../../../src/app/runtime/workspace/tabs';
-import type { RuntimeWorkspace } from '../../../../src/app/runtime/workspace/workspace';
+import { createWorkspaceTabs } from '../../../../src/automation/runtime/workspace/tabs';
+import type { RuntimeWorkspace } from '../../../../src/automation/runtime/workspace/workspace';
 import type { RunStepsDeps } from '../../../../src/automation/runner/run_steps';
 import { completeRunStepsDeps } from '../../../helpers/run_steps_workspace';
 
