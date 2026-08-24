@@ -119,6 +119,22 @@ export const createPausedDslDebugAgentTools = (
             },
         },
         {
+            name: 'debug.program',
+            label: 'debug.program',
+            description: 'Read a normalized DSL ProgramView with stable execution paths and source locations. Defaults to the program owning the current pause; programId may select another compiled program such as a parent or checkpoint body.',
+            parameters: Type.Object({
+                programId: Type.Optional(Type.String({minLength: 1})),
+            }, {additionalProperties: false}),
+            execute: async (_toolCallId, params) => {
+                const current = requirePause();
+                const input = params as {programId?: string};
+                return toolResult({
+                    program: execution.program(current.continuationId, input.programId),
+                    world: current.world,
+                });
+            },
+        },
+        {
             name: 'debug.explain',
             label: 'debug.explain',
             description: 'Explain how one DSL scope path was produced. Returns query/compute/ref/checkpoint/loop provenance and recursively expands dependency paths. This is a pure read.',

@@ -23,6 +23,7 @@ import {createDebugQuerySession} from '../query/session';
 import type {DebugQuerySession} from '../query/contracts';
 import {createDebugValueProvenanceStore} from '../provenance/store';
 import {recomputeDebugValue} from '../provenance/recompute';
+import {buildDebugProgramView, type DebugProgramView} from '../program/view';
 import {compileStatementPatch} from './patch_statement';
 import type {DebugCompensationPort} from '../transaction/compensation/contracts';
 import {executePhysicalCompensations} from '../transaction/compensation/executor';
@@ -61,6 +62,7 @@ export const createDslDebugExecutionSession = (
     const controller = createDslDebugController(options.debug);
     const journal = createDebugEffectJournal();
     const provenance = createDebugValueProvenanceStore();
+    const programs = new Map<string, DebugProgramView>();
     const pendingEffectOverrides = new Map<string, DslEffectDescriptor>();
     let transaction: DebugTransaction | null = null;
     const ensureTransaction = async (): Promise<DebugTransaction> => {
@@ -91,6 +93,7 @@ export const createDslDebugExecutionSession = (
         },
         onFailure: controller.port.onFailure,
         onValue: (event) => {provenance.record(event);},
+        onProgram: (event) => {programs.set(event.programId, buildDebugProgramView(event));},
     };
     const completion: Promise<RunDslSourceResult> = runDslSource(options.source, {
         ...options.context,
@@ -457,6 +460,13 @@ export const createDslDebugExecutionSession = (
             scope: ComputeEvalScope = {},
         ) => requireActive(continuationId).debug.compute(expr, scope),
         catalog: (continuationId: string) => buildWorldCatalog(requireActive(continuationId).view),
+        program: (continuationId: string, programId?: string) => {
+            const current = requireActive(continuationId);
+            const targetProgramId = programId ?? current.pause.location.programId;
+            const program = programs.get(targetProgramId);
+            if (!program) {throw new Error(`DSL debug program is unavailable: ${targetProgramId}`);}
+            return program;
+        },
         effects: (continuationId: string) => {
             requireActive(continuationId);
             return journal.list();

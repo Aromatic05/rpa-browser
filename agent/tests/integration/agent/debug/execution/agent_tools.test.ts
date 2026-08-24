@@ -90,6 +90,7 @@ test('paused DSL Agent tools split pure debugger reads from execution effects', 
         'debug.execution',
         'debug.scope',
         'debug.catalog',
+        'debug.program',
         'debug.explain',
         'debug.recompute',
         'debug.effects',
@@ -109,7 +110,7 @@ test('paused DSL Agent tools split pure debugger reads from execution effects', 
         'debug.continue',
         'debug.abort',
     ]);
-    for (const name of ['debug.execution', 'debug.scope', 'debug.catalog', 'debug.explain', 'debug.recompute', 'debug.effects', 'debug.diff', 'debug.transaction', 'debug.transaction_diff', 'debug.world', 'debug.refresh', 'debug.query', 'debug.compute']) {
+    for (const name of ['debug.execution', 'debug.scope', 'debug.catalog', 'debug.program', 'debug.explain', 'debug.recompute', 'debug.effects', 'debug.diff', 'debug.transaction', 'debug.transaction_diff', 'debug.world', 'debug.refresh', 'debug.query', 'debug.compute']) {
         assert.equal(classifyPausedDslDebugToolCall(name), 'read');
     }
     assert.equal(classifyPausedDslDebugToolCall('debug.savepoint'), 'control');

@@ -1,9 +1,9 @@
-import type {DslComputeExpr, DslExpr, DslStmt, QueryExpr} from '../ast/types';
+import type {DslComputeExpr, DslExpr, DslProgram, DslStmt, QueryExpr} from '../ast/types';
 import type {StepName} from '../../runner/steps/types';
 import type {BrowserOperationClassification} from '../../runner/steps/effects';
 import type {EffectSemantics} from '../../effects/contracts';
 import type {QueryIR} from '../../query/contracts';
-import type {DslSourceLocation} from '../parser/source_map';
+import type {DslSourceLocation, DslSourceMap} from '../parser/source_map';
 
 export type DslLoopFrame = Readonly<{
     path: string;
@@ -66,6 +66,13 @@ export type DslValueProvenanceEvent = Readonly<{
     target: string;
     location: DslStatementLocation;
     source: DslValueProvenanceSource;
+}>;
+
+export type DslProgramEvent = Readonly<{
+    programId: string;
+    source: string;
+    program: DslProgram;
+    sourceMap: DslSourceMap;
 }>;
 
 export type DslBeforeStatementEvent = Readonly<{
@@ -157,6 +164,7 @@ export type DslDebugPort = {
     afterEffect?: (event: DslAfterEffectEvent) => void | Promise<void>;
     onFailure?: (event: DslFailureEvent) => void | Promise<void>;
     onValue?: (event: DslValueProvenanceEvent) => void | Promise<void>;
+    onProgram?: (event: DslProgramEvent) => void | Promise<void>;
 };
 
 type PausedDslExecutionBase = Readonly<{
