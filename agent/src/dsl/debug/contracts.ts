@@ -71,6 +71,11 @@ export type DslValueProvenanceEvent = Readonly<{
 export type DslBeforeStatementEvent = Readonly<{
     location: DslStatementLocation;
     scope: DslScopeSnapshot;
+    statement: DslStmt;
+}>;
+
+export type DslBeforeStatementResolution = Readonly<{
+    statement: DslStmt;
 }>;
 
 export type DslEffectDescriptor = Readonly<{
@@ -143,7 +148,9 @@ export type DslFailureEvent = Readonly<{
 }>;
 
 export type DslDebugPort = {
-    beforeStatement: (event: DslBeforeStatementEvent) => void | Promise<void>;
+    beforeStatement: (
+        event: DslBeforeStatementEvent,
+    ) => DslBeforeStatementResolution | undefined | Promise<DslBeforeStatementResolution | undefined>;
     beforeEffect?: (
         event: DslBeforeEffectEvent,
     ) => DslBeforeEffectResolution | undefined | Promise<DslBeforeEffectResolution | undefined>;
@@ -159,7 +166,7 @@ type PausedDslExecutionBase = Readonly<{
 }>;
 
 export type PausedDslExecution =
-    | (PausedDslExecutionBase & Readonly<{reason: 'statement'}>)
+    | (PausedDslExecutionBase & Readonly<{reason: 'statement'; statement: DslStmt}>)
     | (PausedDslExecutionBase & Readonly<{reason: 'effect'; effect: DslEffectDescriptor}>)
     | (PausedDslExecutionBase & Readonly<{reason: 'barrier'; effect: DslEffectDescriptor}>)
     | (PausedDslExecutionBase & Readonly<{reason: 'failure'; failure: DslFailureDescriptor}>);
@@ -169,6 +176,7 @@ export type DslDebugController = {
     waitForPause: () => Promise<PausedDslExecution>;
     continue: (continuationId: string) => void;
     step: (continuationId: string) => void;
+    patchStatement: (continuationId: string, statement: DslStmt) => void;
     crossBarrier: (continuationId: string) => void;
     abort: (continuationId: string) => void;
 };

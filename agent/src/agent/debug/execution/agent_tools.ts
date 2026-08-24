@@ -268,6 +268,24 @@ export const createPausedDslDebugAgentTools = (
             },
         },
         {
+            name: 'debug.patch_statement',
+            label: 'debug.patch_statement',
+            description: 'Replace only the current unexecuted statement at a statement pause. The patch is compiled, linked and normalized in the current DSL import context. It is one-shot, does not persist to the DSL artifact, and does not rewind prior execution.',
+            parameters: Type.Object({
+                source: Type.String({minLength: 1}),
+            }, {additionalProperties: false}),
+            execute: async (_toolCallId, params) => {
+                const current = requirePause();
+                const result = execution.patchStatement(
+                    current.continuationId,
+                    (params as {source: string}).source,
+                );
+                pause = result.pause;
+                terminal = null;
+                return toolResult(result);
+            },
+        },
+        {
             name: 'debug.recompute_effect',
             label: 'debug.recompute_effect',
             description: 'Re-resolve the current pending logical effect target by executing its stored canonical QueryIR against the pinned WorldView, then rebind the pending effect without mutating the World.',

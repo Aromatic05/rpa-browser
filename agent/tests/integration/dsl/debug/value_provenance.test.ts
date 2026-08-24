@@ -9,7 +9,7 @@ const deps = {} as RunStepsDeps;
 test('DSL debug port reports query, compute and ref value provenance without changing scope values', async () => {
     const events: unknown[] = [];
     const debugPort: DslDebugPort = {
-        beforeStatement: () => {},
+        beforeStatement: () => undefined,
         onValue: (event) => {events.push(event);},
     } as DslDebugPort;
     const result = await runDslSource(`
@@ -79,7 +79,7 @@ test('DSL debug port reports query, compute and ref value provenance without cha
 test('value provenance distinguishes checkpoint frames and loop iterations', async () => {
     const events: any[] = [];
     const debugPort: DslDebugPort = {
-        beforeStatement: () => {},
+        beforeStatement: () => undefined,
         onValue: (event) => {events.push(event);},
     };
     const result = await runDslSource(`

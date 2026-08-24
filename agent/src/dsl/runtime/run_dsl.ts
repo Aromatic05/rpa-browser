@@ -96,7 +96,7 @@ const executeStatements = async (
         const stmt = body[index];
         const path = `${execution.blockPath}.${index}`;
         const source = ctx.debugSourceMap?.[path];
-        const location: DslStatementLocation = Object.freeze({
+        const originalLocation: DslStatementLocation = Object.freeze({
             programId: ctx.debugProgramId ?? 'main',
             path,
             kind: stmt.kind,
@@ -104,14 +104,19 @@ const executeStatements = async (
             ...(source ? {source} : {}),
             callStack: Object.freeze([...(ctx.checkpointCallStack ?? [])]),
         });
-        await ctx.debugPort?.beforeStatement({
-            location,
+        const resolution = await ctx.debugPort?.beforeStatement({
+            location: originalLocation,
             scope: snapshotDslScope(scope),
+            statement: structuredClone(stmt),
         });
-        safeLog(logger, 'debug', 'dsl.stmt.start', { index, kind: stmt.kind });
+        const runtimeStmt = resolution?.statement ?? stmt;
+        const location: DslStatementLocation = runtimeStmt.kind === originalLocation.kind
+            ? originalLocation
+            : Object.freeze({...originalLocation, kind: runtimeStmt.kind});
+        safeLog(logger, 'debug', 'dsl.stmt.start', { index, kind: runtimeStmt.kind });
         try {
-            await executeStmt(stmt, scope, ctx, port, logger, index, location);
-            safeLog(logger, 'debug', 'dsl.stmt.end', { index, kind: stmt.kind });
+            await executeStmt(runtimeStmt, scope, ctx, port, logger, index, location);
+            safeLog(logger, 'debug', 'dsl.stmt.end', { index, kind: runtimeStmt.kind });
         } catch (error) {
             safeLog(logger, 'error', 'dsl.error', { stmtIndex: index, error: toErrorLog(error) });
             throw error;

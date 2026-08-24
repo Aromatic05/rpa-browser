@@ -23,6 +23,7 @@ import {createDebugQuerySession} from '../query/session';
 import type {DebugQuerySession} from '../query/contracts';
 import {createDebugValueProvenanceStore} from '../provenance/store';
 import {recomputeDebugValue} from '../provenance/recompute';
+import {compileStatementPatch} from './patch_statement';
 import type {DebugCompensationPort} from '../transaction/compensation/contracts';
 import {executePhysicalCompensations} from '../transaction/compensation/executor';
 import {createDebugTransaction} from '../transaction/state';
@@ -73,7 +74,7 @@ export const createDslDebugExecutionSession = (
     const debugPort: DslDebugPort = {
         beforeStatement: async (event) => {
             await ensureTransaction();
-            await controller.port.beforeStatement(event);
+            return await controller.port.beforeStatement(event);
         },
         beforeEffect: async (event) => {
             await ensureTransaction();
@@ -119,7 +120,7 @@ export const createDslDebugExecutionSession = (
                 ? Object.freeze({...base, reason: 'barrier' as const, effect: pause.effect})
                 : pause.reason === 'failure'
                     ? Object.freeze({...base, reason: 'failure' as const, failure: pause.failure})
-                    : Object.freeze({...base, reason: 'statement' as const});
+                    : Object.freeze({...base, reason: 'statement' as const, statement: pause.statement});
     };
 
     const release = (continuationId: string, mode: 'continue' | 'step' | 'abort'): void => {
@@ -156,6 +157,41 @@ export const createDslDebugExecutionSession = (
             ...(current.effectResolvedAt ? {effectResolvedAt: current.effectResolvedAt} : {}),
         };
         return exposePause(active);
+    };
+
+    const patchStatement = (continuationId: string, source: string) => {
+        const current = requireActive(continuationId);
+        if (current.pause.reason !== 'statement') {
+            return Object.freeze({
+                status: 'unavailable' as const,
+                reason: 'not_statement_pause' as const,
+                pause: exposePause(current),
+            });
+        }
+        const compiled = compileStatementPatch(
+            options.source,
+            source,
+            options.context.entityRulesResolver,
+            options.context.resolveResolver,
+        );
+        if (!compiled.ok) {
+            return Object.freeze({
+                status: 'invalid' as const,
+                error: compiled.error,
+                pause: exposePause(current) as Extract<PausedDslDebugExecution, {reason: 'statement'}>,
+            });
+        }
+        controller.patchStatement(continuationId, compiled.statement);
+        const pause = Object.freeze({
+            ...current.pause,
+            location: Object.freeze({...current.pause.location, kind: compiled.statement.kind}),
+            statement: compiled.statement,
+        });
+        active = {...current, pause};
+        return Object.freeze({
+            status: 'patched' as const,
+            pause: exposePause(active) as Extract<PausedDslDebugExecution, {reason: 'statement'}>,
+        });
     };
 
     const recomputeEffect = (continuationId: string): DslDebugRecomputeEffectResult => {
@@ -457,6 +493,7 @@ export const createDslDebugExecutionSession = (
         },
         rollback,
         refresh,
+        patchStatement,
         recomputeEffect,
         crossBarrier,
         advance,

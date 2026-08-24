@@ -9,6 +9,7 @@ import type {
 import type {StepName} from '../../../runner/steps/types';
 import type {ComputeExpr} from '../../../compute/types';
 import type {QueryIR} from '../../../query/contracts';
+import type {DslStmt} from '../../../dsl/ast/types';
 import type {DebugComputeResult, DebugQueryReadResult} from '../query/contracts';
 import type {QueryIRExecutionError} from '../../../runner/session/query_ir';
 import type {DebugEffectDiffResult, DebugEffectRecord} from '../effects/contracts';
@@ -31,7 +32,7 @@ type PausedDslDebugExecutionBase = Readonly<{
 }>;
 
 export type PausedDslDebugExecution =
-    | (PausedDslDebugExecutionBase & Readonly<{reason: 'statement'}>)
+    | (PausedDslDebugExecutionBase & Readonly<{reason: 'statement'; statement: DslStmt}>)
     | (PausedDslDebugExecutionBase & Readonly<{reason: 'effect'; effect: DslEffectDescriptor}>)
     | (PausedDslDebugExecutionBase & Readonly<{reason: 'barrier'; effect: DslEffectDescriptor}>)
     | (PausedDslDebugExecutionBase & Readonly<{reason: 'failure'; failure: DslFailureDescriptor}>);
@@ -88,6 +89,26 @@ export type DslDebugRecomputeEffectResult =
         pause: Extract<PausedDslDebugExecution, {reason: 'effect' | 'barrier'}>;
     }>;
 
+export type DslDebugPatchStatementResult =
+    | Readonly<{
+        status: 'patched';
+        pause: Extract<PausedDslDebugExecution, {reason: 'statement'}>;
+    }>
+    | Readonly<{
+        status: 'unavailable';
+        reason: 'not_statement_pause';
+        pause: PausedDslDebugExecution;
+    }>
+    | Readonly<{
+        status: 'invalid';
+        error: Readonly<{
+            code: 'ERR_DSL_PATCH_INVALID' | 'ERR_DSL_PATCH_UNSUPPORTED';
+            message: string;
+            diagnostics?: readonly unknown[];
+        }>;
+        pause: Extract<PausedDslDebugExecution, {reason: 'statement'}>;
+    }>;
+
 export type DslDebugExecutionSession = {
     waitForPause: () => Promise<PausedDslDebugExecution>;
     query: (continuationId: string, ir: QueryIR) => DebugQueryReadResult;
@@ -110,6 +131,7 @@ export type DslDebugExecutionSession = {
         options?: DebugRollbackOptions,
     ) => Promise<DebugRollbackResult>;
     refresh: (continuationId: string) => Promise<PausedDslDebugExecution>;
+    patchStatement: (continuationId: string, source: string) => DslDebugPatchStatementResult;
     recomputeEffect: (continuationId: string) => DslDebugRecomputeEffectResult;
     crossBarrier: (continuationId: string) => Promise<DslDebugAdvanceResult>;
     advance: (continuationId: string, mode: 'continue' | 'step' | 'abort') => Promise<DslDebugAdvanceResult>;

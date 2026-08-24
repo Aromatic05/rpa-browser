@@ -7,7 +7,7 @@ import type {RunStepsDeps} from '../../../../src/runner/run_steps';
 
 const deps = {} as RunStepsDeps;
 const debugPort = (events: DslAfterEffectEvent[]): DslDebugPort => ({
-    beforeStatement: () => {},
+    beforeStatement: () => undefined,
     afterEffect: (event) => {events.push(event);},
 });
 
@@ -91,7 +91,7 @@ test('failed effect result is emitted before the failure notification', async ()
         deps,
         input: {target: {nodeId: 'missing'}},
         debugPort: {
-            beforeStatement: () => {},
+            beforeStatement: () => undefined,
             afterEffect: (event) => {
                 order.push(`effect:${event.outcome.status}`);
                 assert.deepEqual(event.outcome, {
