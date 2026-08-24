@@ -85,6 +85,12 @@ export type DslBeforeStatementResolution = Readonly<{
     statement: DslStmt;
 }>;
 
+export type DslAfterStatementEvent = Readonly<{
+    location: DslStatementLocation;
+    scope: DslScopeSnapshot;
+    statement: DslStmt;
+}>;
+
 export type DslEffectDescriptor = Readonly<{
     stepId: string;
     stepName: StepName;
@@ -158,6 +164,7 @@ export type DslDebugPort = {
     beforeStatement: (
         event: DslBeforeStatementEvent,
     ) => DslBeforeStatementResolution | undefined | Promise<DslBeforeStatementResolution | undefined>;
+    afterStatement?: (event: DslAfterStatementEvent) => void | Promise<void>;
     beforeEffect?: (
         event: DslBeforeEffectEvent,
     ) => DslBeforeEffectResolution | undefined | Promise<DslBeforeEffectResolution | undefined>;

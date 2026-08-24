@@ -135,6 +135,22 @@ export const createPausedDslDebugAgentTools = (
             },
         },
         {
+            name: 'debug.history',
+            label: 'debug.history',
+            description: 'Read successful DSL statement execution history and classify ProgramView paths as current, executed, or unexecuted. Repeated loop executions retain their loop iteration frames. This is a pure read.',
+            parameters: Type.Object({
+                programId: Type.Optional(Type.String({minLength: 1})),
+            }, {additionalProperties: false}),
+            execute: async (_toolCallId, params) => {
+                const current = requirePause();
+                const input = params as {programId?: string};
+                return toolResult({
+                    history: execution.history(current.continuationId, input.programId),
+                    world: current.world,
+                });
+            },
+        },
+        {
             name: 'debug.explain',
             label: 'debug.explain',
             description: 'Explain how one DSL scope path was produced. Returns query/compute/ref/checkpoint/loop provenance and recursively expands dependency paths. This is a pure read.',

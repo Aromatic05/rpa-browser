@@ -24,6 +24,8 @@ import type {DebugQuerySession} from '../query/contracts';
 import {createDebugValueProvenanceStore} from '../provenance/store';
 import {recomputeDebugValue} from '../provenance/recompute';
 import {buildDebugProgramView, type DebugProgramView} from '../program/view';
+import {createDebugStatementHistoryStore} from '../history/store';
+import {buildDebugExecutionHistory} from '../history/view';
 import {compileStatementPatch} from './patch_statement';
 import type {DebugCompensationPort} from '../transaction/compensation/contracts';
 import {executePhysicalCompensations} from '../transaction/compensation/executor';
@@ -62,6 +64,7 @@ export const createDslDebugExecutionSession = (
     const controller = createDslDebugController(options.debug);
     const journal = createDebugEffectJournal();
     const provenance = createDebugValueProvenanceStore();
+    const statementHistory = createDebugStatementHistoryStore();
     const programs = new Map<string, DebugProgramView>();
     const pendingEffectOverrides = new Map<string, DslEffectDescriptor>();
     let transaction: DebugTransaction | null = null;
@@ -78,6 +81,7 @@ export const createDslDebugExecutionSession = (
             await ensureTransaction();
             return await controller.port.beforeStatement(event);
         },
+        afterStatement: (event) => {statementHistory.record(event);},
         beforeEffect: async (event) => {
             await ensureTransaction();
             pendingEffectOverrides.delete(event.effect.stepId);
@@ -466,6 +470,21 @@ export const createDslDebugExecutionSession = (
             const program = programs.get(targetProgramId);
             if (!program) {throw new Error(`DSL debug program is unavailable: ${targetProgramId}`);}
             return program;
+        },
+        history: (continuationId: string, programId?: string) => {
+            const current = requireActive(continuationId);
+            const targetProgramId = programId ?? current.pause.location.programId;
+            const program = programs.get(targetProgramId);
+            if (!program) {throw new Error(`DSL debug program is unavailable: ${targetProgramId}`);}
+            const currentPath = current.pause.reason === 'statement'
+                && current.pause.location.programId === targetProgramId
+                ? current.pause.location.path
+                : undefined;
+            return buildDebugExecutionHistory(
+                program,
+                statementHistory.list(targetProgramId),
+                currentPath,
+            );
         },
         effects: (continuationId: string) => {
             requireActive(continuationId);

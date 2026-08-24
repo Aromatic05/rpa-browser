@@ -116,6 +116,11 @@ const executeStatements = async (
         safeLog(logger, 'debug', 'dsl.stmt.start', { index, kind: runtimeStmt.kind });
         try {
             await executeStmt(runtimeStmt, scope, ctx, port, logger, index, location);
+            await ctx.debugPort?.afterStatement?.(Object.freeze({
+                location,
+                scope: snapshotDslScope(scope),
+                statement: structuredClone(runtimeStmt),
+            }));
             safeLog(logger, 'debug', 'dsl.stmt.end', { index, kind: runtimeStmt.kind });
         } catch (error) {
             safeLog(logger, 'error', 'dsl.error', { stmtIndex: index, error: toErrorLog(error) });
