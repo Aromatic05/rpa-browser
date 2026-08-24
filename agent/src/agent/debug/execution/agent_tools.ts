@@ -302,15 +302,19 @@ export const createPausedDslDebugAgentTools = (
         {
             name: 'debug.patch_statement',
             label: 'debug.patch_statement',
-            description: 'Replace only the current unexecuted statement at a statement pause. The patch is compiled, linked and normalized in the current DSL import context. It is one-shot, does not persist to the DSL artifact, and does not rewind prior execution.',
+            description: 'Patch a statement by stable programId/path. The current statement can be replaced immediately; an already executed target returns rewind_required and a future target returns not_current. Omit programId/path to patch the current statement. The patch is one-shot and never persists the DSL.',
             parameters: Type.Object({
                 source: Type.String({minLength: 1}),
+                programId: Type.Optional(Type.String({minLength: 1})),
+                path: Type.Optional(Type.String({minLength: 1})),
             }, {additionalProperties: false}),
             execute: async (_toolCallId, params) => {
                 const current = requirePause();
+                const input = params as {source: string; programId?: string; path?: string};
                 const result = execution.patchStatement(
                     current.continuationId,
-                    (params as {source: string}).source,
+                    input.source,
+                    {programId: input.programId, path: input.path},
                 );
                 pause = result.pause;
                 terminal = null;

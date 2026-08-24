@@ -102,6 +102,21 @@ export type DslDebugPatchStatementResult =
         pause: PausedDslDebugExecution;
     }>
     | Readonly<{
+        status: 'rewind_required';
+        target: Readonly<{programId: string; path: string; executions: number}>;
+        pause: PausedDslDebugExecution;
+    }>
+    | Readonly<{
+        status: 'not_current';
+        target: Readonly<{programId: string; path: string; executions: 0}>;
+        pause: PausedDslDebugExecution;
+    }>
+    | Readonly<{
+        status: 'unknown_program' | 'unknown_path';
+        target: Readonly<{programId: string; path: string}>;
+        pause: PausedDslDebugExecution;
+    }>
+    | Readonly<{
         status: 'invalid';
         error: Readonly<{
             code: 'ERR_DSL_PATCH_INVALID' | 'ERR_DSL_PATCH_UNSUPPORTED';
@@ -135,7 +150,11 @@ export type DslDebugExecutionSession = {
         options?: DebugRollbackOptions,
     ) => Promise<DebugRollbackResult>;
     refresh: (continuationId: string) => Promise<PausedDslDebugExecution>;
-    patchStatement: (continuationId: string, source: string) => DslDebugPatchStatementResult;
+    patchStatement: (
+        continuationId: string,
+        source: string,
+        target?: Readonly<{programId?: string; path?: string}>,
+    ) => DslDebugPatchStatementResult;
     recomputeEffect: (continuationId: string) => DslDebugRecomputeEffectResult;
     crossBarrier: (continuationId: string) => Promise<DslDebugAdvanceResult>;
     advance: (continuationId: string, mode: 'continue' | 'step' | 'abort') => Promise<DslDebugAdvanceResult>;

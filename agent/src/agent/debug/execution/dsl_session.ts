@@ -166,17 +166,68 @@ export const createDslDebugExecutionSession = (
         return exposePause(active);
     };
 
-    const patchStatement = (continuationId: string, source: string) => {
+    const patchStatement = (
+        continuationId: string,
+        source: string,
+        target: Readonly<{programId?: string; path?: string}> = {},
+    ) => {
         const current = requireActive(continuationId);
-        if (current.pause.reason !== 'statement') {
+        const explicitTarget = target.programId !== undefined || target.path !== undefined;
+        if (!explicitTarget && current.pause.reason !== 'statement') {
             return Object.freeze({
                 status: 'unavailable' as const,
                 reason: 'not_statement_pause' as const,
                 pause: exposePause(current),
             });
         }
+        const targetProgramId = target.programId ?? current.pause.location.programId;
+        const targetPath = target.path ?? current.pause.location.path;
+        const program = programs.get(targetProgramId);
+        if (!program) {
+            return Object.freeze({
+                status: 'unknown_program' as const,
+                target: Object.freeze({programId: targetProgramId, path: targetPath}),
+                pause: exposePause(current),
+            });
+        }
+        const currentPath = current.pause.reason === 'statement'
+            && current.pause.location.programId === targetProgramId
+            ? current.pause.location.path
+            : undefined;
+        const point = buildDebugExecutionHistory(
+            program,
+            statementHistory.list(targetProgramId),
+            currentPath,
+        ).points.find((entry) => entry.path === targetPath);
+        if (!point) {
+            return Object.freeze({
+                status: 'unknown_path' as const,
+                target: Object.freeze({programId: targetProgramId, path: targetPath}),
+                pause: exposePause(current),
+            });
+        }
+        const isCurrent = current.pause.reason === 'statement'
+            && current.pause.location.programId === targetProgramId
+            && current.pause.location.path === targetPath;
+        if (!isCurrent) {
+            return point.executions > 0
+                ? Object.freeze({
+                    status: 'rewind_required' as const,
+                    target: Object.freeze({
+                        programId: targetProgramId,
+                        path: targetPath,
+                        executions: point.executions,
+                    }),
+                    pause: exposePause(current),
+                })
+                : Object.freeze({
+                    status: 'not_current' as const,
+                    target: Object.freeze({programId: targetProgramId, path: targetPath, executions: 0 as const}),
+                    pause: exposePause(current),
+                });
+        }
         const compiled = compileStatementPatch(
-            options.source,
+            program.source,
             source,
             options.context.entityRulesResolver,
             options.context.resolveResolver,
