@@ -10,6 +10,6 @@ test('agent implementation is grouped by responsibility instead of flat files', 
     assert.equal(entries.some((entry) => entry.isFile()), false);
     assert.deepEqual(
         entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name).sort(),
-        ['debug', 'execution', 'loop', 'model', 'service', 'tools', 'trace', 'worldview'],
+        ['debug', 'execution', 'loop', 'model', 'service', 'tools', 'trace', 'workspace', 'worldview'],
     );
 });

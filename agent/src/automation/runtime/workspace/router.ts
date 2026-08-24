@@ -21,7 +21,6 @@ import type { RunnerControl } from '../../runner/control';
 import type { TabsControl } from './tabs';
 import type { McpControl } from '../mcp/control';
 import type { EntityRulesRuntime } from '../../snapshot/rules';
-import type { AgentControl } from '../../../agent/service/control';
 
 export type WorkspaceRouterInput = {
     action: Action;
@@ -37,7 +36,7 @@ export type WorkspaceRouterDeps = {
     entityRulesRuntime: EntityRulesRuntime;
     runnerControl: RunnerControl;
     mcpControl: McpControl;
-    agentControl: AgentControl;
+    agentControl: {handle: (input: WorkspaceRouterInput) => Promise<ControlPlaneResult>};
 };
 
 export type WorkspaceRouter = {

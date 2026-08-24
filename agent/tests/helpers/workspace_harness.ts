@@ -12,6 +12,7 @@ import { createExecutionBindings } from '../../src/automation/runtime/execution/
 import type { PageRegistry } from '../../src/automation/runtime/browser/page_registry';
 import type { WorkspaceBrowserSession } from '../../src/automation/runtime/browser/browser_session';
 import type { AgentModelRuntime } from '../../src/agent/model/runtime';
+import {createWorkspaceAgentFactory} from '../../src/agent/workspace/factory';
 
 export type WorkspaceHarnessOptions = {
     recordingState?: RecordingState;
@@ -90,7 +91,7 @@ export const createWorkspaceHarness = (options: WorkspaceHarnessOptions = {}) =>
         runnerConfig: getRunnerConfig(),
         portAllocator: createPortAllocator(20000),
         dispatchAction: runStepsDeps.dispatchAction,
-        agentModelRuntime: options.agentModelRuntime,
+        agentFactory: createWorkspaceAgentFactory({modelRuntime: options.agentModelRuntime}),
         createBrowserSession: (sessionOptions): WorkspaceBrowserSession => {
             const session: WorkspaceBrowserSession = {
                 workspaceName: sessionOptions.workspaceName,

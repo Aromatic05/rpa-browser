@@ -2,6 +2,7 @@ import path from 'node:path';
 import type { Page } from 'playwright';
 import { resolvePaths } from '../../automation/runtime/browser/context_manager';
 import { createWorkspaceRegistry } from '../../automation/runtime/workspace/registry';
+import {createWorkspaceAgentFactory} from '../../agent/workspace/factory';
 import { createExecutionBindings } from '../../automation/runtime/execution/bindings';
 import { createRecordingState, cleanupRecording, ensureRecorder, isWorkspaceRecordingEnabled } from '../../automation/recording/recording';
 import { createConsoleStepSink, setRunStepsDeps } from '../../automation/runner/run_steps';
@@ -89,6 +90,7 @@ const workspaceRegistry = createWorkspaceRegistry({
     runStepsDeps,
     runnerConfig: config,
     portAllocator,
+    agentFactory: createWorkspaceAgentFactory(),
     dispatchAction: async (action) => await controlActionDispatcher.dispatch(action),
     onPageBound: (page, tabName) => { onPageBoundHook(page, tabName); },
     onBindingClosed: (tabName) => { onBindingClosedHook(tabName); },

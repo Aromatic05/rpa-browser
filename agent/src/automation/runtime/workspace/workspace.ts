@@ -17,14 +17,10 @@ import { createWorkspaceMcpService } from '../mcp/service';
 import { getLogger } from '../../../platform/logging/logger';
 import type { ExecutionBindings } from '../execution/bindings';
 import type { WorkspaceBrowserSession } from '../browser/browser_session';
+import type { WorkspaceService } from '../service/types';
+import type { WorkspaceAgentFactory } from './agent';
 import { createEntityRulesRuntime, type EntityRulesRuntime } from '../../snapshot/rules';
 import {createRunnerAnnotatorController} from '../../runner/annotator';
-import {createAgentControl, type AgentControl} from '../../../agent/service/control';
-import {createWorkspaceAgentService} from '../../../agent/service/runtime';
-import {createReactAgentRunner} from '../../../agent/execution/react_runner';
-import type {AgentModelRuntime} from '../../../agent/model/runtime';
-import type {WorkspaceMcpToolDeps} from '../mcp/tool_handlers';
-import {createWorkspaceAgentTools, readWorkspaceWorldRevision} from '../../../agent/tools/adapter';
 
 export type WorkspaceState = 'idle' | 'recording' | 'playing' | 'executing';
 
@@ -39,7 +35,7 @@ export type RuntimeWorkspace = {
     entityRules: EntityRulesRuntime;
     runner: RunnerControl;
     mcp: McpControl;
-    agent: AgentControl;
+    agent: WorkspaceService;
     router: WorkspaceRouter;
     state: WorkspaceState;
     executionOwner: symbol | null;
@@ -59,7 +55,7 @@ export type CreateRuntimeWorkspaceDeps = {
     runStepsDeps: RunStepsDeps;
     runnerConfig: RunnerConfig;
     portAllocator: PortAllocator;
-    agentModelRuntime?: AgentModelRuntime;
+    agentFactory: WorkspaceAgentFactory;
 };
 
 export const getWorkspaceState = (workspace: RuntimeWorkspace): WorkspaceState => workspace.state;
@@ -169,25 +165,15 @@ export const createRuntimeWorkspace = (deps: CreateRuntimeWorkspaceDeps): Runtim
         runWorkspaceExecution: runOwnedWorkspaceExecution,
     });
     const mcp = createMcpControl(mcpService);
-    const agentToolDeps: WorkspaceMcpToolDeps = {
-        workspace: {name: deps.name, tabs},
-        runStepsDeps: deps.runStepsDeps,
-        config: deps.runnerConfig,
-        runWorkspaceExecution: runOwnedWorkspaceExecution,
-        awaitTabPage: (tabName, timeoutMs) => tabs.awaitTabPage(tabName, timeoutMs),
-    };
-    const agentRunner = createReactAgentRunner({
-        tools: createWorkspaceAgentTools(agentToolDeps),
-        modelRuntime: deps.agentModelRuntime,
-        readWorldRevision: () => readWorkspaceWorldRevision(agentToolDeps),
-    });
-    const agentService = createWorkspaceAgentService({
+    const agentBinding = deps.agentFactory({
         workspaceName: deps.name,
+        tabs,
+        runStepsDeps: deps.runStepsDeps,
+        runnerConfig: deps.runnerConfig,
         portAllocator: deps.portAllocator,
-        runner: agentRunner,
-        log: getLogger('infra'),
+        runWorkspaceExecution: runOwnedWorkspaceExecution,
     });
-    const agent = createAgentControl(agentService);
+    const agent = agentBinding.service;
 
     const router = createWorkspaceRouter({
         tabsControl,
@@ -197,7 +183,7 @@ export const createRuntimeWorkspace = (deps: CreateRuntimeWorkspaceDeps): Runtim
         entityRulesRuntime: entityRules,
         runnerControl: runner,
         mcpControl: mcp,
-        agentControl: agent,
+        agentControl: agentBinding.control,
     });
 
     const workspace: RuntimeWorkspace = {

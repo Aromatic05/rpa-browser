@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import type { Page } from 'playwright';
 import { resolvePaths } from '../../automation/runtime/browser/context_manager';
 import { createWorkspaceRegistry } from '../../automation/runtime/workspace/registry';
+import {createWorkspaceAgentFactory} from '../../agent/workspace/factory';
 import { createExecutionBindings } from '../../automation/runtime/execution/bindings';
 import {
     createRecordingState,
@@ -139,6 +140,7 @@ workspaceRegistry = createWorkspaceRegistry({
     runStepsDeps,
     runnerConfig: config,
     portAllocator: createPortAllocator(),
+    agentFactory: createWorkspaceAgentFactory(),
     dispatchAction: async (action) => await handleAction(action),
     onPageBound: (page, bindingName) => {
         onPageBoundHook(page, bindingName);

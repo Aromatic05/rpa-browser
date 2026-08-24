@@ -24,22 +24,22 @@ export const createAgentControl = (service: WorkspaceAgentService): AgentControl
     stop: () => service.stop(),
     status: () => service.status(),
     run: (request) => service.run(request),
-    handle: async ({action, workspace}) => {
+    handle: async ({action}) => {
         switch (action.type) {
             case 'agent.start': {
-                const result = await workspace.agent.start();
+                const result = await service.start();
                 return {reply: replyAction(action, result), events: []};
             }
             case 'agent.stop': {
-                const result = await workspace.agent.stop();
+                const result = await service.stop();
                 return {reply: replyAction(action, result), events: []};
             }
             case 'agent.status': {
-                return {reply: replyAction(action, workspace.agent.status()), events: []};
+                return {reply: replyAction(action, service.status()), events: []};
             }
             case 'agent.run': {
                 try {
-                    const result = await workspace.agent.run(parseAgentRunRequest(action.payload));
+                    const result = await service.run(parseAgentRunRequest(action.payload));
                     return {reply: replyAction(action, result), events: []};
                 } catch (error) {
                     if (error instanceof AgentRequestError) {
