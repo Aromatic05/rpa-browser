@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { runDslSource } from '../../../../src/automation/dsl/runtime';
+import {createDslDebugController} from '../../../../src/automation/dsl/debug/controller';
 import { DslValidationError } from '../../../../src/program/dsl/diagnostics/errors';
 import type { DslCheckpointProvider } from '../../../../src/automation/dsl/emit';
 import type { RunStepsDeps } from '../../../../src/automation/runner/run_steps';
@@ -145,4 +146,44 @@ fill buyer with rows.0.name
 
     assert.deepEqual(result.scope.vars.rows, [{ name: 'alice' }]);
     assert.deepEqual(calls.at(-1)?.args, { nodeId: 'buyer-input', value: 'alice' });
+});
+
+test('runDslSource resumes from a saved top-level scope without replaying earlier statements', async () => {
+    let clickCalls = 0;
+    const controller = createDslDebugController({initialMode: 'step'});
+    const running = runDslSource(`
+        click input.target
+        let value = compute first(input.next)
+        output result = vars.value
+    `, {
+        workspaceName: 'ws-dsl-resume',
+        deps: {} as RunStepsDeps,
+        input: {target: {nodeId: 'should-not-run'}, next: [2]},
+        stepExecutionPort: {
+            execute: async (step) => {
+                clickCalls += 1;
+                return {stepId: step.id, ok: true, data: {clicked: true}};
+            },
+        },
+        debugPort: controller.port,
+        resume: {
+            startIndex: 1,
+            scope: {
+                input: {target: {nodeId: 'should-not-run'}, next: [2]},
+                vars: {},
+                output: {},
+            },
+        },
+    });
+
+    const pause = await controller.waitForPause();
+    assert.equal(pause.reason, 'statement');
+    assert.equal(pause.location.path, 'body.1');
+    assert.equal(clickCalls, 0);
+    controller.continue(pause.continuationId);
+
+    const result = await running;
+    assert.equal(clickCalls, 0);
+    assert.deepEqual(result.scope.vars, {value: 2});
+    assert.deepEqual(result.scope.output, {result: 2});
 });

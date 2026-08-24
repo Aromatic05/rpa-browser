@@ -27,6 +27,7 @@ const controlTools = new Set([
     'debug.abort',
     'debug.savepoint',
     'debug.rollback',
+    'debug.rewind',
 ]);
 
 export const classifyPausedDslDebugToolCall = (name: string): AgentToolClassification =>

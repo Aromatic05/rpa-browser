@@ -2,7 +2,7 @@ import {
     createDslDebugController,
     type CreateDslDebugControllerOptions,
 } from '../../../automation/dsl/debug/controller';
-import type {DslDebugPort, DslEffectDescriptor, PausedDslExecution} from '../../../automation/dsl/debug/contracts';
+import type {DslDebugPort, DslEffectDescriptor, DslValueProvenanceEvent, PausedDslExecution} from '../../../automation/dsl/debug/contracts';
 import {DslDebugAbortError} from '../../../automation/dsl/debug/errors';
 import {
     runDslSource,
@@ -40,6 +40,7 @@ import type {
     DslDebugAdvanceResult,
     DslDebugExecutionSession,
     DslDebugRecomputeEffectResult,
+    DslDebugRewindResult,
     PausedDslDebugExecution,
 } from './contracts';
 import {rebindLogicalEffectTarget} from './rebind_effect';
@@ -62,13 +63,16 @@ type ActivePause = {
 export const createDslDebugExecutionSession = (
     options: CreateDslDebugExecutionSessionOptions,
 ): DslDebugExecutionSession => {
-    const controller = createDslDebugController(options.debug);
+    let controller: ReturnType<typeof createDslDebugController>;
     const journal = createDebugEffectJournal();
     const provenance = createDebugValueProvenanceStore();
     const statementHistory = createDebugStatementHistoryStore();
     const programs = new Map<string, DebugProgramView>();
     const pendingEffectOverrides = new Map<string, DslEffectDescriptor>();
-    const executionSavepoints = new Map<string, DebugExecutionSavepoint>();
+    const executionSavepoints = new Map<string, Readonly<{
+        state: DebugExecutionSavepoint;
+        provenance: readonly DslValueProvenanceEvent[];
+    }>>();
     let transaction: DebugTransaction | null = null;
     const ensureTransaction = async (): Promise<DebugTransaction> => {
         transaction ??= createDebugTransaction(await options.worldViewSource.pin());
@@ -97,15 +101,26 @@ export const createDslDebugExecutionSession = (
             journal.finish(event, await options.worldViewSource.pin());
             await controller.port.afterEffect?.(event);
         },
-        onFailure: controller.port.onFailure,
+        onFailure: async (event) => {await controller.port.onFailure?.(event);},
         onValue: (event) => {provenance.record(event);},
         onProgram: (event) => {programs.set(event.programId, buildDebugProgramView(event));},
     };
-    const completion: Promise<RunDslSourceResult> = runDslSource(options.source, {
-        ...options.context,
-        debugPort,
-    });
+    let completion!: Promise<RunDslSourceResult>;
     let active: ActivePause | null = null;
+    const startExecution = (
+        resume?: RunDslContext['resume'],
+        forceStep = false,
+    ): void => {
+        controller = createDslDebugController(
+            forceStep ? {...options.debug, initialMode: 'step'} : options.debug,
+        );
+        completion = runDslSource(options.source, {
+            ...options.context,
+            ...(resume ? {resume} : {}),
+            debugPort,
+        });
+    };
+    startExecution(options.context.resume);
 
     const requireActive = (continuationId: string): ActivePause => {
         if (active?.pause.continuationId !== continuationId) {
@@ -507,6 +522,91 @@ export const createDslDebugExecutionSession = (
         ]);
     };
 
+
+    const rewind = async (
+        continuationId: string,
+        savepointId: string,
+    ): Promise<DslDebugRewindResult> => {
+        requireActive(continuationId);
+        const savedRuntime = executionSavepoints.get(savepointId);
+        if (!savedRuntime) {
+            return Object.freeze({
+                status: 'not_found' as const,
+                error: Object.freeze({
+                    code: 'ERR_NOT_FOUND' as const,
+                    message: `execution savepoint not found: ${savepointId}`,
+                }),
+            });
+        }
+        const saved = savedRuntime.state;
+        if (saved.reason !== 'statement') {
+            return Object.freeze({
+                status: 'unsupported_target' as const,
+                reason: 'not_statement_savepoint' as const,
+                savepoint: structuredClone(saved),
+            });
+        }
+        const match = /^body\.(\d+)$/u.exec(saved.location.path);
+        if (saved.location.programId !== 'main'
+            || saved.location.loops.length > 0
+            || saved.location.callStack.length > 0
+            || !match) {
+            return Object.freeze({
+                status: 'unsupported_target' as const,
+                reason: 'not_main_top_level' as const,
+                savepoint: structuredClone(saved),
+            });
+        }
+        const rollbackResult = await rollback(continuationId, savepointId);
+        if (rollbackResult.status !== 'restored') {
+            return Object.freeze({
+                status: 'blocked' as const,
+                reason: 'world_not_restored' as const,
+                savepoint: structuredClone(saved),
+                rollback: rollbackResult,
+            });
+        }
+
+        const startIndex = Number(match[1]);
+        const oldCompletion = completion;
+        active = null;
+        controller.abort(continuationId);
+        try {
+            await oldCompletion;
+        } catch (error) {
+            if (!(error instanceof DslDebugAbortError)) {throw error;}
+        }
+
+        statementHistory.truncate(saved.historySequence);
+        provenance.restore(savedRuntime.provenance);
+        pendingEffectOverrides.clear();
+        requireTransaction().truncateSavepoints(savepointId);
+        for (const id of [...executionSavepoints.keys()]) {
+            if (!requireTransaction().readSavepoint(id)) {executionSavepoints.delete(id);}
+        }
+
+        startExecution({scope: saved.scope, startIndex}, true);
+        const pause = await waitForPause();
+        if (pause.reason !== 'statement'
+            || pause.location.programId !== saved.location.programId
+            || pause.location.path !== saved.location.path) {
+            throw new Error(`rewind resumed at unexpected DSL location: ${pause.location.programId}/${pause.location.path}`);
+        }
+        if (!isSameWorldView(saved.world, pause.world)) {
+            return Object.freeze({
+                status: 'conflict' as const,
+                savepoint: structuredClone(saved),
+                pause,
+                conflict: Object.freeze({expected: saved.world, actual: pause.world}),
+            });
+        }
+        return Object.freeze({
+            status: 'rewound' as const,
+            savepoint: structuredClone(saved),
+            pause,
+        });
+    };
+
     return {
         waitForPause,
         query: (continuationId: string, ir: QueryIR) =>
@@ -569,26 +669,31 @@ export const createDslDebugExecutionSession = (
             const current = requireActive(continuationId);
             const savepoint = requireTransaction().savepoint(current.view, journal.list().length, name);
             const history = statementHistory.list();
-            executionSavepoints.set(savepoint.id, Object.freeze({
+            const state = Object.freeze({
                 savepoint,
                 reason: current.pause.reason,
                 location: structuredClone(current.pause.location),
                 scope: structuredClone(current.pause.scope),
                 historySequence: history.at(-1)?.sequence ?? 0,
                 world: current.debug.world,
+            });
+            executionSavepoints.set(savepoint.id, Object.freeze({
+                state,
+                provenance: provenance.snapshot(),
             }));
             return savepoint;
         },
         executionSavepoint: (continuationId: string, savepointId: string) => {
             requireActive(continuationId);
             const saved = executionSavepoints.get(savepointId);
-            return saved ? structuredClone(saved) : null;
+            return saved ? structuredClone(saved.state) : null;
         },
         transactionDiff: (continuationId: string) => {
             const current = requireActive(continuationId);
             return diffWorldViews(requireTransaction().baseline, current.view);
         },
         rollback,
+        rewind,
         refresh,
         patchStatement,
         recomputeEffect,

@@ -11,6 +11,8 @@ export type DebugValueExplanation = Readonly<{
 export type DebugValueProvenanceStore = {
     record: (event: DslValueProvenanceEvent) => void;
     explain: (programId: string, path: string) => DebugValueExplanation;
+    snapshot: () => readonly DslValueProvenanceEvent[];
+    restore: (snapshot: readonly DslValueProvenanceEvent[]) => void;
 };
 
 export type DebugValueRecomputeResult =

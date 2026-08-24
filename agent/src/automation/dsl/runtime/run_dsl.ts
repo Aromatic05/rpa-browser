@@ -26,6 +26,7 @@ import type {
     DslEffectDescriptor,
     DslFailureDescriptor,
     DslLoopFrame,
+    DslScopeSnapshot,
     DslStatementLocation,
     DslValueProvenanceSource,
 } from '../debug/contracts';
@@ -51,6 +52,7 @@ export type RunDslContext = {
     debugPort?: DslDebugPort;
     debugProgramId?: string;
     debugSourceMap?: DslSourceMap;
+    resume?: Readonly<{scope: DslScopeSnapshot; startIndex: number}>;
 };
 
 export type StepExecutionPort = { execute(step: StepUnion): Promise<ExecutorStepResult> };
@@ -60,7 +62,11 @@ export type RunDslResult = {
 };
 
 export const runDsl = async (program: DslProgram, ctx: RunDslContext): Promise<RunDslResult> => {
-    const scope = createDslScope(ctx.input, ctx.failure);
+    const scope = ctx.resume ? restoreDslScope(ctx.resume.scope) : createDslScope(ctx.input, ctx.failure);
+    const startIndex = ctx.resume?.startIndex ?? 0;
+    if (!Number.isInteger(startIndex) || startIndex < 0 || startIndex > program.body.length) {
+        throw new DslRuntimeError(`invalid DSL resume index: ${startIndex}`, 'ERR_DSL_BAD_RESUME');
+    }
     const taskRunner = ctx.stepExecutionPort ? undefined : createDslTaskRunner({
         workspaceName: ctx.workspaceName, deps: ctx.deps, stopOnError: true,
     });
@@ -76,7 +82,7 @@ export const runDsl = async (program: DslProgram, ctx: RunDslContext): Promise<R
 
     await taskRunner?.start();
     try {
-        await executeStatements(program.body, scope, ctx, port, logger, {blockPath: 'body', loops: []});
+        await executeStatements(program.body, scope, ctx, port, logger, {blockPath: 'body', loops: [], startIndex});
     } finally {
         await taskRunner?.close();
     }
@@ -90,9 +96,9 @@ const executeStatements = async (
     ctx: RunDslContext,
     port: StepExecutionPort,
     logger: Logger,
-    execution: {blockPath: string; loops: readonly DslLoopFrame[]},
+    execution: {blockPath: string; loops: readonly DslLoopFrame[]; startIndex?: number},
 ): Promise<void> => {
-    for (let index = 0; index < body.length; index += 1) {
+    for (let index = execution.startIndex ?? 0; index < body.length; index += 1) {
         const stmt = body[index];
         const path = `${execution.blockPath}.${index}`;
         const source = ctx.debugSourceMap?.[path];
@@ -598,3 +604,10 @@ const safeLog = (logger: Logger, level: 'debug' | 'error', event: string, payloa
         // Logging must never affect DSL execution.
     }
 };
+
+const restoreDslScope = (snapshot: DslScopeSnapshot): DslScope => ({
+    input: structuredClone(snapshot.input),
+    ...(snapshot.failure ? {failure: Object.freeze(structuredClone(snapshot.failure))} : {}),
+    vars: structuredClone(snapshot.vars),
+    output: structuredClone(snapshot.output),
+});

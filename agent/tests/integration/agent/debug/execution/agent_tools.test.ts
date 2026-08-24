@@ -100,6 +100,7 @@ test('paused DSL Agent tools split pure debugger reads from execution effects', 
         'debug.transaction_diff',
         'debug.savepoint',
         'debug.rollback',
+        'debug.rewind',
         'debug.world',
         'debug.refresh',
         'debug.patch_statement',
@@ -116,6 +117,7 @@ test('paused DSL Agent tools split pure debugger reads from execution effects', 
     }
     assert.equal(classifyPausedDslDebugToolCall('debug.savepoint'), 'control');
     assert.equal(classifyPausedDslDebugToolCall('debug.rollback'), 'control');
+    assert.equal(classifyPausedDslDebugToolCall('debug.rewind'), 'control');
     assert.equal(classifyPausedDslDebugToolCall('debug.patch_statement'), 'control');
     assert.equal(classifyPausedDslDebugToolCall('debug.recompute_effect'), 'control');
     assert.equal(classifyPausedDslDebugToolCall('debug.cross_barrier'), 'control');

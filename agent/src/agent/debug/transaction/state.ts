@@ -32,6 +32,11 @@ export const createDebugTransaction = (baseline: WorldView): DebugTransaction =>
             return savepoint;
         },
         readSavepoint: (savepointId) => savepoints.find((entry) => entry.savepoint.id === savepointId) ?? null,
+        truncateSavepoints: (savepointId) => {
+            const index = savepoints.findIndex((entry) => entry.savepoint.id === savepointId);
+            if (index < 0) {throw new Error(`transaction savepoint not found: ${savepointId}`);}
+            savepoints.splice(index + 1);
+        },
         snapshot: (current, effectCount) => {
             assertEffectPosition(effectCount);
             return Object.freeze({

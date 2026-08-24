@@ -23,6 +23,7 @@ export type DebugTransaction = {
     readonly baseline: WorldView;
     savepoint: (world: WorldView, effectSequence: number, name?: string) => DebugSavepoint;
     readSavepoint: (id: string) => Readonly<{savepoint: DebugSavepoint; world: WorldView}> | null;
+    truncateSavepoints: (id: string) => void;
     snapshot: (current: WorldView, effectCount: number) => DebugTransactionSnapshot;
 };
 

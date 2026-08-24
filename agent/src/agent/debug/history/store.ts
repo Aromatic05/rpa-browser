@@ -19,5 +19,12 @@ export const createDebugStatementHistoryStore = (): DebugStatementHistoryStore =
                 .filter((record) => !programId || record.location.programId === programId)
                 .map((record) => structuredClone(record)),
         ),
+        truncate: (targetSequence) => {
+            if (!Number.isInteger(targetSequence) || targetSequence < 0 || targetSequence > sequence) {
+                throw new Error(`invalid statement history sequence: ${targetSequence}`);
+            }
+            while (records.length > 0 && records.at(-1)!.sequence > targetSequence) {records.pop();}
+            sequence = targetSequence;
+        },
     });
 };

@@ -40,5 +40,12 @@ export const createDebugValueProvenanceStore = (): DebugValueProvenanceStore => 
             records.set(keyOf(event.location.programId, event.target), structuredClone(event));
         },
         explain: (programId, path) => explain(programId, path),
+        snapshot: () => Object.freeze([...records.values()].map((event) => structuredClone(event))),
+        restore: (snapshot) => {
+            records.clear();
+            for (const event of snapshot) {
+                records.set(keyOf(event.location.programId, event.target), structuredClone(event));
+            }
+        },
     };
 };

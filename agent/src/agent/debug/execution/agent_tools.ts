@@ -283,6 +283,24 @@ export const createPausedDslDebugAgentTools = (
             },
         },
         {
+            name: 'debug.rewind',
+            label: 'debug.rewind',
+            description: 'Rewind retained DSL execution to a saved execution point. The first implementation supports statement savepoints at main/body.N only and requires the World to be strictly restored; effects after the savepoint block rewind. A successful rewind returns a new continuation paused at the saved statement.',
+            parameters: Type.Object({
+                savepointId: Type.String({minLength: 1}),
+            }, {additionalProperties: false}),
+            execute: async (_toolCallId, params) => {
+                const current = requirePause();
+                const input = params as {savepointId: string};
+                const result = await execution.rewind(current.continuationId, input.savepointId);
+                if (result.status === 'rewound' || result.status === 'conflict') {
+                    pause = result.pause;
+                    terminal = null;
+                }
+                return toolResult(result);
+            },
+        },
+        {
             name: 'debug.world',
             label: 'debug.world',
             description: 'Read the pinned WorldView descriptor for the current paused continuation.',

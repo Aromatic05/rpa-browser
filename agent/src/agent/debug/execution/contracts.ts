@@ -85,6 +85,35 @@ export type DebugExecutionSavepoint = Readonly<{
     world: WorldViewDescriptor;
 }>;
 
+
+export type DslDebugRewindResult =
+    | Readonly<{
+        status: 'rewound';
+        savepoint: DebugExecutionSavepoint;
+        pause: Extract<PausedDslDebugExecution, {reason: 'statement'}>;
+    }>
+    | Readonly<{
+        status: 'not_found';
+        error: Readonly<{code: 'ERR_NOT_FOUND'; message: string}>;
+    }>
+    | Readonly<{
+        status: 'unsupported_target';
+        reason: 'not_statement_savepoint' | 'not_main_top_level';
+        savepoint: DebugExecutionSavepoint;
+    }>
+    | Readonly<{
+        status: 'blocked';
+        reason: 'world_not_restored';
+        savepoint: DebugExecutionSavepoint;
+        rollback: DebugRollbackResult;
+    }>
+    | Readonly<{
+        status: 'conflict';
+        savepoint: DebugExecutionSavepoint;
+        pause: Extract<PausedDslDebugExecution, {reason: 'statement'}>;
+        conflict: DslDebugWorldConflict;
+    }>;
+
 export type DslDebugRecomputeEffectResult =
     | Readonly<{
         status: 'recomputed';
@@ -160,6 +189,7 @@ export type DslDebugExecutionSession = {
         savepointId: string,
         options?: DebugRollbackOptions,
     ) => Promise<DebugRollbackResult>;
+    rewind: (continuationId: string, savepointId: string) => Promise<DslDebugRewindResult>;
     refresh: (continuationId: string) => Promise<PausedDslDebugExecution>;
     patchStatement: (
         continuationId: string,
