@@ -9,9 +9,9 @@ const readAgent = (relativePath: string) => fs.readFileSync(path.join(agentRoot,
 const readRepository = (relativePath: string) => fs.readFileSync(path.join(repositoryRoot, relativePath), 'utf8');
 
 test('workspace runtime owns browser session boundaries', () => {
-    const workspaceSrc = readAgent('src/runtime/workspace/workspace.ts');
-    const registrySrc = readAgent('src/runtime/workspace/registry.ts');
-    const indexSrc = readAgent('src/index.ts');
+    const workspaceSrc = readAgent('src/app/runtime/workspace/workspace.ts');
+    const registrySrc = readAgent('src/app/runtime/workspace/registry.ts');
+    const indexSrc = readAgent('src/app/entrypoints/agent.ts');
 
     assert.match(workspaceSrc, /browserSession: WorkspaceBrowserSession/);
     assert.match(registrySrc, /userDataRoot/);
@@ -22,7 +22,7 @@ test('workspace runtime owns browser session boundaries', () => {
 
 test('setActive actions are forwarded through workspace browser session', () => {
     const workspaceGatewaySrc = readAgent('src/interface/actions/workspace_gateway.ts');
-    const controlPlaneSrc = readAgent('src/runtime/control_plane.ts');
+    const controlPlaneSrc = readAgent('src/app/runtime/control_plane.ts');
 
     assert.match(workspaceGatewaySrc, /action\.type === 'tab\.setActive'[\s\S]*workspace\.browserSession\.emit\(action\)/);
     assert.match(controlPlaneSrc, /case 'workspace\.setActive'[\s\S]*target\.browserSession\.emit\(action\)/);

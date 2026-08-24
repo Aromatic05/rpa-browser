@@ -16,7 +16,7 @@ workspace
 
 ## Workspace service lifecycle
 
-Each workspace carries a `serviceLifecycle` (see `agent/src/runtime/service.ts`).
+Each workspace carries a `serviceLifecycle` (see `agent/src/app/runtime/service.ts`).
 Services expose `start()`, `stop()`, and `status()`. The lifecycle manages a flat
 set of services identified by `WorkspaceServiceName`.
 
@@ -26,27 +26,27 @@ Status values: `stopped`, `starting`, `running`, `stopping`, `failed`.
 
 ## Port allocator
 
-`agent/src/runtime/port_allocator.ts` maps `(workspaceName, serviceName)` to a
+`agent/src/app/runtime/port_allocator.ts` maps `(workspaceName, serviceName)` to a
 port. It detects port conflicts, auto-increments, and releases ports on `stop()`.
 The allocator has no MCP or agent knowledge and does not start servers.
 
 ## workspace.mcp
 
 The MCP implementation belongs entirely to `workspace.mcp` — there is no
-standalone global MCP server. The legacy global MCP server (`agent/src/mcp/server.ts`)
+standalone global MCP server. The legacy global MCP server (`agent/src/interface/mcp/server.ts`)
 has been deleted.
 
-`agent/src/mcp/service.ts` + `agent/src/mcp/runtime.ts` form the MCP service.
+`agent/src/interface/mcp/service.ts` + `agent/src/interface/mcp/runtime.ts` form the MCP service.
 It uses the port allocator, creates a workspace-scoped MCP server via
-`agent/src/mcp/server_runtime.ts`, and registers with `workspace.serviceLifecycle`.
+`agent/src/interface/mcp/server_runtime.ts`, and registers with `workspace.serviceLifecycle`.
 
-`agent/src/mcp/control.ts` handles `mcp.start`, `mcp.stop`, `mcp.status`.
+`agent/src/interface/mcp/control.ts` handles `mcp.start`, `mcp.stop`, `mcp.status`.
 These are **workspace actions** — they require `workspaceName` in the action
 envelope and reject `payload.workspaceName`.
 
 ### Tool handlers
 
-MCP tool handlers are defined in `agent/src/mcp/tool_handlers.ts`.
+MCP tool handlers are defined in `agent/src/interface/mcp/tool_handlers.ts`.
 They are workspace-scoped:
 
 - The only deps type is `WorkspaceMcpToolDeps`, with `workspace: RuntimeWorkspace`
@@ -66,11 +66,11 @@ matching tab exists. The bootstrap boundary is:
 - `WorkspaceMcpToolDeps.getPage` — optional field that carries the workspace
   `getPage` into tool handlers. When absent, tab bootstrap throws
   `"cannot bootstrap tab: getPage not provided"`.
-- `createWorkspaceMcpRuntime` (in `agent/src/mcp/runtime.ts`) passes
+- `createWorkspaceMcpRuntime` (in `agent/src/interface/mcp/runtime.ts`) passes
   `deps.workspace.getPage` to `createWorkspaceToolHandlers`, wiring the
   workspace-scoped page acquisition into MCP tool handlers.
 
-Bootstrap flow (`resolveOrBootstrapScopeWs` in `agent/src/mcp/tool_handlers.ts`):
+Bootstrap flow (`resolveOrBootstrapScopeWs` in `agent/src/interface/mcp/tool_handlers.ts`):
 
 1. If `tabName` is given and the tab exists in `workspace.tabRegistry`, set
    it as active and return.
@@ -102,12 +102,12 @@ action types — only `mcp.*` actions are the action-level surface;
 
 ### Tool registry
 
-`agent/src/mcp/tool_registry.ts` uses `createWorkspaceToolHandlers` and
+`agent/src/interface/mcp/tool_registry.ts` uses `createWorkspaceToolHandlers` and
 `WorkspaceMcpToolDeps`. The `browser.*` tool specs are unchanged.
 
 ## mcp_main.ts
 
-`agent/src/mcp_main.ts` is the standalone entry point for workspace.mcp.
+`agent/src/app/entrypoints/mcp.ts` is the standalone entry point for workspace.mcp.
 It creates a port allocator, a `WorkspaceRegistry`, and a default workspace,
 then starts `workspace.mcp` through `workspace.serviceLifecycle.start('mcp')`.
 

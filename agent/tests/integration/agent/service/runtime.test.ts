@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createPortAllocator} from '../../../../src/runtime/service/ports';
+import {createPortAllocator} from '../../../../src/app/runtime/service/ports';
 import {createWorkspaceAgentService} from '../../../../src/agent/service/runtime';
 
 const result = {

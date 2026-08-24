@@ -1,8 +1,8 @@
 import type { Action } from './action_protocol';
 import { ActionError, unsupportedActionFailure } from './results';
-import { handleRuntimeControlAction } from '../../runtime/control_plane';
+import { handleRuntimeControlAction } from '../../app/runtime/control_plane';
 import { ERROR_CODES } from './results';
-import type { WorkspaceRegistry } from '../../runtime/workspace/registry';
+import type { WorkspaceRegistry } from '../../app/runtime/workspace/registry';
 
 export type GatewayDeps = {
     workspaceRegistry: WorkspaceRegistry;

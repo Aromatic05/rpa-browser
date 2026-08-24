@@ -63,4 +63,4 @@ pnpm test:dev-cdp
 pnpm test:agent:headed
 ```
 
-`agent/src/mcp_main.ts` 是 MCP HTTP 服务入口。Snapshot V2 和 Entity Rules V2 的运行时边界见 `docs/Runtime/`。
+`agent/src/app/entrypoints/mcp.ts` 是 MCP HTTP 服务入口。Snapshot V2 和 Entity Rules V2 的运行时边界见 `docs/Runtime/`。

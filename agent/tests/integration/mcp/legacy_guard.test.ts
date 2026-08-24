@@ -82,12 +82,12 @@ test('tool_registry.ts does not import WorkspaceRegistry', () => {
 });
 
 test('mcp_main.ts starts MCP via workspace.mcp.start', () => {
-    const content = fs.readFileSync(path.join(projectRoot, 'src/mcp_main.ts'), 'utf8');
+    const content = fs.readFileSync(path.join(projectRoot, 'src/app/entrypoints/mcp.ts'), 'utf8');
     assert.ok(content.includes('workspace.mcp.start'));
 });
 
 test('mcp_main.ts does not reference startMcpServer', () => {
-    const content = fs.readFileSync(path.join(projectRoot, 'src/mcp_main.ts'), 'utf8');
+    const content = fs.readFileSync(path.join(projectRoot, 'src/app/entrypoints/mcp.ts'), 'utf8');
     assert.ok(!content.includes('startMcpServer'));
 });
 

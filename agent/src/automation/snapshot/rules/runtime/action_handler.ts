@@ -1,7 +1,7 @@
 import { replyAction } from '../../../../interface/actions/action_protocol';
 import { ActionError, ERROR_CODES } from '../../../../interface/actions/results';
-import type { ControlPlaneResult } from '../../../../runtime/control_plane';
-import type { WorkspaceRouterInput } from '../../../../runtime/workspace/router';
+import type { ControlPlaneResult } from '../../../../app/runtime/control_plane';
+import type { WorkspaceRouterInput } from '../../../../app/runtime/workspace/router';
 import {
     entityRulesArtifactRevision,
     validateWorkflowEntityRules,

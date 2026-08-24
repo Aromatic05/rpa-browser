@@ -1,11 +1,11 @@
-import type {PortAllocator} from '../../runtime/service/ports';
+import type {PortAllocator} from '../../app/runtime/service/ports';
 import type {
     WorkspaceService,
     WorkspaceServiceStartResult,
     WorkspaceServiceStatus,
     WorkspaceServiceStatusResult,
     WorkspaceServiceStopResult,
-} from '../../runtime/service/types';
+} from '../../app/runtime/service/types';
 import type {AgentRunRequest, AgentRunResult, AgentRunner} from '../execution/types';
 import {createAgentHttpServer} from './server';
 

@@ -19,7 +19,7 @@ type JsonRpcMessage = {
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const startServer = (port: number, userDataDir: string) => {
-    return spawn(process.execPath, ['--import', 'tsx/esm', 'src/mcp_main.ts'], {
+    return spawn(process.execPath, ['--import', 'tsx/esm', 'src/app/entrypoints/mcp.ts'], {
         cwd: agentRoot,
         stdio: ['ignore', 'inherit', 'inherit'],
         env: {

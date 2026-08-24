@@ -9,7 +9,6 @@
         "build:extension": "node scripts/build_extensions.mjs",
         "dev": "exec node scripts/dev_runtime.mjs --mode=extension",
         "dev:headless": "pnpm build:extension && pnpm --filter ./agent dev:headless",
-        "mcp:demo": "pnpm --filter ./agent mcp:demo",
         "mcp": "pnpm --filter ./agent mcp",
         "mcp:hot": "pnpm --filter ./agent mcp:hot",
         "setup": "pnpm -r install && pnpm exec playwright install chromium",

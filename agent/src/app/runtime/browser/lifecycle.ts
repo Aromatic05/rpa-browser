@@ -1,11 +1,11 @@
 import crypto from 'node:crypto';
 import type { Page } from 'playwright';
-import type { Action } from '../../interface/actions/action_protocol';
-import { ACTION_TYPES } from '../../interface/actions/action_types';
+import type { Action } from '../../../interface/actions/action_protocol';
+import { ACTION_TYPES } from '../../../interface/actions/action_types';
 import type { ExecutionBindings } from '../execution/bindings';
 import type { WorkspaceRegistry } from '../workspace/registry';
-import type { RecordingState } from '../../automation/recording/recording';
-import type { Workflow } from '../../automation/workflow';
+import type { RecordingState } from '../../../automation/recording/recording';
+import type { Workflow } from '../../../automation/workflow';
 
 export type RuntimeLifecycleDeps = {
     workspaceRegistry: WorkspaceRegistry;

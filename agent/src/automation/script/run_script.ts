@@ -11,9 +11,9 @@
  */
 
 import crypto from 'crypto';
-import type { StepUnion } from '../automation/runner/steps/types';
-import type { RunStepsResult } from '../automation/runner/steps/types';
-import { runStepList } from '../automation/runner/run_steps';
+import type { StepUnion } from '../runner/steps/types';
+import type { RunStepsResult } from '../runner/steps/types';
+import { runStepList } from '../runner/run_steps';
 
 type ScriptInput = string | StepUnion[];
 

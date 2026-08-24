@@ -1,12 +1,12 @@
 import crypto from 'node:crypto';
 import type { Page } from 'playwright';
-import { replyAction } from '../../interface/actions/action_protocol';
-import { ActionError } from '../../interface/actions/results';
-import { ERROR_CODES } from '../../interface/actions/results';
+import { replyAction } from '../../../interface/actions/action_protocol';
+import { ActionError } from '../../../interface/actions/results';
+import { ERROR_CODES } from '../../../interface/actions/results';
 import type { WorkspaceRouterInput } from './router';
 import type { ControlPlaneResult } from '../control_plane';
-import { isWorkspaceRecordingEnabled, type RecordingState } from '../../automation/recording/recording';
-import { recordTabActivated, recordTabClosed, recordTabCreated } from '../../automation/recording/tab_lifecycle_recorder';
+import { isWorkspaceRecordingEnabled, type RecordingState } from '../../../automation/recording/recording';
+import { recordTabActivated, recordTabClosed, recordTabCreated } from '../../../automation/recording/tab_lifecycle_recorder';
 
 export type RuntimeTab = {
     name: string;

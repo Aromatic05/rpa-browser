@@ -1,10 +1,10 @@
 import type { Page } from 'playwright';
-import type { Action } from '../../interface/actions/action_protocol';
-import { ActionError, ERROR_CODES } from '../../interface/actions/results';
-import { createTraceTools, type BrowserAutomationTools } from '../../automation/runner/trace';
-import type { RunnerPluginHost } from '../../automation/runner/hotreload/plugin_host';
-import type { CreateTraceToolsFn } from '../../automation/runner/plugin_entry';
-import type { TraceContext, TraceHooks, TraceSink } from '../../automation/runner/trace/types';
+import type { Action } from '../../../interface/actions/action_protocol';
+import { ActionError, ERROR_CODES } from '../../../interface/actions/results';
+import { createTraceTools, type BrowserAutomationTools } from '../../../automation/runner/trace';
+import type { RunnerPluginHost } from '../../../automation/runner/hotreload/plugin_host';
+import type { CreateTraceToolsFn } from '../../../automation/runner/plugin_entry';
+import type { TraceContext, TraceHooks, TraceSink } from '../../../automation/runner/trace/types';
 import type { RuntimeWorkspace } from '../workspace/workspace';
 import type { PageRegistry } from '../browser/page_registry';
 

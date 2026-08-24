@@ -1,12 +1,12 @@
 import {replyAction} from '../../interface/actions/action_protocol';
 import {ActionError, ERROR_CODES} from '../../interface/actions/results';
-import type {ControlPlaneResult} from '../../runtime/control_plane';
-import type {WorkspaceRouterInput} from '../../runtime/workspace/router';
+import type {ControlPlaneResult} from '../../app/runtime/control_plane';
+import type {WorkspaceRouterInput} from '../../app/runtime/workspace/router';
 import type {
     WorkspaceServiceStartResult,
     WorkspaceServiceStatusResult,
     WorkspaceServiceStopResult,
-} from '../../runtime/service/types';
+} from '../../app/runtime/service/types';
 import {AgentRequestError, parseAgentRunRequest} from '../execution/request';
 import type {AgentRunRequest, AgentRunResult} from '../execution/types';
 import type {WorkspaceAgentService} from './runtime';

@@ -1,14 +1,14 @@
 import { createRuntimeWorkspace, type RuntimeWorkspace } from './workspace';
-import type { Workflow } from '../../automation/workflow';
-import type { RecordingState } from '../../automation/recording/recording';
-import type { ReplayOptions } from '../../automation/recording/replay';
-import type { RunStepsDeps } from '../../automation/runner/run_steps';
-import type { RunnerConfig } from '../../config';
-import type { Action } from '../../interface/actions/action_protocol';
+import type { Workflow } from '../../../automation/workflow';
+import type { RecordingState } from '../../../automation/recording/recording';
+import type { ReplayOptions } from '../../../automation/recording/replay';
+import type { RunStepsDeps } from '../../../automation/runner/run_steps';
+import type { RunnerConfig } from '../../../config';
+import type { Action } from '../../../interface/actions/action_protocol';
 import type { PortAllocator } from '../service/ports';
 import type { ExecutionBindings } from '../execution/bindings';
 import { createWorkspaceBrowserSession, type CreateWorkspaceBrowserSessionOptions, type WorkspaceBrowserSession } from '../browser/browser_session';
-import type {AgentModelRuntime} from '../../agent/model/runtime';
+import type {AgentModelRuntime} from '../../../agent/model/runtime';
 
 export type { RuntimeWorkspace };
 

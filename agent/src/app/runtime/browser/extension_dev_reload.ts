@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import chokidar, {type FSWatcher} from 'chokidar';
 import type {BrowserContext, CDPSession, Page, Worker} from 'playwright';
-import {getLogger} from '../../logging/logger';
+import {getLogger} from '../../../logging/logger';
 
 export type ExtensionBuildInfo = {
     buildId: string;

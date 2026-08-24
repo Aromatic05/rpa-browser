@@ -2,7 +2,7 @@
 
 ## 概述
 
-本文档定义 workflow artifact 的目录、字段、落盘与兼容规则。该契约对应 `agent/src/workflow/*`、`agent/src/actions/workflow.ts`、`agent/src/record/persistence.ts` 的当前实现。
+本文档定义 workflow artifact 的目录、字段、落盘与兼容规则。该契约对应 `agent/src/workflow/*`、`agent/src/interface/actions/workflow.ts`、`agent/src/record/persistence.ts` 的当前实现。
 
 ## 规范
 

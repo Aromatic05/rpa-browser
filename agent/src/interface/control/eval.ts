@@ -4,7 +4,7 @@ import { runDslSource } from '../../program/dsl/runtime';
 import type { DslCheckpointProvider } from '../../program/dsl/emit';
 import type { RunStepsDeps } from '../../automation/runner/run_steps';
 import type { StepResult, StepUnion } from '../../automation/runner/steps/types';
-import type { WorkspaceRegistry } from '../../runtime/workspace/registry';
+import type { WorkspaceRegistry } from '../../app/runtime/workspace/registry';
 import { runStepList } from '../../automation/runner/run_steps';
 import type { ControlEvalRequest, ControlEvalResponse } from './protocol';
 

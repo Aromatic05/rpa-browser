@@ -2,8 +2,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { sendControlEval, type ControlClientOptions } from './interface/control/client';
-import type { ControlEvalRequest } from './interface/control/protocol';
+import { sendControlEval, type ControlClientOptions } from '../../interface/control/client';
+import type { ControlEvalRequest } from '../../interface/control/protocol';
 
 const usage = `Usage:
   pnpm -C agent control --source <js> [--workspace <id>] [--input <json>] [--endpoint <endpoint>] [--timeout-ms <ms>]

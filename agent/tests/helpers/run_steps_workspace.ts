@@ -2,9 +2,9 @@ import type { Action } from '../../src/interface/actions/action_protocol';
 import type { RunStepsDeps } from '../../src/automation/runner/run_steps';
 import {PageSnapshotSessionStore} from '../../src/automation/snapshot/session';
 import {SnapshotProjectionBaselineStore} from '../../src/automation/runner/session';
-import type { ExecutionBinding } from '../../src/runtime/execution/bindings';
-import type { PageRegistry } from '../../src/runtime/browser/page_registry';
-import type { RuntimeWorkspace } from '../../src/runtime/workspace/workspace';
+import type { ExecutionBinding } from '../../src/app/runtime/execution/bindings';
+import type { PageRegistry } from '../../src/app/runtime/browser/page_registry';
+import type { RuntimeWorkspace } from '../../src/app/runtime/workspace/workspace';
 import { getRunnerConfig } from '../../src/config';
 
 export type TestExecutionBinding = Omit<Partial<ExecutionBinding>, 'page' | 'pageRegistry' | 'traceTools' | 'traceCtx'> & {

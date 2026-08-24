@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import { createWorkspaceHarness } from '../../helpers/workspace_harness';
-import { handleRuntimeControlAction } from '../../../src/runtime/control_plane';
+import { handleRuntimeControlAction } from '../../../src/app/runtime/control_plane';
 import { createWorkflowOnFs, deleteWorkflowFromFs, loadWorkflowFromFs } from '../../../src/automation/workflow';
 import { isRequestActionType } from '../../../src/interface/actions/action_types';
 import {ActionError, ERROR_CODES} from '../../../src/interface/actions/results';

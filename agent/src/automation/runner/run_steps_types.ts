@@ -1,9 +1,9 @@
 import type { StepName, StepResolve, StepResult as ExecStepResult, StepUnion } from './steps/types';
 import type { Checkpoint as RunnerCheckpoint } from './checkpoint/types';
-import type { ExecutionBindings } from '../../runtime/execution/bindings';
+import type { ExecutionBindings } from '../../app/runtime/execution/bindings';
 import type { RunnerPluginHost } from './hotreload/plugin_host';
 import type { RunnerConfig } from '../../config';
-import type { RuntimeWorkspace } from '../../runtime/workspace/workspace';
+import type { RuntimeWorkspace } from '../../app/runtime/workspace/workspace';
 import type { Action } from '../../interface/actions/action_protocol';
 import type { Page } from 'playwright';
 import type { WorkspaceEntityRulesProvider } from '../snapshot/rules';

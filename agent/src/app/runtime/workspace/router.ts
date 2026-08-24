@@ -9,19 +9,19 @@
  * - It MUST NOT directly operate on workspace.tabs or workspace.mcp.
  * - It MUST NOT handle control actions (those are routed through control_plane).
  */
-import type { Action } from '../../interface/actions/action_protocol';
-import { ActionError } from '../../interface/actions/results';
-import { ERROR_CODES } from '../../interface/actions/results';
+import type { Action } from '../../../interface/actions/action_protocol';
+import { ActionError } from '../../../interface/actions/results';
+import { ERROR_CODES } from '../../../interface/actions/results';
 import type { RuntimeWorkspace, WorkspaceRegistry } from './registry';
 import type { ControlPlaneResult } from '../control_plane';
-import type { RecordControl } from '../../automation/recording/control';
-import type { DslControl } from '../../program/dsl/control';
-import type { CheckpointControl } from '../../automation/checkpoint/control';
-import type { RunnerControl } from '../../automation/runner/control';
+import type { RecordControl } from '../../../automation/recording/control';
+import type { DslControl } from '../../../program/dsl/control';
+import type { CheckpointControl } from '../../../automation/checkpoint/control';
+import type { RunnerControl } from '../../../automation/runner/control';
 import type { TabsControl } from './tabs';
-import type { McpControl } from '../../interface/mcp/control';
-import type { EntityRulesRuntime } from '../../automation/snapshot/rules';
-import type { AgentControl } from '../../agent/service/control';
+import type { McpControl } from '../../../interface/mcp/control';
+import type { EntityRulesRuntime } from '../../../automation/snapshot/rules';
+import type { AgentControl } from '../../../agent/service/control';
 
 export type WorkspaceRouterInput = {
     action: Action;

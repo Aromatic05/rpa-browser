@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import type { WorkspaceService, WorkspaceServiceName, WorkspaceServiceStartResult, WorkspaceServiceStopResult, WorkspaceServiceStatusResult } from '../../../src/runtime/service/types';
+import type { WorkspaceService, WorkspaceServiceName, WorkspaceServiceStartResult, WorkspaceServiceStopResult, WorkspaceServiceStatusResult } from '../../../src/app/runtime/service/types';
 
 const createServiceLifecycle = (workspaceName: string) => {
     const services = new Map<WorkspaceServiceName, WorkspaceService>();

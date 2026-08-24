@@ -1,5 +1,5 @@
 import type { Locator, Page } from 'playwright';
-import type { PageRegistry } from '../../../../runtime/browser/page_registry';
+import type { PageRegistry } from '../../../../app/runtime/browser/page_registry';
 import type { Action } from '../../../../interface/actions/action_protocol';
 import type { ToolResult, TraceContext, TraceOpName } from '../types';
 

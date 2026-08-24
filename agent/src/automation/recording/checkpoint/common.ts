@@ -1,5 +1,5 @@
 import {ActionError, ERROR_CODES} from '../../../interface/actions/results';
-import type {WorkspaceRouterInput} from '../../../runtime/workspace/router';
+import type {WorkspaceRouterInput} from '../../../app/runtime/workspace/router';
 import type {StepEntityRulesControl} from '../../snapshot/rules/model';
 import {isValidStepResolve, normalizeStepResolve} from '../../runner/steps/resolve_utils';
 import type {EntityKind, StepName, StepResolve, StepUnion} from '../../runner/steps/types';
