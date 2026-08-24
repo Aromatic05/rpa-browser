@@ -6,7 +6,7 @@ import os from 'node:os';
 import test from 'node:test';
 import net from 'node:net';
 
-import {startActionWsClient} from '../../../src/actions/ws_client';
+import {startActionWsClient} from '../../../src/interface/actions/ws_client';
 import {readBrowserProfileOwner} from '../../../src/runtime/browser/cdp_launcher';
 import {
     buildStartExtensionUrl,

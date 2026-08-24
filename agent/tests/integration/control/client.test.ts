@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
-import { createControlServer, sendControlEval } from '../../../src/control';
+import { createControlServer, sendControlEval } from '../../../src/interface/control';
 
 const createTestEndpoint = (): string =>
     process.platform === 'win32'

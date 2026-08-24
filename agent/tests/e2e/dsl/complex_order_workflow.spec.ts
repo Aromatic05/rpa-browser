@@ -2,7 +2,7 @@ import {test, expect} from '@playwright/test';
 import crypto from 'node:crypto';
 import {dispatch, runStep, startAgent} from '../../helpers/e2e_multitab_helper';
 import {startFixtureServer} from '../../helpers/server';
-import type {Action} from '../../../src/actions/action_protocol';
+import type {Action} from '../../../src/interface/actions/action_protocol';
 import type {StepUnion} from '../../../src/runner/steps/types';
 
 type AgentHandle = Awaited<ReturnType<typeof startAgent>>;

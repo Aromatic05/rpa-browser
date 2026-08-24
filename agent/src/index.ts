@@ -12,16 +12,16 @@ import {
     cleanupRecording,
 } from './record/recording';
 import { setRecorderRuntimeEnabled } from './record/capture/recorder';
-import { failedAction, type Action } from './actions/action_protocol';
-import { ERROR_CODES } from './actions/results';
+import { failedAction, type Action } from './interface/actions/action_protocol';
+import { ERROR_CODES } from './interface/actions/results';
 import { createRunnerScopeRegistry } from './runner/runner_scope';
 import { createConsoleStepSink, setRunStepsDeps } from './runner/run_steps';
 import { getRunnerConfig } from './config';
 import { FileSink, createLoggingHooks, createNoopHooks } from './runner/trace';
 import { initLogger, getLogger, resolveLogPath } from './logging/logger';
 import { RunnerPluginHost } from './runner/hotreload/plugin_host';
-import { createActionDispatcher } from './actions/dispatcher';
-import { createControlServer, registerControlShutdown } from './control';
+import { createActionDispatcher } from './interface/actions/dispatcher';
+import { createControlServer, registerControlShutdown } from './interface/control';
 import { ensureWorkflowOnFs } from './workflow';
 import { createRuntimeLifecycle } from './runtime/browser/lifecycle';
 import { installRecorderEventSink } from './record/sink';

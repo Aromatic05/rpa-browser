@@ -1,5 +1,5 @@
-import { replyAction } from '../../actions/action_protocol';
-import { ActionError, ERROR_CODES } from '../../actions/results';
+import { replyAction } from '../../interface/actions/action_protocol';
+import { ActionError, ERROR_CODES } from '../../interface/actions/results';
 import type { WorkspaceRouterInput } from '../../runtime/workspace/router';
 import type { ControlPlaneResult } from '../../runtime/control_plane';
 import { runDslSource, validateDslSource } from './runtime';

@@ -7,7 +7,7 @@ import {
     buildRecordedCheckpoint,
     checkpointEntityRuleOptions,
 } from '../../../src/record/checkpoint_recording';
-import {ActionError, ERROR_CODES} from '../../../src/actions/results';
+import {ActionError, ERROR_CODES} from '../../../src/interface/actions/results';
 import {runDslSource} from '../../../src/program/dsl/runtime';
 import {runCheckpointDslBody} from '../../../src/runner/checkpoint/dsl_body';
 import {createDslEntityRulesResolver} from '../../../src/program/dsl/link';

@@ -4,7 +4,7 @@ import type { RecordingState } from '../../record/recording';
 import type { ReplayOptions } from '../../record/replay';
 import type { RunStepsDeps } from '../../runner/run_steps';
 import type { RunnerConfig } from '../../config';
-import type { Action } from '../../actions/action_protocol';
+import type { Action } from '../../interface/actions/action_protocol';
 import type { PortAllocator } from '../service/ports';
 import type { ExecutionBindings } from '../execution/bindings';
 import { createWorkspaceBrowserSession, type CreateWorkspaceBrowserSessionOptions, type WorkspaceBrowserSession } from '../browser/browser_session';

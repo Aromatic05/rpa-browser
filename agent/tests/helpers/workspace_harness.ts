@@ -6,7 +6,7 @@ import {SnapshotProjectionBaselineStore} from '../../src/runner/session';
 import {PageSnapshotSessionStore} from '../../src/snapshot';
 import type { RunStepsDeps } from '../../src/runner/run_steps';
 import { getRunnerConfig } from '../../src/config';
-import type { Action } from '../../src/actions/action_protocol';
+import type { Action } from '../../src/interface/actions/action_protocol';
 import { createPortAllocator } from '../../src/runtime/service/ports';
 import { createExecutionBindings } from '../../src/runtime/execution/bindings';
 import type { PageRegistry } from '../../src/runtime/browser/page_registry';

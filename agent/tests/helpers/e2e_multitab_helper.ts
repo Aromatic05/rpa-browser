@@ -2,9 +2,9 @@ import { spawn } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
-import { sendControlEval } from '../../src/control/client';
+import { sendControlEval } from '../../src/interface/control/client';
 import type { StepUnion } from '../../src/runner/steps/types';
-import type { Action } from '../../src/actions/action_protocol';
+import type { Action } from '../../src/interface/actions/action_protocol';
 
 export type AgentHandle = { endpoint: string; close: () => Promise<void> };
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));

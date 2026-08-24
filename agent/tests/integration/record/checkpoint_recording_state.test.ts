@@ -56,7 +56,7 @@ test('canceling checkpoint recording removes only its isolated buffer', () => {
 });
 
 import {createRecordControl} from '../../../src/record/control';
-import type {Action} from '../../../src/actions/action_protocol';
+import type {Action} from '../../../src/interface/actions/action_protocol';
 import type {WorkflowArtifact, WorkflowCheckpoint, WorkflowEntityRules} from '../../../src/workflow';
 
 const checkpointSaveAction = (payload: Record<string, unknown>): Action => ({

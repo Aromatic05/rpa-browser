@@ -8,7 +8,7 @@
  */
 
 import type { BrowserContext, Locator, Page } from 'playwright';
-import type { Action } from '../../actions/action_protocol';
+import type { Action } from '../../interface/actions/action_protocol';
 import type {
     ConsoleEntry,
     NetworkEntry,

@@ -6,7 +6,7 @@ import path from 'node:path';
 import {chromium, type Page} from 'playwright';
 import {createRunnerAnnotatorController} from '../../../src/runner/annotator';
 import {createEntityRulesRuntime} from '../../../src/snapshot/rules/runtime';
-import type {Action} from '../../../src/actions/action_protocol';
+import type {Action} from '../../../src/interface/actions/action_protocol';
 import type {Workflow} from '../../../src/workflow';
 import type {
     AnnotatorPickReply,

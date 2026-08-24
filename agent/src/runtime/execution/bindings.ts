@@ -1,6 +1,6 @@
 import type { Page } from 'playwright';
-import type { Action } from '../../actions/action_protocol';
-import { ActionError, ERROR_CODES } from '../../actions/results';
+import type { Action } from '../../interface/actions/action_protocol';
+import { ActionError, ERROR_CODES } from '../../interface/actions/results';
 import { createTraceTools, type BrowserAutomationTools } from '../../runner/trace';
 import type { RunnerPluginHost } from '../../runner/hotreload/plugin_host';
 import type { CreateTraceToolsFn } from '../../runner/plugin_entry';

@@ -4,7 +4,7 @@ import type { ExecutionBindings } from '../runtime/execution/bindings';
 import type { RunnerPluginHost } from './hotreload/plugin_host';
 import type { RunnerConfig } from '../config';
 import type { RuntimeWorkspace } from '../runtime/workspace/workspace';
-import type { Action } from '../actions/action_protocol';
+import type { Action } from '../interface/actions/action_protocol';
 import type { Page } from 'playwright';
 import type { WorkspaceEntityRulesProvider } from '../snapshot/rules';
 import type { PageSnapshotSessionPort } from '../snapshot/session';

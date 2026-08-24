@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import crypto from 'node:crypto';
-import type { Action } from '../../../src/actions/action_protocol';
+import type { Action } from '../../../src/interface/actions/action_protocol';
 import { dispatch, startAgent } from '../../helpers/e2e_multitab_helper';
 import { deleteWorkflowFromFs } from '../../../src/workflow';
 

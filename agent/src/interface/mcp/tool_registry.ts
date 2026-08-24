@@ -1,7 +1,7 @@
 import { createWorkspaceToolHandlers, type WorkspaceMcpToolDeps, type McpToolHandler } from './tool_handlers';
 import { toolInputJsonSchemas } from './schemas';
-import type { RunnerConfig, McpToolGroup } from '../config';
-import { defaultRunnerConfig } from '../config/defaults';
+import type { RunnerConfig, McpToolGroup } from '../../config';
+import { defaultRunnerConfig } from '../../config/defaults';
 
 export type ToolSpec = {
     name: string;

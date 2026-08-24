@@ -13,7 +13,7 @@ import {
     type Workflow,
     type WorkflowEntityRules,
 } from '../../../src/workflow';
-import {ActionError, ERROR_CODES} from '../../../src/actions/results';
+import {ActionError, ERROR_CODES} from '../../../src/interface/actions/results';
 
 const action = (type: string, workspaceName: string, payload?: Record<string, unknown>) => ({
     v: 1 as const,

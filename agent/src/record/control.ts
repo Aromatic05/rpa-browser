@@ -1,8 +1,8 @@
 import crypto from 'node:crypto';
-import { replyAction, type Action } from '../actions/action_protocol';
-import { ActionError } from '../actions/results';
-import { ACTION_TYPES } from '../actions/action_types';
-import { ERROR_CODES } from '../actions/results';
+import { replyAction, type Action } from '../interface/actions/action_protocol';
+import { ActionError } from '../interface/actions/results';
+import { ACTION_TYPES } from '../interface/actions/action_types';
+import { ERROR_CODES } from '../interface/actions/results';
 import type { WorkspaceRouterInput } from '../runtime/workspace/router';
 import type { ControlPlaneResult } from '../runtime/control_plane';
 import { acquireWorkspaceExecution, enterWorkspaceState, getWorkspaceState, leaveWorkspaceState, requireWorkspaceState } from '../runtime/workspace/workspace';

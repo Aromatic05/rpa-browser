@@ -4,8 +4,8 @@ import {
     getToolHandlers,
     getToolSpecs,
     type ToolSpec,
-} from '../../mcp/tool_registry';
-import type {McpToolHandler, WorkspaceMcpToolDeps} from '../../mcp/tool_handlers';
+} from '../../interface/mcp/tool_registry';
+import type {McpToolHandler, WorkspaceMcpToolDeps} from '../../interface/mcp/tool_handlers';
 import type {AgentWorldRevision} from '../trace/collector';
 import {resolveAgentBrowserToolNames} from './policy';
 

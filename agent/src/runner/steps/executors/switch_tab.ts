@@ -1,7 +1,7 @@
 import type { Step, StepResult } from '../types';
 import type { RunStepsDeps } from '../../run_steps';
 import crypto from 'node:crypto';
-import { ACTION_TYPES } from '../../../actions/action_types';
+import { ACTION_TYPES } from '../../../interface/actions/action_types';
 
 export const executeBrowserSwitchTab = async (
     step: Step<'browser.switch_tab'>,

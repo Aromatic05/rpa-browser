@@ -7,7 +7,7 @@ import {
     browserCloseTabInputSchema,
     browserSwitchTabInputSchema,
     toolInputJsonSchemas,
-} from '../../../src/mcp/schemas';
+} from '../../../src/interface/mcp/schemas';
 import type { RecordingManifest } from '../../../src/record/recording';
 import type { RecordingTabManifest } from '../../../src/record/recording';
 import type { RecordedStepEnhancement } from '../../../src/record/types';
@@ -64,7 +64,7 @@ test('mcp tool schemas expose single tabName fields', () => {
 });
 
 test('guards avoid duplicate legacy address checks', () => {
-    const dispatcherText = fs.readFileSync(path.join(ROOT, 'src/actions/dispatcher.ts'), 'utf8');
+    const dispatcherText = fs.readFileSync(path.join(ROOT, 'src/interface/actions/dispatcher.ts'), 'utf8');
     const indexText = fs.readFileSync(path.join(ROOT, 'src/index.ts'), 'utf8');
 
     assert.equal(dispatcherText.includes("'tabName' in payload"), false);

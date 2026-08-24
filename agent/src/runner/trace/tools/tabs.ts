@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { ACTION_TYPES } from '../../../actions/action_types';
+import { ACTION_TYPES } from '../../../interface/actions/action_types';
 import type { ToolsBuildContext } from './context';
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>

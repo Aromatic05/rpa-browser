@@ -8,8 +8,8 @@ import type { WorkspaceRouterInput, WorkspaceRouterDeps } from '../../../src/run
 import type { RuntimeWorkspace } from '../../../src/runtime/workspace/workspace';
 import type { WorkspaceRegistry } from '../../../src/runtime/workspace/registry';
 import type { ControlPlaneResult } from '../../../src/runtime/control_plane';
-import type { Action } from '../../../src/actions/action_protocol';
-import { replyAction } from '../../../src/actions/action_protocol';
+import type { Action } from '../../../src/interface/actions/action_protocol';
+import { replyAction } from '../../../src/interface/actions/action_protocol';
 
 const stubAction = (
     type: string,
@@ -427,7 +427,7 @@ test('TabsControl rejects inbound tab.bind', async () => {
 });
 
 // ---- McpControl boundary tests ----
-import { createMcpControl } from '../../../src/mcp/control';
+import { createMcpControl } from '../../../src/interface/mcp/control';
 import type { WorkspaceService } from '../../../src/runtime/service/types';
 
 test('McpControl handles mcp.start', async () => {

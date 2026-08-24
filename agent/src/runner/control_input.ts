@@ -1,4 +1,4 @@
-import {ActionError, ERROR_CODES} from '../actions/results';
+import {ActionError, ERROR_CODES} from '../interface/actions/results';
 import type {Checkpoint as RunnerCheckpoint} from './checkpoint';
 import {
     validateCheckpointFileForSerialization,

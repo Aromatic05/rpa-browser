@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createDslControl } from '../../../src/program/dsl/control';
-import { ActionError, toFailedAction } from '../../../src/actions/results';
+import { ActionError, toFailedAction } from '../../../src/interface/actions/results';
 import { DslValidationError } from '../../../src/program/dsl/diagnostics';
 import { completeRunStepsDeps } from '../../helpers/run_steps_workspace';
 import type { StepUnion } from '../../../src/runner/steps/types';

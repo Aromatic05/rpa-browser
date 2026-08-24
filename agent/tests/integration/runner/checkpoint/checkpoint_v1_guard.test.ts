@@ -81,7 +81,7 @@ test('artifacts guard', async () => {
 
 test('query naming guard', async () => {
     const queryContractSource = await readAgentFile('src/program/query/contracts.ts');
-    const mcpSchemaSource = await readAgentFile('src/mcp/schemas.ts');
+    const mcpSchemaSource = await readAgentFile('src/interface/mcp/schemas.ts');
 
     for (const source of [queryContractSource, mcpSchemaSource]) {
         assert.equal(source.includes('table.hasNextPage'), true);

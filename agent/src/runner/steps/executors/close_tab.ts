@@ -1,6 +1,6 @@
 import type { Step, StepResult } from '../types';
 import type { RunStepsDeps } from '../../run_steps';
-import { ACTION_TYPES } from '../../../actions/action_types';
+import { ACTION_TYPES } from '../../../interface/actions/action_types';
 import crypto from 'node:crypto';
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>

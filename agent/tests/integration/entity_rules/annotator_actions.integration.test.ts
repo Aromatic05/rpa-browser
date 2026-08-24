@@ -4,8 +4,8 @@ import crypto from 'node:crypto';
 import {chromium} from 'playwright';
 import {createRunnerAnnotatorController} from '../../../src/runner/annotator';
 import {createEntityRulesRuntime} from '../../../src/snapshot/rules/runtime';
-import {ActionError, ERROR_CODES} from '../../../src/actions/results';
-import type {Action} from '../../../src/actions/action_protocol';
+import {ActionError, ERROR_CODES} from '../../../src/interface/actions/results';
+import type {Action} from '../../../src/interface/actions/action_protocol';
 import {entityRulesArtifactRevision, type Workflow, type WorkflowArtifact, type WorkflowEntityRules} from '../../../src/workflow';
 import type {
     AnnotatorCheckReply,

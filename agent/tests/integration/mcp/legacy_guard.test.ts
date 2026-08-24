@@ -6,47 +6,47 @@ import { execSync } from 'node:child_process';
 
 const projectRoot = path.resolve(process.cwd());
 
-test('agent/src/mcp/server.ts does not exist', () => {
-    assert.equal(fs.existsSync(path.join(projectRoot, 'src/mcp/server.ts')), false);
+test('agent/src/interface/mcp/server.ts does not exist', () => {
+    assert.equal(fs.existsSync(path.join(projectRoot, 'src/interface/mcp/server.ts')), false);
 });
 
-test('agent/src/mcp/index.ts does not export startMcpServer', () => {
-    const content = fs.readFileSync(path.join(projectRoot, 'src/mcp/index.ts'), 'utf8');
+test('agent/src/interface/mcp/index.ts does not export startMcpServer', () => {
+    const content = fs.readFileSync(path.join(projectRoot, 'src/interface/mcp/index.ts'), 'utf8');
     assert.ok(!content.includes('startMcpServer'));
 });
 
-test('agent/src/mcp/index.ts does not export createMcpServer', () => {
-    const content = fs.readFileSync(path.join(projectRoot, 'src/mcp/index.ts'), 'utf8');
+test('agent/src/interface/mcp/index.ts does not export createMcpServer', () => {
+    const content = fs.readFileSync(path.join(projectRoot, 'src/interface/mcp/index.ts'), 'utf8');
     assert.ok(!content.includes('createMcpServer'));
 });
 
-test('agent/src/mcp/index.ts does not export McpToolDeps (only WorkspaceMcpToolDeps)', () => {
-    const content = fs.readFileSync(path.join(projectRoot, 'src/mcp/index.ts'), 'utf8');
+test('agent/src/interface/mcp/index.ts does not export McpToolDeps (only WorkspaceMcpToolDeps)', () => {
+    const content = fs.readFileSync(path.join(projectRoot, 'src/interface/mcp/index.ts'), 'utf8');
     assert.ok(!/(?<!Workspace)McpToolDeps/.test(content));
 });
 
 test('tool_handlers.ts does not define McpToolDeps', () => {
-    const content = fs.readFileSync(path.join(projectRoot, 'src/mcp/tool_handlers.ts'), 'utf8');
+    const content = fs.readFileSync(path.join(projectRoot, 'src/interface/mcp/tool_handlers.ts'), 'utf8');
     assert.ok(!/export type McpToolDeps\b/.test(content));
 });
 
 test('tool_handlers.ts does not import PageRegistry', () => {
-    const content = fs.readFileSync(path.join(projectRoot, 'src/mcp/tool_handlers.ts'), 'utf8');
+    const content = fs.readFileSync(path.join(projectRoot, 'src/interface/mcp/tool_handlers.ts'), 'utf8');
     assert.ok(!content.includes('PageRegistry'));
 });
 
 test('tool_handlers.ts does not import WorkspaceRegistry', () => {
-    const content = fs.readFileSync(path.join(projectRoot, 'src/mcp/tool_handlers.ts'), 'utf8');
+    const content = fs.readFileSync(path.join(projectRoot, 'src/interface/mcp/tool_handlers.ts'), 'utf8');
     assert.ok(!/WorkspaceRegistry/.test(content));
 });
 
 test('tool_handlers.ts does not export createToolHandlers', () => {
-    const content = fs.readFileSync(path.join(projectRoot, 'src/mcp/tool_handlers.ts'), 'utf8');
+    const content = fs.readFileSync(path.join(projectRoot, 'src/interface/mcp/tool_handlers.ts'), 'utf8');
     assert.ok(!/export.*createToolHandlers\b/.test(content));
 });
 
 test('tool_handlers.ts exports createWorkspaceToolHandlers', () => {
-    const content = fs.readFileSync(path.join(projectRoot, 'src/mcp/tool_handlers.ts'), 'utf8');
+    const content = fs.readFileSync(path.join(projectRoot, 'src/interface/mcp/tool_handlers.ts'), 'utf8');
     assert.ok(/export.*createWorkspaceToolHandlers/.test(content));
 });
 
@@ -67,17 +67,17 @@ test('no repo references to createMcpServer export/import', () => {
 });
 
 test('tool_registry.ts does not reference createToolHandlers', () => {
-    const content = fs.readFileSync(path.join(projectRoot, 'src/mcp/tool_registry.ts'), 'utf8');
+    const content = fs.readFileSync(path.join(projectRoot, 'src/interface/mcp/tool_registry.ts'), 'utf8');
     assert.ok(!/createToolHandlers\b/.test(content));
 });
 
 test('tool_registry.ts does not import PageRegistry', () => {
-    const content = fs.readFileSync(path.join(projectRoot, 'src/mcp/tool_registry.ts'), 'utf8');
+    const content = fs.readFileSync(path.join(projectRoot, 'src/interface/mcp/tool_registry.ts'), 'utf8');
     assert.ok(!content.includes('PageRegistry'));
 });
 
 test('tool_registry.ts does not import WorkspaceRegistry', () => {
-    const content = fs.readFileSync(path.join(projectRoot, 'src/mcp/tool_registry.ts'), 'utf8');
+    const content = fs.readFileSync(path.join(projectRoot, 'src/interface/mcp/tool_registry.ts'), 'utf8');
     assert.ok(!/WorkspaceRegistry/.test(content));
 });
 
@@ -92,7 +92,7 @@ test('mcp_main.ts does not reference startMcpServer', () => {
 });
 
 test('browser.* tool names are preserved in createWorkspaceToolHandlers map', () => {
-    const content = fs.readFileSync(path.join(projectRoot, 'src/mcp/tool_handlers.ts'), 'utf8');
+    const content = fs.readFileSync(path.join(projectRoot, 'src/interface/mcp/tool_handlers.ts'), 'utf8');
     const knownTools = [
         'browser.goto',
         'browser.go_back',
@@ -131,7 +131,7 @@ test('browser.* tool names are preserved in createWorkspaceToolHandlers map', ()
 });
 
 test('browser.* are not registered as action types', () => {
-    const content = fs.readFileSync(path.join(projectRoot, 'src/actions/action_types.ts'), 'utf8');
+    const content = fs.readFileSync(path.join(projectRoot, 'src/interface/actions/action_types.ts'), 'utf8');
     assert.ok(!content.includes("'browser.goto'"));
     assert.ok(!content.includes("'browser.click'"));
     assert.ok(!content.includes("'browser.snapshot'"));
@@ -139,7 +139,7 @@ test('browser.* are not registered as action types', () => {
 });
 
 test('all MCP tool name keys in createWorkspaceToolHandlers start with browser.', () => {
-    const content = fs.readFileSync(path.join(projectRoot, 'src/mcp/tool_handlers.ts'), 'utf8');
+    const content = fs.readFileSync(path.join(projectRoot, 'src/interface/mcp/tool_handlers.ts'), 'utf8');
     const exportBlock = content.slice(content.indexOf('export const createWorkspaceToolHandlers'));
     const toolEntries = exportBlock.match(/'([^']+)'/g) || [];
     const toolNames = toolEntries.map((e) => e.replace(/'/g, '')).filter((n) => n.startsWith('browser.'));
@@ -150,17 +150,17 @@ test('all MCP tool name keys in createWorkspaceToolHandlers start with browser.'
 });
 
 test('McpControl type does not have getLifecycle', () => {
-    const content = fs.readFileSync(path.join(projectRoot, 'src/mcp/control.ts'), 'utf8');
+    const content = fs.readFileSync(path.join(projectRoot, 'src/interface/mcp/control.ts'), 'utf8');
     assert.ok(!content.includes('getLifecycle'));
 });
 
 test('McpControl does not call serviceLifecycle', () => {
-    const content = fs.readFileSync(path.join(projectRoot, 'src/mcp/control.ts'), 'utf8');
+    const content = fs.readFileSync(path.join(projectRoot, 'src/interface/mcp/control.ts'), 'utf8');
     assert.ok(!content.includes('serviceLifecycle'));
 });
 
 test('mcp runtime passes workspace.tabs.awaitTabPage to tool handlers', () => {
-    const content = fs.readFileSync(path.join(projectRoot, 'src/mcp/runtime.ts'), 'utf8');
+    const content = fs.readFileSync(path.join(projectRoot, 'src/interface/mcp/runtime.ts'), 'utf8');
     assert.ok(content.includes('awaitTabPage'));
     assert.ok(content.includes('awaitTabPage:'));
     assert.ok(!content.includes('ensurePage'));

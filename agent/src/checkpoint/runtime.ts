@@ -1,5 +1,5 @@
-import { ActionError } from '../actions/results';
-import { ERROR_CODES } from '../actions/results';
+import { ActionError } from '../interface/actions/results';
+import { ERROR_CODES } from '../interface/actions/results';
 import type { Checkpoint } from '../runner/checkpoint';
 import type { StepResolve } from '../runner/steps/types';
 import type { Workflow, WorkflowCheckpoint, WorkflowDummy } from '../workflow';

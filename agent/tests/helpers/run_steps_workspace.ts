@@ -1,4 +1,4 @@
-import type { Action } from '../../src/actions/action_protocol';
+import type { Action } from '../../src/interface/actions/action_protocol';
 import type { RunStepsDeps } from '../../src/runner/run_steps';
 import {PageSnapshotSessionStore} from '../../src/snapshot/session';
 import {SnapshotProjectionBaselineStore} from '../../src/runner/session';

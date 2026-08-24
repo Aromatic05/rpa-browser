@@ -4,7 +4,7 @@ import {
     ControlProtocolError,
     encodeControlEvalResponse,
     parseControlEvalRequest,
-} from '../../../src/control/protocol';
+} from '../../../src/interface/control/protocol';
 
 test('parseControlEvalRequest parses a valid request', () => {
     const req = parseControlEvalRequest('{"id":"1","source":"return 1 + 1","workspaceName":"ws","timeoutMs":1200,"input":{"a":1}}');

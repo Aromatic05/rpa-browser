@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import type { Page } from 'playwright';
-import type { Action } from '../actions/action_protocol';
-import { ACTION_TYPES } from '../actions/action_types';
+import type { Action } from '../interface/actions/action_protocol';
+import { ACTION_TYPES } from '../interface/actions/action_types';
 import type { RecordingState } from './recording';
 import { setRecorderEventSink, trackWorkspaceRecordingEvent } from './recording';
 import { ingestRecorderEvent } from './pipeline/input';

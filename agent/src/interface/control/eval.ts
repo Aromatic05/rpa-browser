@@ -1,11 +1,11 @@
 import type { Action } from '../actions/action_protocol';
-import type { RunnerConfig } from '../config';
-import { runDslSource } from '../program/dsl/runtime';
-import type { DslCheckpointProvider } from '../program/dsl/emit';
-import type { RunStepsDeps } from '../runner/run_steps';
-import type { StepResult, StepUnion } from '../runner/steps/types';
-import type { WorkspaceRegistry } from '../runtime/workspace/registry';
-import { runStepList } from '../runner/run_steps';
+import type { RunnerConfig } from '../../config';
+import { runDslSource } from '../../program/dsl/runtime';
+import type { DslCheckpointProvider } from '../../program/dsl/emit';
+import type { RunStepsDeps } from '../../runner/run_steps';
+import type { StepResult, StepUnion } from '../../runner/steps/types';
+import type { WorkspaceRegistry } from '../../runtime/workspace/registry';
+import { runStepList } from '../../runner/run_steps';
 import type { ControlEvalRequest, ControlEvalResponse } from './protocol';
 
 export type ControlEvalContextDeps = {

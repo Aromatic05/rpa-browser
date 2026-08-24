@@ -1,8 +1,8 @@
 import crypto from 'node:crypto';
 import type { Page } from 'playwright';
-import { replyAction } from '../../actions/action_protocol';
-import { ActionError } from '../../actions/results';
-import { ERROR_CODES } from '../../actions/results';
+import { replyAction } from '../../interface/actions/action_protocol';
+import { ActionError } from '../../interface/actions/results';
+import { ERROR_CODES } from '../../interface/actions/results';
 import type { WorkspaceRouterInput } from './router';
 import type { ControlPlaneResult } from '../control_plane';
 import { isWorkspaceRecordingEnabled, type RecordingState } from '../../record/recording';

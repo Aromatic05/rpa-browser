@@ -1,14 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
-import { createMcpControl } from '../../../src/mcp/control';
+import { createMcpControl } from '../../../src/interface/mcp/control';
 import { createPortAllocator } from '../../../src/runtime/service/ports';
-import { createWorkspaceToolHandlers } from '../../../src/mcp/tool_handlers';
+import { createWorkspaceToolHandlers } from '../../../src/interface/mcp/tool_handlers';
 import { createWorkspaceTabs } from '../../../src/runtime/workspace/tabs';
 import type { RuntimeWorkspace } from '../../../src/runtime/workspace/workspace';
 import type { WorkspaceRegistry } from '../../../src/runtime/workspace/registry';
 import type { WorkspaceService } from '../../../src/runtime/service/types';
-import type { Action } from '../../../src/actions/action_protocol';
+import type { Action } from '../../../src/interface/actions/action_protocol';
 import type { Workflow } from '../../../src/workflow';
 
 const stubWorkflow = (name: string) => ({ name }) as Workflow;

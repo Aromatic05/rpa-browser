@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
-import {classifyActionRoute, isWorkspaceAction} from '../../../src/actions/classify';
-import {REQUEST_ACTION_TYPES, isRequestActionType} from '../../../src/actions/action_types';
-import type {Action} from '../../../src/actions/action_protocol';
+import {classifyActionRoute, isWorkspaceAction} from '../../../src/interface/actions/classify';
+import {REQUEST_ACTION_TYPES, isRequestActionType} from '../../../src/interface/actions/action_types';
+import type {Action} from '../../../src/interface/actions/action_protocol';
 
 const action = (type: string, workspaceName?: string): Action => ({
     v: 1,

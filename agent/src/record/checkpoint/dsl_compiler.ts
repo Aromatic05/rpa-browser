@@ -1,4 +1,4 @@
-import {ActionError, ERROR_CODES} from '../../actions/results';
+import {ActionError, ERROR_CODES} from '../../interface/actions/results';
 import {createDslEntityRulesResolver, createDslResolveResolver} from '../../program/dsl/link';
 import {validateDslSource} from '../../program/dsl/runtime';
 import {createWorkspaceEntityRulesProvider} from '../../snapshot/rules/runtime';
