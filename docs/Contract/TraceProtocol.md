@@ -2,7 +2,7 @@
 
 ## 概述
 
-Trace 层负责浏览器原子操作的观测与统一结果封装。核心代码：`agent/src/runner/trace/types.ts`、`trace_call.ts`、`index.ts`。
+Trace 层负责浏览器原子操作的观测与统一结果封装。核心代码：`agent/src/automation/runner/trace/types.ts`、`trace_call.ts`、`index.ts`。
 
 ## Trace 与 Step 的边界
 
