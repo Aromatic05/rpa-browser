@@ -36,6 +36,7 @@ import type {
     DebugTransaction,
 } from '../transaction/contracts';
 import type {
+    DebugExecutionSavepoint,
     DslDebugAdvanceResult,
     DslDebugExecutionSession,
     DslDebugRecomputeEffectResult,
@@ -67,6 +68,7 @@ export const createDslDebugExecutionSession = (
     const statementHistory = createDebugStatementHistoryStore();
     const programs = new Map<string, DebugProgramView>();
     const pendingEffectOverrides = new Map<string, DslEffectDescriptor>();
+    const executionSavepoints = new Map<string, DebugExecutionSavepoint>();
     let transaction: DebugTransaction | null = null;
     const ensureTransaction = async (): Promise<DebugTransaction> => {
         transaction ??= createDebugTransaction(await options.worldViewSource.pin());
@@ -565,7 +567,22 @@ export const createDslDebugExecutionSession = (
         },
         savepoint: (continuationId: string, name?: string) => {
             const current = requireActive(continuationId);
-            return requireTransaction().savepoint(current.view, journal.list().length, name);
+            const savepoint = requireTransaction().savepoint(current.view, journal.list().length, name);
+            const history = statementHistory.list();
+            executionSavepoints.set(savepoint.id, Object.freeze({
+                savepoint,
+                reason: current.pause.reason,
+                location: structuredClone(current.pause.location),
+                scope: structuredClone(current.pause.scope),
+                historySequence: history.at(-1)?.sequence ?? 0,
+                world: current.debug.world,
+            }));
+            return savepoint;
+        },
+        executionSavepoint: (continuationId: string, savepointId: string) => {
+            requireActive(continuationId);
+            const saved = executionSavepoints.get(savepointId);
+            return saved ? structuredClone(saved) : null;
         },
         transactionDiff: (continuationId: string) => {
             const current = requireActive(continuationId);

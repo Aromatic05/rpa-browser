@@ -75,6 +75,16 @@ export type DslDebugAdvanceResult =
         }>;
     }>;
 
+
+export type DebugExecutionSavepoint = Readonly<{
+    savepoint: DebugSavepoint;
+    reason: PausedDslDebugExecution['reason'];
+    location: DslStatementLocation;
+    scope: DslScopeSnapshot;
+    historySequence: number;
+    world: WorldViewDescriptor;
+}>;
+
 export type DslDebugRecomputeEffectResult =
     | Readonly<{
         status: 'recomputed';
@@ -143,6 +153,7 @@ export type DslDebugExecutionSession = {
     diff: (continuationId: string, effectSequence: number) => DebugEffectDiffResult;
     transaction: (continuationId: string) => DebugTransactionSnapshot;
     savepoint: (continuationId: string, name?: string) => DebugSavepoint;
+    executionSavepoint: (continuationId: string, savepointId: string) => DebugExecutionSavepoint | null;
     transactionDiff: (continuationId: string) => WorldViewDiffResult;
     rollback: (
         continuationId: string,

@@ -62,6 +62,13 @@ test('retained execution transaction spans effects and exposes savepoint-relativ
     assert.deepEqual(before.baseline.revision, first.revision);
     assert.deepEqual(savepoint.world.revision, first.revision);
     assert.equal(savepoint.effectSequence, 0);
+    const executionSavepoint = execution.executionSavepoint(effectPause.continuationId, savepoint.id);
+    assert.equal(executionSavepoint?.reason, 'effect');
+    assert.equal(executionSavepoint?.location.programId, 'main');
+    assert.equal(executionSavepoint?.location.path, 'body.0');
+    assert.equal(executionSavepoint?.historySequence, 0);
+    assert.deepEqual(executionSavepoint?.world.revision, first.revision);
+    assert.deepEqual(executionSavepoint?.scope.input, {target: {nodeId: 'submit'}, done: true});
 
     const next = await execution.advance(effectPause.continuationId, 'continue');
     assert.equal(next.status, 'paused');

@@ -198,6 +198,10 @@ test('paused DSL Agent tools split pure debugger reads from execution effects', 
     const saved = await savepointTool.execute('savepoint-1', {name: 'before-snapshot'});
     assert.equal((saved.details as any).savepoint.effectSequence, 0);
     assert.equal((saved.details as any).savepoint.name, 'before-snapshot');
+    assert.equal((saved.details as any).execution.savepoint.id, (saved.details as any).savepoint.id);
+    assert.equal((saved.details as any).execution.reason, 'statement');
+    assert.equal((saved.details as any).execution.location.path, 'body.0');
+    assert.equal((saved.details as any).execution.historySequence, 0);
     const rollbackTool = debuggerTools.tools.find((tool) => tool.name === 'debug.rollback')!;
     const rollback = await rollbackTool.execute('rollback-1', {
         savepointId: (saved.details as any).savepoint.id,

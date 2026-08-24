@@ -248,8 +248,10 @@ export const createPausedDslDebugAgentTools = (
             execute: async (_toolCallId, params) => {
                 const current = requirePause();
                 const input = params as {name?: string};
+                const savepoint = execution.savepoint(current.continuationId, input.name);
                 return toolResult({
-                    savepoint: execution.savepoint(current.continuationId, input.name),
+                    savepoint,
+                    execution: execution.executionSavepoint(current.continuationId, savepoint.id),
                     world: current.world,
                 });
             },
