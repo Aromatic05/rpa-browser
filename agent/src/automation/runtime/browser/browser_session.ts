@@ -3,7 +3,7 @@ import type { BrowserContext, Page, Worker } from 'playwright';
 import {getLogger} from '../../../platform/logging/logger';
 import { createContextManager } from './context_manager';
 import { createPageRegistry, type PageRegistry } from './page_registry';
-import { startActionWsClient, type ActionWsClient, type ActionWsTap } from '../../../interface/actions/ws_client';
+import { startActionWsClient, type ActionWsClient, type ActionWsTap } from '../actions/ws_client';
 import type { Action } from '../../../interface/actions/action_protocol';
 import type { WorkspaceRegistry } from '../workspace/registry';
 import type { PortAllocator } from '../service/ports';

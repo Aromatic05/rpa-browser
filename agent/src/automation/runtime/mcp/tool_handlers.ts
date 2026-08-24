@@ -1,11 +1,12 @@
 import { type z } from 'zod';
 import crypto from 'crypto';
 import type { Page } from 'playwright';
-import type { WorkspaceTabs } from '../../automation/runtime/workspace/tabs';
-import type { RunnerConfig } from '../../platform/config';
-import { runStepList } from '../../automation/runner/run_steps';
-import type { RunStepsDeps } from '../../automation/runner/run_steps_types';
-import type { StepUnion } from '../../automation/runner/steps/types';
+import type { WorkspaceTabs } from '../workspace/tabs';
+import type { RunnerConfig } from '../../../platform/config';
+import { runStepList } from '../../runner/run_steps';
+import type { RunStepsDeps } from '../../runner/run_steps_types';
+import type { StepUnion } from '../../runner/steps/types';
+import type {McpToolHandler} from '../../../interface/mcp/contracts';
 import {
     browserClickInputSchema,
     browserGotoInputSchema,
@@ -61,7 +62,7 @@ import {
     type BrowserQueryInput,
     browserBatchInputSchema,
     type BrowserBatchInput,
-} from './schemas';
+} from '../../../interface/mcp/schemas';
 
 export type WorkspaceMcpToolDeps = {
     workspace: { name: string; tabs: WorkspaceTabs };
@@ -71,8 +72,6 @@ export type WorkspaceMcpToolDeps = {
     awaitTabPage?: (tabName: string, timeoutMs: number) => Promise<Page>;
     runWorkspaceExecution?: <T>(actionType: string, run: () => Promise<T>) => Promise<T>;
 };
-
-export type McpToolHandler = (args: unknown) => Promise<{ ok: boolean; results: unknown[]; trace?: unknown; error?: unknown }>;
 
 const parseInput = <T>(schema: z.ZodType<T>, input: unknown) => {
     const parsed = schema.safeParse(input);

@@ -1,11 +1,11 @@
 import crypto from 'node:crypto';
-import type { Action } from './action_protocol';
-import { replyAction } from './action_protocol';
-import { ActionError } from './results';
-import { ERROR_CODES } from './results';
-import type { RuntimeWorkspace } from '../../automation/runtime/workspace/workspace';
+import type { Action } from '../../../interface/actions/action_protocol';
+import { replyAction } from '../../../interface/actions/action_protocol';
+import { ActionError } from '../../../interface/actions/results';
+import { ERROR_CODES } from '../../../interface/actions/results';
+import type { RuntimeWorkspace } from '../workspace/workspace';
 import type { GatewayDeps } from './control_gateway';
-import { toFailedAction } from './results';
+import { toFailedAction } from '../../../interface/actions/results';
 
 const requireWorkspaceName = (action: Action): string => {
     const workspaceName = action.workspaceName?.trim();

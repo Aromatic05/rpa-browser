@@ -427,7 +427,7 @@ test('TabsControl rejects inbound tab.bind', async () => {
 });
 
 // ---- McpControl boundary tests ----
-import { createMcpControl } from '../../../src/interface/mcp/control';
+import { createMcpControl } from '../../../src/automation/runtime/mcp/control';
 import type { WorkspaceService } from '../../../src/automation/runtime/service/types';
 
 test('McpControl handles mcp.start', async () => {

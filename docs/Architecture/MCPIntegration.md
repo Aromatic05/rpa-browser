@@ -10,7 +10,7 @@ MCP 集成是 agent 对外工具调用通道，负责 schema 校验、tool 映�
 
 - `agent/src/app/entrypoints/mcp.ts`：启动上下文、runner、control、MCP HTTP。
 - `agent/src/interface/mcp/server.ts`：initialize/tools/list/tools/call。
-- `agent/src/interface/mcp/tool_handlers.ts`：工具到 Step 的转换。
+- `agent/src/automation/runtime/mcp/tool_handlers.ts`：工具到 Step 的转换。
 
 ### 调用链
 

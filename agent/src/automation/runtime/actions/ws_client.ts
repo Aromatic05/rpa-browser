@@ -1,10 +1,10 @@
 import crypto from 'node:crypto';
 import {createServer} from 'node:http';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { failedAction, isFailedAction, type Action } from './action_protocol';
-import { ERROR_CODES } from './results';
-import { isRequestActionType, isDerivedEventActionType, ACTION_TYPES } from './action_types';
-import type { WorkspaceRegistry } from '../../automation/runtime/workspace/registry';
+import { failedAction, isFailedAction, type Action } from '../../../interface/actions/action_protocol';
+import { ERROR_CODES } from '../../../interface/actions/results';
+import { isRequestActionType, isDerivedEventActionType, ACTION_TYPES } from '../../../interface/actions/action_types';
+import type { WorkspaceRegistry } from '../workspace/registry';
 
 export type ActionWsTap = (stage: string, data: Record<string, unknown>) => void;
 

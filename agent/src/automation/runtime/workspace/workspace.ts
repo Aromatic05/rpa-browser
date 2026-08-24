@@ -4,7 +4,7 @@ import { createRecordControl, type RecordControl } from '../../recording/control
 import { createDslControl, type DslControl } from '../../dsl/control';
 import { createCheckpointControl, type CheckpointControl } from '../../checkpoint/control';
 import { createRunnerControl, type RunnerControl } from '../../runner/control';
-import { createMcpControl, type McpControl } from '../../../interface/mcp/control';
+import { createMcpControl, type McpControl } from '../mcp/control';
 import { createWorkspaceRouter, type WorkspaceRouter } from './router';
 import type { RecordingState } from '../../recording/recording';
 import type { ReplayOptions } from '../../recording/replay';
@@ -13,7 +13,7 @@ import type { RunnerConfig } from '../../../platform/config';
 import type { Action } from '../../../interface/actions/action_protocol';
 import { ActionError, ERROR_CODES } from '../../../interface/actions/results';
 import type { PortAllocator } from '../service/ports';
-import { createWorkspaceMcpService } from '../../../interface/mcp/service';
+import { createWorkspaceMcpService } from '../mcp/service';
 import { getLogger } from '../../../platform/logging/logger';
 import type { ExecutionBindings } from '../execution/bindings';
 import type { WorkspaceBrowserSession } from '../browser/browser_session';
@@ -23,7 +23,7 @@ import {createAgentControl, type AgentControl} from '../../../agent/service/cont
 import {createWorkspaceAgentService} from '../../../agent/service/runtime';
 import {createReactAgentRunner} from '../../../agent/execution/react_runner';
 import type {AgentModelRuntime} from '../../../agent/model/runtime';
-import type {WorkspaceMcpToolDeps} from '../../../interface/mcp/tool_handlers';
+import type {WorkspaceMcpToolDeps} from '../mcp/tool_handlers';
 import {createWorkspaceAgentTools, readWorkspaceWorldRevision} from '../../../agent/tools/adapter';
 
 export type WorkspaceState = 'idle' | 'recording' | 'playing' | 'executing';

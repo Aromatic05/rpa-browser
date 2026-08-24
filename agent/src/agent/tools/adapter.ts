@@ -1,11 +1,9 @@
 import {Type} from '@earendil-works/pi-ai';
 import type {AgentTool} from '@earendil-works/pi-agent-core';
-import {
-    getToolHandlers,
-    getToolSpecs,
-    type ToolSpec,
-} from '../../interface/mcp/tool_registry';
-import type {McpToolHandler, WorkspaceMcpToolDeps} from '../../interface/mcp/tool_handlers';
+import {getToolSpecs, type ToolSpec} from '../../interface/mcp/tool_registry';
+import type {McpToolHandler} from '../../interface/mcp/contracts';
+import type {WorkspaceMcpToolDeps} from '../../automation/runtime/mcp/tool_handlers';
+import {getToolHandlers} from '../../automation/runtime/mcp/tool_registry';
 import type {AgentWorldRevision} from '../trace/collector';
 import {resolveAgentBrowserToolNames} from './policy';
 

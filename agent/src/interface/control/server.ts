@@ -1,15 +1,17 @@
-import { runControlEval, type ControlEvalContextDeps } from './eval';
 import {
     ControlProtocolError,
     encodeControlEvalResponse,
     parseControlEvalRequest,
+    type ControlEvalRequest,
     type ControlEvalResponse,
 } from './protocol';
 import { createControlTransport } from './transport';
 
+export type ControlEvalHandler = (request: ControlEvalRequest) => Promise<ControlEvalResponse>;
+
 export type ControlServerOptions = {
     endpoint?: string;
-    evalContext: ControlEvalContextDeps;
+    evaluate: ControlEvalHandler;
 };
 
 export type ControlServer = {
@@ -67,7 +69,7 @@ export const createControlServer = (options: ControlServerOptions): ControlServe
                         let response: ControlEvalResponse;
                         try {
                             const request = parseControlEvalRequest(line);
-                            response = await runControlEval(request, options.evalContext);
+                            response = await options.evaluate(request);
                         } catch (error) {
                             response =
                                 error instanceof ControlProtocolError

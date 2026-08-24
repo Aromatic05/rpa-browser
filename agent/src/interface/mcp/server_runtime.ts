@@ -9,7 +9,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { ERROR_CODES } from '../actions/results';
 import { errorResult } from '../actions/results';
-import type { McpToolHandler } from './tool_handlers';
+import type { McpToolHandler } from './contracts';
 import type { ToolSpec } from './tool_registry';
 
 const isDebugMode = (): boolean => /^(1|true|on)$/i.test((process.env.RPA_MCP_DEBUG ?? '').trim());

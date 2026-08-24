@@ -1,12 +1,12 @@
-import type { WorkspaceServiceStatus } from '../../automation/runtime/service/types';
-import type { PortAllocator } from '../../automation/runtime/service/ports';
-import type { WorkspaceTabs } from '../../automation/runtime/workspace/tabs';
-import type { RunStepsDeps } from '../../automation/runner/run_steps_types';
-import type { RunnerConfig } from '../../platform/config';
+import type { WorkspaceServiceStatus } from '../service/types';
+import type { PortAllocator } from '../service/ports';
+import type { WorkspaceTabs } from '../workspace/tabs';
+import type { RunStepsDeps } from '../../runner/run_steps_types';
+import type { RunnerConfig } from '../../../platform/config';
 import { createWorkspaceToolHandlers } from './tool_handlers';
-import { resolveEnabledToolNames, getToolSpecs } from './tool_registry';
-import { createMcpHttpServer } from './server_runtime';
-import type { McpToolHandler } from './tool_handlers';
+import { resolveEnabledToolNames, getToolSpecs } from '../../../interface/mcp/tool_registry';
+import { createMcpHttpServer } from '../../../interface/mcp/server_runtime';
+import type { McpToolHandler } from '../../../interface/mcp/contracts';
 
 export type WorkspaceMcpRuntime = {
     start: () => Promise<{ port: number; status: WorkspaceServiceStatus }>;

@@ -9,8 +9,10 @@ import { getRunnerConfig } from '../../platform/config';
 import { FileSink, createLoggingHooks, createNoopHooks } from '../../automation/runner/trace';
 import { getLogger, initLogger, resolveLogPath } from '../../platform/logging/logger';
 import { RunnerPluginHost } from '../../automation/runner/hotreload/plugin_host';
-import { createActionDispatcher } from '../../interface/actions/dispatcher';
+import { createActionDispatcher } from '../../automation/runtime/actions/dispatcher';
+import type {Action} from '../../interface/actions/action_protocol';
 import { createControlServer, registerControlShutdown } from '../../interface/control';
+import {runControlEval} from '../../automation/runtime/control/eval';
 import { ensureWorkflowOnFs } from '../../automation/workflow';
 import { createPortAllocator } from '../../automation/runtime/service/ports';
 import type { RunStepsDeps } from '../../automation/runner/run_steps_types';
@@ -127,21 +129,22 @@ const controlActionDispatcher = createActionDispatcher({
     log: (...args: unknown[]) => { actionLog.info('[RPA:mcp:action]', ...args); },
 });
 runStepsDeps.dispatchAction = async (action) => await controlActionDispatcher.dispatch(action);
-const controlServer = createControlServer({
-    evalContext: {
-        deps: runStepsDeps,
-        workspaceRegistry,
-        config,
-        dispatch: async (action) => await controlActionDispatcher.dispatch(action),
-        resolveWorkspace: (workspaceName: string) => workspaceRegistry.getWorkspace(workspaceName),
-        checkpointProvider: (workspaceName: string) => {
-            const workspace = workspaceRegistry.getWorkspace(workspaceName);
-            if (!workspace) {
-                return undefined;
-            }
-            return workspace.checkpoint.getProvider(workspace.workflow);
-        },
+const controlEvalContext = {
+    deps: runStepsDeps,
+    workspaceRegistry,
+    config,
+    dispatch: async (action: Action) => await controlActionDispatcher.dispatch(action),
+    resolveWorkspace: (workspaceName: string) => workspaceRegistry.getWorkspace(workspaceName),
+    checkpointProvider: (workspaceName: string) => {
+        const workspace = workspaceRegistry.getWorkspace(workspaceName);
+        if (!workspace) {
+            return undefined;
+        }
+        return workspace.checkpoint.getProvider(workspace.workflow);
     },
+};
+const controlServer = createControlServer({
+    evaluate: async (request) => await runControlEval(request, controlEvalContext),
 });
 registerControlShutdown({
     close: async () => {

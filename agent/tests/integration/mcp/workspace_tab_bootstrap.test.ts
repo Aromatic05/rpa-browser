@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { BrowserContext, Page } from 'playwright';
-import { createWorkspaceToolHandlers } from '../../../src/interface/mcp/tool_handlers';
+import { createWorkspaceToolHandlers } from '../../../src/automation/runtime/mcp/tool_handlers';
 import { createWorkspaceTabs } from '../../../src/automation/runtime/workspace/tabs';
 import type { RuntimeWorkspace } from '../../../src/automation/runtime/workspace/workspace';
 import { runWorkspaceExecution } from '../../../src/automation/runtime/workspace/execution_coordinator';

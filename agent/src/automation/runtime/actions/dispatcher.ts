@@ -1,10 +1,10 @@
-import type { Action } from './action_protocol';
-import { classifyActionRoute } from './classify';
-import { parseActionEnvelope } from './envelope';
+import type { Action } from '../../../interface/actions/action_protocol';
+import { classifyActionRoute } from '../../../interface/actions/classify';
+import { parseActionEnvelope } from '../../../interface/actions/envelope';
 import { routeControlAction, type GatewayDeps } from './control_gateway';
 import { routeWorkspaceAction } from './workspace_gateway';
-import { toFailedAction, unsupportedActionFailure } from './results';
-import type { WorkspaceRegistry } from '../../automation/runtime/workspace/registry';
+import { toFailedAction, unsupportedActionFailure } from '../../../interface/actions/results';
+import type { WorkspaceRegistry } from '../workspace/registry';
 
 export type ActionDispatcherOptions = {
     workspaceRegistry: WorkspaceRegistry;

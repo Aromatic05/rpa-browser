@@ -36,17 +36,17 @@ The MCP implementation belongs entirely to `workspace.mcp` — there is no
 standalone global MCP server. The legacy global MCP server (`agent/src/interface/mcp/server.ts`)
 has been deleted.
 
-`agent/src/interface/mcp/service.ts` + `agent/src/interface/mcp/runtime.ts` form the MCP service.
+`agent/src/automation/runtime/mcp/service.ts` + `agent/src/automation/runtime/mcp/runtime.ts` form the MCP service.
 It uses the port allocator, creates a workspace-scoped MCP server via
 `agent/src/interface/mcp/server_runtime.ts`, and registers with `workspace.serviceLifecycle`.
 
-`agent/src/interface/mcp/control.ts` handles `mcp.start`, `mcp.stop`, `mcp.status`.
+`agent/src/automation/runtime/mcp/control.ts` handles `mcp.start`, `mcp.stop`, `mcp.status`.
 These are **workspace actions** — they require `workspaceName` in the action
 envelope and reject `payload.workspaceName`.
 
 ### Tool handlers
 
-MCP tool handlers are defined in `agent/src/interface/mcp/tool_handlers.ts`.
+MCP tool handlers are defined in `agent/src/automation/runtime/mcp/tool_handlers.ts`.
 They are workspace-scoped:
 
 - The only deps type is `WorkspaceMcpToolDeps`, with `workspace: RuntimeWorkspace`
@@ -66,11 +66,11 @@ matching tab exists. The bootstrap boundary is:
 - `WorkspaceMcpToolDeps.getPage` — optional field that carries the workspace
   `getPage` into tool handlers. When absent, tab bootstrap throws
   `"cannot bootstrap tab: getPage not provided"`.
-- `createWorkspaceMcpRuntime` (in `agent/src/interface/mcp/runtime.ts`) passes
+- `createWorkspaceMcpRuntime` (in `agent/src/automation/runtime/mcp/runtime.ts`) passes
   `deps.workspace.getPage` to `createWorkspaceToolHandlers`, wiring the
   workspace-scoped page acquisition into MCP tool handlers.
 
-Bootstrap flow (`resolveOrBootstrapScopeWs` in `agent/src/interface/mcp/tool_handlers.ts`):
+Bootstrap flow (`resolveOrBootstrapScopeWs` in `agent/src/automation/runtime/mcp/tool_handlers.ts`):
 
 1. If `tabName` is given and the tab exists in `workspace.tabRegistry`, set
    it as active and return.

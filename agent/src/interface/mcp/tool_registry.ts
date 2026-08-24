@@ -1,4 +1,3 @@
-import { createWorkspaceToolHandlers, type WorkspaceMcpToolDeps, type McpToolHandler } from './tool_handlers';
 import { toolInputJsonSchemas } from './schemas';
 import type { RunnerConfig, McpToolGroup } from '../../platform/config';
 import { defaultRunnerConfig } from '../../platform/config/defaults';
@@ -46,11 +45,6 @@ const toolDefinitions: ToolDefinition[] = [
     { name: 'browser.take_screenshot', description: 'Take screenshot.', group: 'debugging' },
     { name: 'browser.mouse', description: 'Low-level mouse.', group: 'debugging' },
 ];
-
-export type ToolRegistryDeps = {
-    workspace: WorkspaceMcpToolDeps['workspace'];
-    config?: RunnerConfig;
-};
 
 const stripTabNameSchema = (schema: Record<string, unknown>): Record<string, unknown> => {
     const required = Array.isArray(schema.required)
@@ -141,30 +135,3 @@ export const getToolSpecs = (options?: { enabledTools?: Set<string> }): ToolSpec
         description: tool.description,
         inputSchema: compactInputSchema(toolInputJsonSchemas[tool.name as keyof typeof toolInputJsonSchemas]),
     }));
-
-export const getToolHandlers = (
-    deps: WorkspaceMcpToolDeps,
-    options?: { enabledTools?: Set<string> },
-): Record<string, McpToolHandler> => {
-    const handlers = createWorkspaceToolHandlers(deps);
-    const enabledTools = options?.enabledTools;
-    if (!enabledTools) {return handlers;}
-    return Object.fromEntries(Object.entries(handlers).filter(([name]) => enabledTools.has(name)));
-};
-
-export const executeTool = async (
-    deps: WorkspaceMcpToolDeps,
-    name: string,
-    args: unknown,
-): Promise<{ ok: boolean; results: unknown[]; trace?: unknown; error?: unknown }> => {
-    const enabledTools = resolveEnabledToolNames(deps.config?.mcpPolicy);
-    const handlers = getToolHandlers(deps, { enabledTools });
-    if (!Object.hasOwn(handlers, name)) {
-        return {
-            ok: false,
-            results: [{ stepId: 'invalid', ok: false, error: { code: 'ERR_UNSUPPORTED', message: `unknown tool: ${name}` } }],
-            error: { code: 'ERR_UNSUPPORTED', message: `unknown tool: ${name}` },
-        };
-    }
-    return await handlers[name](args);
-};

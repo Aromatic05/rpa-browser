@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import os from 'node:os';
 import path from 'node:path';
 import { createControlServer, sendControlEval } from '../../../src/interface/control';
+import {runControlEval} from '../../../src/automation/runtime/control/eval';
 
 const createTestEndpoint = (): string =>
     process.platform === 'win32'
@@ -14,13 +15,13 @@ test('sendControlEval can call eval over control server', async () => {
     process.env.RPA_CONTROL_EVAL = '1';
     const server = createControlServer({
         endpoint: createTestEndpoint(),
-        evalContext: {
+        evaluate: async (request) => await runControlEval(request, {
             deps: {} as any,
             workspaceRegistry: { getWorkspace: () => null } as any,
             config: {} as any,
             dispatch: async (action) => action,
             resolveWorkspace: () => null,
-        },
+        }),
     });
 
     await server.start();

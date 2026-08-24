@@ -19,7 +19,7 @@ import type { DslControl } from '../../dsl/control';
 import type { CheckpointControl } from '../../checkpoint/control';
 import type { RunnerControl } from '../../runner/control';
 import type { TabsControl } from './tabs';
-import type { McpControl } from '../../../interface/mcp/control';
+import type { McpControl } from '../mcp/control';
 import type { EntityRulesRuntime } from '../../snapshot/rules';
 import type { AgentControl } from '../../../agent/service/control';
 

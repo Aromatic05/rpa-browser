@@ -1,14 +1,14 @@
-import type { WorkspaceRouterInput } from '../../automation/runtime/workspace/router';
-import type { ControlPlaneResult } from '../../automation/runtime/control_plane';
-import { replyAction } from '../actions/action_protocol';
-import { ActionError } from '../actions/results';
-import { ERROR_CODES } from '../actions/results';
+import type { WorkspaceRouterInput } from '../workspace/router';
+import type { ControlPlaneResult } from '../control_plane';
+import { replyAction } from '../../../interface/actions/action_protocol';
+import { ActionError } from '../../../interface/actions/results';
+import { ERROR_CODES } from '../../../interface/actions/results';
 import type {
     WorkspaceService,
     WorkspaceServiceStartResult,
     WorkspaceServiceStopResult,
     WorkspaceServiceStatusResult,
-} from '../../automation/runtime/service/types';
+} from '../service/types';
 
 export type McpControl = {
     start: () => Promise<WorkspaceServiceStartResult>;

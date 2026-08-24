@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
-import { createMcpControl } from '../../../src/interface/mcp/control';
+import { createMcpControl } from '../../../src/automation/runtime/mcp/control';
 import { createPortAllocator } from '../../../src/automation/runtime/service/ports';
-import { createWorkspaceToolHandlers } from '../../../src/interface/mcp/tool_handlers';
+import { createWorkspaceToolHandlers } from '../../../src/automation/runtime/mcp/tool_handlers';
 import { createWorkspaceTabs } from '../../../src/automation/runtime/workspace/tabs';
 import type { RuntimeWorkspace } from '../../../src/automation/runtime/workspace/workspace';
 import type { WorkspaceRegistry } from '../../../src/automation/runtime/workspace/registry';
