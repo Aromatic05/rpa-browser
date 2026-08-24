@@ -1,11 +1,11 @@
-import { runDslSource } from '../../../program/dsl/runtime';
+import { runDslSource } from '../../dsl/runtime';
 import { DslRuntimeError } from '../../../program/dsl/diagnostics/errors';
-import type { DslEntityRulesResolver, DslResolveResolver } from '../../../program/dsl/link';
+import type { DslEntityRulesResolver, DslResolveResolver } from '../../dsl/link';
 import type { StepResolve, StepResult, StepUnion } from '../steps/types';
 import type { Checkpoint } from './types';
-import type { DslCheckpointProvider } from '../../../program/dsl/emit';
+import type { DslCheckpointProvider } from '../../dsl/emit';
 import type { RunStepsDeps } from '../run_steps_types';
-import type {DslDebugPort} from '../../../program/dsl/debug/contracts';
+import type {DslDebugPort} from '../../dsl/debug/contracts';
 
 export const MAX_CHECKPOINT_DSL_DEPTH = 16;
 

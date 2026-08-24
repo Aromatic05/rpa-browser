@@ -1,4 +1,4 @@
-import type { RefExpr } from '../ast/types';
+import type { RefExpr } from '../../../program/dsl/ast/types';
 import type { DslScope } from './scope';
 import { getDslValue } from './scope';
 

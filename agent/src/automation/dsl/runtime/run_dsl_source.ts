@@ -1,13 +1,13 @@
-import { normalizeDsl } from '../normalize';
-import {parseDslDocument} from '../parser';
-import { validateDsl } from '../validate';
+import { normalizeDsl } from '../../../program/dsl/normalize';
+import {parseDslDocument} from '../../../program/dsl/parser';
+import { validateDsl } from '../../../program/dsl/validate';
 import { linkDsl, type DslEntityRulesResolver, type DslResolveResolver } from '../link';
-import { DslValidationError } from '../diagnostics/errors';
+import { DslValidationError } from '../../../program/dsl/diagnostics/errors';
 import { runDsl, type RunDslContext, type RunDslResult } from './run_dsl';
-import type { DslDiagnostic } from '../diagnostics';
-import type {DslProgram} from '../ast/types';
-import type {DslSourceMap} from '../parser/source_map';
-import type {StepResolve} from '../../../automation/runner/steps/types';
+import type { DslDiagnostic } from '../../../program/dsl/diagnostics';
+import type {DslProgram} from '../../../program/dsl/ast/types';
+import type {DslSourceMap} from '../../../program/dsl/parser/source_map';
+import type {StepResolve} from '../../runner/steps/types';
 
 export type RunDslSourceResult = RunDslResult & {
     diagnostics: DslDiagnostic[];

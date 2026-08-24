@@ -7,7 +7,7 @@ import { validateCheckpointResolveFileForSerialization, validateSingleCheckpoint
 import { listDirectories, readTextFile, readValidatedYamlFile, readYamlFile, removePath, requireArtifactName, workflowArtifactPath, writeTextFile, writeYamlFile } from './fs';
 import { invalidWorkflowArtifact } from './errors';
 import type { WorkflowCodec } from './store';
-import type { DslCheckpointProvider } from '../../program/dsl/emit';
+import type { DslCheckpointProvider } from '../dsl/emit';
 
 export type WorkflowCheckpoint = {
     kind: 'checkpoint';

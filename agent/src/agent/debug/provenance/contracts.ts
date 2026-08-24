@@ -1,4 +1,4 @@
-import type {DslValueProvenanceEvent} from '../../../program/dsl/debug/contracts';
+import type {DslValueProvenanceEvent} from '../../../automation/dsl/debug/contracts';
 
 export type DebugValueExplanation = Readonly<{
     programId: string;

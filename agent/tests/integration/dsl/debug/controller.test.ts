@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createDslDebugController} from '../../../../src/program/dsl/debug/controller';
-import {runDslSource} from '../../../../src/program/dsl/runtime';
+import {createDslDebugController} from '../../../../src/automation/dsl/debug/controller';
+import {runDslSource} from '../../../../src/automation/dsl/runtime';
 import type {RunStepsDeps} from '../../../../src/automation/runner/run_steps';
 import type {StepUnion} from '../../../../src/automation/runner/steps/types';
 

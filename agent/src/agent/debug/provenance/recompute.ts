@@ -1,8 +1,8 @@
 import {isDeepStrictEqual} from 'node:util';
 import {evaluateComputeExpression} from '../../../program/compute/evaluate';
 import type {QueryExpr} from '../../../program/dsl/ast/types';
-import type {DslScopeSnapshot} from '../../../program/dsl/debug/contracts';
-import {adaptDslQueryResult} from '../../../program/dsl/runtime/value_adapter';
+import type {DslScopeSnapshot} from '../../../automation/dsl/debug/contracts';
+import {adaptDslQueryResult} from '../../../automation/dsl/runtime/value_adapter';
 import {compileBrowserQuery} from '../../../program/query/compile';
 import type {BrowserQueryRequest, BusinessQueryName, BusinessTarget} from '../../../program/query/contracts';
 import type {DebugQuerySession} from '../query/contracts';

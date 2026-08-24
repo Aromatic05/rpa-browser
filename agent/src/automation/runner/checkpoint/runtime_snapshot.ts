@@ -1,8 +1,8 @@
-import { createDslEntityRulesResolver, type DslEntityRulesResolver, type DslResolveResolver } from '../../../program/dsl/link';
+import { createDslEntityRulesResolver, type DslEntityRulesResolver, type DslResolveResolver } from '../../dsl/link';
 import type { Workflow } from '../../workflow';
 import type { WorkspaceEntityRulesProvider } from '../../snapshot/rules';
 import type { StepResolve } from '../steps/types';
-import type { DslCheckpointProvider } from '../../../program/dsl/emit';
+import type { DslCheckpointProvider } from '../../dsl/emit';
 import type { Checkpoint } from './types';
 import { scanDslAssetReferences } from '../../../program/dsl/asset_references';
 

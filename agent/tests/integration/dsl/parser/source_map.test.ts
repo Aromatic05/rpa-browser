@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {parseDsl, parseDslDocument} from '../../../../src/program/dsl/parser';
-import {createDslDebugController} from '../../../../src/program/dsl/debug/controller';
-import {runDslSource} from '../../../../src/program/dsl/runtime';
+import {createDslDebugController} from '../../../../src/automation/dsl/debug/controller';
+import {runDslSource} from '../../../../src/automation/dsl/runtime';
 import type {RunStepsDeps} from '../../../../src/automation/runner/run_steps';
 
 test('parseDslDocument maps executable paths to source lines without changing the AST', () => {

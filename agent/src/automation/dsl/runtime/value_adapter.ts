@@ -1,4 +1,4 @@
-import type { BrowserQueryResult } from '../../../automation/runner/steps/types';
+import type { BrowserQueryResult } from '../../runner/steps/types';
 
 export type DslTargetRef = {
     nodeId: string;

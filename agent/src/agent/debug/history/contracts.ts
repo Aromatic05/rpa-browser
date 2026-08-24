@@ -1,5 +1,5 @@
 import type {DslStmt} from '../../../program/dsl/ast/types';
-import type {DslAfterStatementEvent, DslStatementLocation} from '../../../program/dsl/debug/contracts';
+import type {DslAfterStatementEvent, DslStatementLocation} from '../../../automation/dsl/debug/contracts';
 
 export type DebugStatementExecutionRecord = Readonly<{
     sequence: number;

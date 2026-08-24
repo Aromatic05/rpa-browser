@@ -1,8 +1,8 @@
 import type { DslCheckpointProvider } from '../emit';
-import { scanDslAssetReferences } from '../asset_references';
-import { createDiagnostic, type DslDiagnostic } from '../diagnostics';
-import type { Checkpoint } from '../../../automation/runner/checkpoint';
-import type { StepResolve } from '../../../automation/runner/steps/types';
+import { scanDslAssetReferences } from '../../../program/dsl/asset_references';
+import { createDiagnostic, type DslDiagnostic } from '../../../program/dsl/diagnostics';
+import type { Checkpoint } from '../../runner/checkpoint';
+import type { StepResolve } from '../../runner/steps/types';
 
 const MAX_CHECKPOINT_CALL_DEPTH = 16;
 

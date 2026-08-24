@@ -1,6 +1,6 @@
 import type {DslStmt} from '../../../program/dsl/ast/types';
 import type {DslDiagnostic} from '../../../program/dsl/diagnostics';
-import {linkDsl, type DslEntityRulesResolver, type DslResolveResolver} from '../../../program/dsl/link';
+import {linkDsl, type DslEntityRulesResolver, type DslResolveResolver} from '../../../automation/dsl/link';
 import {normalizeDsl} from '../../../program/dsl/normalize';
 import {parseDsl} from '../../../program/dsl/parser';
 

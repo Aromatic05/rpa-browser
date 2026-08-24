@@ -1,6 +1,6 @@
 import {ActionError, ERROR_CODES} from '../../../interface/actions/results';
-import {createDslEntityRulesResolver, createDslResolveResolver} from '../../../program/dsl/link';
-import {validateDslSource} from '../../../program/dsl/runtime';
+import {createDslEntityRulesResolver, createDslResolveResolver} from '../../dsl/link';
+import {validateDslSource} from '../../dsl/runtime';
 import {createWorkspaceEntityRulesProvider} from '../../snapshot/rules/runtime';
 import {buildEntityRuleExportIndex} from '../../workflow';
 import type {WorkspaceRouterInput} from '../../runtime/workspace/router';

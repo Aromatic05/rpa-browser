@@ -1,7 +1,7 @@
-import type { DslImport, ResolveActStmt } from '../ast/types';
-import type { DslDiagnostic } from '../diagnostics';
-import { createDiagnostic } from '../diagnostics';
-import type { StepResolve } from '../../../automation/runner/steps/types';
+import type { DslImport, ResolveActStmt } from '../../../program/dsl/ast/types';
+import type { DslDiagnostic } from '../../../program/dsl/diagnostics';
+import { createDiagnostic } from '../../../program/dsl/diagnostics';
+import type { StepResolve } from '../../runner/steps/types';
 import type { DslResolveResolver } from './types';
 
 export type ResolveBundle = {

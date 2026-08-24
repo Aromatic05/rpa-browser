@@ -1,4 +1,4 @@
-import type {DslAfterEffectEvent, DslBeforeEffectEvent, DslEffectDescriptor, DslEffectOutcome, DslStatementLocation} from '../../../program/dsl/debug/contracts';
+import type {DslAfterEffectEvent, DslBeforeEffectEvent, DslEffectDescriptor, DslEffectOutcome, DslStatementLocation} from '../../../automation/dsl/debug/contracts';
 import type {WorldView, WorldViewDescriptor} from '../../worldview/contracts';
 import type {SnapshotProjectionDiffResult} from '../../../automation/snapshot/projection';
 

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { runDslSource } from '../../../../src/program/dsl/runtime';
+import { runDslSource } from '../../../../src/automation/dsl/runtime';
 import type { RunStepsDeps } from '../../../../src/automation/runner/run_steps';
 import type { StepUnion } from '../../../../src/automation/runner/steps/types';
 import { completeRunStepsDeps } from '../../../helpers/run_steps_workspace';

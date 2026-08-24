@@ -1,5 +1,5 @@
 import type {DslImport, DslProgram, DslStmt} from '../../../program/dsl/ast/types';
-import type {DslProgramEvent} from '../../../program/dsl/debug/contracts';
+import type {DslProgramEvent} from '../../../automation/dsl/debug/contracts';
 import type {DslSourceLocation} from '../../../program/dsl/parser/source_map';
 
 export type DebugProgramStatement = Readonly<{

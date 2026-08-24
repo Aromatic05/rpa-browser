@@ -1,4 +1,4 @@
-import type {DslValueProvenanceEvent} from '../../../program/dsl/debug/contracts';
+import type {DslValueProvenanceEvent} from '../../../automation/dsl/debug/contracts';
 import type {DebugValueExplanation, DebugValueProvenanceStore} from './contracts';
 
 const keyOf = (programId: string, path: string): string => `${programId}\u0000${path}`;

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createDslScope, resolveDslValue, setDslValue } from '../../../../src/program/dsl/runtime';
+import { createDslScope, resolveDslValue, setDslValue } from '../../../../src/automation/dsl/runtime';
 import { DslRuntimeError } from '../../../../src/program/dsl/diagnostics/errors';
 
 test('resolveDslValue resolves ref nested objects and arrays', () => {

@@ -12,8 +12,8 @@ import {
     type Checkpoint,
     type RunStepsDeps,
     type StepResult,
-} from '../../../automation/runner/run_steps';
-import type { StepResolve, StepUnion } from '../../../automation/runner/steps/types';
+} from '../../runner/run_steps';
+import type { StepResolve, StepUnion } from '../../runner/steps/types';
 
 const DEFAULT_POLL_LIMIT = 100;
 

@@ -5,7 +5,7 @@ import type {
     DslEntityRulesProfile,
     DslEntityRulesResolver,
     DslResolveResolver,
-} from '../../../../../src/program/dsl/link';
+} from '../../../../../src/automation/dsl/link';
 
 const profile: DslEntityRulesProfile = {
     profileName: 'order-page',

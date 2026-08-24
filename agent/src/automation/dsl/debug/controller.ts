@@ -7,8 +7,8 @@ import type {
     DslFailureEvent,
     PausedDslExecution,
 } from './contracts';
-import type {DslStmt} from '../ast/types';
-import type {EffectReversibility} from '../../effects/contracts';
+import type {DslStmt} from '../../../program/dsl/ast/types';
+import type {EffectReversibility} from '../../../program/effects/contracts';
 
 export type CreateDslDebugControllerOptions = {
     initialMode?: 'continue' | 'step';

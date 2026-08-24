@@ -1,11 +1,11 @@
 import type {ComputeEvalScope} from '../../../program/compute/evaluate';
-import type {RunDslSourceResult} from '../../../program/dsl/runtime/run_dsl_source';
+import type {RunDslSourceResult} from '../../../automation/dsl/runtime/run_dsl_source';
 import type {
     DslEffectDescriptor,
     DslFailureDescriptor,
     DslScopeSnapshot,
     DslStatementLocation,
-} from '../../../program/dsl/debug/contracts';
+} from '../../../automation/dsl/debug/contracts';
 import type {StepName} from '../../../automation/runner/steps/types';
 import type {ComputeExpr} from '../../../program/compute/types';
 import type {QueryIR} from '../../../program/query/contracts';

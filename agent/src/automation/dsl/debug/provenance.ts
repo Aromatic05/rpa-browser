@@ -1,5 +1,5 @@
-import type {ComputeValue} from '../../compute/types';
-import type {DslExpr} from '../ast/types';
+import type {ComputeValue} from '../../../program/compute/types';
+import type {DslExpr} from '../../../program/dsl/ast/types';
 
 export const collectDslExpressionDependencies = (expr: DslExpr): readonly string[] => {
     const values = new Set<string>();

@@ -7,8 +7,8 @@ import {
     type DslEntityRulesProfile,
     type DslEntityRulesResolver,
     type DslResolveResolver,
-} from '../../../src/program/dsl/link';
-import { runDslSource, validateDslSource } from '../../../src/program/dsl/runtime';
+} from '../../../src/automation/dsl/link';
+import { runDslSource, validateDslSource } from '../../../src/automation/dsl/runtime';
 import { createWorkspaceEntityRulesProvider } from '../../../src/automation/snapshot/rules/runtime';
 import type { RunStepsDeps } from '../../../src/automation/runner/run_steps';
 import type { BrowserQueryResult, StepUnion } from '../../../src/automation/runner/steps/types';

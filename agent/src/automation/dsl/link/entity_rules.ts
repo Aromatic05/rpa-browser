@@ -1,8 +1,8 @@
-import type { DslImport, DslExpr, EntityActStmt, EntityReference, LinkedEntityActStmt } from '../ast/types';
-import type { DslDiagnostic } from '../diagnostics';
-import { createDiagnostic } from '../diagnostics';
+import type { DslImport, DslExpr, EntityActStmt, EntityReference, LinkedEntityActStmt } from '../../../program/dsl/ast/types';
+import type { DslDiagnostic } from '../../../program/dsl/diagnostics';
+import { createDiagnostic } from '../../../program/dsl/diagnostics';
 import type { DslEntityRulesProfile, DslEntityRulesResolver } from './types';
-import type {EffectDeclaration, EffectSemantics} from '../../effects/contracts';
+import type {EffectDeclaration, EffectSemantics} from '../../../program/effects/contracts';
 
 export type EntityRulesLinkContext = {
     profiles: ReadonlyMap<string, DslEntityRulesProfile>;

@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createDslDebugController} from '../../../../src/program/dsl/debug/controller';
-import {DslDebugAbortError} from '../../../../src/program/dsl/debug/errors';
-import {runDsl} from '../../../../src/program/dsl/runtime/run_dsl';
+import {createDslDebugController} from '../../../../src/automation/dsl/debug/controller';
+import {DslDebugAbortError} from '../../../../src/automation/dsl/debug/errors';
+import {runDsl} from '../../../../src/automation/dsl/runtime/run_dsl';
 import type {RunStepsDeps} from '../../../../src/automation/runner/run_steps';
 
 const deps = {} as RunStepsDeps;

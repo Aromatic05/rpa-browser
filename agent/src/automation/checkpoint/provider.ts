@@ -1,4 +1,4 @@
-import type { DslCheckpointProvider } from '../../program/dsl/emit';
+import type { DslCheckpointProvider } from '../dsl/emit';
 import type { Workflow } from '../workflow';
 import { createWorkspaceCheckpointRuntime } from './runtime';
 

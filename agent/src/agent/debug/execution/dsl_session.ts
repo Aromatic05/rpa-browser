@@ -1,14 +1,14 @@
 import {
     createDslDebugController,
     type CreateDslDebugControllerOptions,
-} from '../../../program/dsl/debug/controller';
-import type {DslDebugPort, DslEffectDescriptor, PausedDslExecution} from '../../../program/dsl/debug/contracts';
-import {DslDebugAbortError} from '../../../program/dsl/debug/errors';
+} from '../../../automation/dsl/debug/controller';
+import type {DslDebugPort, DslEffectDescriptor, PausedDslExecution} from '../../../automation/dsl/debug/contracts';
+import {DslDebugAbortError} from '../../../automation/dsl/debug/errors';
 import {
     runDslSource,
     type RunDslContext,
     type RunDslSourceResult,
-} from '../../../program/dsl/runtime';
+} from '../../../automation/dsl/runtime';
 import type {ComputeEvalScope} from '../../../program/compute/evaluate';
 import type {ComputeExpr} from '../../../program/compute/types';
 import type {QueryIR} from '../../../program/query/contracts';

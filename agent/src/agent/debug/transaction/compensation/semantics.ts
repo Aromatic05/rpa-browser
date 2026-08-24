@@ -1,4 +1,4 @@
-import type {DslEffectDescriptor} from '../../../../program/dsl/debug/contracts';
+import type {DslEffectDescriptor} from '../../../../automation/dsl/debug/contracts';
 import type {DebugEffectSemanticRisk} from './contracts';
 
 export const classifyEffectSemanticRisk = (

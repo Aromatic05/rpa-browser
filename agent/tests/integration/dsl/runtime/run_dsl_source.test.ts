@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { runDslSource } from '../../../../src/program/dsl/runtime';
+import { runDslSource } from '../../../../src/automation/dsl/runtime';
 import { DslValidationError } from '../../../../src/program/dsl/diagnostics/errors';
-import type { DslCheckpointProvider } from '../../../../src/program/dsl/emit';
+import type { DslCheckpointProvider } from '../../../../src/automation/dsl/emit';
 import type { RunStepsDeps } from '../../../../src/automation/runner/run_steps';
 import type { Checkpoint } from '../../../../src/automation/runner/checkpoint';
 import type { StepUnion } from '../../../../src/automation/runner/steps/types';

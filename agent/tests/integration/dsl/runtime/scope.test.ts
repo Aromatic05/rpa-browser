@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createDslScope, getDslValue, setDslValue } from '../../../../src/program/dsl/runtime';
+import { createDslScope, getDslValue, setDslValue } from '../../../../src/automation/dsl/runtime';
 import { DslRuntimeError } from '../../../../src/program/dsl/diagnostics/errors';
 
 test('createDslScope initializes input vars and output containers', () => {

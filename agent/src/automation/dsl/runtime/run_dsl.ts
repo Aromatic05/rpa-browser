@@ -1,12 +1,12 @@
-import type { RunStepsDeps, StepResult as TaskStepResult } from '../../../automation/runner/run_steps';
-import type { BrowserQueryResult, StepResolve, StepResult as ExecutorStepResult, StepUnion } from '../../../automation/runner/steps/types';
-import {evaluateComputeExpression} from '../../compute/evaluate';
+import type { RunStepsDeps, StepResult as TaskStepResult } from '../../runner/run_steps';
+import type { BrowserQueryResult, StepResolve, StepResult as ExecutorStepResult, StepUnion } from '../../runner/steps/types';
+import {evaluateComputeExpression} from '../../../program/compute/evaluate';
 import { runDslCheckpointCall, type DslCheckpointProvider } from '../emit/checkpoint_call';
 import { getLogger, type Logger } from '../../../platform/logging/logger';
 import { buildClickStep, buildFillStep, buildQueryStep, buildSelectStep, buildSnapshotStep, buildTypeStep } from '../emit/step_builder';
-import { DslRuntimeError } from '../diagnostics/errors';
-import type { DslExpr, DslProgram, DslStmt } from '../ast/types';
-import { collectDefinitelyAssignedVariables } from '../analysis/definite_assignment';
+import { DslRuntimeError } from '../../../program/dsl/diagnostics/errors';
+import type { DslExpr, DslProgram, DslStmt } from '../../../program/dsl/ast/types';
+import { collectDefinitelyAssignedVariables } from '../../../program/dsl/analysis/definite_assignment';
 import { createDslTaskRunner } from './task_runner';
 import {
     createChildDslScope,
@@ -19,8 +19,8 @@ import { resolveDslValue } from './refs';
 import { adaptDslQueryResult } from './value_adapter';
 import type { DslEntityRulesResolver } from '../link';
 import type { DslResolveResolver } from '../link';
-import { injectStepResolve } from '../../../automation/runner/step_resolve';
-import {classifyBrowserOperation} from '../../../automation/runner/steps/effects';
+import { injectStepResolve } from '../../runner/step_resolve';
+import {classifyBrowserOperation} from '../../runner/steps/effects';
 import type {
     DslDebugPort,
     DslEffectDescriptor,
@@ -31,10 +31,10 @@ import type {
 } from '../debug/contracts';
 import {snapshotDslScope} from '../debug/snapshot';
 import {collectDslExpressionDependencies, collectDslExpressionsDependencies} from '../debug/provenance';
-import type {DslSourceMap} from '../parser/source_map';
-import type {EffectSemantics} from '../../effects/contracts';
-import {UNKNOWN_EFFECT_SEMANTICS} from '../../effects/declaration';
-import {compileBrowserQuery} from '../../query/compile';
+import type {DslSourceMap} from '../../../program/dsl/parser/source_map';
+import type {EffectSemantics} from '../../../program/effects/contracts';
+import {UNKNOWN_EFFECT_SEMANTICS} from '../../../program/effects/declaration';
+import {compileBrowserQuery} from '../../../program/query/compile';
 
 export type RunDslContext = {
     workspaceName: string;

@@ -1,4 +1,4 @@
-import { DslRuntimeError } from '../diagnostics/errors';
+import { DslRuntimeError } from '../../../program/dsl/diagnostics/errors';
 
 export type DslScope = {
     input: Record<string, unknown>;

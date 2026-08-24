@@ -1,4 +1,4 @@
-import type {EffectDeclaration} from '../../effects/contracts';
+import type {EffectDeclaration} from '../../../program/effects/contracts';
 
 export type DslEntityRulesEntityKind = 'form' | 'table' | 'dialog' | 'list' | 'panel' | 'toolbar' | 'kv';
 
@@ -39,4 +39,4 @@ export type DslResolveBundleResolution = {
 export type DslResolveResolver = {
     resolveBundle: (bundleName: string) => DslResolveBundleResolution;
 };
-import type { StepResolve } from '../../../automation/runner/steps/types';
+import type { StepResolve } from '../../runner/steps/types';

@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import type {DslEffectDescriptor, DslEffectOutcome, DslScopeSnapshot, DslStatementLocation} from '../../../../program/dsl/debug/contracts';
+import type {DslEffectDescriptor, DslEffectOutcome, DslScopeSnapshot, DslStatementLocation} from '../../../../automation/dsl/debug/contracts';
 import type {StepResult, StepUnion} from '../../../../automation/runner/steps/types';
 import type {WorldView, WorldViewSource} from '../../../worldview/contracts';
 import type {DebugEffectJournal, DebugEffectJournalEntry, DebugEffectRecord} from '../../effects/contracts';

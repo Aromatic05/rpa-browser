@@ -1,9 +1,9 @@
-import type {DslComputeExpr, DslExpr, DslProgram, DslStmt, QueryExpr} from '../ast/types';
-import type {StepName} from '../../../automation/runner/steps/types';
-import type {BrowserOperationClassification} from '../../../automation/runner/steps/effects';
-import type {EffectSemantics} from '../../effects/contracts';
-import type {QueryIR} from '../../query/contracts';
-import type {DslSourceLocation, DslSourceMap} from '../parser/source_map';
+import type {DslComputeExpr, DslExpr, DslProgram, DslStmt, QueryExpr} from '../../../program/dsl/ast/types';
+import type {StepName} from '../../runner/steps/types';
+import type {BrowserOperationClassification} from '../../runner/steps/effects';
+import type {EffectSemantics} from '../../../program/effects/contracts';
+import type {QueryIR} from '../../../program/query/contracts';
+import type {DslSourceLocation, DslSourceMap} from '../../../program/dsl/parser/source_map';
 
 export type DslLoopFrame = Readonly<{
     path: string;
