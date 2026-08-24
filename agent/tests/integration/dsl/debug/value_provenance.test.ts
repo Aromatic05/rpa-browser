@@ -68,6 +68,11 @@ test('DSL debug port reports query, compute and ref value provenance without cha
         },
     ]);
     assert.equal((events[0] as any).source.stepId.length > 0, true);
+    assert.deepEqual((events[0] as any).source.query, {
+        op: 'entity.target',
+        businessTag: 'order.form',
+        target: {kind: 'form.field', fieldKey: 'buyer'},
+    });
     assert.equal((events[0] as any).location.path, 'body.0');
 });
 

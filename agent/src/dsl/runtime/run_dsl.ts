@@ -133,6 +133,7 @@ const executeStmt = async (
         case 'let': {
             if (stmt.expr.kind === 'query') {
                 const step = buildQueryStep(stmt.expr, (ref) => resolveDslValue(ref, scope));
+                const compiled = compileBrowserQuery(step.args);
                 const result = await emitStepAndWait(step, execution);
                 const queryResult = result as BrowserQueryResult;
                 const value = adaptDslQueryResult(queryResult);
@@ -141,6 +142,7 @@ const executeStmt = async (
                 await notifyValue(ctx, target, location, Object.freeze({
                     kind: 'query' as const,
                     expression: structuredClone(stmt.expr),
+                    ...(compiled.ok ? {query: compiled.ir} : {}),
                     stepId: step.id,
                     dependencies: collectDslExpressionDependencies(stmt.expr),
                     ...queryObservedAt(queryResult),

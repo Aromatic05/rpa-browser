@@ -22,6 +22,7 @@ import {createDebugEffectJournal} from '../effects/journal';
 import {createDebugQuerySession} from '../query/session';
 import type {DebugQuerySession} from '../query/contracts';
 import {createDebugValueProvenanceStore} from '../provenance/store';
+import {recomputeDebugValue} from '../provenance/recompute';
 import type {DebugCompensationPort} from '../transaction/compensation/contracts';
 import {executePhysicalCompensations} from '../transaction/compensation/executor';
 import {createDebugTransaction} from '../transaction/state';
@@ -427,6 +428,16 @@ export const createDslDebugExecutionSession = (
         explain: (continuationId: string, path: string) => {
             const current = requireActive(continuationId);
             return provenance.explain(current.pause.location.programId, path);
+        },
+        recompute: (continuationId: string, path: string) => {
+            const current = requireActive(continuationId);
+            return recomputeDebugValue(
+                provenance,
+                current.pause.location.programId,
+                path,
+                current.pause.scope,
+                current.debug,
+            );
         },
         diff: (continuationId: string, effectSequence: number) => {
             requireActive(continuationId);

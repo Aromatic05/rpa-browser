@@ -35,6 +35,7 @@ export type DslValueProvenanceSource =
     | Readonly<{
         kind: 'query';
         expression: QueryExpr;
+        query?: QueryIR;
         stepId: string;
         dependencies: readonly string[];
         observedAt?: DslValueObservedRevision;

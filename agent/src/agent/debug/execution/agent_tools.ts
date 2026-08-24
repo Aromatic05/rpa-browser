@@ -137,6 +137,21 @@ export const createPausedDslDebugAgentTools = (
             },
         },
         {
+            name: 'debug.recompute',
+            label: 'debug.recompute',
+            description: 'Purely recompute one tracked DSL scope value from its executable provenance against the current pinned WorldView. Returns a candidate and changed flag without modifying scope or World.',
+            parameters: Type.Object({
+                path: Type.String({minLength: 1}),
+            }, {additionalProperties: false}),
+            execute: async (_toolCallId, params) => {
+                const current = requirePause();
+                return toolResult({
+                    ...execution.recompute(current.continuationId, (params as {path: string}).path),
+                    world: current.world,
+                });
+            },
+        },
+        {
             name: 'debug.effects',
             label: 'debug.effects',
             description: 'Read the executed World-effect journal. Pending or aborted effects are excluded; records include outcome and before/after World revisions.',

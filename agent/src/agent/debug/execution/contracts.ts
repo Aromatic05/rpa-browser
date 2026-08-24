@@ -15,7 +15,7 @@ import type {DebugEffectDiffResult, DebugEffectRecord} from '../effects/contract
 import type {WorldViewDescriptor} from '../../worldview/contracts';
 import type {WorldCatalog} from '../../worldview/catalog';
 import type {WorldViewDiffResult} from '../../worldview/diff';
-import type {DebugValueExplanation} from '../provenance/contracts';
+import type {DebugValueExplanation, DebugValueRecomputeResult} from '../provenance/contracts';
 import type {
     DebugRollbackOptions,
     DebugRollbackResult,
@@ -99,6 +99,7 @@ export type DslDebugExecutionSession = {
     catalog: (continuationId: string) => WorldCatalog;
     effects: (continuationId: string) => readonly DebugEffectRecord[];
     explain: (continuationId: string, path: string) => DebugValueExplanation;
+    recompute: (continuationId: string, path: string) => DebugValueRecomputeResult;
     diff: (continuationId: string, effectSequence: number) => DebugEffectDiffResult;
     transaction: (continuationId: string) => DebugTransactionSnapshot;
     savepoint: (continuationId: string, name?: string) => DebugSavepoint;
