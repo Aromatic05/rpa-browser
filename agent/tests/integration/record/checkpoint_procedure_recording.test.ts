@@ -8,9 +8,9 @@ import {
     checkpointEntityRuleOptions,
 } from '../../../src/record/checkpoint_recording';
 import {ActionError, ERROR_CODES} from '../../../src/actions/results';
-import {runDslSource} from '../../../src/dsl/runtime';
+import {runDslSource} from '../../../src/program/dsl/runtime';
 import {runCheckpointDslBody} from '../../../src/runner/checkpoint/dsl_body';
-import {createDslEntityRulesResolver} from '../../../src/dsl/link';
+import {createDslEntityRulesResolver} from '../../../src/program/dsl/link';
 import {createWorkspaceEntityRulesProvider} from '../../../src/snapshot/rules/runtime';
 import {createWorkflowCheckpointProvider} from '../../../src/workflow/checkpoint';
 import {createCheckpointCodec} from '../../../src/workflow/checkpoint';

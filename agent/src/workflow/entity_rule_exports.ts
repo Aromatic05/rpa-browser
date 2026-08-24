@@ -1,6 +1,6 @@
 import type {EntityRulePageKind, WorkflowEntityRules} from './entity_rules';
-import type {EffectDeclaration} from '../effects/contracts';
-import {readEffectDeclaration} from '../effects/declaration';
+import type {EffectDeclaration} from '../program/effects/contracts';
+import {readEffectDeclaration} from '../program/effects/declaration';
 
 export type EntityRuleExportDiagnostic = {
     code: string;

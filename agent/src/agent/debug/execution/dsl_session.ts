@@ -1,17 +1,17 @@
 import {
     createDslDebugController,
     type CreateDslDebugControllerOptions,
-} from '../../../dsl/debug/controller';
-import type {DslDebugPort, DslEffectDescriptor, PausedDslExecution} from '../../../dsl/debug/contracts';
-import {DslDebugAbortError} from '../../../dsl/debug/errors';
+} from '../../../program/dsl/debug/controller';
+import type {DslDebugPort, DslEffectDescriptor, PausedDslExecution} from '../../../program/dsl/debug/contracts';
+import {DslDebugAbortError} from '../../../program/dsl/debug/errors';
 import {
     runDslSource,
     type RunDslContext,
     type RunDslSourceResult,
-} from '../../../dsl/runtime';
-import type {ComputeEvalScope} from '../../../compute/evaluate';
-import type {ComputeExpr} from '../../../compute/types';
-import type {QueryIR} from '../../../query/contracts';
+} from '../../../program/dsl/runtime';
+import type {ComputeEvalScope} from '../../../program/compute/evaluate';
+import type {ComputeExpr} from '../../../program/compute/types';
+import type {QueryIR} from '../../../program/query/contracts';
 import type {WorldView, WorldViewDescriptor, WorldViewSource} from '../../worldview/contracts';
 import {describeWorldView} from '../../worldview/descriptor';
 import {buildWorldCatalog} from '../../worldview/catalog';

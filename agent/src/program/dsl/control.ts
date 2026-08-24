@@ -1,17 +1,17 @@
-import { replyAction } from '../actions/action_protocol';
-import { ActionError, ERROR_CODES } from '../actions/results';
-import type { WorkspaceRouterInput } from '../runtime/workspace/router';
-import type { ControlPlaneResult } from '../runtime/control_plane';
+import { replyAction } from '../../actions/action_protocol';
+import { ActionError, ERROR_CODES } from '../../actions/results';
+import type { WorkspaceRouterInput } from '../../runtime/workspace/router';
+import type { ControlPlaneResult } from '../../runtime/control_plane';
 import { runDslSource, validateDslSource } from './runtime';
 import { createDslEntityRulesResolver, createDslResolveResolver, type DslEntityRulesResolver, type DslResolveResolver } from './link';
 import { DslValidationError } from './diagnostics';
-import { runWorkspaceExecution } from '../runtime/workspace/execution_coordinator';
-import type { RunStepsDeps } from '../runner/run_steps';
-import type { WorkspaceEntityRulesProvider } from '../snapshot/rules/runtime/contracts';
-import {workflowArtifactRevision, type Workflow, type WorkflowDsl, type WorkflowDummy} from '../workflow';
-import type { StepResolve } from '../runner/steps/types';
-import { validateStepResolveFileForSerialization } from '../runner/serialization/types';
-import { materializeReferencedCheckpointRuntimeSnapshot } from '../runner/checkpoint';
+import { runWorkspaceExecution } from '../../runtime/workspace/execution_coordinator';
+import type { RunStepsDeps } from '../../runner/run_steps';
+import type { WorkspaceEntityRulesProvider } from '../../snapshot/rules/runtime/contracts';
+import {workflowArtifactRevision, type Workflow, type WorkflowDsl, type WorkflowDummy} from '../../workflow';
+import type { StepResolve } from '../../runner/steps/types';
+import { validateStepResolveFileForSerialization } from '../../runner/serialization/types';
+import { materializeReferencedCheckpointRuntimeSnapshot } from '../../runner/checkpoint';
 import { validateDslCheckpointGraph } from './validate';
 import type { DslCheckpointProvider } from './emit';
 

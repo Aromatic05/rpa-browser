@@ -1,7 +1,7 @@
 import type { DslImport, ResolveActStmt } from '../ast/types';
 import type { DslDiagnostic } from '../diagnostics';
 import { createDiagnostic } from '../diagnostics';
-import type { StepResolve } from '../../runner/steps/types';
+import type { StepResolve } from '../../../runner/steps/types';
 import type { DslResolveResolver } from './types';
 
 export type ResolveBundle = {

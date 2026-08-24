@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseDsl } from '../../../../src/dsl/parser';
-import { normalizeDsl } from '../../../../src/dsl/normalize';
+import { parseDsl } from '../../../../src/program/dsl/parser';
+import { normalizeDsl } from '../../../../src/program/dsl/normalize';
 
 test('normalizeDsl expands fill form into one linked entity action', () => {
     const normalized = normalizeDsl(parseDsl(`

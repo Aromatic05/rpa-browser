@@ -1,7 +1,7 @@
-import {evaluateComputeExpression, type ComputeEvalScope} from '../../../compute/evaluate';
+import {evaluateComputeExpression, type ComputeEvalScope} from '../../../program/compute/evaluate';
 import {executePageSessionQueryIR} from '../../../runner/session/query_ir';
-import type {ComputeExpr} from '../../../compute/types';
-import type {QueryIR} from '../../../query/contracts';
+import type {ComputeExpr} from '../../../program/compute/types';
+import type {QueryIR} from '../../../program/query/contracts';
 import {describeWorldView} from '../../worldview/descriptor';
 import type {WorldView} from '../../worldview/contracts';
 import type {DebugQuerySession} from './contracts';

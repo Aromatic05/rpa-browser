@@ -1,14 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseDsl } from '../../../src/dsl/parser';
+import { parseDsl } from '../../../src/program/dsl/parser';
 import {
     createDslEntityRulesResolver,
     linkDsl,
     type DslEntityRulesProfile,
     type DslEntityRulesResolver,
     type DslResolveResolver,
-} from '../../../src/dsl/link';
-import { runDslSource, validateDslSource } from '../../../src/dsl/runtime';
+} from '../../../src/program/dsl/link';
+import { runDslSource, validateDslSource } from '../../../src/program/dsl/runtime';
 import { createWorkspaceEntityRulesProvider } from '../../../src/snapshot/rules/runtime';
 import type { RunStepsDeps } from '../../../src/runner/run_steps';
 import type { BrowserQueryResult, StepUnion } from '../../../src/runner/steps/types';

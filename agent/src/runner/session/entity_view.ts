@@ -4,7 +4,7 @@ import {
     type PageSnapshotSessionEntry,
     type SemanticBusinessBinding,
 } from '../../snapshot';
-import type {BusinessQueryName, BusinessTarget} from '../../query/contracts';
+import type {BusinessQueryName, BusinessTarget} from '../../program/query/contracts';
 
 export type RuntimeEntityKind = 'form' | 'table' | 'dialog' | 'list' | 'panel' | 'toolbar' | 'kv';
 

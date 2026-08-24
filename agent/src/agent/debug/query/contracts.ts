@@ -1,8 +1,8 @@
-import type {ComputeEvalScope} from '../../../compute/evaluate';
+import type {ComputeEvalScope} from '../../../program/compute/evaluate';
 import type {QueryIRExecutionError} from '../../../runner/session/query_ir';
 import type {BrowserQueryResult} from '../../../runner/steps/types';
-import type {ComputeExpr} from '../../../compute/types';
-import type {QueryIR} from '../../../query/contracts';
+import type {ComputeExpr} from '../../../program/compute/types';
+import type {QueryIR} from '../../../program/query/contracts';
 import type {WorldViewDescriptor} from '../../worldview/contracts';
 
 export type DebugQueryReadResult =

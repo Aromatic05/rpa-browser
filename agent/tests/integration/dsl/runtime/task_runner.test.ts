@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createDslTaskRunner } from '../../../../src/dsl/runtime';
+import { createDslTaskRunner } from '../../../../src/program/dsl/runtime';
 import {
     createResultPipe,
     createSignalChannel,

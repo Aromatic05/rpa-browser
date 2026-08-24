@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeDsl, parseDsl, runDsl } from '../../../../src/dsl';
+import { normalizeDsl, parseDsl, runDsl } from '../../../../src/program/dsl';
 import type { Logger } from '../../../../src/logging/logger';
 import type { RunStepsDeps } from '../../../../src/runner/run_steps';
 import type { StepUnion } from '../../../../src/runner/steps/types';

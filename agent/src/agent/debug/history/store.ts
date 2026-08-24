@@ -1,4 +1,4 @@
-import type {DslAfterStatementEvent} from '../../../dsl/debug/contracts';
+import type {DslAfterStatementEvent} from '../../../program/dsl/debug/contracts';
 import type {DebugStatementExecutionRecord, DebugStatementHistoryStore} from './contracts';
 
 export const createDebugStatementHistoryStore = (): DebugStatementHistoryStore => {

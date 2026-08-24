@@ -1,7 +1,7 @@
 import type { Action } from '../actions/action_protocol';
 import type { RunnerConfig } from '../config';
-import { runDslSource } from '../dsl/runtime';
-import type { DslCheckpointProvider } from '../dsl/emit';
+import { runDslSource } from '../program/dsl/runtime';
+import type { DslCheckpointProvider } from '../program/dsl/emit';
 import type { RunStepsDeps } from '../runner/run_steps';
 import type { StepResult, StepUnion } from '../runner/steps/types';
 import type { WorkspaceRegistry } from '../runtime/workspace/registry';

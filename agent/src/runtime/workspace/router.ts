@@ -15,7 +15,7 @@ import { ERROR_CODES } from '../../actions/results';
 import type { RuntimeWorkspace, WorkspaceRegistry } from './registry';
 import type { ControlPlaneResult } from '../control_plane';
 import type { RecordControl } from '../../record/control';
-import type { DslControl } from '../../dsl/control';
+import type { DslControl } from '../../program/dsl/control';
 import type { CheckpointControl } from '../../checkpoint/control';
 import type { RunnerControl } from '../../runner/control';
 import type { TabsControl } from './tabs';

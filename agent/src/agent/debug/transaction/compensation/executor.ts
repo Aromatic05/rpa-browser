@@ -1,9 +1,9 @@
 import crypto from 'node:crypto';
-import type {DslEffectDescriptor, DslEffectOutcome, DslScopeSnapshot, DslStatementLocation} from '../../../../dsl/debug/contracts';
+import type {DslEffectDescriptor, DslEffectOutcome, DslScopeSnapshot, DslStatementLocation} from '../../../../program/dsl/debug/contracts';
 import type {StepResult, StepUnion} from '../../../../runner/steps/types';
 import type {WorldView, WorldViewSource} from '../../../worldview/contracts';
 import type {DebugEffectJournal, DebugEffectJournalEntry, DebugEffectRecord} from '../../effects/contracts';
-import {UNKNOWN_EFFECT_SEMANTICS} from '../../../../effects/declaration';
+import {UNKNOWN_EFFECT_SEMANTICS} from '../../../../program/effects/declaration';
 import type {
     DebugCompensationPort,
     DebugEffectSemanticRisk,

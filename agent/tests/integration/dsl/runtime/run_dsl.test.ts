@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeDsl, parseDsl, runDsl, runDslSource } from '../../../../src/dsl';
+import { normalizeDsl, parseDsl, runDsl, runDslSource } from '../../../../src/program/dsl';
 import { runCheckpointDslBody } from '../../../../src/runner/checkpoint/dsl_body';
-import { DslRuntimeError, DslValidationError } from '../../../../src/dsl/diagnostics/errors';
-import type { DslCheckpointProvider } from '../../../../src/dsl/emit';
+import { DslRuntimeError, DslValidationError } from '../../../../src/program/dsl/diagnostics/errors';
+import type { DslCheckpointProvider } from '../../../../src/program/dsl/emit';
 import type { RunStepsDeps } from '../../../../src/runner/run_steps';
 import type { Checkpoint } from '../../../../src/runner/checkpoint';
 import type { StepResolve, StepUnion } from '../../../../src/runner/steps/types';

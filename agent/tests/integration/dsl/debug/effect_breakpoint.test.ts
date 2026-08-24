@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createDslDebugController} from '../../../../src/dsl/debug/controller';
-import {runDsl} from '../../../../src/dsl/runtime/run_dsl';
-import type {DslProgram} from '../../../../src/dsl/ast/types';
+import {createDslDebugController} from '../../../../src/program/dsl/debug/controller';
+import {runDsl} from '../../../../src/program/dsl/runtime/run_dsl';
+import type {DslProgram} from '../../../../src/program/dsl/ast/types';
 import type {RunStepsDeps} from '../../../../src/runner/run_steps';
 
 const deps = {} as RunStepsDeps;

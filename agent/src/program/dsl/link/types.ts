@@ -39,4 +39,4 @@ export type DslResolveBundleResolution = {
 export type DslResolveResolver = {
     resolveBundle: (bundleName: string) => DslResolveBundleResolution;
 };
-import type { StepResolve } from '../../runner/steps/types';
+import type { StepResolve } from '../../../runner/steps/types';

@@ -1,7 +1,7 @@
 import type { Workflow } from '../../workflow';
 import { createWorkspaceTabs, createTabsControl, type WorkspaceTabs } from './tabs';
 import { createRecordControl, type RecordControl } from '../../record/control';
-import { createDslControl, type DslControl } from '../../dsl/control';
+import { createDslControl, type DslControl } from '../../program/dsl/control';
 import { createCheckpointControl, type CheckpointControl } from '../../checkpoint/control';
 import { createRunnerControl, type RunnerControl } from '../../runner/control';
 import { createMcpControl, type McpControl } from '../../mcp/control';

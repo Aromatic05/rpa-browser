@@ -11,8 +11,8 @@ import type { Rect } from '../../snapshot/observation/model/contracts';
 import type { SelectOptionKind } from './executors/select_option/types';
 import type { StepEntityRulesControl } from '../../snapshot/rules/model';
 import type { SnapshotProjectionViewMode } from '../../snapshot/projection';
-import type {ComputeExpr} from '../../compute/types';
-import type {BrowserQueryRequest} from '../../query/contracts';
+import type {ComputeExpr} from '../../program/compute/types';
+import type {BrowserQueryRequest} from '../../program/query/contracts';
 
 export type BBox = Rect;
 

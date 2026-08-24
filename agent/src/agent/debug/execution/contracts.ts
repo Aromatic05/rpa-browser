@@ -1,15 +1,15 @@
-import type {ComputeEvalScope} from '../../../compute/evaluate';
-import type {RunDslSourceResult} from '../../../dsl/runtime/run_dsl_source';
+import type {ComputeEvalScope} from '../../../program/compute/evaluate';
+import type {RunDslSourceResult} from '../../../program/dsl/runtime/run_dsl_source';
 import type {
     DslEffectDescriptor,
     DslFailureDescriptor,
     DslScopeSnapshot,
     DslStatementLocation,
-} from '../../../dsl/debug/contracts';
+} from '../../../program/dsl/debug/contracts';
 import type {StepName} from '../../../runner/steps/types';
-import type {ComputeExpr} from '../../../compute/types';
-import type {QueryIR} from '../../../query/contracts';
-import type {DslStmt} from '../../../dsl/ast/types';
+import type {ComputeExpr} from '../../../program/compute/types';
+import type {QueryIR} from '../../../program/query/contracts';
+import type {DslStmt} from '../../../program/dsl/ast/types';
 import type {DebugComputeResult, DebugQueryReadResult} from '../query/contracts';
 import type {QueryIRExecutionError} from '../../../runner/session/query_ir';
 import type {DebugEffectDiffResult, DebugEffectRecord} from '../effects/contracts';

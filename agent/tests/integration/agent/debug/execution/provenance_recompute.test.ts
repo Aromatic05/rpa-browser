@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {createDebugValueProvenanceStore} from '../../../../../src/agent/debug/provenance/store';
 import {recomputeDebugValue} from '../../../../../src/agent/debug/provenance/recompute';
 import type {DebugQuerySession} from '../../../../../src/agent/debug/query/contracts';
-import type {DslValueProvenanceEvent} from '../../../../../src/dsl/debug/contracts';
+import type {DslValueProvenanceEvent} from '../../../../../src/program/dsl/debug/contracts';
 
 const world = Object.freeze({
     workspaceName: 'ws-provenance',

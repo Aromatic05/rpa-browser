@@ -5,7 +5,7 @@ import type {WorldView} from '../../../../../../src/agent/worldview/contracts';
 import {PageSnapshotSessionStore} from '../../../../../../src/snapshot';
 import type {RuntimeStateRecord} from '../../../../../../src/snapshot/observation/model/contracts';
 import type {RunStepsDeps} from '../../../../../../src/runner/run_steps';
-import type {StepExecutionPort} from '../../../../../../src/dsl/runtime/run_dsl';
+import type {StepExecutionPort} from '../../../../../../src/program/dsl/runtime/run_dsl';
 import {createV2BusinessPage} from '../../../../../helpers/v2_business_page';
 
 const withRuntimeValue = (view: WorldView, nodeId: string, value: string, captureRevision: number): WorldView => {

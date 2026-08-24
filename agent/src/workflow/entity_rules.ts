@@ -10,7 +10,7 @@ import {
     writeYamlFile,
 } from './fs';
 import type { WorkflowCodec } from './store';
-import {isEffectReversibility} from '../effects/declaration';
+import {isEffectReversibility} from '../program/effects/declaration';
 
 export type EntityRulePageKind = 'form' | 'table' | 'dialog' | 'list' | 'panel' | 'toolbar' | 'kv';
 

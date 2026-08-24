@@ -1,11 +1,11 @@
-import {readEffectDeclaration, UNKNOWN_EFFECT_SEMANTICS} from '../../effects/declaration';
-import type {EffectSemantics} from '../../effects/contracts';
+import {readEffectDeclaration, UNKNOWN_EFFECT_SEMANTICS} from '../../program/effects/declaration';
+import type {EffectSemantics} from '../../program/effects/contracts';
 import {
     buildPageSessionEntityView,
     type PageSessionEntityRecord,
     type RuntimeEntityKind,
 } from '../../runner/session/entity_view';
-import type {BusinessQueryName} from '../../query/contracts';
+import type {BusinessQueryName} from '../../program/query/contracts';
 import type {SemanticBusinessBinding} from '../../snapshot';
 import {describeWorldView} from './descriptor';
 import type {WorldView, WorldViewDescriptor} from './contracts';

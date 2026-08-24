@@ -1,7 +1,7 @@
-import type {ComputeEvalScope} from '../../../compute/evaluate';
-import type {ComputeExpr} from '../../../compute/types';
-import type {QueryIR} from '../../../query/contracts';
-import {queryIrJsonSchema} from '../../../query/schema';
+import type {ComputeEvalScope} from '../../../program/compute/evaluate';
+import type {ComputeExpr} from '../../../program/compute/types';
+import type {QueryIR} from '../../../program/query/contracts';
+import {queryIrJsonSchema} from '../../../program/query/schema';
 
 export const debugQueryJsonSchema = queryIrJsonSchema;
 

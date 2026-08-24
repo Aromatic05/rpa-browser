@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {validateDsl} from '../../../../src/dsl/validate';
-import type {DslProgram} from '../../../../src/dsl/ast';
+import {validateDsl} from '../../../../src/program/dsl/validate';
+import type {DslProgram} from '../../../../src/program/dsl/ast';
 
 test('validateDsl validates refs inside compute and ensure', () => {
     const program: DslProgram = {

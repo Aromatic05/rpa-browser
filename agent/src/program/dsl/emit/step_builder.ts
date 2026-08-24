@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import type { QueryExpr, RefExpr } from '../ast/types';
 import { DslRuntimeError } from '../diagnostics/errors';
-import type { Step, StepArgsMap, StepUnion } from '../../runner/steps/types';
+import type { Step, StepArgsMap, StepUnion } from '../../../runner/steps/types';
 
 const createStep = <TName extends StepUnion['name']>(name: TName, args: Step<TName>['args'], profileName?: string): Step<TName> => ({
     id: crypto.randomUUID(),

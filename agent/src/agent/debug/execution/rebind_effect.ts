@@ -1,4 +1,4 @@
-import type {DslEffectDescriptor} from '../../../dsl/debug/contracts';
+import type {DslEffectDescriptor} from '../../../program/dsl/debug/contracts';
 import type {BrowserQueryResult, StepArgsMap} from '../../../runner/steps/types';
 import type {SelectOptionKind} from '../../../runner/steps/executors/select_option/types';
 

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {normalizeDsl, parseDsl, runDsl} from '../../../src/dsl';
+import {normalizeDsl, parseDsl, runDsl} from '../../../src/program/dsl';
 import {runStepList} from '../../../src/runner/run_steps';
 import {stepExecutors} from '../../../src/runner/steps/executors';
 import type {Checkpoint} from '../../../src/runner/checkpoint';

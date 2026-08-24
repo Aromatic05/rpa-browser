@@ -1,5 +1,5 @@
-import type { StepResolve } from '../../runner/steps/types';
-import type { Workflow } from '../../workflow';
+import type { StepResolve } from '../../../runner/steps/types';
+import type { Workflow } from '../../../workflow';
 import type { DslResolveResolver } from './types';
 
 export const createDslResolveResolver = (

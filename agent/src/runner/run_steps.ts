@@ -21,8 +21,8 @@ import type {
 } from './run_steps_types';
 import type { StepResolve } from './steps/types';
 import { injectStepResolve } from './step_resolve';
-import type { DslCheckpointProvider } from '../dsl/emit';
-import type { DslEntityRulesResolver, DslResolveResolver } from '../dsl/link';
+import type { DslCheckpointProvider } from '../program/dsl/emit';
+import type { DslEntityRulesResolver, DslResolveResolver } from '../program/dsl/link';
 import type { Workflow } from '../workflow';
 import { resolveStepEntityRulesExecution } from '../snapshot/rules/runtime';
 import { summarizeStepArgs } from './step_event_summary';

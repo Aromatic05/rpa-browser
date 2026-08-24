@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {runDslSource} from '../../../../src/dsl/runtime';
-import type {DslDebugPort} from '../../../../src/dsl/debug/contracts';
+import {runDslSource} from '../../../../src/program/dsl/runtime';
+import type {DslDebugPort} from '../../../../src/program/dsl/debug/contracts';
 import type {RunStepsDeps} from '../../../../src/runner/run_steps';
 
 const deps = {} as RunStepsDeps;

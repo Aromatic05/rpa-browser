@@ -10,8 +10,8 @@ import type {
     EntityRuleRowActionView,
 } from '../../../../../shared/entity-rules-contract/index.js';
 import type {WorkflowEntityRules} from '../../../workflow';
-import {readEffectDeclaration} from '../../../effects/declaration';
-import type {EffectDeclaration} from '../../../effects/contracts';
+import {readEffectDeclaration} from '../../../program/effects/declaration';
+import type {EffectDeclaration} from '../../../program/effects/contracts';
 
 export const projectEntityRuleProfileSummary = (
     profile: WorkflowEntityRules,

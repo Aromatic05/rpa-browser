@@ -8,11 +8,11 @@ import type { StepResolve } from '../runner/steps/types';
 import {workflowArtifactRevision, type Workflow, type WorkflowCheckpoint} from '../workflow';
 import { createWorkspaceCheckpointRuntime } from './runtime';
 import { createWorkspaceCheckpointProvider } from './provider';
-import type { DslCheckpointProvider } from '../dsl/emit/checkpoint_call';
-import { validateDslSource } from '../dsl/runtime';
-import { createDslEntityRulesResolver, createDslResolveResolver } from '../dsl/link';
-import { DslValidationError } from '../dsl/diagnostics';
-import { validateDslCheckpointGraph } from '../dsl/validate';
+import type { DslCheckpointProvider } from '../program/dsl/emit/checkpoint_call';
+import { validateDslSource } from '../program/dsl/runtime';
+import { createDslEntityRulesResolver, createDslResolveResolver } from '../program/dsl/link';
+import { DslValidationError } from '../program/dsl/diagnostics';
+import { validateDslCheckpointGraph } from '../program/dsl/validate';
 
 export type CheckpointControl = {
     handle: (input: WorkspaceRouterInput) => Promise<ControlPlaneResult>;

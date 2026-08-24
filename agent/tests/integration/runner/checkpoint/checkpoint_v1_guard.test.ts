@@ -80,7 +80,7 @@ test('artifacts guard', async () => {
 });
 
 test('query naming guard', async () => {
-    const queryContractSource = await readAgentFile('src/query/contracts.ts');
+    const queryContractSource = await readAgentFile('src/program/query/contracts.ts');
     const mcpSchemaSource = await readAgentFile('src/mcp/schemas.ts');
 
     for (const source of [queryContractSource, mcpSchemaSource]) {

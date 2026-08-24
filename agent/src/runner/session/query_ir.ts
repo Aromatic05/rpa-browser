@@ -4,7 +4,7 @@ import {
     type PageObservation,
     type PageSnapshotSessionEntry,
 } from '../../snapshot';
-import type {QueryIR, QueryPredicate} from '../../query/contracts';
+import type {QueryIR, QueryPredicate} from '../../program/query/contracts';
 import type {BrowserQueryResult} from '../steps/types';
 import {queryPageSessionBusinessEntity, resolvePageSessionBusinessTarget} from './entity_view';
 

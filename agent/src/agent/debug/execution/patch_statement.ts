@@ -1,8 +1,8 @@
-import type {DslStmt} from '../../../dsl/ast/types';
-import type {DslDiagnostic} from '../../../dsl/diagnostics';
-import {linkDsl, type DslEntityRulesResolver, type DslResolveResolver} from '../../../dsl/link';
-import {normalizeDsl} from '../../../dsl/normalize';
-import {parseDsl} from '../../../dsl/parser';
+import type {DslStmt} from '../../../program/dsl/ast/types';
+import type {DslDiagnostic} from '../../../program/dsl/diagnostics';
+import {linkDsl, type DslEntityRulesResolver, type DslResolveResolver} from '../../../program/dsl/link';
+import {normalizeDsl} from '../../../program/dsl/normalize';
+import {parseDsl} from '../../../program/dsl/parser';
 
 export type CompileStatementPatchResult =
     | Readonly<{ok: true; statement: DslStmt}>

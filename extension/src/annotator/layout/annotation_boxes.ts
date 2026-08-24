@@ -8,7 +8,7 @@ import type {
     VisualTargetRef,
     PickRect,
 } from '../types.js';
-import type {LabelTarget} from '../layout/label_layout.js';
+import type {LabelTarget} from './label_layout.js';
 import type {Point, Rect} from './box_geometry.js';
 import {entityVisualId, paginationPageVisualId} from '../visual_ids.js';
 

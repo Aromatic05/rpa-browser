@@ -1,5 +1,5 @@
 import type {PageObservation, PageSnapshotSessionEntry} from '../../snapshot';
-import {compileBrowserQuery} from '../../query/compile';
+import {compileBrowserQuery} from '../../program/query/compile';
 import type {BrowserQueryResult, StepArgsMap} from '../steps/types';
 import {buildPageSessionEntityView} from './entity_view';
 import {executePageSessionQueryIR, type QueryIRExecutionError} from './query_ir';

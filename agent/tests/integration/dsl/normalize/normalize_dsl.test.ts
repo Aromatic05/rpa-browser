@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeDsl } from '../../../../src/dsl/normalize';
-import type { DslProgram } from '../../../../src/dsl/ast';
+import { normalizeDsl } from '../../../../src/program/dsl/normalize';
+import type { DslProgram } from '../../../../src/program/dsl/ast';
 
 test('normalizeDsl prefixes vars refs and keeps input/output refs unchanged', () => {
     const program: DslProgram = {

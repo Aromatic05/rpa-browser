@@ -1,4 +1,4 @@
-import type {DslBeforeEffectEvent} from '../../../dsl/debug/contracts';
+import type {DslBeforeEffectEvent} from '../../../program/dsl/debug/contracts';
 import {describeWorldView} from '../../worldview/descriptor';
 import type {WorldView} from '../../worldview/contracts';
 import type {DebugEffectJournal, DebugEffectJournalEntry} from './contracts';
