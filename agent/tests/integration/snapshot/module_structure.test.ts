@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const agentRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
-const snapshotRoot = path.join(agentRoot, 'src/snapshot');
+const snapshotRoot = path.join(agentRoot, 'src/automation/snapshot');
 
 const expectedBranches: Record<string, readonly string[]> = {
     '.': ['annotator', 'components', 'indexes', 'observation', 'performance', 'projection', 'rules', 'session'],
@@ -164,7 +164,7 @@ test('snapshot dependencies point inward and never reverse layer direction', () 
                     );
                     assert.match(
                         source,
-                        /export type\s*\{[\s\S]*?\}\s*from\s*['"]\.\.\/\.\.\/\.\.\/\.\.\/shared\/annotator-contract\/index\.js['"]/u,
+                        /export type\s*\{[\s\S]*?\}\s*from\s*['"]\.\.\/\.\.\/\.\.\/\.\.\/\.\.\/shared\/annotator-contract\/index\.js['"]/u,
                         'shared annotator contract import must remain type-only',
                     );
                     continue;

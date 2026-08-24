@@ -194,7 +194,7 @@ import path from 'node:path';
 const repoRoot = path.resolve(process.cwd(), '..');
 
 test('agent and extension classify control routing is consistent', async () => {
-    const extMod = await import(path.resolve(repoRoot, 'extension/src/interface/actions/classify.ts'));
+    const extMod = await import(path.resolve(repoRoot, 'extension/src/actions/classify.ts'));
 
     const controlCases: Action[] = [
         stubAction('workspace.list'),
@@ -212,7 +212,7 @@ test('agent and extension classify control routing is consistent', async () => {
 });
 
 test('agent and extension classify workspace routing is consistent', async () => {
-    const extMod = await import(path.resolve(repoRoot, 'extension/src/interface/actions/classify.ts'));
+    const extMod = await import(path.resolve(repoRoot, 'extension/src/actions/classify.ts'));
 
     const workspaceCases = [
         'tab.list', 'tab.close', 'tab.open',
@@ -238,14 +238,14 @@ test('agent and extension classify workspace routing is consistent', async () =>
 });
 
 test('agent and extension classify fixed events consistently', async () => {
-    const extMod = await import(path.resolve(repoRoot, 'extension/src/interface/actions/classify.ts'));
+    const extMod = await import(path.resolve(repoRoot, 'extension/src/actions/classify.ts'));
     const action = stubAction('tab.reassigned', { workspaceName: 'ws-1' });
     assert.equal(classifyActionRoute(action), 'event');
     assert.equal(extMod.classifyActionRoute(action), 'event');
 });
 
 test('agent and extension classify invalid routing is consistent', async () => {
-    const extMod = await import(path.resolve(repoRoot, 'extension/src/interface/actions/classify.ts'));
+    const extMod = await import(path.resolve(repoRoot, 'extension/src/actions/classify.ts'));
 
     // coexistence → invalid
     const coexist = stubAction('tab.list', { workspaceName: 'ws-1', payload: { workspaceName: 'ws-2' } });
@@ -285,12 +285,12 @@ test('agent classify does not export WORKSPACE_ACTIONS', async () => {
 });
 
 test('extension classify does not export CONTROL_ACTIONS', async () => {
-    const extMod = await import(path.resolve(repoRoot, 'extension/src/interface/actions/classify.ts'));
+    const extMod = await import(path.resolve(repoRoot, 'extension/src/actions/classify.ts'));
     assert.equal('CONTROL_ACTIONS' in extMod, false);
 });
 
 test('extension classify does not export WORKSPACE_ACTIONS', async () => {
-    const extMod = await import(path.resolve(repoRoot, 'extension/src/interface/actions/classify.ts'));
+    const extMod = await import(path.resolve(repoRoot, 'extension/src/actions/classify.ts'));
     assert.equal('WORKSPACE_ACTIONS' in extMod, false);
 });
 
