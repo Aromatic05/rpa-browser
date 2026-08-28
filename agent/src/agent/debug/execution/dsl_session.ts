@@ -92,11 +92,23 @@ export const createDslDebugExecutionSession = (
         if (!transaction) {throw new Error('DSL debug transaction is not initialized');}
         return transaction;
     };
-    const isRewindableStatementLocation = (location: DslStatementLocation): boolean =>
-        location.programId === 'main'
-        && location.loops.length === 0
-        && location.callStack.length === 0
-        && /^body\.\d+$/u.test(location.path);
+    const isRewindableStatementLocation = (
+        location: DslStatementLocation,
+        frames: Extract<PausedDslExecution, {reason: 'statement'}>['frames'],
+    ): boolean => {
+        if (location.programId !== 'main'
+            || location.loops.length > 0
+            || location.callStack.length > 0) {
+            return false;
+        }
+        if (frames.length === 0) {return /^body\.\d+$/u.test(location.path);}
+        const currentFrame = frames.at(-1);
+        return Boolean(
+            currentFrame
+            && location.path.startsWith(`${currentFrame.statementPath}.${currentFrame.branch}.`)
+            && /^\d+$/u.test(location.path.slice(`${currentFrame.statementPath}.${currentFrame.branch}.`.length)),
+        );
+    };
     const captureExecutionSavepoint = (
         current: ActivePause,
         savepoint: DebugSavepoint,
@@ -109,6 +121,9 @@ export const createDslDebugExecutionSession = (
                 reason: current.pause.reason,
                 location: structuredClone(current.pause.location),
                 scope: structuredClone(current.pause.scope),
+                frames: current.pause.reason === 'statement'
+                    ? structuredClone(current.pause.frames)
+                    : Object.freeze([]),
                 historySequence: history.at(-1)?.sequence ?? 0,
                 world: current.debug.world,
             }),
@@ -202,7 +217,7 @@ export const createDslDebugExecutionSession = (
             })
             : undefined;
         active = {pause, view, debug, ...(effectResolvedAt ? {effectResolvedAt} : {})};
-        if (pause.reason === 'statement' && isRewindableStatementLocation(pause.location)) {
+        if (pause.reason === 'statement' && isRewindableStatementLocation(pause.location, pause.frames)) {
             const savepoint = requireTransaction().internalSavepoint(view, journal.list().length);
             captureExecutionSavepoint(active, savepoint, 'automatic');
             active = {...active, automaticSavepointId: savepoint.id};
@@ -590,8 +605,8 @@ export const createDslDebugExecutionSession = (
                 savepoint: structuredClone(saved),
             });
         }
-        const match = /^body\.(\d+)$/u.exec(saved.location.path);
-        if (!isRewindableStatementLocation(saved.location) || !match) {
+        const topLevelMatch = /^body\.(\d+)$/u.exec(saved.location.path);
+        if (!isRewindableStatementLocation(saved.location, saved.frames)) {
             return Object.freeze({
                 status: 'unsupported_target' as const,
                 reason: 'not_main_top_level' as const,
@@ -608,7 +623,6 @@ export const createDslDebugExecutionSession = (
             });
         }
 
-        const startIndex = Number(match[1]);
         const oldCompletion = completion;
         active = null;
         controller.abort(continuationId);
@@ -626,7 +640,16 @@ export const createDslDebugExecutionSession = (
             if (!requireTransaction().readSavepoint(id)) {executionSavepoints.delete(id);}
         }
 
-        startExecution({scope: saved.scope, startIndex}, true);
+        startExecution(
+            saved.frames.length === 0 && topLevelMatch
+                ? {scope: saved.scope, startIndex: Number(topLevelMatch[1])}
+                : {
+                    scope: saved.scope,
+                    location: saved.location,
+                    frames: saved.frames,
+                },
+            true,
+        );
         const pause = await waitForPause();
         if (pause.reason !== 'statement'
             || pause.location.programId !== saved.location.programId
@@ -680,25 +703,39 @@ export const createDslDebugExecutionSession = (
         const executions = point?.executions ?? 0;
         const planTarget = Object.freeze({programId, path, executions});
         const targetMatch = /^body\.(\d+)$/u.exec(path);
-        if (programId !== 'main' || !targetMatch) {
+        const branchTarget = /^body\.\d+(?:\.(?:then|else)\.\d+)+$/u.test(path);
+        if (programId !== 'main' || (!targetMatch && !branchTarget)) {
             return Object.freeze({
                 status: 'unsupported_target' as const,
                 reason: 'not_main_top_level' as const,
                 target: planTarget,
             });
         }
-        const targetIndex = Number(targetMatch[1]);
         const candidates = [...executionSavepoints.values()]
             .reverse()
             .flatMap((entry) => {
                 const saved = entry.state;
                 if (saved.reason !== 'statement'
-                    || !isRewindableStatementLocation(saved.location)) {
+                    || !isRewindableStatementLocation(saved.location, saved.frames)) {
                     return [];
+                }
+                if (branchTarget) {
+                    if (saved.location.path !== path) {return [];}
+                    return [Object.freeze({
+                        savepointId: saved.savepoint.id,
+                        origin: entry.origin,
+                        ...(saved.savepoint.name ? {name: saved.savepoint.name} : {}),
+                        location: structuredClone(saved.location),
+                        effectSequence: saved.savepoint.effectSequence,
+                        world: structuredClone(saved.world),
+                        exact: true,
+                        replayStatements: 0,
+                    })];
                 }
                 const match = /^body\.(\d+)$/u.exec(saved.location.path);
                 if (!match) {return [];}
                 const savedIndex = Number(match[1]);
+                const targetIndex = Number(targetMatch![1]);
                 if (savedIndex > targetIndex) {return [];}
                 return [Object.freeze({
                     savepointId: saved.savepoint.id,

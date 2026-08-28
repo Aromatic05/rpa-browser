@@ -78,6 +78,7 @@ export const createDslDebugController = (
                     location: event.location,
                     scope: event.scope,
                     statement: event.statement,
+                    frames: event.frames,
                 }));
                 return paused.statementOverride
                     ? Object.freeze({statement: paused.statementOverride})

@@ -2,6 +2,7 @@ import type {ComputeEvalScope} from '../../../program/compute/evaluate';
 import type {RunDslSourceResult} from '../../../automation/dsl/runtime/run_dsl_source';
 import type {
     DslEffectDescriptor,
+    DslExecutionFrameSnapshot,
     DslFailureDescriptor,
     DslScopeSnapshot,
     DslStatementLocation,
@@ -81,6 +82,7 @@ export type DebugExecutionSavepoint = Readonly<{
     reason: PausedDslDebugExecution['reason'];
     location: DslStatementLocation;
     scope: DslScopeSnapshot;
+    frames: readonly DslExecutionFrameSnapshot[];
     historySequence: number;
     world: WorldViewDescriptor;
 }>;

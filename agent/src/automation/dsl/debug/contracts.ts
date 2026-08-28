@@ -26,6 +26,19 @@ export type DslScopeSnapshot = Readonly<{
     output: Readonly<Record<string, unknown>>;
 }>;
 
+export type DslIfExecutionFrameSnapshot = Readonly<{
+    kind: 'if';
+    statementPath: string;
+    parentBlockPath: string;
+    statementIndex: number;
+    branch: 'then' | 'else';
+    parentScope: DslScopeSnapshot;
+    beforeVars: readonly string[];
+    loops: readonly DslLoopFrame[];
+}>;
+
+export type DslExecutionFrameSnapshot = DslIfExecutionFrameSnapshot;
+
 export type DslValueObservedRevision = Readonly<{
     pageEpoch: string;
     captureRevision: number;
@@ -79,6 +92,7 @@ export type DslBeforeStatementEvent = Readonly<{
     location: DslStatementLocation;
     scope: DslScopeSnapshot;
     statement: DslStmt;
+    frames: readonly DslExecutionFrameSnapshot[];
 }>;
 
 export type DslBeforeStatementResolution = Readonly<{
@@ -181,7 +195,11 @@ type PausedDslExecutionBase = Readonly<{
 }>;
 
 export type PausedDslExecution =
-    | (PausedDslExecutionBase & Readonly<{reason: 'statement'; statement: DslStmt}>)
+    | (PausedDslExecutionBase & Readonly<{
+        reason: 'statement';
+        statement: DslStmt;
+        frames: readonly DslExecutionFrameSnapshot[];
+    }>)
     | (PausedDslExecutionBase & Readonly<{reason: 'effect'; effect: DslEffectDescriptor}>)
     | (PausedDslExecutionBase & Readonly<{reason: 'barrier'; effect: DslEffectDescriptor}>)
     | (PausedDslExecutionBase & Readonly<{reason: 'failure'; failure: DslFailureDescriptor}>);

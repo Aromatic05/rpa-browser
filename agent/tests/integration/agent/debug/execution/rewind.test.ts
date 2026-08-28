@@ -304,18 +304,164 @@ test('automatic hidden execution points enable rewind without a manual savepoint
     if (completed.status === 'completed') {assert.deepEqual(completed.output, {result: 9});}
 });
 
-test('rewind plan rejects nested targets until nested execution frames are restorable', async () => {
+test('rewind restores an if-branch execution frame and continues through the parent program', async () => {
     const view = await createView();
     const execution = createDslDebugExecutionSession({
         source: `
+            let base = compute first(input.base)
             if input.enabled:
-              let value = compute first(input.values)
-            output result = input.done
+              let value = compute first(input.old)
+              output branch = vars.value
+            output result = output.branch
         `,
         context: {
-            workspaceName: 'ws-rewind-plan-nested',
+            workspaceName: 'ws-rewind-if',
             deps,
-            input: {enabled: true, values: [2], done: true},
+            input: {base: [1], enabled: true, old: [2], next: [9]},
+            stepExecutionPort: {
+                execute: async (step) => ({stepId: step.id, ok: true, data: {}}),
+            },
+        },
+        worldViewSource: {pin: async () => view},
+        debug: {initialMode: 'step'},
+    });
+
+    const body0 = await execution.waitForPause();
+    const body1Result = await execution.advance(body0.continuationId, 'step');
+    assert.equal(body1Result.status, 'paused');
+    if (body1Result.status !== 'paused') {throw new Error('expected body.1');}
+    const nested0Result = await execution.advance(body1Result.pause.continuationId, 'step');
+    assert.equal(nested0Result.status, 'paused');
+    if (nested0Result.status !== 'paused') {throw new Error('expected nested body.0');}
+    assert.equal(nested0Result.pause.location.path, 'body.1.then.0');
+    assert.deepEqual(nested0Result.pause.scope.vars, {base: 1});
+
+    const nested1Result = await execution.advance(nested0Result.pause.continuationId, 'step');
+    assert.equal(nested1Result.status, 'paused');
+    if (nested1Result.status !== 'paused') {throw new Error('expected nested body.1');}
+    const body2Result = await execution.advance(nested1Result.pause.continuationId, 'step');
+    assert.equal(body2Result.status, 'paused');
+    if (body2Result.status !== 'paused') {throw new Error('expected parent body.2');}
+    assert.equal(body2Result.pause.location.path, 'body.2');
+    assert.deepEqual(body2Result.pause.scope.output, {branch: 2});
+
+    const repair = execution.patchStatement(body2Result.pause.continuationId, 'let value = compute first(input.next)', {
+        programId: 'main',
+        path: 'body.1.then.0',
+    });
+    assert.equal(repair.status, 'rewind_required');
+    if (repair.status !== 'rewind_required') {throw new Error('expected rewind_required');}
+    assert.equal(repair.rewind.status, 'ready');
+    if (repair.rewind.status !== 'ready') {throw new Error('expected branch rewind plan');}
+    assert.equal(repair.rewind.candidates[0].exact, true);
+    assert.equal(repair.rewind.candidates[0].location.path, 'body.1.then.0');
+
+    const rewound = await execution.rewind(
+        body2Result.pause.continuationId,
+        repair.rewind.candidates[0].savepointId,
+    );
+    assert.equal(rewound.status, 'rewound');
+    if (rewound.status !== 'rewound') {throw new Error('expected branch rewind');}
+    assert.equal(rewound.pause.location.path, 'body.1.then.0');
+    assert.deepEqual(rewound.pause.scope.vars, {base: 1});
+
+    const patched = execution.patchStatement(rewound.pause.continuationId, 'let value = compute first(input.next)');
+    assert.equal(patched.status, 'patched');
+    if (patched.status !== 'patched') {throw new Error('expected patched branch statement');}
+    const nestedOutput = await execution.advance(patched.pause.continuationId, 'step');
+    assert.equal(nestedOutput.status, 'paused');
+    if (nestedOutput.status !== 'paused') {throw new Error('expected nested output');}
+    assert.equal(nestedOutput.pause.location.path, 'body.1.then.1');
+    assert.deepEqual(nestedOutput.pause.scope.vars, {base: 1, value: 9});
+    const parentOutput = await execution.advance(nestedOutput.pause.continuationId, 'step');
+    assert.equal(parentOutput.status, 'paused');
+    if (parentOutput.status !== 'paused') {throw new Error('expected parent output');}
+    assert.equal(parentOutput.pause.location.path, 'body.2');
+    assert.deepEqual(parentOutput.pause.scope.vars, {base: 1});
+    assert.deepEqual(parentOutput.pause.scope.output, {branch: 9});
+    const completed = await execution.advance(parentOutput.pause.continuationId, 'continue');
+    assert.equal(completed.status, 'completed');
+    if (completed.status === 'completed') {assert.deepEqual(completed.output, {branch: 9, result: 9});}
+});
+
+test('rewind restores multiple nested if frames before returning to the root body', async () => {
+    const view = await createView();
+    const execution = createDslDebugExecutionSession({
+        source: `
+            if input.outer:
+              if input.inner:
+                output inner = input.value
+              output outer = output.inner
+            output result = output.outer
+        `,
+        context: {
+            workspaceName: 'ws-rewind-nested-if',
+            deps,
+            input: {outer: true, inner: true, value: 7},
+            stepExecutionPort: {
+                execute: async (step) => ({stepId: step.id, ok: true, data: {}}),
+            },
+        },
+        worldViewSource: {pin: async () => view},
+        debug: {initialMode: 'step'},
+    });
+
+    const outer = await execution.waitForPause();
+    const innerIf = await execution.advance(outer.continuationId, 'step');
+    assert.equal(innerIf.status, 'paused');
+    if (innerIf.status !== 'paused') {throw new Error('expected inner if');}
+    const innerOutput = await execution.advance(innerIf.pause.continuationId, 'step');
+    assert.equal(innerOutput.status, 'paused');
+    if (innerOutput.status !== 'paused') {throw new Error('expected inner output');}
+    assert.equal(innerOutput.pause.location.path, 'body.0.then.0.then.0');
+
+    const outerOutput = await execution.advance(innerOutput.pause.continuationId, 'step');
+    assert.equal(outerOutput.status, 'paused');
+    if (outerOutput.status !== 'paused') {throw new Error('expected outer output');}
+    const rootOutput = await execution.advance(outerOutput.pause.continuationId, 'step');
+    assert.equal(rootOutput.status, 'paused');
+    if (rootOutput.status !== 'paused') {throw new Error('expected root output');}
+    assert.equal(rootOutput.pause.location.path, 'body.1');
+
+    const plan = execution.rewindPlan(rootOutput.pause.continuationId, {
+        programId: 'main',
+        path: 'body.0.then.0.then.0',
+    });
+    assert.equal(plan.status, 'ready');
+    if (plan.status !== 'ready') {throw new Error('expected nested if rewind plan');}
+    const rewound = await execution.rewind(rootOutput.pause.continuationId, plan.candidates[0].savepointId);
+    assert.equal(rewound.status, 'rewound');
+    if (rewound.status !== 'rewound') {throw new Error('expected nested if rewind');}
+    assert.equal(rewound.pause.location.path, 'body.0.then.0.then.0');
+
+    const afterInner = await execution.advance(rewound.pause.continuationId, 'step');
+    assert.equal(afterInner.status, 'paused');
+    if (afterInner.status !== 'paused') {throw new Error('expected outer branch after inner rewind');}
+    assert.equal(afterInner.pause.location.path, 'body.0.then.1');
+    assert.deepEqual(afterInner.pause.scope.output, {inner: 7});
+    const afterOuter = await execution.advance(afterInner.pause.continuationId, 'step');
+    assert.equal(afterOuter.status, 'paused');
+    if (afterOuter.status !== 'paused') {throw new Error('expected root after outer branch');}
+    assert.equal(afterOuter.pause.location.path, 'body.1');
+    assert.deepEqual(afterOuter.pause.scope.output, {inner: 7, outer: 7});
+    const completed = await execution.advance(afterOuter.pause.continuationId, 'continue');
+    assert.equal(completed.status, 'completed');
+    if (completed.status === 'completed') {
+        assert.deepEqual(completed.output, {inner: 7, outer: 7, result: 7});
+    }
+});
+
+test('rewind plan keeps loop-frame targets unsupported until iteration frames are restorable', async () => {
+    const view = await createView();
+    const execution = createDslDebugExecutionSession({
+        source: `
+            for item in input.items:
+              output result = item
+        `,
+        context: {
+            workspaceName: 'ws-rewind-loop',
+            deps,
+            input: {items: [1, 2]},
             stepExecutionPort: {
                 execute: async (step) => ({stepId: step.id, ok: true, data: {}}),
             },
@@ -327,10 +473,10 @@ test('rewind plan rejects nested targets until nested execution frames are resto
     const outer = await execution.waitForPause();
     const nestedResult = await execution.advance(outer.continuationId, 'step');
     assert.equal(nestedResult.status, 'paused');
-    if (nestedResult.status !== 'paused') {throw new Error('expected nested pause');}
+    if (nestedResult.status !== 'paused') {throw new Error('expected loop body pause');}
     const plan = execution.rewindPlan(nestedResult.pause.continuationId, {
         programId: 'main',
-        path: 'body.0.then.0',
+        path: 'body.0.body.0',
     });
     assert.equal(plan.status, 'unsupported_target');
     if (plan.status === 'unsupported_target') {assert.equal(plan.reason, 'not_main_top_level');}
@@ -364,18 +510,17 @@ test('rewind rejects effect savepoints instead of treating a pending effect as a
     await execution.advance(effect.continuationId, 'abort');
 });
 
-test('rewind rejects nested statement savepoints until execution frames can be reconstructed', async () => {
+test('rewind rejects loop statement savepoints until iteration frames can be reconstructed', async () => {
     const view = await createView();
     const execution = createDslDebugExecutionSession({
         source: `
-            if input.enabled:
-              let value = compute first(input.values)
-            output result = input.done
+            for item in input.items:
+              output result = item
         `,
         context: {
-            workspaceName: 'ws-rewind-nested',
+            workspaceName: 'ws-rewind-loop-savepoint',
             deps,
-            input: {enabled: true, values: [2], done: true},
+            input: {items: [1, 2]},
             stepExecutionPort: {
                 execute: async (step) => ({stepId: step.id, ok: true, data: {}}),
             },
@@ -389,7 +534,7 @@ test('rewind rejects nested statement savepoints until execution frames can be r
     assert.equal(nestedResult.status, 'paused');
     if (nestedResult.status !== 'paused') {throw new Error('expected nested pause');}
     const nested = nestedResult.pause;
-    assert.equal(nested.location.path, 'body.0.then.0');
+    assert.equal(nested.location.path, 'body.0.body.0');
     const savepoint = execution.savepoint(nested.continuationId, 'nested');
     const result = await execution.rewind(nested.continuationId, savepoint.id);
     assert.equal(result.status, 'unsupported_target');
