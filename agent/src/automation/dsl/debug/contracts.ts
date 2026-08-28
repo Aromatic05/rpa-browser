@@ -37,7 +37,21 @@ export type DslIfExecutionFrameSnapshot = Readonly<{
     loops: readonly DslLoopFrame[];
 }>;
 
-export type DslExecutionFrameSnapshot = DslIfExecutionFrameSnapshot;
+export type DslForExecutionFrameSnapshot = Readonly<{
+    kind: 'for';
+    statementPath: string;
+    parentBlockPath: string;
+    statementIndex: number;
+    parentScope: DslScopeSnapshot;
+    item: string;
+    items: readonly unknown[];
+    iteration: number;
+    loops: readonly DslLoopFrame[];
+}>;
+
+export type DslExecutionFrameSnapshot =
+    | DslIfExecutionFrameSnapshot
+    | DslForExecutionFrameSnapshot;
 
 export type DslValueObservedRevision = Readonly<{
     pageEpoch: string;

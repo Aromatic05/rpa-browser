@@ -124,15 +124,7 @@ const executeStatements = async (
     for (let index = execution.startIndex ?? 0; index < body.length; index += 1) {
         const stmt = body[index];
         const path = `${execution.blockPath}.${index}`;
-        const source = ctx.debugSourceMap?.[path];
-        const originalLocation: DslStatementLocation = Object.freeze({
-            programId: ctx.debugProgramId ?? 'main',
-            path,
-            kind: stmt.kind,
-            loops: execution.loops.map((loop) => Object.freeze({...loop})),
-            ...(source ? {source} : {}),
-            callStack: Object.freeze([...(ctx.checkpointCallStack ?? [])]),
-        });
+        const originalLocation = createDslStatementLocation(ctx, path, stmt.kind, execution.loops);
         const resolution = await ctx.debugPort?.beforeStatement({
             location: originalLocation,
             scope: snapshotDslScope(scope),
@@ -383,29 +375,99 @@ const executeStmt = async (
             if (!Array.isArray(iterable)) {
                 throw new DslRuntimeError('DSL for iterable must resolve to an array', 'ERR_DSL_BAD_ITERABLE');
             }
-            const items = iterable as unknown[];
-            for (let iteration = 0; iteration < items.length; iteration += 1) {
-                const item = items[iteration];
-                const child = createChildDslScope(scope);
-                const target = `vars.${stmt.item}`;
-                setDslValue(child, target, item);
-                await notifyValue(ctx, target, location, Object.freeze({
-                    kind: 'loop' as const,
-                    expression: structuredClone(stmt.iterable),
-                    iteration,
-                    dependencies: collectDslExpressionDependencies(stmt.iterable),
-                }));
-                safeLog(logger, 'debug', 'dsl.scope.write', { key: target, valuePreview: previewValue(item) });
-                await executeStatements(stmt.body, child, ctx, port, logger, {
-                    blockPath: `${location.path}.body`,
-                    loops: [...location.loops, {path: location.path, iteration}],
-                    frames: execution.frames,
-                });
-            }
+            await executeForIterations({
+                statement: stmt,
+                parentScope: scope,
+                items: iterable,
+                startIteration: 0,
+                ctx,
+                port,
+                logger,
+                statementIndex: stmtIndex,
+                location,
+                frames: execution.frames,
+            });
             return;
         }
     }
 };
+
+const createDslStatementLocation = (
+    ctx: RunDslContext,
+    path: string,
+    kind: DslStmt['kind'],
+    loops: readonly DslLoopFrame[],
+): DslStatementLocation => {
+    const source = ctx.debugSourceMap?.[path];
+    return Object.freeze({
+        programId: ctx.debugProgramId ?? 'main',
+        path,
+        kind,
+        loops: Object.freeze(loops.map((loop) => Object.freeze({...loop}))),
+        ...(source ? {source} : {}),
+        callStack: Object.freeze([...(ctx.checkpointCallStack ?? [])]),
+    });
+};
+
+const executeForIterations = async (input: Readonly<{
+    statement: Extract<DslStmt, {kind: 'for'}>;
+    parentScope: DslScope;
+    items: readonly unknown[];
+    startIteration: number;
+    ctx: RunDslContext;
+    port: StepExecutionPort;
+    logger: Logger;
+    statementIndex: number;
+    location: DslStatementLocation;
+    frames: readonly DslExecutionFrameSnapshot[];
+}>): Promise<void> => {
+    const {
+        statement,
+        parentScope,
+        items,
+        startIteration,
+        ctx,
+        port,
+        logger,
+        statementIndex,
+        location,
+        frames,
+    } = input;
+    for (let iteration = startIteration; iteration < items.length; iteration += 1) {
+        const item = items[iteration];
+        const child = createChildDslScope(parentScope);
+        const target = `vars.${statement.item}`;
+        setDslValue(child, target, item);
+        await notifyValue(ctx, target, location, Object.freeze({
+            kind: 'loop' as const,
+            expression: structuredClone(statement.iterable),
+            iteration,
+            dependencies: collectDslExpressionDependencies(statement.iterable),
+        }));
+        safeLog(logger, 'debug', 'dsl.scope.write', {key: target, valuePreview: previewValue(item)});
+        const frame: DslExecutionFrameSnapshot = Object.freeze({
+            kind: 'for' as const,
+            statementPath: location.path,
+            parentBlockPath: location.path.slice(0, location.path.lastIndexOf('.')),
+            statementIndex,
+            parentScope: snapshotDslScope(parentScope),
+            item: statement.item,
+            items: Object.freeze(structuredClone(items)),
+            iteration,
+            loops: Object.freeze(location.loops.map((loop) => Object.freeze({...loop}))),
+        });
+        await executeStatements(statement.body, child, ctx, port, logger, {
+            blockPath: `${location.path}.body`,
+            loops: [...location.loops, {path: location.path, iteration}],
+            frames: [...frames, frame],
+        });
+    }
+};
+
+const executionFrameBlockPath = (frame: DslExecutionFrameSnapshot): string =>
+    frame.kind === 'if'
+        ? `${frame.statementPath}.${frame.branch}`
+        : `${frame.statementPath}.body`;
 
 const resumeDslExecution = async (
     program: DslProgram,
@@ -421,7 +483,7 @@ const resumeDslExecution = async (
     const frames = resume.frames.map((frame) => structuredClone(frame));
     const currentFrame = frames.at(-1);
     const blockPath = currentFrame
-        ? `${currentFrame.statementPath}.${currentFrame.branch}`
+        ? executionFrameBlockPath(currentFrame)
         : 'body';
     const index = parseResumeStatementIndex(resume.location.path, blockPath);
     let childScope = scope;
@@ -439,24 +501,52 @@ const resumeDslExecution = async (
         parentScope.output = childScope.output;
         const parentBody = resolveDslBlock(program, frame.parentBlockPath);
         const statement = parentBody.at(frame.statementIndex);
-        if (statement?.kind !== 'if') {
-            throw new DslRuntimeError(
-                `invalid DSL resume frame: ${frame.statementPath}`,
-                'ERR_DSL_BAD_RESUME',
+        const outerFrames = frames.slice(0, depth);
+        if (frame.kind === 'if') {
+            if (statement?.kind !== 'if') {
+                throw new DslRuntimeError(
+                    `invalid DSL resume frame: ${frame.statementPath}`,
+                    'ERR_DSL_BAD_RESUME',
+                );
+            }
+            const before = new Set(frame.beforeVars);
+            const after = collectDefinitelyAssignedVariables([statement], before);
+            promoteDslVariables(
+                parentScope,
+                childScope,
+                [...after].filter((name) => !before.has(name)),
             );
+        } else {
+            if (statement?.kind !== 'for') {
+                throw new DslRuntimeError(
+                    `invalid DSL resume frame: ${frame.statementPath}`,
+                    'ERR_DSL_BAD_RESUME',
+                );
+            }
+            const location = createDslStatementLocation(
+                ctx,
+                frame.statementPath,
+                statement.kind,
+                frame.loops,
+            );
+            await executeForIterations({
+                statement,
+                parentScope,
+                items: frame.items,
+                startIteration: frame.iteration + 1,
+                ctx,
+                port,
+                logger,
+                statementIndex: frame.statementIndex,
+                location,
+                frames: outerFrames,
+            });
         }
-        const before = new Set(frame.beforeVars);
-        const after = collectDefinitelyAssignedVariables([statement], before);
-        promoteDslVariables(
-            parentScope,
-            childScope,
-            [...after].filter((name) => !before.has(name)),
-        );
         childScope = parentScope;
         await executeStatements(parentBody, childScope, ctx, port, logger, {
             blockPath: frame.parentBlockPath,
             loops: frame.loops,
-            frames: frames.slice(0, depth),
+            frames: outerFrames,
             startIndex: frame.statementIndex + 1,
         });
     }
@@ -484,10 +574,19 @@ const resolveDslBlock = (program: DslProgram, blockPath: string): DslStmt[] => {
     while (tokens.length > 0) {
         const indexToken = tokens.shift();
         const branch = tokens.shift();
-        if (!indexToken || !/^\d+$/u.test(indexToken) || (branch !== 'then' && branch !== 'else')) {
+        if (!indexToken
+            || !/^\d+$/u.test(indexToken)
+            || (branch !== 'then' && branch !== 'else' && branch !== 'body')) {
             throw new DslRuntimeError(`unsupported DSL block path: ${blockPath}`, 'ERR_DSL_BAD_RESUME');
         }
         const statement = body.at(Number(indexToken));
+        if (branch === 'body') {
+            if (statement?.kind !== 'for') {
+                throw new DslRuntimeError(`invalid DSL block path: ${blockPath}`, 'ERR_DSL_BAD_RESUME');
+            }
+            body = statement.body;
+            continue;
+        }
         if (statement?.kind !== 'if') {
             throw new DslRuntimeError(`invalid DSL block path: ${blockPath}`, 'ERR_DSL_BAD_RESUME');
         }

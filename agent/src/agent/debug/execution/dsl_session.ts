@@ -96,17 +96,28 @@ export const createDslDebugExecutionSession = (
         location: DslStatementLocation,
         frames: Extract<PausedDslExecution, {reason: 'statement'}>['frames'],
     ): boolean => {
-        if (location.programId !== 'main'
-            || location.loops.length > 0
-            || location.callStack.length > 0) {
+        if (location.programId !== 'main' || location.callStack.length > 0) {
+            return false;
+        }
+        const loopFrames = frames.filter((frame) => frame.kind === 'for');
+        if (loopFrames.length !== location.loops.length
+            || loopFrames.some((frame, index) => {
+                const loop = location.loops[index];
+                return loop.path !== frame.statementPath || loop.iteration !== frame.iteration;
+            })) {
             return false;
         }
         if (frames.length === 0) {return /^body\.\d+$/u.test(location.path);}
         const currentFrame = frames.at(-1);
+        const blockPath = currentFrame?.kind === 'if'
+            ? `${currentFrame.statementPath}.${currentFrame.branch}`
+            : currentFrame
+                ? `${currentFrame.statementPath}.body`
+                : null;
         return Boolean(
-            currentFrame
-            && location.path.startsWith(`${currentFrame.statementPath}.${currentFrame.branch}.`)
-            && /^\d+$/u.test(location.path.slice(`${currentFrame.statementPath}.${currentFrame.branch}.`.length)),
+            blockPath
+            && location.path.startsWith(`${blockPath}.`)
+            && /^\d+$/u.test(location.path.slice(`${blockPath}.`.length)),
         );
     };
     const captureExecutionSavepoint = (
@@ -703,8 +714,8 @@ export const createDslDebugExecutionSession = (
         const executions = point?.executions ?? 0;
         const planTarget = Object.freeze({programId, path, executions});
         const targetMatch = /^body\.(\d+)$/u.exec(path);
-        const branchTarget = /^body\.\d+(?:\.(?:then|else)\.\d+)+$/u.test(path);
-        if (programId !== 'main' || (!targetMatch && !branchTarget)) {
+        const nestedTarget = /^body\.\d+(?:\.(?:then|else|body)\.\d+)+$/u.test(path);
+        if (programId !== 'main' || (!targetMatch && !nestedTarget)) {
             return Object.freeze({
                 status: 'unsupported_target' as const,
                 reason: 'not_main_top_level' as const,
@@ -719,7 +730,7 @@ export const createDslDebugExecutionSession = (
                     || !isRewindableStatementLocation(saved.location, saved.frames)) {
                     return [];
                 }
-                if (branchTarget) {
+                if (nestedTarget) {
                     if (saved.location.path !== path) {return [];}
                     return [Object.freeze({
                         savepointId: saved.savepoint.id,

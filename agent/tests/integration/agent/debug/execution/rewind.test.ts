@@ -451,17 +451,18 @@ test('rewind restores multiple nested if frames before returning to the root bod
     }
 });
 
-test('rewind plan keeps loop-frame targets unsupported until iteration frames are restorable', async () => {
+test('rewind plan distinguishes loop iterations and rewind resumes the remaining iterations', async () => {
     const view = await createView();
     const execution = createDslDebugExecutionSession({
         source: `
             for item in input.items:
-              output result = item
+              output current = item
+            output result = output.current
         `,
         context: {
             workspaceName: 'ws-rewind-loop',
             deps,
-            input: {items: [1, 2]},
+            input: {items: [1, 2], replacement: 9},
             stepExecutionPort: {
                 execute: async (step) => ({stepId: step.id, ok: true, data: {}}),
             },
@@ -471,16 +472,128 @@ test('rewind plan keeps loop-frame targets unsupported until iteration frames ar
     });
 
     const outer = await execution.waitForPause();
-    const nestedResult = await execution.advance(outer.continuationId, 'step');
-    assert.equal(nestedResult.status, 'paused');
-    if (nestedResult.status !== 'paused') {throw new Error('expected loop body pause');}
-    const plan = execution.rewindPlan(nestedResult.pause.continuationId, {
+    const iteration0 = await execution.advance(outer.continuationId, 'step');
+    assert.equal(iteration0.status, 'paused');
+    if (iteration0.status !== 'paused') {throw new Error('expected iteration 0');}
+    assert.deepEqual(iteration0.pause.location.loops, [{path: 'body.0', iteration: 0}]);
+    const iteration1 = await execution.advance(iteration0.pause.continuationId, 'step');
+    assert.equal(iteration1.status, 'paused');
+    if (iteration1.status !== 'paused') {throw new Error('expected iteration 1');}
+    assert.deepEqual(iteration1.pause.location.loops, [{path: 'body.0', iteration: 1}]);
+    const root = await execution.advance(iteration1.pause.continuationId, 'step');
+    assert.equal(root.status, 'paused');
+    if (root.status !== 'paused') {throw new Error('expected root output');}
+
+    const plan = execution.rewindPlan(root.pause.continuationId, {
         programId: 'main',
         path: 'body.0.body.0',
     });
-    assert.equal(plan.status, 'unsupported_target');
-    if (plan.status === 'unsupported_target') {assert.equal(plan.reason, 'not_main_top_level');}
-    await execution.advance(nestedResult.pause.continuationId, 'abort');
+    assert.equal(plan.status, 'ready');
+    if (plan.status !== 'ready') {throw new Error('expected loop rewind plan');}
+    assert.deepEqual(
+        plan.candidates.map((candidate) => candidate.location.loops[0]?.iteration),
+        [1, 0],
+    );
+
+    const rewound = await execution.rewind(root.pause.continuationId, plan.candidates[1].savepointId);
+    assert.equal(rewound.status, 'rewound');
+    if (rewound.status !== 'rewound') {throw new Error('expected iteration 0 rewind');}
+    assert.deepEqual(rewound.pause.location.loops, [{path: 'body.0', iteration: 0}]);
+    assert.equal(rewound.pause.scope.vars.item, 1);
+
+    const resumedIteration1 = await execution.advance(rewound.pause.continuationId, 'step');
+    assert.equal(resumedIteration1.status, 'paused');
+    if (resumedIteration1.status !== 'paused') {throw new Error('expected resumed iteration 1');}
+    assert.deepEqual(resumedIteration1.pause.location.loops, [{path: 'body.0', iteration: 1}]);
+    assert.deepEqual(resumedIteration1.pause.scope.output, {current: 1});
+    assert.equal(resumedIteration1.pause.scope.vars.item, 2);
+
+    const patched = execution.patchStatement(
+        resumedIteration1.pause.continuationId,
+        'output current = input.replacement',
+    );
+    assert.equal(patched.status, 'patched');
+    if (patched.status !== 'patched') {throw new Error('expected loop patch');}
+    const rootAgain = await execution.advance(patched.pause.continuationId, 'step');
+    assert.equal(rootAgain.status, 'paused');
+    if (rootAgain.status !== 'paused') {throw new Error('expected root after loop');}
+    assert.equal(rootAgain.pause.location.path, 'body.1');
+    assert.deepEqual(rootAgain.pause.scope.output, {current: 9});
+    const completed = await execution.advance(rootAgain.pause.continuationId, 'continue');
+    assert.equal(completed.status, 'completed');
+    if (completed.status === 'completed') {
+        assert.deepEqual(completed.output, {current: 9, result: 9});
+    }
+});
+
+test('rewind unwinds a loop frame inside an if frame in execution order', async () => {
+    const view = await createView();
+    const execution = createDslDebugExecutionSession({
+        source: `
+            if input.enabled:
+              for item in input.items:
+                output current = item
+              output branch = output.current
+            output result = output.branch
+        `,
+        context: {
+            workspaceName: 'ws-rewind-if-loop',
+            deps,
+            input: {enabled: true, items: [1, 2]},
+            stepExecutionPort: {
+                execute: async (step) => ({stepId: step.id, ok: true, data: {}}),
+            },
+        },
+        worldViewSource: {pin: async () => view},
+        debug: {initialMode: 'step'},
+    });
+
+    const outerIf = await execution.waitForPause();
+    const loopStatement = await execution.advance(outerIf.continuationId, 'step');
+    assert.equal(loopStatement.status, 'paused');
+    if (loopStatement.status !== 'paused') {throw new Error('expected loop statement');}
+    const iteration0 = await execution.advance(loopStatement.pause.continuationId, 'step');
+    assert.equal(iteration0.status, 'paused');
+    if (iteration0.status !== 'paused') {throw new Error('expected iteration 0');}
+    const iteration1 = await execution.advance(iteration0.pause.continuationId, 'step');
+    assert.equal(iteration1.status, 'paused');
+    if (iteration1.status !== 'paused') {throw new Error('expected iteration 1');}
+    assert.equal(iteration1.pause.location.path, 'body.0.then.0.body.0');
+    assert.deepEqual(iteration1.pause.location.loops, [{path: 'body.0.then.0', iteration: 1}]);
+    const branchOutput = await execution.advance(iteration1.pause.continuationId, 'step');
+    assert.equal(branchOutput.status, 'paused');
+    if (branchOutput.status !== 'paused') {throw new Error('expected branch output');}
+    const rootOutput = await execution.advance(branchOutput.pause.continuationId, 'step');
+    assert.equal(rootOutput.status, 'paused');
+    if (rootOutput.status !== 'paused') {throw new Error('expected root output');}
+
+    const plan = execution.rewindPlan(rootOutput.pause.continuationId, {
+        programId: 'main',
+        path: 'body.0.then.0.body.0',
+    });
+    assert.equal(plan.status, 'ready');
+    if (plan.status !== 'ready') {throw new Error('expected mixed-frame rewind plan');}
+    const rewound = await execution.rewind(rootOutput.pause.continuationId, plan.candidates[0].savepointId);
+    assert.equal(rewound.status, 'rewound');
+    if (rewound.status !== 'rewound') {throw new Error('expected mixed-frame rewind');}
+    assert.equal(rewound.pause.location.path, 'body.0.then.0.body.0');
+    assert.deepEqual(rewound.pause.location.loops, [{path: 'body.0.then.0', iteration: 1}]);
+
+    const afterLoop = await execution.advance(rewound.pause.continuationId, 'step');
+    assert.equal(afterLoop.status, 'paused');
+    if (afterLoop.status !== 'paused') {throw new Error('expected branch continuation');}
+    assert.equal(afterLoop.pause.location.path, 'body.0.then.1');
+    assert.deepEqual(afterLoop.pause.scope.output, {current: 2});
+    const afterIf = await execution.advance(afterLoop.pause.continuationId, 'step');
+    assert.equal(afterIf.status, 'paused');
+    if (afterIf.status !== 'paused') {throw new Error('expected root continuation');}
+    assert.equal(afterIf.pause.location.path, 'body.1');
+    assert.deepEqual(afterIf.pause.scope.output, {current: 2, branch: 2});
+    const completed = await execution.advance(afterIf.pause.continuationId, 'continue');
+    assert.equal(completed.status, 'completed');
+    if (completed.status === 'completed') {
+        assert.deepEqual(completed.output, {current: 2, branch: 2, result: 2});
+    }
 });
 
 test('rewind rejects effect savepoints instead of treating a pending effect as a restartable statement', async () => {
@@ -510,7 +623,7 @@ test('rewind rejects effect savepoints instead of treating a pending effect as a
     await execution.advance(effect.continuationId, 'abort');
 });
 
-test('rewind rejects loop statement savepoints until iteration frames can be reconstructed', async () => {
+test('rewind accepts explicit loop statement savepoints and restores the saved iteration', async () => {
     const view = await createView();
     const execution = createDslDebugExecutionSession({
         source: `
@@ -535,11 +648,13 @@ test('rewind rejects loop statement savepoints until iteration frames can be rec
     if (nestedResult.status !== 'paused') {throw new Error('expected nested pause');}
     const nested = nestedResult.pause;
     assert.equal(nested.location.path, 'body.0.body.0');
+    assert.deepEqual(nested.location.loops, [{path: 'body.0', iteration: 0}]);
     const savepoint = execution.savepoint(nested.continuationId, 'nested');
     const result = await execution.rewind(nested.continuationId, savepoint.id);
-    assert.equal(result.status, 'unsupported_target');
-    if (result.status === 'unsupported_target') {
-        assert.equal(result.reason, 'not_main_top_level');
-    }
-    await execution.advance(nested.continuationId, 'abort');
+    assert.equal(result.status, 'rewound');
+    if (result.status !== 'rewound') {throw new Error('expected loop rewind');}
+    assert.equal(result.pause.location.path, 'body.0.body.0');
+    assert.deepEqual(result.pause.location.loops, [{path: 'body.0', iteration: 0}]);
+    assert.equal(result.pause.scope.vars.item, 1);
+    await execution.advance(result.pause.continuationId, 'abort');
 });
