@@ -188,6 +188,95 @@ test('debug.rewind updates the Agent tool session to the new continuation and re
     await tool('debug.abort').execute('abort', {});
 });
 
+test('rewind plan lists exact and prior savepoints nearest-first without mutating execution', async () => {
+    const view = await createView();
+    const execution = createDslDebugExecutionSession({
+        source: `
+            let first = compute first(input.first)
+            let value = compute first(input.old)
+            output result = vars.value
+        `,
+        context: {
+            workspaceName: 'ws-rewind-plan',
+            deps,
+            input: {first: [1], old: [2]},
+            stepExecutionPort: {
+                execute: async (step) => ({stepId: step.id, ok: true, data: {}}),
+            },
+        },
+        worldViewSource: {pin: async () => view},
+        debug: {initialMode: 'step'},
+    });
+
+    const body0 = await execution.waitForPause();
+    const prior = execution.savepoint(body0.continuationId, 'prior');
+    const body1Result = await execution.advance(body0.continuationId, 'step');
+    assert.equal(body1Result.status, 'paused');
+    if (body1Result.status !== 'paused') {throw new Error('expected body.1');}
+    const exact = execution.savepoint(body1Result.pause.continuationId, 'exact');
+    const body2Result = await execution.advance(body1Result.pause.continuationId, 'step');
+    assert.equal(body2Result.status, 'paused');
+    if (body2Result.status !== 'paused') {throw new Error('expected body.2');}
+
+    const plan = execution.rewindPlan(body2Result.pause.continuationId, {programId: 'main', path: 'body.1'});
+    assert.equal(plan.status, 'ready');
+    if (plan.status !== 'ready') {throw new Error('expected rewind plan');}
+    assert.deepEqual(plan.target, {programId: 'main', path: 'body.1', executions: 1});
+    assert.deepEqual(plan.candidates.map((candidate) => ({
+        id: candidate.savepointId,
+        name: candidate.name,
+        path: candidate.location.path,
+        exact: candidate.exact,
+        replayStatements: candidate.replayStatements,
+    })), [
+        {id: exact.id, name: 'exact', path: 'body.1', exact: true, replayStatements: 0},
+        {id: prior.id, name: 'prior', path: 'body.0', exact: false, replayStatements: 1},
+    ]);
+    assert.equal(execution.history(body2Result.pause.continuationId).records.length, 2);
+
+    const tools = createPausedDslDebugAgentTools(execution, body2Result.pause);
+    const planTool = tools.tools.find((tool) => tool.name === 'debug.rewind_plan')!;
+    const viaTool = await planTool.execute('rewind-plan', {programId: 'main', path: 'body.1'});
+    assert.equal((viaTool.details as any).status, 'ready');
+    assert.equal((viaTool.details as any).candidates[0].savepointId, exact.id);
+    assert.equal(classifyPausedDslDebugToolCall('debug.rewind_plan'), 'read');
+
+    await execution.advance(body2Result.pause.continuationId, 'abort');
+});
+
+test('rewind plan rejects nested targets until nested execution frames are restorable', async () => {
+    const view = await createView();
+    const execution = createDslDebugExecutionSession({
+        source: `
+            if input.enabled:
+              let value = compute first(input.values)
+            output result = input.done
+        `,
+        context: {
+            workspaceName: 'ws-rewind-plan-nested',
+            deps,
+            input: {enabled: true, values: [2], done: true},
+            stepExecutionPort: {
+                execute: async (step) => ({stepId: step.id, ok: true, data: {}}),
+            },
+        },
+        worldViewSource: {pin: async () => view},
+        debug: {initialMode: 'step'},
+    });
+
+    const outer = await execution.waitForPause();
+    const nestedResult = await execution.advance(outer.continuationId, 'step');
+    assert.equal(nestedResult.status, 'paused');
+    if (nestedResult.status !== 'paused') {throw new Error('expected nested pause');}
+    const plan = execution.rewindPlan(nestedResult.pause.continuationId, {
+        programId: 'main',
+        path: 'body.0.then.0',
+    });
+    assert.equal(plan.status, 'unsupported_target');
+    if (plan.status === 'unsupported_target') {assert.equal(plan.reason, 'not_main_top_level');}
+    await execution.advance(nestedResult.pause.continuationId, 'abort');
+});
+
 test('rewind rejects effect savepoints instead of treating a pending effect as a restartable statement', async () => {
     const view = await createView();
     const execution = createDslDebugExecutionSession({

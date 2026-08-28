@@ -40,6 +40,7 @@ import type {
     DslDebugAdvanceResult,
     DslDebugExecutionSession,
     DslDebugRecomputeEffectResult,
+    DslDebugRewindPlanResult,
     DslDebugRewindResult,
     PausedDslDebugExecution,
 } from './contracts';
@@ -607,6 +608,75 @@ export const createDslDebugExecutionSession = (
         });
     };
 
+    const rewindPlan = (
+        continuationId: string,
+        target: Readonly<{programId?: string; path?: string}> = {},
+    ): DslDebugRewindPlanResult => {
+        const current = requireActive(continuationId);
+        const programId = target.programId ?? current.pause.location.programId;
+        const path = target.path ?? current.pause.location.path;
+        const program = programs.get(programId);
+        if (!program) {
+            return Object.freeze({
+                status: 'unknown_program' as const,
+                target: Object.freeze({programId, path}),
+            });
+        }
+        if (!program.statements.some((entry) => entry.path === path)) {
+            return Object.freeze({
+                status: 'unknown_path' as const,
+                target: Object.freeze({programId, path}),
+            });
+        }
+        const currentPath = current.pause.reason === 'statement'
+            && current.pause.location.programId === programId
+            ? current.pause.location.path
+            : undefined;
+        const point = buildDebugExecutionHistory(
+            program,
+            statementHistory.list(programId),
+            currentPath,
+        ).points.find((entry) => entry.path === path);
+        const executions = point?.executions ?? 0;
+        const planTarget = Object.freeze({programId, path, executions});
+        const targetMatch = /^body\.(\d+)$/u.exec(path);
+        if (programId !== 'main' || !targetMatch) {
+            return Object.freeze({
+                status: 'unsupported_target' as const,
+                reason: 'not_main_top_level' as const,
+                target: planTarget,
+            });
+        }
+        const targetIndex = Number(targetMatch[1]);
+        const candidates = [...executionSavepoints.values()]
+            .map((entry) => entry.state)
+            .flatMap((saved) => {
+                if (saved.reason !== 'statement'
+                    || saved.location.programId !== 'main'
+                    || saved.location.loops.length > 0
+                    || saved.location.callStack.length > 0) {
+                    return [];
+                }
+                const match = /^body\.(\d+)$/u.exec(saved.location.path);
+                if (!match) {return [];}
+                const savedIndex = Number(match[1]);
+                if (savedIndex > targetIndex) {return [];}
+                return [Object.freeze({
+                    savepointId: saved.savepoint.id,
+                    ...(saved.savepoint.name ? {name: saved.savepoint.name} : {}),
+                    location: structuredClone(saved.location),
+                    effectSequence: saved.savepoint.effectSequence,
+                    world: structuredClone(saved.world),
+                    exact: savedIndex === targetIndex,
+                    replayStatements: targetIndex - savedIndex,
+                })];
+            })
+            .sort((left, right) => right.location.path.localeCompare(left.location.path, undefined, {numeric: true}));
+        return candidates.length > 0
+            ? Object.freeze({status: 'ready' as const, target: planTarget, candidates: Object.freeze(candidates)})
+            : Object.freeze({status: 'no_savepoint' as const, target: planTarget, candidates: Object.freeze([])});
+    };
+
     return {
         waitForPause,
         query: (continuationId: string, ir: QueryIR) =>
@@ -693,6 +763,7 @@ export const createDslDebugExecutionSession = (
             return diffWorldViews(requireTransaction().baseline, current.view);
         },
         rollback,
+        rewindPlan,
         rewind,
         refresh,
         patchStatement,

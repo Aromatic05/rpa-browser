@@ -12,6 +12,7 @@ const readTools = new Set([
     'debug.diff',
     'debug.transaction',
     'debug.transaction_diff',
+    'debug.rewind_plan',
     'debug.world',
     'debug.refresh',
     'debug.query',

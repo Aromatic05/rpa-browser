@@ -85,6 +85,37 @@ export type DebugExecutionSavepoint = Readonly<{
     world: WorldViewDescriptor;
 }>;
 
+export type DslDebugRewindCandidate = Readonly<{
+    savepointId: string;
+    name?: string;
+    location: DslStatementLocation;
+    effectSequence: number;
+    world: WorldViewDescriptor;
+    exact: boolean;
+    replayStatements: number;
+}>;
+
+export type DslDebugRewindPlanResult =
+    | Readonly<{
+        status: 'ready';
+        target: Readonly<{programId: string; path: string; executions: number}>;
+        candidates: readonly DslDebugRewindCandidate[];
+    }>
+    | Readonly<{
+        status: 'no_savepoint';
+        target: Readonly<{programId: string; path: string; executions: number}>;
+        candidates: readonly DslDebugRewindCandidate[];
+    }>
+    | Readonly<{
+        status: 'unknown_program' | 'unknown_path';
+        target: Readonly<{programId: string; path: string}>;
+    }>
+    | Readonly<{
+        status: 'unsupported_target';
+        reason: 'not_main_top_level';
+        target: Readonly<{programId: string; path: string; executions: number}>;
+    }>;
+
 
 export type DslDebugRewindResult =
     | Readonly<{
@@ -189,6 +220,10 @@ export type DslDebugExecutionSession = {
         savepointId: string,
         options?: DebugRollbackOptions,
     ) => Promise<DebugRollbackResult>;
+    rewindPlan: (
+        continuationId: string,
+        target?: Readonly<{programId?: string; path?: string}>,
+    ) => DslDebugRewindPlanResult;
     rewind: (continuationId: string, savepointId: string) => Promise<DslDebugRewindResult>;
     refresh: (continuationId: string) => Promise<PausedDslDebugExecution>;
     patchStatement: (
