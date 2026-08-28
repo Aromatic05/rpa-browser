@@ -53,6 +53,7 @@ export type RunDslContext = {
     debugPort?: DslDebugPort;
     debugProgramId?: string;
     debugSourceMap?: DslSourceMap;
+    debugFrames?: readonly DslExecutionFrameSnapshot[];
     resume?: Readonly<{
         scope: DslScopeSnapshot;
         startIndex?: number;
@@ -97,7 +98,7 @@ export const runDsl = async (program: DslProgram, ctx: RunDslContext): Promise<R
             await executeStatements(program.body, scope, ctx, port, logger, {
                 blockPath: 'body',
                 loops: [],
-                frames: [],
+                frames: ctx.debugFrames ?? [],
                 startIndex,
             });
         }
@@ -313,6 +314,21 @@ const executeStmt = async (
             throw new DslRuntimeError('entity_act must be linked before runtime', 'ERR_DSL_NOT_LINKED');
         }
         case 'checkpoint': {
+            const checkpointFrame: DslExecutionFrameSnapshot = Object.freeze({
+                kind: 'checkpoint' as const,
+                checkpointId: stmt.id,
+                statementPath: location.path,
+                parentBlockPath: location.path.slice(0, location.path.lastIndexOf('.')),
+                statementIndex: stmtIndex,
+                parentProgramId: location.programId,
+                parentScope: snapshotDslScope(scope),
+                ...(stmt.bind ? {bind: stmt.bind} : {}),
+                dependencies: Object.freeze(
+                    collectDslExpressionsDependencies(Object.values(stmt.input ?? {})),
+                ),
+                loops: Object.freeze(location.loops.map((loop) => Object.freeze({...loop}))),
+                callStack: Object.freeze([...location.callStack]),
+            });
             const output = await runDslCheckpointCall({
                 stmt,
                 scope,
@@ -333,6 +349,7 @@ const executeStmt = async (
                 resolveResolver: ctx.resolveResolver,
                 callStack: ctx.checkpointCallStack,
                 debugPort: ctx.debugPort,
+                debugFrames: [...frames, checkpointFrame],
             });
             if (stmt.bind) {
                 const target = `vars.${stmt.bind}`;
@@ -464,10 +481,14 @@ const executeForIterations = async (input: Readonly<{
     }
 };
 
-const executionFrameBlockPath = (frame: DslExecutionFrameSnapshot): string =>
-    frame.kind === 'if'
-        ? `${frame.statementPath}.${frame.branch}`
-        : `${frame.statementPath}.body`;
+const executionFrameBlockPath = (frame: DslExecutionFrameSnapshot): string => {
+    if (frame.kind === 'if') {return `${frame.statementPath}.${frame.branch}`;}
+    if (frame.kind === 'for') {return `${frame.statementPath}.body`;}
+    throw new DslRuntimeError(
+        `checkpoint frame requires cross-program resume: ${frame.statementPath}`,
+        'ERR_DSL_BAD_RESUME',
+    );
+};
 
 const resumeDslExecution = async (
     program: DslProgram,
@@ -516,7 +537,7 @@ const resumeDslExecution = async (
                 childScope,
                 [...after].filter((name) => !before.has(name)),
             );
-        } else {
+        } else if (frame.kind === 'for') {
             if (statement?.kind !== 'for') {
                 throw new DslRuntimeError(
                     `invalid DSL resume frame: ${frame.statementPath}`,
@@ -541,6 +562,11 @@ const resumeDslExecution = async (
                 location,
                 frames: outerFrames,
             });
+        } else {
+            throw new DslRuntimeError(
+                `checkpoint frame requires cross-program resume: ${frame.statementPath}`,
+                'ERR_DSL_BAD_RESUME',
+            );
         }
         childScope = parentScope;
         await executeStatements(parentBody, childScope, ctx, port, logger, {

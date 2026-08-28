@@ -49,9 +49,24 @@ export type DslForExecutionFrameSnapshot = Readonly<{
     loops: readonly DslLoopFrame[];
 }>;
 
+export type DslCheckpointExecutionFrameSnapshot = Readonly<{
+    kind: 'checkpoint';
+    checkpointId: string;
+    statementPath: string;
+    parentBlockPath: string;
+    statementIndex: number;
+    parentProgramId: string;
+    parentScope: DslScopeSnapshot;
+    bind?: string;
+    dependencies: readonly string[];
+    loops: readonly DslLoopFrame[];
+    callStack: readonly string[];
+}>;
+
 export type DslExecutionFrameSnapshot =
     | DslIfExecutionFrameSnapshot
-    | DslForExecutionFrameSnapshot;
+    | DslForExecutionFrameSnapshot
+    | DslCheckpointExecutionFrameSnapshot;
 
 export type DslValueObservedRevision = Readonly<{
     pageEpoch: string;

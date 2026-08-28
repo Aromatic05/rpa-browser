@@ -658,3 +658,324 @@ test('rewind accepts explicit loop statement savepoints and restores the saved i
     assert.equal(result.pause.scope.vars.item, 1);
     await execution.advance(result.pause.continuationId, 'abort');
 });
+
+test('rewind restarts a checkpoint child and rebinds its new output into the caller scope', async () => {
+    const view = await createView();
+    const checkpoint = {
+        id: 'child',
+        kind: 'procedure' as const,
+        body: {language: 'dsl' as const, source: 'body.dsl' as const},
+    };
+    const childSource = `
+        let picked = compute first(input.value)
+        output value = vars.picked
+    `;
+    const execution = createDslDebugExecutionSession({
+        source: `
+            let session = use checkpoint "child" with {
+              value: input.old
+              replacement: input.next
+            }
+            output result = session.value
+        `,
+        context: {
+            workspaceName: 'ws-rewind-checkpoint',
+            deps,
+            input: {old: [2], next: [9]},
+            stepExecutionPort: {
+                execute: async (step) => ({stepId: step.id, ok: true, data: {}}),
+            },
+            checkpointProvider: {
+                getCheckpoint: (id) => id === 'child' ? checkpoint : null,
+                getCheckpointResolves: () => ({}),
+                getCheckpointBody: (id) => id === 'child'
+                    ? {source: childSource, stepResolves: {}}
+                    : null,
+            },
+        },
+        worldViewSource: {pin: async () => view},
+        debug: {initialMode: 'step'},
+    });
+
+    const caller = await execution.waitForPause();
+    assert.equal(caller.location.programId, 'main');
+    assert.equal(caller.location.path, 'body.0');
+    const childLet = await execution.advance(caller.continuationId, 'step');
+    assert.equal(childLet.status, 'paused');
+    if (childLet.status !== 'paused') {throw new Error('expected child let');}
+    assert.equal(childLet.pause.location.programId, 'checkpoint:child');
+    assert.equal(childLet.pause.location.path, 'body.0');
+    const childPlan = execution.rewindPlan(childLet.pause.continuationId, {
+        programId: 'checkpoint:child',
+        path: 'body.0',
+    });
+    assert.equal(childPlan.status, 'ready');
+    if (childPlan.status !== 'ready') {throw new Error('expected child rewind plan');}
+    const childSavepoint = execution.executionSavepoint(
+        childLet.pause.continuationId,
+        childPlan.candidates[0].savepointId,
+    );
+    const checkpointFrame = childSavepoint?.frames.at(-1);
+    assert.equal(checkpointFrame?.kind, 'checkpoint');
+    if (checkpointFrame?.kind === 'checkpoint') {
+        assert.equal(checkpointFrame.parentProgramId, 'main');
+        assert.equal(checkpointFrame.bind, 'session');
+    }
+
+    const childOutput = await execution.advance(childLet.pause.continuationId, 'step');
+    assert.equal(childOutput.status, 'paused');
+    if (childOutput.status !== 'paused') {throw new Error('expected child output');}
+    const mainOutput = await execution.advance(childOutput.pause.continuationId, 'step');
+    assert.equal(mainOutput.status, 'paused');
+    if (mainOutput.status !== 'paused') {throw new Error('expected main output');}
+    assert.equal(mainOutput.pause.location.programId, 'main');
+    assert.equal(mainOutput.pause.location.path, 'body.1');
+    assert.deepEqual(mainOutput.pause.scope.vars.session, {value: 2});
+
+    const repair = execution.patchStatement(
+        mainOutput.pause.continuationId,
+        'let picked = compute first(input.replacement)',
+        {programId: 'checkpoint:child', path: 'body.0'},
+    );
+    assert.equal(repair.status, 'rewind_required');
+    if (repair.status !== 'rewind_required') {throw new Error('expected checkpoint rewind repair');}
+    assert.equal(repair.rewind.status, 'ready');
+    if (repair.rewind.status !== 'ready') {throw new Error('expected checkpoint rewind plan');}
+    assert.equal(repair.rewind.candidates[0].location.programId, 'checkpoint:child');
+
+    const rewound = await execution.rewind(
+        mainOutput.pause.continuationId,
+        repair.rewind.candidates[0].savepointId,
+    );
+    assert.equal(rewound.status, 'rewound');
+    if (rewound.status !== 'rewound') {throw new Error('expected checkpoint rewind');}
+    assert.equal(rewound.pause.location.programId, 'checkpoint:child');
+    assert.equal(rewound.pause.location.path, 'body.0');
+    assert.deepEqual(rewound.pause.scope.input, {value: [2], replacement: [9]});
+
+    const patched = execution.patchStatement(
+        rewound.pause.continuationId,
+        'let picked = compute first(input.replacement)',
+    );
+    assert.equal(patched.status, 'patched');
+    if (patched.status !== 'patched') {throw new Error('expected checkpoint child patch');}
+    const newChildOutput = await execution.advance(patched.pause.continuationId, 'step');
+    assert.equal(newChildOutput.status, 'paused');
+    if (newChildOutput.status !== 'paused') {throw new Error('expected new child output');}
+    const reboundCaller = await execution.advance(newChildOutput.pause.continuationId, 'step');
+    assert.equal(reboundCaller.status, 'paused');
+    if (reboundCaller.status !== 'paused') {throw new Error('expected rebound caller');}
+    assert.equal(reboundCaller.pause.location.programId, 'main');
+    assert.equal(reboundCaller.pause.location.path, 'body.1');
+    assert.deepEqual(reboundCaller.pause.scope.vars.session, {value: 9});
+    assert.equal(execution.explain(reboundCaller.pause.continuationId, 'vars.session').origin, 'derived');
+
+    const completed = await execution.advance(reboundCaller.pause.continuationId, 'continue');
+    assert.equal(completed.status, 'completed');
+    if (completed.status === 'completed') {assert.deepEqual(completed.output, {result: 9});}
+});
+
+test('rewind unwinds nested checkpoint programs back through both callers', async () => {
+    const view = await createView();
+    const checkpoints = {
+        outer: {id: 'outer', kind: 'procedure' as const, body: {language: 'dsl' as const, source: 'body.dsl' as const}},
+        inner: {id: 'inner', kind: 'procedure' as const, body: {language: 'dsl' as const, source: 'body.dsl' as const}},
+    };
+    const bodies: Record<string, string> = {
+        outer: `
+            let inner = use checkpoint "inner" with {
+              old: input.old
+              next: input.next
+            }
+            output value = inner.value
+        `,
+        inner: `
+            let picked = compute first(input.old)
+            output value = vars.picked
+        `,
+    };
+    const execution = createDslDebugExecutionSession({
+        source: `
+            let outer = use checkpoint "outer" with {
+              old: input.old
+              next: input.next
+            }
+            output result = outer.value
+        `,
+        context: {
+            workspaceName: 'ws-rewind-nested-checkpoint',
+            deps,
+            input: {old: [3], next: [11]},
+            stepExecutionPort: {
+                execute: async (step) => ({stepId: step.id, ok: true, data: {}}),
+            },
+            checkpointProvider: {
+                getCheckpoint: (id) => checkpoints[id as keyof typeof checkpoints] ?? null,
+                getCheckpointResolves: () => ({}),
+                getCheckpointBody: (id) => bodies[id]
+                    ? {source: bodies[id], stepResolves: {}}
+                    : null,
+            },
+        },
+        worldViewSource: {pin: async () => view},
+        debug: {initialMode: 'step'},
+    });
+
+    const mainCheckpoint = await execution.waitForPause();
+    const outerCheckpoint = await execution.advance(mainCheckpoint.continuationId, 'step');
+    assert.equal(outerCheckpoint.status, 'paused');
+    if (outerCheckpoint.status !== 'paused') {throw new Error('expected outer checkpoint statement');}
+    assert.equal(outerCheckpoint.pause.location.programId, 'checkpoint:outer');
+    const innerLet = await execution.advance(outerCheckpoint.pause.continuationId, 'step');
+    assert.equal(innerLet.status, 'paused');
+    if (innerLet.status !== 'paused') {throw new Error('expected inner let');}
+    assert.equal(innerLet.pause.location.programId, 'checkpoint:inner');
+    assert.deepEqual(innerLet.pause.location.callStack, ['outer', 'inner']);
+    const innerOutput = await execution.advance(innerLet.pause.continuationId, 'step');
+    assert.equal(innerOutput.status, 'paused');
+    if (innerOutput.status !== 'paused') {throw new Error('expected inner output');}
+    const outerOutput = await execution.advance(innerOutput.pause.continuationId, 'step');
+    assert.equal(outerOutput.status, 'paused');
+    if (outerOutput.status !== 'paused') {throw new Error('expected outer output');}
+    const mainOutput = await execution.advance(outerOutput.pause.continuationId, 'step');
+    assert.equal(mainOutput.status, 'paused');
+    if (mainOutput.status !== 'paused') {throw new Error('expected main output');}
+    assert.deepEqual(mainOutput.pause.scope.vars.outer, {value: 3});
+
+    const repair = execution.patchStatement(
+        mainOutput.pause.continuationId,
+        'let picked = compute first(input.next)',
+        {programId: 'checkpoint:inner', path: 'body.0'},
+    );
+    assert.equal(repair.status, 'rewind_required');
+    if (repair.status !== 'rewind_required') {throw new Error('expected nested checkpoint rewind repair');}
+    assert.equal(repair.rewind.status, 'ready');
+    if (repair.rewind.status !== 'ready') {throw new Error('expected nested checkpoint rewind plan');}
+
+    const rewound = await execution.rewind(
+        mainOutput.pause.continuationId,
+        repair.rewind.candidates[0].savepointId,
+    );
+    assert.equal(rewound.status, 'rewound');
+    if (rewound.status !== 'rewound') {throw new Error('expected nested checkpoint rewind');}
+    assert.equal(rewound.pause.location.programId, 'checkpoint:inner');
+    assert.deepEqual(rewound.pause.location.callStack, ['outer', 'inner']);
+    const patched = execution.patchStatement(
+        rewound.pause.continuationId,
+        'let picked = compute first(input.next)',
+    );
+    assert.equal(patched.status, 'patched');
+    if (patched.status !== 'patched') {throw new Error('expected inner patch');}
+    const innerOutputAgain = await execution.advance(patched.pause.continuationId, 'step');
+    assert.equal(innerOutputAgain.status, 'paused');
+    if (innerOutputAgain.status !== 'paused') {throw new Error('expected inner output again');}
+    const outerOutputAgain = await execution.advance(innerOutputAgain.pause.continuationId, 'step');
+    assert.equal(outerOutputAgain.status, 'paused');
+    if (outerOutputAgain.status !== 'paused') {throw new Error('expected outer output again');}
+    assert.deepEqual(outerOutputAgain.pause.scope.vars.inner, {value: 11});
+    const mainOutputAgain = await execution.advance(outerOutputAgain.pause.continuationId, 'step');
+    assert.equal(mainOutputAgain.status, 'paused');
+    if (mainOutputAgain.status !== 'paused') {throw new Error('expected main output again');}
+    assert.deepEqual(mainOutputAgain.pause.scope.vars.outer, {value: 11});
+    const completed = await execution.advance(mainOutputAgain.pause.continuationId, 'continue');
+    assert.equal(completed.status, 'completed');
+    if (completed.status === 'completed') {assert.deepEqual(completed.output, {result: 11});}
+});
+
+test('checkpoint rewind resumes the caller inside an if frame before returning to root', async () => {
+    const view = await createView();
+    const checkpoint = {
+        id: 'child',
+        kind: 'procedure' as const,
+        body: {language: 'dsl' as const, source: 'body.dsl' as const},
+    };
+    const childSource = `
+        let picked = compute first(input.old)
+        output value = vars.picked
+    `;
+    const execution = createDslDebugExecutionSession({
+        source: `
+            if input.enabled:
+              let session = use checkpoint "child" with {
+                old: input.old
+                next: input.next
+              }
+              output branch = session.value
+            output result = output.branch
+        `,
+        context: {
+            workspaceName: 'ws-rewind-checkpoint-if',
+            deps,
+            input: {enabled: true, old: [4], next: [12]},
+            stepExecutionPort: {
+                execute: async (step) => ({stepId: step.id, ok: true, data: {}}),
+            },
+            checkpointProvider: {
+                getCheckpoint: (id) => id === 'child' ? checkpoint : null,
+                getCheckpointResolves: () => ({}),
+                getCheckpointBody: (id) => id === 'child'
+                    ? {source: childSource, stepResolves: {}}
+                    : null,
+            },
+        },
+        worldViewSource: {pin: async () => view},
+        debug: {initialMode: 'step'},
+    });
+
+    const outerIf = await execution.waitForPause();
+    const checkpointCall = await execution.advance(outerIf.continuationId, 'step');
+    assert.equal(checkpointCall.status, 'paused');
+    if (checkpointCall.status !== 'paused') {throw new Error('expected checkpoint call');}
+    assert.equal(checkpointCall.pause.location.path, 'body.0.then.0');
+    const childLet = await execution.advance(checkpointCall.pause.continuationId, 'step');
+    assert.equal(childLet.status, 'paused');
+    if (childLet.status !== 'paused') {throw new Error('expected child let');}
+    const childOutput = await execution.advance(childLet.pause.continuationId, 'step');
+    assert.equal(childOutput.status, 'paused');
+    if (childOutput.status !== 'paused') {throw new Error('expected child output');}
+    const branchOutput = await execution.advance(childOutput.pause.continuationId, 'step');
+    assert.equal(branchOutput.status, 'paused');
+    if (branchOutput.status !== 'paused') {throw new Error('expected branch output');}
+    const rootOutput = await execution.advance(branchOutput.pause.continuationId, 'step');
+    assert.equal(rootOutput.status, 'paused');
+    if (rootOutput.status !== 'paused') {throw new Error('expected root output');}
+    assert.deepEqual(rootOutput.pause.scope.output, {branch: 4});
+
+    const repair = execution.patchStatement(
+        rootOutput.pause.continuationId,
+        'let picked = compute first(input.next)',
+        {programId: 'checkpoint:child', path: 'body.0'},
+    );
+    assert.equal(repair.status, 'rewind_required');
+    if (repair.status !== 'rewind_required' || repair.rewind.status !== 'ready') {
+        throw new Error('expected checkpoint rewind plan');
+    }
+    const rewound = await execution.rewind(
+        rootOutput.pause.continuationId,
+        repair.rewind.candidates[0].savepointId,
+    );
+    assert.equal(rewound.status, 'rewound');
+    if (rewound.status !== 'rewound') {throw new Error('expected checkpoint rewind');}
+    const patched = execution.patchStatement(
+        rewound.pause.continuationId,
+        'let picked = compute first(input.next)',
+    );
+    assert.equal(patched.status, 'patched');
+    if (patched.status !== 'patched') {throw new Error('expected checkpoint patch');}
+    const childOutputAgain = await execution.advance(patched.pause.continuationId, 'step');
+    assert.equal(childOutputAgain.status, 'paused');
+    if (childOutputAgain.status !== 'paused') {throw new Error('expected child output again');}
+    const branchOutputAgain = await execution.advance(childOutputAgain.pause.continuationId, 'step');
+    assert.equal(branchOutputAgain.status, 'paused');
+    if (branchOutputAgain.status !== 'paused') {throw new Error('expected branch output again');}
+    assert.equal(branchOutputAgain.pause.location.path, 'body.0.then.1');
+    assert.deepEqual(branchOutputAgain.pause.scope.vars.session, {value: 12});
+    const rootOutputAgain = await execution.advance(branchOutputAgain.pause.continuationId, 'step');
+    assert.equal(rootOutputAgain.status, 'paused');
+    if (rootOutputAgain.status !== 'paused') {throw new Error('expected root output again');}
+    assert.equal(rootOutputAgain.pause.location.path, 'body.1');
+    assert.deepEqual(rootOutputAgain.pause.scope.output, {branch: 12});
+    const completed = await execution.advance(rootOutputAgain.pause.continuationId, 'continue');
+    assert.equal(completed.status, 'completed');
+    if (completed.status === 'completed') {assert.deepEqual(completed.output, {branch: 12, result: 12});}
+});

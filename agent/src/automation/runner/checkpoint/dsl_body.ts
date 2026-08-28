@@ -5,7 +5,7 @@ import type { StepResolve, StepResult, StepUnion } from '../steps/types';
 import type { Checkpoint } from './types';
 import type { DslCheckpointProvider } from '../../dsl/emit';
 import type { RunStepsDeps } from '../run_steps_types';
-import type {DslDebugPort} from '../../dsl/debug/contracts';
+import type {DslDebugPort, DslExecutionFrameSnapshot} from '../../dsl/debug/contracts';
 
 export const MAX_CHECKPOINT_DSL_DEPTH = 16;
 
@@ -23,6 +23,7 @@ export const runCheckpointDslBody = async (options: {
     callStack?: string[];
     checkpointProvider?: DslCheckpointProvider;
     debugPort?: DslDebugPort;
+    debugFrames?: readonly DslExecutionFrameSnapshot[];
 }): Promise<Record<string, unknown>> => {
     const stack = options.callStack || [];
     if (stack.includes(options.checkpoint.id)) {
@@ -49,6 +50,7 @@ export const runCheckpointDslBody = async (options: {
         stepResolves: options.stepResolves,
         debugPort: options.debugPort,
         debugProgramId: `checkpoint:${options.checkpoint.id}`,
+        debugFrames: options.debugFrames,
     });
     return result.scope.output;
 };

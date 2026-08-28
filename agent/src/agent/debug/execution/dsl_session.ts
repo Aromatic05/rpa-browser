@@ -5,6 +5,8 @@ import {
 import type {
     DslDebugPort,
     DslEffectDescriptor,
+    DslExecutionFrameSnapshot,
+    DslScopeSnapshot,
     DslStatementLocation,
     DslValueProvenanceEvent,
     PausedDslExecution,
@@ -92,14 +94,31 @@ export const createDslDebugExecutionSession = (
         if (!transaction) {throw new Error('DSL debug transaction is not initialized');}
         return transaction;
     };
+    const lastCheckpointFrameIndex = (frames: readonly DslExecutionFrameSnapshot[]): number => {
+        for (let index = frames.length - 1; index >= 0; index -= 1) {
+            if (frames[index].kind === 'checkpoint') {return index;}
+        }
+        return -1;
+    };
     const isRewindableStatementLocation = (
         location: DslStatementLocation,
         frames: Extract<PausedDslExecution, {reason: 'statement'}>['frames'],
     ): boolean => {
-        if (location.programId !== 'main' || location.callStack.length > 0) {
-            return false;
+        const checkpointFrames = frames.filter((frame) => frame.kind === 'checkpoint');
+        if (location.programId === 'main') {
+            if (location.callStack.length > 0 || checkpointFrames.length > 0) {return false;}
+        } else {
+            const activeCheckpoint = checkpointFrames.at(-1);
+            if (!activeCheckpoint
+                || location.programId !== `checkpoint:${activeCheckpoint.checkpointId}`
+                || location.callStack.length !== checkpointFrames.length
+                || checkpointFrames.some((frame, index) => frame.checkpointId !== location.callStack[index])) {
+                return false;
+            }
         }
-        const loopFrames = frames.filter((frame) => frame.kind === 'for');
+        const lastCheckpointIndex = lastCheckpointFrameIndex(frames);
+        const localFrames = lastCheckpointIndex >= 0 ? frames.slice(lastCheckpointIndex + 1) : frames;
+        const loopFrames = localFrames.filter((frame) => frame.kind === 'for');
         if (loopFrames.length !== location.loops.length
             || loopFrames.some((frame, index) => {
                 const loop = location.loops[index];
@@ -107,8 +126,8 @@ export const createDslDebugExecutionSession = (
             })) {
             return false;
         }
-        if (frames.length === 0) {return /^body\.\d+$/u.test(location.path);}
-        const currentFrame = frames.at(-1);
+        if (localFrames.length === 0) {return /^body\.\d+$/u.test(location.path);}
+        const currentFrame = localFrames.at(-1);
         const blockPath = currentFrame?.kind === 'if'
             ? `${currentFrame.statementPath}.${currentFrame.branch}`
             : currentFrame
@@ -167,17 +186,177 @@ export const createDslDebugExecutionSession = (
     };
     let completion!: Promise<RunDslSourceResult>;
     let active: ActivePause | null = null;
+    const resetController = (forceStep: boolean): void => {
+        controller = createDslDebugController(
+            forceStep ? {...options.debug, initialMode: 'step'} : options.debug,
+        );
+    };
     const startExecution = (
         resume?: RunDslContext['resume'],
         forceStep = false,
     ): void => {
-        controller = createDslDebugController(
-            forceStep ? {...options.debug, initialMode: 'step'} : options.debug,
-        );
+        resetController(forceStep);
         completion = runDslSource(options.source, {
             ...options.context,
             ...(resume ? {resume} : {}),
             debugPort,
+        });
+    };
+
+    const programSource = (programId: string): string => {
+        if (programId === 'main') {return options.source;}
+        const program = programs.get(programId);
+        if (!program) {throw new Error(`DSL debug program is unavailable: ${programId}`);}
+        return program.source;
+    };
+
+    const runProgramFromSavedState = async (input: Readonly<{
+        programId: string;
+        scope: DslScopeSnapshot;
+        location: DslStatementLocation;
+        frames: readonly DslExecutionFrameSnapshot[];
+    }>): Promise<RunDslSourceResult> => {
+        const checkpointIndex = lastCheckpointFrameIndex(input.frames);
+        const debugFrames = checkpointIndex >= 0
+            ? input.frames.slice(0, checkpointIndex + 1)
+            : [];
+        const localFrames = checkpointIndex >= 0
+            ? input.frames.slice(checkpointIndex + 1)
+            : input.frames;
+        const topLevel = localFrames.length === 0 ? /^body\.(\d+)$/u.exec(input.location.path) : null;
+        const resume: NonNullable<RunDslContext['resume']> = topLevel
+            ? {scope: input.scope, startIndex: Number(topLevel[1])}
+            : {scope: input.scope, location: input.location, frames: localFrames};
+
+        const context = createProgramResumeContext(
+            input.programId,
+            input.scope,
+            input.location.callStack,
+            debugFrames,
+            resume,
+        );
+        const result = await runDslSource(programSource(input.programId), context);
+        if (checkpointIndex < 0) {return result;}
+
+        const checkpointFrame = input.frames[checkpointIndex];
+        if (checkpointFrame.kind !== 'checkpoint') {
+            throw new Error('checkpoint frame index resolved to a non-checkpoint frame');
+        }
+        const parentScope = {
+            input: structuredClone(checkpointFrame.parentScope.input),
+            ...(checkpointFrame.parentScope.failure
+                ? {failure: structuredClone(checkpointFrame.parentScope.failure)}
+                : {}),
+            vars: {...structuredClone(checkpointFrame.parentScope.vars)},
+            output: {...structuredClone(checkpointFrame.parentScope.output)},
+        };
+        if (checkpointFrame.bind) {
+            parentScope.vars[checkpointFrame.bind] = structuredClone(result.scope.output);
+        }
+        recordCompletedCheckpoint(checkpointFrame, parentScope);
+        const parentFrames = input.frames.slice(0, checkpointIndex);
+        const parentLocation: DslStatementLocation = Object.freeze({
+            programId: checkpointFrame.parentProgramId,
+            path: `${checkpointFrame.parentBlockPath}.${checkpointFrame.statementIndex + 1}`,
+            kind: 'checkpoint',
+            loops: structuredClone(checkpointFrame.loops),
+            callStack: structuredClone(checkpointFrame.callStack),
+        });
+        return await runProgramFromSavedState({
+            programId: checkpointFrame.parentProgramId,
+            scope: parentScope,
+            location: parentLocation,
+            frames: parentFrames,
+        });
+    };
+
+    const createProgramResumeContext = (
+        programId: string,
+        scope: DslScopeSnapshot,
+        callStack: readonly string[],
+        debugFrames: readonly DslExecutionFrameSnapshot[],
+        resume: NonNullable<RunDslContext['resume']>,
+    ): RunDslContext => {
+        if (programId === 'main') {
+            return {
+                ...options.context,
+                input: structuredClone(scope.input),
+                ...(scope.failure ? {failure: structuredClone(scope.failure)} : {failure: undefined}),
+                checkpointCallStack: [],
+                debugProgramId: 'main',
+                debugFrames,
+                resume,
+                debugPort,
+            };
+        }
+        const prefix = 'checkpoint:';
+        if (!programId.startsWith(prefix)) {
+            throw new Error(`unsupported DSL debug program id: ${programId}`);
+        }
+        const checkpointId = programId.slice(prefix.length);
+        const body = options.context.checkpointProvider?.getCheckpointBody?.(checkpointId);
+        if (!body) {throw new Error(`checkpoint body unavailable: ${checkpointId}`);}
+        const parentResolveResolver = options.context.resolveResolver;
+        return {
+            ...options.context,
+            input: structuredClone(scope.input),
+            ...(scope.failure ? {failure: structuredClone(scope.failure)} : {failure: undefined}),
+            resolveResolver: {
+                resolveBundle: (name) => name === checkpointId
+                    ? {resolves: body.stepResolves, diagnostics: []}
+                    : parentResolveResolver?.resolveBundle(name) ?? {resolves: null, diagnostics: []},
+            },
+            stepResolves: body.stepResolves,
+            checkpointCallStack: [...callStack],
+            debugProgramId: programId,
+            debugFrames,
+            resume,
+            debugPort,
+        };
+    };
+
+    const recordCompletedCheckpoint = (
+        frame: Extract<DslExecutionFrameSnapshot, {kind: 'checkpoint'}>,
+        scope: DslScopeSnapshot,
+    ): void => {
+        const program = programs.get(frame.parentProgramId);
+        const entry = program?.statements.find((statement) => statement.path === frame.statementPath);
+        if (entry?.statement.kind !== 'checkpoint') {
+            throw new Error(`checkpoint caller statement is unavailable: ${frame.parentProgramId}/${frame.statementPath}`);
+        }
+        const location: DslStatementLocation = Object.freeze({
+            programId: frame.parentProgramId,
+            path: frame.statementPath,
+            kind: 'checkpoint',
+            loops: structuredClone(frame.loops),
+            ...(entry.source ? {source: structuredClone(entry.source)} : {}),
+            callStack: structuredClone(frame.callStack),
+        });
+        if (frame.bind) {
+            provenance.record(Object.freeze({
+                target: `vars.${frame.bind}`,
+                location,
+                source: Object.freeze({
+                    kind: 'checkpoint' as const,
+                    checkpointId: frame.checkpointId,
+                    dependencies: structuredClone(frame.dependencies),
+                }),
+            }));
+        }
+        statementHistory.record(Object.freeze({
+            location,
+            scope: structuredClone(scope),
+            statement: structuredClone(entry.statement),
+        }));
+    };
+
+    const startExecutionSavepoint = (saved: DebugExecutionSavepoint): void => {
+        resetController(true);
+        completion = runProgramFromSavedState({
+            programId: saved.location.programId,
+            scope: saved.scope,
+            location: saved.location,
+            frames: saved.frames,
         });
     };
     startExecution(options.context.resume);
@@ -616,7 +795,6 @@ export const createDslDebugExecutionSession = (
                 savepoint: structuredClone(saved),
             });
         }
-        const topLevelMatch = /^body\.(\d+)$/u.exec(saved.location.path);
         if (!isRewindableStatementLocation(saved.location, saved.frames)) {
             return Object.freeze({
                 status: 'unsupported_target' as const,
@@ -651,16 +829,7 @@ export const createDslDebugExecutionSession = (
             if (!requireTransaction().readSavepoint(id)) {executionSavepoints.delete(id);}
         }
 
-        startExecution(
-            saved.frames.length === 0 && topLevelMatch
-                ? {scope: saved.scope, startIndex: Number(topLevelMatch[1])}
-                : {
-                    scope: saved.scope,
-                    location: saved.location,
-                    frames: saved.frames,
-                },
-            true,
-        );
+        startExecutionSavepoint(saved);
         const pause = await waitForPause();
         if (pause.reason !== 'statement'
             || pause.location.programId !== saved.location.programId
@@ -715,7 +884,8 @@ export const createDslDebugExecutionSession = (
         const planTarget = Object.freeze({programId, path, executions});
         const targetMatch = /^body\.(\d+)$/u.exec(path);
         const nestedTarget = /^body\.\d+(?:\.(?:then|else|body)\.\d+)+$/u.test(path);
-        if (programId !== 'main' || (!targetMatch && !nestedTarget)) {
+        if ((programId !== 'main' && !programId.startsWith('checkpoint:'))
+            || (!targetMatch && !nestedTarget)) {
             return Object.freeze({
                 status: 'unsupported_target' as const,
                 reason: 'not_main_top_level' as const,
@@ -727,6 +897,7 @@ export const createDslDebugExecutionSession = (
             .flatMap((entry) => {
                 const saved = entry.state;
                 if (saved.reason !== 'statement'
+                    || saved.location.programId !== programId
                     || !isRewindableStatementLocation(saved.location, saved.frames)) {
                     return [];
                 }

@@ -11,7 +11,7 @@ import { DslRuntimeError } from '../../../program/dsl/diagnostics/errors';
 import { injectStepResolve } from '../../runner/step_resolve';
 import type { DslScope } from '../runtime/scope';
 import { resolveDslValue } from '../runtime/refs';
-import type {DslDebugPort} from '../debug/contracts';
+import type {DslDebugPort, DslExecutionFrameSnapshot} from '../debug/contracts';
 
 export type DslCheckpointProvider = {
     getCheckpoint(id: string): Checkpoint | null;
@@ -31,6 +31,7 @@ export type RunDslCheckpointOptions = {
     resolveResolver?: DslResolveResolver;
     callStack?: string[];
     debugPort?: DslDebugPort;
+    debugFrames?: readonly DslExecutionFrameSnapshot[];
     beforeEffect?: (step: StepUnion) => void | Promise<void>;
     afterEffect?: (step: StepUnion, result: StepResult) => void | Promise<void>;
     onStepFailure?: (step: StepUnion, result: StepResult) => void | Promise<void>;
@@ -64,6 +65,7 @@ export const runDslCheckpointCall = async (
             entityRulesResolver: options.entityRulesResolver, resolveResolver: options.resolveResolver, callStack: options.callStack,
             checkpointProvider: options.checkpointProvider,
             debugPort: options.debugPort,
+            debugFrames: options.debugFrames,
         });
     }
     if (checkpoint.kind && checkpoint.kind !== 'procedure') {
