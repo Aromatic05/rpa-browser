@@ -174,6 +174,7 @@ export type DslDebugPatchStatementResult =
     | Readonly<{
         status: 'rewind_required';
         target: Readonly<{programId: string; path: string; executions: number}>;
+        rewind: DslDebugRewindPlanResult;
         pause: PausedDslDebugExecution;
     }>
     | Readonly<{

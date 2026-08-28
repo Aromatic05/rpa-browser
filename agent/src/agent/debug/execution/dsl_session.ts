@@ -236,6 +236,10 @@ export const createDslDebugExecutionSession = (
                         path: targetPath,
                         executions: point.executions,
                     }),
+                    rewind: rewindPlan(continuationId, {
+                        programId: targetProgramId,
+                        path: targetPath,
+                    }),
                     pause: exposePause(current),
                 })
                 : Object.freeze({

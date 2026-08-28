@@ -73,6 +73,7 @@ test('path patch returns rewind_required for executed points and not_current for
         debug: {initialMode: 'step'},
     });
     const first = await execution.waitForPause();
+    const body0Savepoint = execution.savepoint(first.continuationId, 'before-body0');
     const secondResult = await execution.advance(first.continuationId, 'step');
     assert.equal(secondResult.status, 'paused');
     if (secondResult.status !== 'paused') {throw new Error('expected pause');}
@@ -90,6 +91,9 @@ test('path patch returns rewind_required for executed points and not_current for
         path: 'body.0',
         executions: 1,
     });
+    assert.equal((executed.details as any).rewind.status, 'ready');
+    assert.equal((executed.details as any).rewind.candidates[0].savepointId, body0Savepoint.id);
+    assert.equal((executed.details as any).rewind.candidates[0].exact, true);
 
     const future = await patch.execute('patch-future', {
         source: 'wait 0',
