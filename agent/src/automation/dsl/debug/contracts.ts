@@ -52,6 +52,7 @@ export type DslForExecutionFrameSnapshot = Readonly<{
 export type DslCheckpointExecutionFrameSnapshot = Readonly<{
     kind: 'checkpoint';
     checkpointId: string;
+    invocationId: string;
     statementPath: string;
     parentBlockPath: string;
     statementIndex: number;

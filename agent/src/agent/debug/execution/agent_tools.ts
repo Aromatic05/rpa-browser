@@ -285,7 +285,7 @@ export const createPausedDslDebugAgentTools = (
         {
             name: 'debug.rewind_plan',
             label: 'debug.rewind_plan',
-            description: 'List execution savepoints that can restart at or before a main top-level program path. This is a pure read and does not claim a candidate is rollback-safe; debug.rewind performs the strict World restore check.',
+            description: 'List execution savepoints for a main or checkpoint program path. Nested if/for paths are frame-aware; repeated checkpoint calls expose checkpointStack invocationIds so a specific invocation can be chosen. This is a pure read and does not claim a candidate is rollback-safe; debug.rewind performs the strict World restore check.',
             parameters: Type.Object({
                 programId: Type.Optional(Type.String({minLength: 1})),
                 path: Type.Optional(Type.String({minLength: 1})),
@@ -299,7 +299,7 @@ export const createPausedDslDebugAgentTools = (
         {
             name: 'debug.rewind',
             label: 'debug.rewind',
-            description: 'Rewind retained DSL execution to a saved execution point. The first implementation supports statement savepoints at main/body.N only and requires the World to be strictly restored; effects after the savepoint block rewind. A successful rewind returns a new continuation paused at the saved statement.',
+            description: 'Rewind retained DSL execution to a saved statement point after strict World restoration. The runtime restores scope/history/provenance and nested if/for/checkpoint frames, including checkpoint output rebinding, then returns a new continuation paused at the saved statement. Effects after the savepoint block rewind.',
             parameters: Type.Object({
                 savepointId: Type.String({minLength: 1}),
             }, {additionalProperties: false}),

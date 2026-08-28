@@ -92,6 +92,7 @@ export type DslDebugRewindCandidate = Readonly<{
     origin: 'automatic' | 'explicit';
     name?: string;
     location: DslStatementLocation;
+    checkpointStack: readonly Readonly<{checkpointId: string; invocationId: string}>[];
     effectSequence: number;
     world: WorldViewDescriptor;
     exact: boolean;

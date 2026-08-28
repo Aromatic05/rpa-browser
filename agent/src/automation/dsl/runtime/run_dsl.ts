@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import type { RunStepsDeps, StepResult as TaskStepResult } from '../../runner/run_steps';
 import type { BrowserQueryResult, StepResolve, StepResult as ExecutorStepResult, StepUnion } from '../../runner/steps/types';
 import {evaluateComputeExpression} from '../../../program/compute/evaluate';
@@ -317,6 +318,7 @@ const executeStmt = async (
             const checkpointFrame: DslExecutionFrameSnapshot = Object.freeze({
                 kind: 'checkpoint' as const,
                 checkpointId: stmt.id,
+                invocationId: crypto.randomUUID(),
                 statementPath: location.path,
                 parentBlockPath: location.path.slice(0, location.path.lastIndexOf('.')),
                 statementIndex: stmtIndex,

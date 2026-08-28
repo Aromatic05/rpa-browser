@@ -908,6 +908,14 @@ export const createDslDebugExecutionSession = (
                         origin: entry.origin,
                         ...(saved.savepoint.name ? {name: saved.savepoint.name} : {}),
                         location: structuredClone(saved.location),
+                        checkpointStack: Object.freeze(
+                            saved.frames
+                                .filter((frame) => frame.kind === 'checkpoint')
+                                .map((frame) => Object.freeze({
+                                    checkpointId: frame.checkpointId,
+                                    invocationId: frame.invocationId,
+                                })),
+                        ),
                         effectSequence: saved.savepoint.effectSequence,
                         world: structuredClone(saved.world),
                         exact: true,
@@ -924,6 +932,14 @@ export const createDslDebugExecutionSession = (
                     origin: entry.origin,
                     ...(saved.savepoint.name ? {name: saved.savepoint.name} : {}),
                     location: structuredClone(saved.location),
+                    checkpointStack: Object.freeze(
+                        saved.frames
+                            .filter((frame) => frame.kind === 'checkpoint')
+                            .map((frame) => Object.freeze({
+                                checkpointId: frame.checkpointId,
+                                invocationId: frame.invocationId,
+                            })),
+                    ),
                     effectSequence: saved.savepoint.effectSequence,
                     world: structuredClone(saved.world),
                     exact: savedIndex === targetIndex,

@@ -979,3 +979,68 @@ test('checkpoint rewind resumes the caller inside an if frame before returning t
     assert.equal(completed.status, 'completed');
     if (completed.status === 'completed') {assert.deepEqual(completed.output, {branch: 12, result: 12});}
 });
+
+test('rewind candidates distinguish repeated checkpoint invocations with runtime identities', async () => {
+    const view = await createView();
+    const checkpoint = {
+        id: 'child',
+        kind: 'procedure' as const,
+        body: {language: 'dsl' as const, source: 'body.dsl' as const},
+    };
+    const execution = createDslDebugExecutionSession({
+        source: `
+            let first = use checkpoint "child" with { value: input.first }
+            let second = use checkpoint "child" with { value: input.second }
+            output result = second.value
+        `,
+        context: {
+            workspaceName: 'ws-rewind-checkpoint-invocations',
+            deps,
+            input: {first: 1, second: 2},
+            stepExecutionPort: {
+                execute: async (step) => ({stepId: step.id, ok: true, data: {}}),
+            },
+            checkpointProvider: {
+                getCheckpoint: (id) => id === 'child' ? checkpoint : null,
+                getCheckpointResolves: () => ({}),
+                getCheckpointBody: (id) => id === 'child'
+                    ? {source: 'output value = input.value', stepResolves: {}}
+                    : null,
+            },
+        },
+        worldViewSource: {pin: async () => view},
+        debug: {initialMode: 'step'},
+    });
+
+    const firstCall = await execution.waitForPause();
+    const firstChild = await execution.advance(firstCall.continuationId, 'step');
+    assert.equal(firstChild.status, 'paused');
+    if (firstChild.status !== 'paused') {throw new Error('expected first child');}
+    const secondCall = await execution.advance(firstChild.pause.continuationId, 'step');
+    assert.equal(secondCall.status, 'paused');
+    if (secondCall.status !== 'paused') {throw new Error('expected second caller');}
+    const secondChild = await execution.advance(secondCall.pause.continuationId, 'step');
+    assert.equal(secondChild.status, 'paused');
+    if (secondChild.status !== 'paused') {throw new Error('expected second child');}
+    const rootOutput = await execution.advance(secondChild.pause.continuationId, 'step');
+    assert.equal(rootOutput.status, 'paused');
+    if (rootOutput.status !== 'paused') {throw new Error('expected root output');}
+
+    const plan = execution.rewindPlan(rootOutput.pause.continuationId, {
+        programId: 'checkpoint:child',
+        path: 'body.0',
+    });
+    assert.equal(plan.status, 'ready');
+    if (plan.status !== 'ready') {throw new Error('expected repeated checkpoint plan');}
+    assert.equal(plan.candidates.length, 2);
+    assert.deepEqual(
+        plan.candidates.map((candidate) => candidate.checkpointStack.map((frame) => frame.checkpointId)),
+        [['child'], ['child']],
+    );
+    const invocationIds = plan.candidates.map((candidate) => candidate.checkpointStack[0]?.invocationId);
+    assert.equal(invocationIds.every((value) => typeof value === 'string' && value.length > 0), true);
+    assert.notEqual(invocationIds[0], invocationIds[1]);
+    assert.deepEqual(plan.candidates.map((candidate) => candidate.location.callStack), [['child'], ['child']]);
+
+    await execution.advance(rootOutput.pause.continuationId, 'abort');
+});
