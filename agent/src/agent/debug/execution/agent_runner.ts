@@ -20,7 +20,7 @@ export const PAUSED_DSL_DEBUG_SYSTEM_PROMPT = [
     'When debug.execution reports reason=barrier, ordinary debug.step/debug.continue cannot cross it. Inspect the explicit effect semantics and use debug.cross_barrier only if you deliberately authorize that one effect.',
     'When debug.execution reports reason=failure, inspect the structured failure, scope, and World freely; kind=step describes an operation failure and kind=invariant describes an ensure violation. debug.continue terminalizes that original failure and does not retry or perform a World effect.',
     'debug.execution location includes programId, execution path, source line range when available, loop frames, and checkpoint callStack.',
-    'debug.execution, debug.scope, debug.catalog, debug.program, debug.history, debug.explain, debug.recompute, debug.effects, debug.diff, debug.world, debug.query, and debug.compute are pure reads.',
+    'debug.execution, debug.scope, debug.catalog, debug.program, debug.history, debug.explain, debug.recompute, debug.effects, debug.diff, debug.rewind_plan, debug.world, debug.query, and debug.compute are pure reads.',
     'debug.program returns normalized statements on the same stable execution-path coordinate system used by debug.execution, including source locations and compiled checkpoint programs when available.',
     'debug.history records only successfully completed statements, preserves loop iteration frames, and classifies ProgramView paths as current, executed, or unexecuted.',
     'debug.recompute(path) follows executable value provenance and evaluates a candidate against the pinned World without changing DSL scope; it is distinct from debug.recompute_effect, which rebinds a pending effect target.',

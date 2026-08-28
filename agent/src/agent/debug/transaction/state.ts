@@ -11,25 +11,47 @@ const assertEffectPosition = (value: number): void => {
 
 export const createDebugTransaction = (baseline: WorldView): DebugTransaction => {
     const id = crypto.randomUUID();
-    const savepoints: Array<Readonly<{savepoint: DebugSavepoint; world: WorldView}>> = [];
+    const savepoints: Array<{savepoint: DebugSavepoint; world: WorldView; visible: boolean}> = [];
+
+    const createSavepoint = (
+        world: WorldView,
+        effectSequence: number,
+        name: string | undefined,
+        visible: boolean,
+    ): DebugSavepoint => {
+        assertEffectPosition(effectSequence);
+        const normalizedName = name?.trim();
+        if (name !== undefined && !normalizedName) {
+            throw new Error('transaction savepoint name must not be empty');
+        }
+        const savepoint = Object.freeze({
+            id: crypto.randomUUID(),
+            ...(normalizedName === undefined ? {} : {name: normalizedName}),
+            effectSequence,
+            world: describeWorldView(world),
+        });
+        savepoints.push({savepoint, world, visible});
+        return savepoint;
+    };
 
     return {
         id,
         baseline,
-        savepoint: (world, effectSequence, name) => {
-            assertEffectPosition(effectSequence);
+        savepoint: (world, effectSequence, name) => createSavepoint(world, effectSequence, name, true),
+        internalSavepoint: (world, effectSequence) => createSavepoint(world, effectSequence, undefined, false),
+        promoteSavepoint: (savepointId, name) => {
+            const entry = savepoints.find((candidate) => candidate.savepoint.id === savepointId);
+            if (!entry) {throw new Error(`transaction savepoint not found: ${savepointId}`);}
             const normalizedName = name?.trim();
             if (name !== undefined && !normalizedName) {
                 throw new Error('transaction savepoint name must not be empty');
             }
-            const savepoint = Object.freeze({
-                id: crypto.randomUUID(),
+            entry.savepoint = Object.freeze({
+                ...entry.savepoint,
                 ...(normalizedName === undefined ? {} : {name: normalizedName}),
-                effectSequence,
-                world: describeWorldView(world),
             });
-            savepoints.push(Object.freeze({savepoint, world}));
-            return savepoint;
+            entry.visible = true;
+            return entry.savepoint;
         },
         readSavepoint: (savepointId) => savepoints.find((entry) => entry.savepoint.id === savepointId) ?? null,
         truncateSavepoints: (savepointId) => {
@@ -44,7 +66,7 @@ export const createDebugTransaction = (baseline: WorldView): DebugTransaction =>
                 baseline: describeWorldView(baseline),
                 current: describeWorldView(current),
                 effectCount,
-                savepoints: Object.freeze(savepoints.map((entry) => entry.savepoint)),
+                savepoints: Object.freeze(savepoints.filter((entry) => entry.visible).map((entry) => entry.savepoint)),
             });
         },
     };

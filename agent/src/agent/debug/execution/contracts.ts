@@ -87,6 +87,7 @@ export type DebugExecutionSavepoint = Readonly<{
 
 export type DslDebugRewindCandidate = Readonly<{
     savepointId: string;
+    origin: 'automatic' | 'explicit';
     name?: string;
     location: DslStatementLocation;
     effectSequence: number;

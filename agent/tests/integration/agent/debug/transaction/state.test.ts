@@ -68,3 +68,17 @@ test('debug transaction rejects invalid savepoint effect positions', async () =>
     assert.throws(() => transaction.savepoint(view, 1.5), /effect sequence/i);
     assert.throws(() => transaction.savepoint(view, 0, '   '), /savepoint name/i);
 });
+
+test('internal execution savepoints stay hidden until explicitly promoted', async () => {
+    const [view] = await createViews();
+    const transaction = createDebugTransaction(view);
+
+    const internal = transaction.internalSavepoint(view, 0);
+    assert.deepEqual(transaction.snapshot(view, 0).savepoints, []);
+    assert.equal(transaction.readSavepoint(internal.id)?.savepoint.id, internal.id);
+
+    const promoted = transaction.promoteSavepoint(internal.id, 'before-statement');
+    assert.equal(promoted.id, internal.id);
+    assert.equal(promoted.name, 'before-statement');
+    assert.deepEqual(transaction.snapshot(view, 0).savepoints, [promoted]);
+});

@@ -2,7 +2,13 @@ import {
     createDslDebugController,
     type CreateDslDebugControllerOptions,
 } from '../../../automation/dsl/debug/controller';
-import type {DslDebugPort, DslEffectDescriptor, DslValueProvenanceEvent, PausedDslExecution} from '../../../automation/dsl/debug/contracts';
+import type {
+    DslDebugPort,
+    DslEffectDescriptor,
+    DslStatementLocation,
+    DslValueProvenanceEvent,
+    PausedDslExecution,
+} from '../../../automation/dsl/debug/contracts';
 import {DslDebugAbortError} from '../../../automation/dsl/debug/errors';
 import {
     runDslSource,
@@ -31,6 +37,7 @@ import type {DebugCompensationPort} from '../transaction/compensation/contracts'
 import {executePhysicalCompensations} from '../transaction/compensation/executor';
 import {createDebugTransaction} from '../transaction/state';
 import type {
+    DebugSavepoint,
     DebugRollbackOptions,
     DebugRollbackResult,
     DebugTransaction,
@@ -59,6 +66,7 @@ type ActivePause = {
     view: WorldView;
     debug: DebugQuerySession;
     effectResolvedAt?: WorldViewDescriptor;
+    automaticSavepointId?: string;
 };
 
 export const createDslDebugExecutionSession = (
@@ -73,6 +81,7 @@ export const createDslDebugExecutionSession = (
     const executionSavepoints = new Map<string, Readonly<{
         state: DebugExecutionSavepoint;
         provenance: readonly DslValueProvenanceEvent[];
+        origin: 'automatic' | 'explicit';
     }>>();
     let transaction: DebugTransaction | null = null;
     const ensureTransaction = async (): Promise<DebugTransaction> => {
@@ -82,6 +91,30 @@ export const createDslDebugExecutionSession = (
     const requireTransaction = (): DebugTransaction => {
         if (!transaction) {throw new Error('DSL debug transaction is not initialized');}
         return transaction;
+    };
+    const isRewindableStatementLocation = (location: DslStatementLocation): boolean =>
+        location.programId === 'main'
+        && location.loops.length === 0
+        && location.callStack.length === 0
+        && /^body\.\d+$/u.test(location.path);
+    const captureExecutionSavepoint = (
+        current: ActivePause,
+        savepoint: DebugSavepoint,
+        origin: 'automatic' | 'explicit',
+    ): void => {
+        const history = statementHistory.list();
+        executionSavepoints.set(savepoint.id, Object.freeze({
+            state: Object.freeze({
+                savepoint,
+                reason: current.pause.reason,
+                location: structuredClone(current.pause.location),
+                scope: structuredClone(current.pause.scope),
+                historySequence: history.at(-1)?.sequence ?? 0,
+                world: current.debug.world,
+            }),
+            provenance: provenance.snapshot(),
+            origin,
+        }));
     };
     const debugPort: DslDebugPort = {
         beforeStatement: async (event) => {
@@ -169,6 +202,11 @@ export const createDslDebugExecutionSession = (
             })
             : undefined;
         active = {pause, view, debug, ...(effectResolvedAt ? {effectResolvedAt} : {})};
+        if (pause.reason === 'statement' && isRewindableStatementLocation(pause.location)) {
+            const savepoint = requireTransaction().internalSavepoint(view, journal.list().length);
+            captureExecutionSavepoint(active, savepoint, 'automatic');
+            active = {...active, automaticSavepointId: savepoint.id};
+        }
         return exposePause(active);
     };
 
@@ -180,6 +218,7 @@ export const createDslDebugExecutionSession = (
             view,
             debug: createDebugQuerySession(view),
             ...(current.effectResolvedAt ? {effectResolvedAt: current.effectResolvedAt} : {}),
+            ...(current.automaticSavepointId ? {automaticSavepointId: current.automaticSavepointId} : {}),
         };
         return exposePause(active);
     };
@@ -552,10 +591,7 @@ export const createDslDebugExecutionSession = (
             });
         }
         const match = /^body\.(\d+)$/u.exec(saved.location.path);
-        if (saved.location.programId !== 'main'
-            || saved.location.loops.length > 0
-            || saved.location.callStack.length > 0
-            || !match) {
+        if (!isRewindableStatementLocation(saved.location) || !match) {
             return Object.freeze({
                 status: 'unsupported_target' as const,
                 reason: 'not_main_top_level' as const,
@@ -653,12 +689,11 @@ export const createDslDebugExecutionSession = (
         }
         const targetIndex = Number(targetMatch[1]);
         const candidates = [...executionSavepoints.values()]
-            .map((entry) => entry.state)
-            .flatMap((saved) => {
+            .reverse()
+            .flatMap((entry) => {
+                const saved = entry.state;
                 if (saved.reason !== 'statement'
-                    || saved.location.programId !== 'main'
-                    || saved.location.loops.length > 0
-                    || saved.location.callStack.length > 0) {
+                    || !isRewindableStatementLocation(saved.location)) {
                     return [];
                 }
                 const match = /^body\.(\d+)$/u.exec(saved.location.path);
@@ -667,6 +702,7 @@ export const createDslDebugExecutionSession = (
                 if (savedIndex > targetIndex) {return [];}
                 return [Object.freeze({
                     savepointId: saved.savepoint.id,
+                    origin: entry.origin,
                     ...(saved.savepoint.name ? {name: saved.savepoint.name} : {}),
                     location: structuredClone(saved.location),
                     effectSequence: saved.savepoint.effectSequence,
@@ -675,7 +711,7 @@ export const createDslDebugExecutionSession = (
                     replayStatements: targetIndex - savedIndex,
                 })];
             })
-            .sort((left, right) => right.location.path.localeCompare(left.location.path, undefined, {numeric: true}));
+            .sort((left, right) => left.replayStatements - right.replayStatements);
         return candidates.length > 0
             ? Object.freeze({status: 'ready' as const, target: planTarget, candidates: Object.freeze(candidates)})
             : Object.freeze({status: 'no_savepoint' as const, target: planTarget, candidates: Object.freeze([])});
@@ -741,20 +777,21 @@ export const createDslDebugExecutionSession = (
         },
         savepoint: (continuationId: string, name?: string) => {
             const current = requireActive(continuationId);
-            const savepoint = requireTransaction().savepoint(current.view, journal.list().length, name);
-            const history = statementHistory.list();
-            const state = Object.freeze({
-                savepoint,
-                reason: current.pause.reason,
-                location: structuredClone(current.pause.location),
-                scope: structuredClone(current.pause.scope),
-                historySequence: history.at(-1)?.sequence ?? 0,
-                world: current.debug.world,
-            });
-            executionSavepoints.set(savepoint.id, Object.freeze({
-                state,
-                provenance: provenance.snapshot(),
-            }));
+            let savepoint: DebugSavepoint;
+            if (current.automaticSavepointId) {
+                savepoint = requireTransaction().promoteSavepoint(current.automaticSavepointId, name);
+                const captured = executionSavepoints.get(savepoint.id);
+                if (!captured) {throw new Error(`execution savepoint not found: ${savepoint.id}`);}
+                executionSavepoints.set(savepoint.id, Object.freeze({
+                    ...captured,
+                    state: Object.freeze({...captured.state, savepoint}),
+                    origin: 'explicit' as const,
+                }));
+                active = {...current, automaticSavepointId: undefined};
+            } else {
+                savepoint = requireTransaction().savepoint(current.view, journal.list().length, name);
+                captureExecutionSavepoint(current, savepoint, 'explicit');
+            }
             return savepoint;
         },
         executionSavepoint: (continuationId: string, savepointId: string) => {

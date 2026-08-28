@@ -244,6 +244,66 @@ test('rewind plan lists exact and prior savepoints nearest-first without mutatin
     await execution.advance(body2Result.pause.continuationId, 'abort');
 });
 
+test('automatic hidden execution points enable rewind without a manual savepoint', async () => {
+    const view = await createView();
+    const execution = createDslDebugExecutionSession({
+        source: `
+            let value = compute first(input.old)
+            output result = vars.value
+        `,
+        context: {
+            workspaceName: 'ws-rewind-auto',
+            deps,
+            input: {old: [2], next: [9]},
+            stepExecutionPort: {
+                execute: async (step) => ({stepId: step.id, ok: true, data: {}}),
+            },
+        },
+        worldViewSource: {pin: async () => view},
+        debug: {initialMode: 'step'},
+    });
+
+    const body0 = await execution.waitForPause();
+    assert.deepEqual(execution.transaction(body0.continuationId).savepoints, []);
+    const body1Result = await execution.advance(body0.continuationId, 'step');
+    assert.equal(body1Result.status, 'paused');
+    if (body1Result.status !== 'paused') {throw new Error('expected body.1');}
+    const body1 = body1Result.pause;
+    assert.deepEqual(execution.transaction(body1.continuationId).savepoints, []);
+
+    const repair = execution.patchStatement(
+        body1.continuationId,
+        'let value = compute first(input.next)',
+        {programId: 'main', path: 'body.0'},
+    );
+    assert.equal(repair.status, 'rewind_required');
+    if (repair.status !== 'rewind_required') {throw new Error('expected rewind_required');}
+    assert.equal(repair.rewind.status, 'ready');
+    if (repair.rewind.status !== 'ready') {throw new Error('expected automatic rewind candidate');}
+    assert.equal(repair.rewind.candidates[0].origin, 'automatic');
+    assert.equal(repair.rewind.candidates[0].exact, true);
+
+    const rewound = await execution.rewind(body1.continuationId, repair.rewind.candidates[0].savepointId);
+    assert.equal(rewound.status, 'rewound');
+    if (rewound.status !== 'rewound') {throw new Error('expected automatic rewind');}
+    assert.equal(rewound.pause.location.path, 'body.0');
+    assert.deepEqual(execution.transaction(rewound.pause.continuationId).savepoints, []);
+
+    const patched = execution.patchStatement(
+        rewound.pause.continuationId,
+        'let value = compute first(input.next)',
+    );
+    assert.equal(patched.status, 'patched');
+    if (patched.status !== 'patched') {throw new Error('expected patched statement');}
+    const outputPause = await execution.advance(patched.pause.continuationId, 'step');
+    assert.equal(outputPause.status, 'paused');
+    if (outputPause.status !== 'paused') {throw new Error('expected output pause');}
+    assert.deepEqual(outputPause.pause.scope.vars, {value: 9});
+    const completed = await execution.advance(outputPause.pause.continuationId, 'continue');
+    assert.equal(completed.status, 'completed');
+    if (completed.status === 'completed') {assert.deepEqual(completed.output, {result: 9});}
+});
+
 test('rewind plan rejects nested targets until nested execution frames are restorable', async () => {
     const view = await createView();
     const execution = createDslDebugExecutionSession({
