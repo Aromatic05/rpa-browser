@@ -19,6 +19,11 @@ type CaptureResolveData = {
     candidates: PageSessionResolveCandidate[];
     confidence: number;
     warnings: string[];
+    target: {
+        nodeId: string;
+        resolve: ReturnType<typeof buildPageSessionResolve>;
+        meta: {pageEpoch: string; captureRevision: number};
+    };
 };
 
 export const normalizeCaptureResolveLimit = (
@@ -73,16 +78,25 @@ export const executeBrowserCaptureResolve = async (
     const warnings: string[] = [];
     if (candidates.length > 1) {warnings.push('AMBIGUOUS_TARGET');}
     if (candidates[0].confidence < 0.8) {warnings.push('LOW_CONFIDENCE_TARGET');}
+    const resolve = buildPageSessionResolve({
+        entry,
+        candidate: candidates[0],
+        rawSelector: args.selector,
+        warnings,
+    });
     const data: CaptureResolveData = {
-        resolve: buildPageSessionResolve({
-            entry,
-            candidate: candidates[0],
-            rawSelector: args.selector,
-            warnings,
-        }),
+        resolve,
         candidates: candidates.map((candidate) => ({...candidate, reason: [...candidate.reason]})),
         confidence: candidates[0].confidence,
         warnings,
+        target: {
+            nodeId: candidates[0].nodeId,
+            resolve,
+            meta: {
+                pageEpoch: entry.identity.pageEpoch,
+                captureRevision: entry.identity.captureRevision,
+            },
+        },
     };
     return {stepId: step.id, ok: true, data};
 };

@@ -8,5 +8,5 @@ export {
     type RunDslSourceResult,
     type ValidateDslSourceResult,
 } from './run_dsl_source';
-export { runDsl, type RunDslContext, type RunDslResult, type StepExecutionPort } from './run_dsl';
+export { runDsl, type RunDslContext, type RunDslResult, type StepExecutionPort, type ExpectedWorldPrecondition, type ExpectedWorldRevision, observedRevisionFromMeta } from './run_dsl';
 export { createDslScope, getDslValue, setDslValue, type DslScope } from './scope';

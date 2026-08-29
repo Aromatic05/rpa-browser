@@ -170,7 +170,10 @@ const runCase = async (barrier: boolean): Promise<void> => {
     const effects = execution.effects(advanced.pause.continuationId);
     assert.equal(effects.length, 1);
     assert.equal((effects[0].effect.args as any).nodeId, views.newTarget);
-    assert.deepEqual(effects[0].effect.logicalTarget, first.effect.logicalTarget);
+    assert.deepEqual(effects[0].effect.logicalTarget, {
+        ...first.effect.logicalTarget,
+        resolvedAt: {pageEpoch: 'v2-business', captureRevision: 2},
+    }, 'recompute refreshes the expected revision from the pinned world, never retaining the stale observed revision');
 
     await execution.advance(advanced.pause.continuationId, 'continue');
 };

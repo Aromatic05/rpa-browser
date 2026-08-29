@@ -33,12 +33,12 @@ const credentialFailureResult = (
 
 export const createCredentialResolvingStepExecutor = (
     options: CredentialResolvingStepExecutorOptions,
-): StepExecutionPort['execute'] => async (step) => {
+): StepExecutionPort['execute'] => async (step, precondition) => {
     let args: unknown;
     try {
         args = await resolveCredentialRefsDeep(step.args, options.resolver.resolve);
     } catch (error) {
         return credentialFailureResult(error, step);
     }
-    return await options.execute({...step, args} as StepUnion);
+    return await options.execute({...step, args} as StepUnion, precondition);
 };

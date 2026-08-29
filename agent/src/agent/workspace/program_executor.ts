@@ -3,7 +3,11 @@ import {
     type RunStepsDeps,
 } from '../../automation/runner/run_steps';
 import {materializeReferencedCheckpointRuntimeSnapshot} from '../../automation/runner/checkpoint';
-import {compileDslSource, type StepExecutionPort} from '../../automation/dsl/runtime';
+import {
+    compileDslSource,
+    type ExpectedWorldPrecondition,
+    type StepExecutionPort,
+} from '../../automation/dsl/runtime';
 import {createCredentialResolvingStepExecutor} from '../../automation/dsl/runtime/credentials';
 import {createDenyAllCredentialResolver, type CredentialResolver} from '../../security/credentials';
 import {
@@ -152,8 +156,35 @@ export const createWorkspaceProgramExecutor = (
             entityRulesResolver: runtime.entityRulesResolver,
             resolveResolver: runtime.resolveResolver,
         });
+    const executeWithCredentials = createCredentialResolvingStepExecutor({resolver, execute: executeStep});
+    const worldConflict = (
+        step: Parameters<typeof executeStepWithRuntimeContracts>[0],
+        precondition: ExpectedWorldPrecondition,
+        actual: {pageEpoch: string; captureRevision: number},
+    ) => ({
+        stepId: step.id,
+        ok: false as const,
+        error: {
+            code: 'ERR_AGENT_WORLD_CONFLICT' as const,
+            message: 'workspace world moved past the expected observation revision; refusing to mutate',
+            details: {
+                expected: {...precondition.revision},
+                actual: {...actual},
+            },
+        },
+    });
     const stepExecutionPort: StepExecutionPort = {
-        execute: createCredentialResolvingStepExecutor({resolver, execute: executeStep}),
+        execute: async (step, precondition) => {
+            if (precondition) {
+                const pinned = await worldViewSource.pin();
+                const actual = pinned.revision;
+                if (actual.pageEpoch !== precondition.revision.pageEpoch
+                    || actual.captureRevision !== precondition.revision.captureRevision) {
+                    return worldConflict(step, precondition, actual);
+                }
+            }
+            return await executeWithCredentials(step, precondition);
+        },
     };
     const compensationPort = {
         execute: executeStep,

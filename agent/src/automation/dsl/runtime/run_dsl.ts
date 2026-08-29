@@ -63,7 +63,19 @@ export type RunDslContext = {
     }>;
 };
 
-export type StepExecutionPort = { execute(step: StepUnion): Promise<ExecutorStepResult> };
+export type ExpectedWorldRevision = Readonly<{
+    pageEpoch: string;
+    captureRevision: number;
+}>;
+
+export type ExpectedWorldPrecondition = Readonly<{
+    kind: 'expected-world';
+    revision: ExpectedWorldRevision;
+}>;
+
+export type StepExecutionPort = {
+    execute(step: StepUnion, precondition?: ExpectedWorldPrecondition): Promise<ExecutorStepResult>;
+};
 
 export type RunDslResult = {
     scope: DslScope;
@@ -80,10 +92,10 @@ export const runDsl = async (program: DslProgram, ctx: RunDslContext): Promise<R
     });
     const rawPort: StepExecutionPort = ctx.stepExecutionPort || {execute: async (step) => toExecutorStepResult(await taskRunner!.runStep(step))};
     const port: StepExecutionPort = {
-        execute: async (step) => {
+        execute: async (step, precondition) => {
             const runtimeStep = injectStepResolve(step, ctx.stepResolves);
             if (!runtimeStep.ok) {return {stepId: step.id, ok: false, error: runtimeStep.error};}
-            return await rawPort.execute(runtimeStep.step);
+            return await rawPort.execute(runtimeStep.step, precondition);
         },
     };
     const logger = ctx.logger || getLogger('dsl');
@@ -238,8 +250,9 @@ const executeStmt = async (
                 throw new DslRuntimeError(`DSL action ${stmt.action} requires target`, 'ERR_DSL_BAD_ACT_ARGS');
             }
             const target = resolveDslValue(stmt.target, scope);
+            const precondition = targetObservedPrecondition(target);
             if (stmt.action === 'click') {
-                await emitStepAndWait(buildClickStep(target, stmt.profileName), execution);
+                await emitStepAndWait(buildClickStep(target, stmt.profileName), execution, undefined, undefined, precondition);
                 return;
             }
             const value = resolveDslValue(stmt.value, scope);
@@ -249,7 +262,7 @@ const executeStmt = async (
                     : stmt.action === 'type'
                       ? buildTypeStep(target, value, stmt.profileName)
                       : buildSelectStep(target, value, stmt.profileName);
-            await emitStepAndWait(step, execution);
+            await emitStepAndWait(step, execution, undefined, undefined, precondition);
             return;
         }
         case 'linked_entity_act': {
@@ -635,6 +648,7 @@ const emitStepAndWait = async (
     },
     semantics?: EffectSemantics,
     logicalTarget?: DslEffectDescriptor['logicalTarget'],
+    precondition?: ExpectedWorldPrecondition,
 ): Promise<unknown> => {
     const {scope, ctx, port, logger, stmtIndex, location} = execution;
     safeLog(logger, 'debug', 'dsl.step.emit', {
@@ -644,7 +658,11 @@ const emitStepAndWait = async (
     });
     const effect = await pauseBeforeEffect(step, {scope, ctx, location}, semantics, logicalTarget);
     const runtimeStep = effect ? applyEffectResolution(step, effect) : step;
-    const result = await port.execute(runtimeStep);
+    const resolvedAt = effect?.logicalTarget?.resolvedAt;
+    const expected = resolvedAt
+        ? Object.freeze({kind: 'expected-world' as const, revision: resolvedAt})
+        : precondition;
+    const result = await port.execute(runtimeStep, expected);
     safeLog(logger, 'debug', 'dsl.step.result', {
         stmtIndex,
         stepId: runtimeStep.id,
@@ -723,14 +741,30 @@ const pureExpressionProvenance = (expr: DslExpr): DslValueProvenanceSource => {
     throw new DslRuntimeError(`DSL expression ${expr.kind} cannot produce pure value provenance`, 'ERR_DSL_NOT_NORMALIZED');
 };
 
+export const observedRevisionFromMeta = (
+    meta: unknown,
+): Readonly<{pageEpoch: string; captureRevision: number}> | undefined => {
+    if (!meta || typeof meta !== 'object' || Array.isArray(meta)) {return undefined;}
+    const pageEpoch = (meta as Record<string, unknown>).pageEpoch;
+    const captureRevision = (meta as Record<string, unknown>).captureRevision;
+    return typeof pageEpoch === 'string' && typeof captureRevision === 'number'
+        ? Object.freeze({pageEpoch, captureRevision})
+        : undefined;
+};
+
+const targetObservedPrecondition = (target: unknown): ExpectedWorldPrecondition | undefined => {
+    if (!target || typeof target !== 'object') {return undefined;}
+    const observedAt = observedRevisionFromMeta((target as Record<string, unknown>).meta);
+    return observedAt
+        ? Object.freeze({kind: 'expected-world' as const, revision: observedAt})
+        : undefined;
+};
+
 const queryObservedAt = (
     result: BrowserQueryResult,
 ): {observedAt?: Readonly<{pageEpoch: string; captureRevision: number}>} => {
-    const pageEpoch = result.meta?.pageEpoch;
-    const captureRevision = result.meta?.captureRevision;
-    return typeof pageEpoch === 'string' && typeof captureRevision === 'number'
-        ? {observedAt: Object.freeze({pageEpoch, captureRevision})}
-        : {};
+    const observedAt = observedRevisionFromMeta(result.meta);
+    return observedAt ? {observedAt} : {};
 };
 
 const notifyValue = async (

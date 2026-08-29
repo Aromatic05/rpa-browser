@@ -98,7 +98,7 @@ export const createWorkspaceAgentReadTools = (
         if (tool.name === 'browser.capture_resolve') {
             return {
                 ...tool,
-                description: 'Resolve an observed DOM/ARIA target into a stable StepResolve draft. For ordinary form controls without business annotations, call this after browser.snapshot using the observed nodeId/role/name and pass the resolved target into program input.',
+                description: 'Resolve an observed DOM/ARIA target into a stable StepResolve draft plus a runtime target envelope. For ordinary form controls without business annotations, call this after browser.snapshot using the observed nodeId/role/name and pass the returned target envelope {nodeId, resolve, meta:{pageEpoch,captureRevision}} into program input so effect targeting carries the observed world revision.',
             };
         }
         return tool;

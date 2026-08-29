@@ -1,5 +1,6 @@
 import type {DslEffectDescriptor} from '../../../automation/dsl/debug/contracts';
 import type {BrowserQueryResult, StepArgsMap} from '../../../automation/runner/steps/types';
+import {observedRevisionFromMeta} from '../../../automation/dsl/runtime/run_dsl';
 import type {SelectOptionKind} from '../../../automation/runner/steps/executors/select_option/types';
 
 const SELECT_OPTION_KINDS = new Set<SelectOptionKind>([
@@ -22,9 +23,19 @@ export const rebindLogicalEffectTarget = (
     }
     const args = rebindArgs(effect, target);
     if (!args) {return Object.freeze({ok: false as const, reason: 'unsupported_effect' as const});}
+    const resolvedAt = observedRevisionFromMeta(target.meta);
+    const logicalTarget = effect.logicalTarget
+        ? resolvedAt
+            ? Object.freeze({...effect.logicalTarget, resolvedAt})
+            : effect.logicalTarget
+        : undefined;
     return Object.freeze({
         ok: true as const,
-        effect: Object.freeze({...effect, args: Object.freeze(args)}),
+        effect: Object.freeze({
+            ...effect,
+            args: Object.freeze(args),
+            ...(logicalTarget ? {logicalTarget} : {}),
+        }),
     });
 };
 

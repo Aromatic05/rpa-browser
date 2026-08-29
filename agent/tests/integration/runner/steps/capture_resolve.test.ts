@@ -186,6 +186,30 @@ test('capture_resolve returns a V2 canonical resolve draft for one selector hit'
     assert.equal(data.confidence, 0.95);
 });
 
+test('capture_resolve exposes a runtime target envelope with the observed world revision for Program input', async () => {
+    const step: Step<'browser.capture_resolve'> = {
+        id: 'capture-envelope',
+        name: 'browser.capture_resolve',
+        args: {selector: '#target-1'},
+    };
+    const {deps, nodeIds} = await createDeps();
+    const result = await executeBrowserCaptureResolve(step, deps, 'ws-1');
+    assert.equal(result.ok, true);
+    if (!result.ok) {return;}
+    const data = result.data as any;
+    assert.deepEqual(data.target, {
+        nodeId: nodeIds[0],
+        resolve: data.resolve,
+        meta: {pageEpoch: 'capture-resolve', captureRevision: 1},
+    });
+    assert.equal(data.target.nodeId, data.candidates[0].nodeId);
+    assert.equal(data.target.resolve.hint?.target?.nodeId, nodeIds[0]);
+    assert.equal(data.resolve?.hint?.target?.nodeId, nodeIds[0], 'existing resolve compatibility is preserved');
+    assert.equal(data.candidates[0].nodeId, nodeIds[0], 'existing candidates compatibility is preserved');
+    assert.equal(data.confidence, 0.95, 'existing confidence compatibility is preserved');
+    assert.deepEqual(data.warnings, [], 'existing warnings compatibility is preserved');
+});
+
 test('capture_resolve returns ambiguous V2 candidates for repeated text and uses default limit', async () => {
     const step: Step<'browser.capture_resolve'> = {
         id: 'capture-text',
