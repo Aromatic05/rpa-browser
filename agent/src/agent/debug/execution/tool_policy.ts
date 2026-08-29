@@ -5,6 +5,7 @@ const readTools = new Set([
     'debug.scope',
     'debug.catalog',
     'debug.program',
+    'debug.patches',
     'debug.history',
     'debug.explain',
     'debug.recompute',
@@ -21,6 +22,8 @@ const readTools = new Set([
 
 const controlTools = new Set([
     'debug.patch_statement',
+    'debug.patch_program',
+    'debug.unpatch_program',
     'debug.recompute_effect',
     'debug.cross_barrier',
     'debug.step',

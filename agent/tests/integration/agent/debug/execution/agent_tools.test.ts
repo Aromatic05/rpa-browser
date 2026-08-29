@@ -91,6 +91,7 @@ test('paused DSL Agent tools split pure debugger reads from execution effects', 
         'debug.scope',
         'debug.catalog',
         'debug.program',
+        'debug.patches',
         'debug.history',
         'debug.explain',
         'debug.recompute',
@@ -106,6 +107,8 @@ test('paused DSL Agent tools split pure debugger reads from execution effects', 
         'debug.world',
         'debug.refresh',
         'debug.patch_statement',
+        'debug.patch_program',
+        'debug.unpatch_program',
         'debug.recompute_effect',
         'debug.query',
         'debug.compute',
@@ -114,7 +117,7 @@ test('paused DSL Agent tools split pure debugger reads from execution effects', 
         'debug.continue',
         'debug.abort',
     ]);
-    for (const name of ['debug.execution', 'debug.scope', 'debug.catalog', 'debug.program', 'debug.history', 'debug.explain', 'debug.recompute', 'debug.effects', 'debug.diff', 'debug.transaction', 'debug.transaction_diff', 'debug.rewind_plan', 'debug.world', 'debug.refresh', 'debug.query', 'debug.compute']) {
+    for (const name of ['debug.execution', 'debug.scope', 'debug.catalog', 'debug.program', 'debug.patches', 'debug.history', 'debug.explain', 'debug.recompute', 'debug.effects', 'debug.diff', 'debug.transaction', 'debug.transaction_diff', 'debug.rewind_plan', 'debug.world', 'debug.refresh', 'debug.query', 'debug.compute']) {
         assert.equal(classifyPausedDslDebugToolCall(name), 'read');
     }
     assert.equal(classifyPausedDslDebugToolCall('debug.commit'), 'control');
@@ -122,6 +125,8 @@ test('paused DSL Agent tools split pure debugger reads from execution effects', 
     assert.equal(classifyPausedDslDebugToolCall('debug.rollback'), 'control');
     assert.equal(classifyPausedDslDebugToolCall('debug.rewind'), 'control');
     assert.equal(classifyPausedDslDebugToolCall('debug.patch_statement'), 'control');
+    assert.equal(classifyPausedDslDebugToolCall('debug.patch_program'), 'control');
+    assert.equal(classifyPausedDslDebugToolCall('debug.unpatch_program'), 'control');
     assert.equal(classifyPausedDslDebugToolCall('debug.recompute_effect'), 'control');
     assert.equal(classifyPausedDslDebugToolCall('debug.cross_barrier'), 'control');
     assert.equal(classifyPausedDslDebugToolCall('debug.step'), 'control');

@@ -32,6 +32,7 @@ import type {DebugQuerySession} from '../query/contracts';
 import {createDebugValueProvenanceStore} from '../provenance/store';
 import {recomputeDebugValue} from '../provenance/recompute';
 import {buildDebugProgramView, type DebugProgramView} from '../program/view';
+import {createDebugProgramPatchStore, isDurableProgramPatchStatement} from '../program/patches';
 import {createDebugStatementHistoryStore} from '../history/store';
 import {buildDebugExecutionHistory} from '../history/view';
 import {compileStatementPatch} from './patch_statement';
@@ -49,6 +50,8 @@ import type {
     DslDebugAdvanceResult,
     DslDebugCommitResult,
     DslDebugExecutionSession,
+    DslDebugPatchProgramResult,
+    DslDebugUnpatchProgramResult,
     DslDebugRecomputeEffectResult,
     DslDebugRewindPlanResult,
     DslDebugRewindResult,
@@ -80,6 +83,7 @@ export const createDslDebugExecutionSession = (
     const provenance = createDebugValueProvenanceStore();
     const statementHistory = createDebugStatementHistoryStore();
     const programs = new Map<string, DebugProgramView>();
+    const programPatches = createDebugProgramPatchStore();
     const pendingEffectOverrides = new Map<string, DslEffectDescriptor>();
     const executionSavepoints = new Map<string, Readonly<{
         state: DebugExecutionSavepoint;
@@ -169,7 +173,15 @@ export const createDslDebugExecutionSession = (
     const debugPort: DslDebugPort = {
         beforeStatement: async (event) => {
             await ensureTransaction();
-            return await controller.port.beforeStatement(event);
+            const patch = programPatches.get(event.location.programId, event.location.path);
+            if (!patch) {return await controller.port.beforeStatement(event);}
+            const patchedEvent = Object.freeze({
+                ...event,
+                location: Object.freeze({...event.location, kind: patch.statement.kind}),
+                statement: structuredClone(patch.statement),
+            });
+            const resolution = await controller.port.beforeStatement(patchedEvent);
+            return resolution ?? Object.freeze({statement: structuredClone(patch.statement)});
         },
         afterStatement: (event) => {statementHistory.record(event);},
         beforeEffect: async (event) => {
@@ -520,6 +532,126 @@ export const createDslDebugExecutionSession = (
         return Object.freeze({
             status: 'patched' as const,
             pause: exposePause(active) as Extract<PausedDslDebugExecution, {reason: 'statement'}>,
+        });
+    };
+
+    const patchProgram = (
+        continuationId: string,
+        programId: string,
+        path: string,
+        source: string,
+    ): DslDebugPatchProgramResult => {
+        const current = requireActive(continuationId);
+        const program = programs.get(programId);
+        if (!program) {
+            return Object.freeze({
+                status: 'unknown_program' as const,
+                target: Object.freeze({programId, path}),
+                pause: exposePause(current),
+            });
+        }
+        const original = program.statements.find((entry) => entry.path === path);
+        if (!original) {
+            return Object.freeze({
+                status: 'unknown_path' as const,
+                target: Object.freeze({programId, path}),
+                pause: exposePause(current),
+            });
+        }
+        const compiled = compileStatementPatch(
+            program.source,
+            source,
+            options.context.entityRulesResolver,
+            options.context.resolveResolver,
+        );
+        if (!compiled.ok) {
+            return Object.freeze({status: 'invalid' as const, error: compiled.error, pause: exposePause(current)});
+        }
+        if (!isDurableProgramPatchStatement(original.statement)
+            || !isDurableProgramPatchStatement(compiled.statement)) {
+            return Object.freeze({
+                status: 'invalid' as const,
+                error: Object.freeze({
+                    code: 'ERR_DSL_PATCH_UNSUPPORTED' as const,
+                    message: 'durable program patches cannot replace structural if/for/checkpoint statements',
+                }),
+                pause: exposePause(current),
+            });
+        }
+        const patch = programPatches.set(Object.freeze({programId, path, source, statement: compiled.statement}));
+        const isCurrent = current.pause.reason === 'statement'
+            && current.pause.location.programId === programId
+            && current.pause.location.path === path;
+        if (isCurrent) {
+            controller.patchStatement(continuationId, compiled.statement);
+            const pause = Object.freeze({
+                ...current.pause,
+                location: Object.freeze({...current.pause.location, kind: compiled.statement.kind}),
+                statement: structuredClone(compiled.statement),
+            });
+            active = {...current, pause};
+            return Object.freeze({
+                status: 'patched' as const,
+                patch,
+                target: Object.freeze({programId, path, state: 'current' as const}),
+                pause: exposePause(active),
+            });
+        }
+        const point = buildDebugExecutionHistory(
+            program,
+            statementHistory.list(programId),
+            undefined,
+        ).points.find((entry) => entry.path === path);
+        const executions = point?.executions ?? 0;
+        if (executions > 0) {
+            return Object.freeze({
+                status: 'rewind_required' as const,
+                patch,
+                target: Object.freeze({programId, path, executions}),
+                rewind: rewindPlan(continuationId, {programId, path}),
+                pause: exposePause(current),
+            });
+        }
+        return Object.freeze({
+            status: 'patched' as const,
+            patch,
+            target: Object.freeze({programId, path, state: 'future' as const}),
+            pause: exposePause(current),
+        });
+    };
+
+    const unpatchProgram = (
+        continuationId: string,
+        programId: string,
+        path: string,
+    ): DslDebugUnpatchProgramResult => {
+        const current = requireActive(continuationId);
+        const removed = programPatches.remove(programId, path);
+        if (!removed) {
+            return Object.freeze({
+                status: 'not_found' as const,
+                target: Object.freeze({programId, path}),
+                pause: exposePause(current),
+            });
+        }
+        if (current.pause.reason === 'statement'
+            && current.pause.location.programId === programId
+            && current.pause.location.path === path) {
+            const original = programs.get(programId)?.statements.find((entry) => entry.path === path)?.statement;
+            if (!original) {throw new Error(`DSL debug program path disappeared: ${programId}/${path}`);}
+            controller.patchStatement(continuationId, original);
+            const pause = Object.freeze({
+                ...current.pause,
+                location: Object.freeze({...current.pause.location, kind: original.kind}),
+                statement: structuredClone(original),
+            });
+            active = {...current, pause};
+        }
+        return Object.freeze({
+            status: 'removed' as const,
+            patch: removed,
+            target: Object.freeze({programId, path}),
+            pause: exposePause(active ?? current),
         });
     };
 
@@ -1031,6 +1163,10 @@ export const createDslDebugExecutionSession = (
             if (!program) {throw new Error(`DSL debug program is unavailable: ${targetProgramId}`);}
             return program;
         },
+        patches: (continuationId: string, programId?: string) => {
+            requireActive(continuationId);
+            return programPatches.list(programId);
+        },
         history: (continuationId: string, programId?: string) => {
             const current = requireActive(continuationId);
             const targetProgramId = programId ?? current.pause.location.programId;
@@ -1106,6 +1242,8 @@ export const createDslDebugExecutionSession = (
         rewind,
         refresh,
         patchStatement,
+        patchProgram,
+        unpatchProgram,
         recomputeEffect,
         crossBarrier,
         advance,

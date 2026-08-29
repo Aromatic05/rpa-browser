@@ -135,6 +135,21 @@ export const createPausedDslDebugAgentTools = (
             },
         },
         {
+            name: 'debug.patches',
+            label: 'debug.patches',
+            description: 'Read session-local durable DSL statement patches. Patches overlay ProgramView paths during execution and rewind, but never persist workflow artifacts.',
+            parameters: Type.Object({
+                programId: Type.Optional(Type.String({minLength: 1})),
+            }, {additionalProperties: false}),
+            execute: async (_toolCallId, params) => {
+                const current = requirePause();
+                return toolResult({
+                    patches: execution.patches(current.continuationId, (params as {programId?: string}).programId),
+                    world: current.world,
+                });
+            },
+        },
+        {
             name: 'debug.history',
             label: 'debug.history',
             description: 'Read successful DSL statement execution history and classify ProgramView paths as current, executed, or unexecuted. Repeated loop executions retain their loop iteration frames. This is a pure read.',
@@ -366,6 +381,41 @@ export const createPausedDslDebugAgentTools = (
                     input.source,
                     {programId: input.programId, path: input.path},
                 );
+                pause = result.pause;
+                terminal = null;
+                return toolResult(result);
+            },
+        },
+        {
+            name: 'debug.patch_program',
+            label: 'debug.patch_program',
+            description: 'Install or replace a session-local durable statement patch at a stable programId/path. Current and future statements use it immediately; an already executed path returns rewind_required with candidates. The workflow artifact is not modified.',
+            parameters: Type.Object({
+                programId: Type.String({minLength: 1}),
+                path: Type.String({minLength: 1}),
+                source: Type.String({minLength: 1}),
+            }, {additionalProperties: false}),
+            execute: async (_toolCallId, params) => {
+                const current = requirePause();
+                const input = params as {programId: string; path: string; source: string};
+                const result = execution.patchProgram(current.continuationId, input.programId, input.path, input.source);
+                pause = result.pause;
+                terminal = null;
+                return toolResult(result);
+            },
+        },
+        {
+            name: 'debug.unpatch_program',
+            label: 'debug.unpatch_program',
+            description: 'Remove one session-local durable statement patch. If the patched statement is the current pause, the original ProgramView statement is restored immediately.',
+            parameters: Type.Object({
+                programId: Type.String({minLength: 1}),
+                path: Type.String({minLength: 1}),
+            }, {additionalProperties: false}),
+            execute: async (_toolCallId, params) => {
+                const current = requirePause();
+                const input = params as {programId: string; path: string};
+                const result = execution.unpatchProgram(current.continuationId, input.programId, input.path);
                 pause = result.pause;
                 terminal = null;
                 return toolResult(result);

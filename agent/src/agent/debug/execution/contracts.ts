@@ -19,6 +19,7 @@ import type {WorldCatalog} from '../../worldview/catalog';
 import type {WorldViewDiffResult} from '../../worldview/diff';
 import type {DebugValueExplanation, DebugValueRecomputeResult} from '../provenance/contracts';
 import type {DebugProgramView} from '../program/view';
+import type {DebugProgramPatch} from '../program/patches';
 import type {DebugExecutionHistory} from '../history/contracts';
 import type {
     DebugRollbackOptions,
@@ -183,6 +184,14 @@ export type DslDebugRecomputeEffectResult =
     }>;
 
 
+export type DslDebugPatchProgramResult =
+    | Readonly<{status: 'patched'; patch: DebugProgramPatch; target: Readonly<{programId: string; path: string; state: 'current' | 'future'}>; pause: PausedDslDebugExecution}>
+    | Readonly<{status: 'rewind_required'; patch: DebugProgramPatch; target: Readonly<{programId: string; path: string; executions: number}>; rewind: DslDebugRewindPlanResult; pause: PausedDslDebugExecution}>
+    | Readonly<{status: 'unknown_program' | 'unknown_path'; target: Readonly<{programId: string; path: string}>; pause: PausedDslDebugExecution}>
+    | Readonly<{status: 'invalid'; error: Readonly<{code: 'ERR_DSL_PATCH_INVALID' | 'ERR_DSL_PATCH_UNSUPPORTED'; message: string; diagnostics?: readonly unknown[]}>; pause: PausedDslDebugExecution}>;
+
+export type DslDebugUnpatchProgramResult = Readonly<{status: 'removed' | 'not_found'; patch?: DebugProgramPatch; target: Readonly<{programId: string; path: string}>; pause: PausedDslDebugExecution}>;
+
 export type DslDebugPatchStatementResult =
     | Readonly<{
         status: 'patched';
@@ -230,6 +239,7 @@ export type DslDebugExecutionSession = {
     catalog: (continuationId: string) => WorldCatalog;
     program: (continuationId: string, programId?: string) => DebugProgramView;
     history: (continuationId: string, programId?: string) => DebugExecutionHistory;
+    patches: (continuationId: string, programId?: string) => readonly DebugProgramPatch[];
     effects: (continuationId: string) => readonly DebugEffectRecord[];
     explain: (continuationId: string, path: string) => DebugValueExplanation;
     recompute: (continuationId: string, path: string) => DebugValueRecomputeResult;
@@ -255,6 +265,8 @@ export type DslDebugExecutionSession = {
         source: string,
         target?: Readonly<{programId?: string; path?: string}>,
     ) => DslDebugPatchStatementResult;
+    patchProgram: (continuationId: string, programId: string, path: string, source: string) => DslDebugPatchProgramResult;
+    unpatchProgram: (continuationId: string, programId: string, path: string) => DslDebugUnpatchProgramResult;
     recomputeEffect: (continuationId: string) => DslDebugRecomputeEffectResult;
     crossBarrier: (continuationId: string) => Promise<DslDebugAdvanceResult>;
     advance: (continuationId: string, mode: 'continue' | 'step' | 'abort') => Promise<DslDebugAdvanceResult>;
