@@ -57,6 +57,18 @@ export const createWorkspaceAgentReadTools = (deps: WorkspaceMcpToolDeps): Agent
         getToolSpecs({enabledTools}),
         getToolHandlers(deps, {enabledTools}),
     ).map((tool) => {
+        if (tool.name === 'browser.snapshot') {
+            return {
+                ...tool,
+                description: 'Primary first inspection for the active page. Use this to understand visible DOM/ARIA structure and identify candidate targets before resolving them.',
+            };
+        }
+        if (tool.name === 'browser.get_page_info') {
+            return {
+                ...tool,
+                description: 'Read page-level metadata only when URL/title/viewport details are specifically needed and not already clear from inspection. Do not call this routinely after browser.snapshot for an ordinary form task.',
+            };
+        }
         if (tool.name === 'browser.list_tabs') {
             return {
                 ...tool,

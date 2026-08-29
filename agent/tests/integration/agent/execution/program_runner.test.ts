@@ -3,21 +3,6 @@ import assert from 'node:assert/strict';
 import {createFauxCore, fauxAssistantMessage, fauxToolCall} from '@earendil-works/pi-ai';
 import {createProgramFirstAgentRunner} from '../../../../src/agent/execution/program/runner';
 import type {AgentProgramExecutor} from '../../../../src/agent/execution/program/contracts';
-import type {AgentTraceSnapshot} from '../../../../src/agent/trace/collector';
-
-const trace = (metrics: Partial<AgentTraceSnapshot['metrics']> = {}): AgentTraceSnapshot => ({
-    metrics: {
-        turns: 0,
-        toolCalls: 0,
-        readCalls: 0,
-        controlCalls: 0,
-        effectCalls: 0,
-        failedToolCalls: 0,
-        postErrorEffectCalls: 0,
-        ...metrics,
-    },
-    tools: [],
-});
 
 const runtime = (faux: ReturnType<typeof createFauxCore>) => ({
     resolve: (provider: string, model: string) => provider === 'faux' && model === 'planner'
@@ -38,10 +23,11 @@ test('program-first runner makes program execution the only mutation control', a
     const execute: AgentProgramExecutor = async (program) => {
         programs.push(program);
         return {
-            ...program,
-            status: 'completed',
-            text: 'program complete',
-            trace: trace({turns: 2, controlCalls: 3}),
+            summary: {
+                ...program,
+                status: 'completed',
+                text: 'program complete',
+            },
         };
     };
     const runner = createProgramFirstAgentRunner({
@@ -59,7 +45,7 @@ test('program-first runner makes program execution the only mutation control', a
         source: 'fill input.target with input.value',
         input: {target: {nodeId: 'buyer'}, value: 'alice'},
     }]);
-    assert.equal(result.trace.metrics.controlCalls, 4);
+    assert.equal(result.trace.metrics.controlCalls, 1);
     assert.equal(result.trace.metrics.effectCalls, 0);
 });
 
@@ -74,8 +60,8 @@ test('program-first runner permits compile repair before execution starts', asyn
     const execute: AgentProgramExecutor = async (program) => {
         calls += 1;
         return calls === 1
-            ? {...program, status: 'invalid', error: {code: 'ERR_DSL_PARSE', message: 'bad source'}}
-            : {...program, status: 'completed', text: 'ok', trace: trace()};
+            ? {summary: {...program, status: 'invalid', error: {code: 'ERR_DSL_PARSE', message: 'bad source'}}}
+            : {summary: {...program, status: 'completed', text: 'ok'}};
     };
     const runner = createProgramFirstAgentRunner({
         readTools: [],
@@ -99,7 +85,7 @@ test('program-first runner rejects starting a second transaction after execution
     let calls = 0;
     const execute: AgentProgramExecutor = async (program) => {
         calls += 1;
-        return {...program, status: 'completed', text: 'ok', trace: trace()};
+        return {summary: {...program, status: 'completed', text: 'ok'}};
     };
     const runner = createProgramFirstAgentRunner({
         readTools: [],
@@ -115,13 +101,71 @@ test('program-first runner rejects starting a second transaction after execution
     assert.equal(result.text, 'Kept the original transaction.');
 });
 
+test('program-first runner controls a retained barrier in the same ReAct session', async () => {
+    const faux = createFauxCore({provider: 'faux', models: [{id: 'planner'}]});
+    faux.setResponses([
+        fauxAssistantMessage(fauxToolCall('agent.execute_program', {
+            source: 'fill input.target with input.value',
+            input: {target: {nodeId: 'buyer'}, value: 'alice'},
+        })),
+        fauxAssistantMessage(fauxToolCall('debug.cross_barrier', {})),
+        fauxAssistantMessage('Transaction completed and can now be verified.'),
+    ]);
+    let crossed = 0;
+    const session = {
+        crossBarrier: async () => {
+            crossed += 1;
+            return {status: 'completed' as const, output: {filled: 'alice'}};
+        },
+        auditEffects: () => [],
+    } as any;
+    const pause = {
+        continuationId: 'continuation-1',
+        reason: 'barrier' as const,
+        location: {programId: 'main', path: 'body.0', kind: 'fill'},
+        scope: {input: {}, vars: {}, output: {}},
+        world: {
+            workspaceName: 'ws',
+            tabName: 'main',
+            pageUrl: 'https://example.test/',
+            revision: {pageEpoch: 'page-1', captureRevision: 1},
+        },
+        effect: {
+            stepId: 'fill-1',
+            stepName: 'browser.fill',
+            args: {nodeId: 'buyer', value: 'alice'},
+            semantics: {reversibility: 'unknown'},
+        },
+    } as any;
+    const runner = createProgramFirstAgentRunner({
+        readTools: [],
+        executeProgram: async (program) => ({
+            summary: {...program, status: 'paused', effects: []},
+            debug: {session, pause},
+        }),
+        modelRuntime: runtime(faux),
+    });
+
+    const result = await runner.run({prompt: 'Fill buyer', provider: 'faux', model: 'planner'});
+
+    assert.equal(crossed, 1);
+    assert.deepEqual(result.trace.tools.map((tool) => tool.toolName), [
+        'agent.execute_program',
+        'debug.cross_barrier',
+    ]);
+    assert.equal(result.trace.metrics.controlCalls, 2);
+    assert.equal(result.trace.metrics.failedToolCalls, 0);
+    assert.equal(result.programs?.[0].status, 'completed');
+    assert.equal(result.programs?.[0].text, '{"filled":"alice"}');
+});
+
 test('structured source executes directly without planner prompt smuggling', async () => {
     let called = false;
     const runner = createProgramFirstAgentRunner({
         readTools: [],
         executeProgram: async (program) => {
             called = true;
-            return {...program, status: 'completed', text: 'direct', trace: trace({controlCalls: 1})};
+            return {summary: {...program, status: 'completed', text: 'direct'}};
         },
         modelRuntime: {resolve: () => null},
     });

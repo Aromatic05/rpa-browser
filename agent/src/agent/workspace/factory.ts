@@ -38,7 +38,6 @@ export const createWorkspaceAgentFactory = (
         executeProgram: createWorkspaceProgramExecutor({
             workspaceName: deps.workspaceName,
             deps: deps.runStepsDeps,
-            modelRuntime: options.modelRuntime,
             runWorkspaceExecution: deps.runWorkspaceExecution,
         }),
         readWorldRevision: () => readWorkspaceWorldRevision(toolDeps),

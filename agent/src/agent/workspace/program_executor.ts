@@ -9,37 +9,113 @@ import {
     DslValidationError,
     UnsupportedError,
 } from '../../program/dsl/diagnostics/errors';
-import {createPausedDslDebugAgentRunner} from '../debug/execution/agent_runner';
-import type {AgentModelRuntime} from '../model/runtime';
+import {createDslDebugExecutionSession} from '../debug/execution/dsl_session';
+import type {
+    DslDebugExecutionSession,
+    DslDebugTerminalFailure,
+} from '../debug/execution/contracts';
 import {createWorkspaceWorldViewSource} from '../worldview/workspace';
-import type {AgentProgram, AgentProgramExecutor} from '../execution/program/contracts';
-import type {AgentProgramExecutionSummary, AgentRunRequest} from '../execution/types';
+import type {
+    AgentProgram,
+    AgentProgramExecutionStart,
+    AgentProgramExecutor,
+} from '../execution/program/contracts';
+import type {AgentProgramEffectSummary, AgentProgramExecutionSummary} from '../execution/types';
 
 export type CreateWorkspaceProgramExecutorOptions = {
     workspaceName: string;
     deps: RunStepsDeps;
-    modelRuntime?: AgentModelRuntime;
     runWorkspaceExecution: <T>(actionType: string, run: () => Promise<T>) => Promise<T>;
 };
 
 const invalidProgram = (
     program: AgentProgram,
     error: DslParseError | DslValidationError | UnsupportedError,
+): AgentProgramExecutionStart => ({
+    summary: {
+        source: program.source,
+        input: structuredClone(program.input),
+        status: 'invalid',
+        error: {
+            code: error.code,
+            message: error.message,
+            ...('diagnostics' in error ? {details: structuredClone(error.diagnostics)} : {}),
+        },
+        effects: [],
+    },
+});
+
+const effectSummaries = (session: DslDebugExecutionSession): readonly AgentProgramEffectSummary[] =>
+    session.auditEffects().map((record) => Object.freeze({
+        sequence: record.sequence,
+        stepName: record.effect.stepName,
+        status: record.outcome.status,
+        ...(record.compensates ? {compensates: record.compensates.effectSequence} : {}),
+    }));
+
+const normalizeFailure = (error: unknown): DslDebugTerminalFailure => {
+    if (error && typeof error === 'object') {
+        const value = error as {code?: unknown; message?: unknown; details?: unknown};
+        return Object.freeze({
+            code: typeof value.code === 'string' ? value.code : 'ERR_DSL_RUNTIME',
+            message: typeof value.message === 'string' ? value.message : 'DSL execution failed',
+            ...(value.details === undefined ? {} : {details: structuredClone(value.details)}),
+        });
+    }
+    return Object.freeze({
+        code: 'ERR_DSL_RUNTIME',
+        message: typeof error === 'string' ? error : 'DSL execution failed',
+    });
+};
+
+const lockedDebugSession = (
+    session: DslDebugExecutionSession,
+    runWorkspaceExecution: CreateWorkspaceProgramExecutorOptions['runWorkspaceExecution'],
+): DslDebugExecutionSession => ({
+    ...session,
+    commit: (continuationId) => runWorkspaceExecution(
+        'agent.program.commit',
+        () => session.commit(continuationId),
+    ),
+    rollback: (continuationId, savepointId, options) => runWorkspaceExecution(
+        'agent.program.rollback',
+        () => session.rollback(continuationId, savepointId, options),
+    ),
+    rewind: (continuationId, savepointId, options) => runWorkspaceExecution(
+        'agent.program.rewind',
+        () => session.rewind(continuationId, savepointId, options),
+    ),
+    refresh: (continuationId) => runWorkspaceExecution(
+        'agent.program.refresh',
+        () => session.refresh(continuationId),
+    ),
+    crossBarrier: (continuationId) => runWorkspaceExecution(
+        'agent.program.cross_barrier',
+        () => session.crossBarrier(continuationId),
+    ),
+    advance: (continuationId, mode) => runWorkspaceExecution(
+        'agent.program.advance',
+        () => session.advance(continuationId, mode),
+    ),
+});
+
+const summary = (
+    program: AgentProgram,
+    session: DslDebugExecutionSession,
+    status: AgentProgramExecutionSummary['status'],
+    options: Readonly<{text?: string; error?: AgentProgramExecutionSummary['error']}> = {},
 ): AgentProgramExecutionSummary => ({
     source: program.source,
     input: structuredClone(program.input),
-    status: 'invalid',
-    error: {
-        code: error.code,
-        message: error.message,
-        ...('diagnostics' in error ? {details: structuredClone(error.diagnostics)} : {}),
-    },
-    effects: [],
+    status,
+    ...(options.text ? {text: options.text} : {}),
+    ...(options.error ? {error: options.error} : {}),
+    effects: effectSummaries(session),
 });
 
 export const createWorkspaceProgramExecutor = (
     options: CreateWorkspaceProgramExecutorOptions,
-): AgentProgramExecutor => async (program: AgentProgram, request: AgentRunRequest) => {
+): AgentProgramExecutor => async (program: AgentProgram) => {
     const workspace = options.deps.resolveWorkspace(options.workspaceName);
     const checkpointProvider = workspace.checkpoint.getProvider(workspace.workflow);
     let runtime: ReturnType<typeof materializeReferencedCheckpointRuntimeSnapshot>;
@@ -57,6 +133,7 @@ export const createWorkspaceProgramExecutor = (
         }
         throw error;
     }
+
     const worldViewSource = createWorkspaceWorldViewSource({
         workspaceName: options.workspaceName,
         deps: options.deps,
@@ -70,60 +147,59 @@ export const createWorkspaceProgramExecutor = (
             }),
     };
 
-    try {
-        const result = await options.runWorkspaceExecution('agent.program.execute', () =>
-            createPausedDslDebugAgentRunner({
-                source: program.source,
-                context: {
-                    workspaceName: options.workspaceName,
-                    deps: options.deps,
-                    input: structuredClone(program.input),
-                    checkpointProvider: runtime.provider,
-                    entityRulesResolver: runtime.entityRulesResolver,
-                    resolveResolver: runtime.resolveResolver,
-                },
-                worldViewSource,
-                compensationPort,
-                modelRuntime: options.modelRuntime,
-                debug: {
-                    initialMode: 'continue',
-                    breakOnFailure: true,
-                    barrierOn: ['unknown', 'compensatable', 'irreversible'],
-                    barrierResumeMode: 'continue',
-                },
-            }).run({...request, systemPrompt: undefined}),
-        );
-        const execution = result.execution;
-        const effects = result.session.auditEffects().map((record) => Object.freeze({
-            sequence: record.sequence,
-            stepName: record.effect.stepName,
-            status: record.outcome.status,
-            ...(record.compensates ? {compensates: record.compensates.effectSequence} : {}),
-        }));
-        const error = execution.status === 'failed'
-            ? {
-                code: execution.failure.code,
-                message: execution.failure.message,
-                ...(execution.failure.details === undefined ? {} : {details: execution.failure.details}),
-            }
-            : execution.status === 'aborted'
-                ? {code: 'ERR_AGENT_PROGRAM_ABORTED', message: 'program execution was aborted'}
-                : execution.status === 'paused'
-                    ? {code: 'ERR_AGENT_PROGRAM_PAUSED', message: 'program execution remained paused'}
-                    : undefined;
-        return {
+    return await options.runWorkspaceExecution('agent.program.start', async () => {
+        const session = createDslDebugExecutionSession({
             source: program.source,
-            input: structuredClone(program.input),
-            status: execution.status,
-            text: result.text,
-            ...(error ? {error} : {}),
-            trace: result.trace,
-            effects,
-        };
-    } catch (error) {
-        if (error instanceof DslParseError || error instanceof DslValidationError || error instanceof UnsupportedError) {
-            return invalidProgram(program, error);
+            context: {
+                workspaceName: options.workspaceName,
+                deps: options.deps,
+                input: structuredClone(program.input),
+                checkpointProvider: runtime.provider,
+                entityRulesResolver: runtime.entityRulesResolver,
+                resolveResolver: runtime.resolveResolver,
+            },
+            worldViewSource,
+            compensationPort,
+            debug: {
+                initialMode: 'continue',
+                breakOnFailure: true,
+                barrierOn: ['unknown', 'compensatable', 'irreversible'],
+                barrierResumeMode: 'continue',
+            },
+        });
+        const initial = await Promise.race([
+            session.waitForPause().then((pause) => ({status: 'paused' as const, pause})),
+            session.waitForCompletion().then(
+                (completed) => ({
+                    status: 'completed' as const,
+                    output: structuredClone(completed.scope.output),
+                }),
+                (error) => ({status: 'failed' as const, failure: normalizeFailure(error)}),
+            ),
+        ]);
+        if (initial.status === 'completed') {
+            return {
+                summary: summary(program, session, 'completed', {text: JSON.stringify(initial.output)}),
+            };
         }
-        throw error;
-    }
+        if (initial.status === 'failed') {
+            return {
+                summary: summary(program, session, 'failed', {
+                    text: initial.failure.message,
+                    error: {
+                        code: initial.failure.code,
+                        message: initial.failure.message,
+                        ...(initial.failure.details === undefined ? {} : {details: initial.failure.details}),
+                    },
+                }),
+            };
+        }
+        return {
+            summary: summary(program, session, 'paused'),
+            debug: {
+                session: lockedDebugSession(session, options.runWorkspaceExecution),
+                pause: initial.pause,
+            },
+        };
+    });
 };
