@@ -5,7 +5,7 @@ import type {McpToolHandler} from '../../interface/mcp/contracts';
 import type {WorkspaceMcpToolDeps} from '../../automation/runtime/mcp/tool_handlers';
 import {getToolHandlers} from '../../automation/runtime/mcp/tool_registry';
 import type {AgentWorldRevision} from '../trace/collector';
-import {resolveAgentBrowserToolNames} from './policy';
+import {resolveAgentBrowserReadToolNames, resolveAgentBrowserToolNames} from './policy';
 
 const stringify = (value: unknown): string => {
     try {
@@ -45,6 +45,14 @@ export const createAgentToolsFromHandlers = (
 
 export const createWorkspaceAgentTools = (deps: WorkspaceMcpToolDeps): AgentTool[] => {
     const enabledTools = resolveAgentBrowserToolNames();
+    return createAgentToolsFromHandlers(
+        getToolSpecs({enabledTools}),
+        getToolHandlers(deps, {enabledTools}),
+    );
+};
+
+export const createWorkspaceAgentReadTools = (deps: WorkspaceMcpToolDeps): AgentTool[] => {
+    const enabledTools = resolveAgentBrowserReadToolNames();
     return createAgentToolsFromHandlers(
         getToolSpecs({enabledTools}),
         getToolHandlers(deps, {enabledTools}),

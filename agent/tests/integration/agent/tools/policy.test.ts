@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
     AGENT_BROWSER_TOOLS,
     classifyAgentToolCall,
+    resolveAgentBrowserReadToolNames,
     resolveAgentBrowserToolNames,
 } from '../../../../src/agent/tools/policy';
 
@@ -20,6 +21,19 @@ test('baseline agent surface has an explicit classification for every tool', () 
     assert.deepEqual([...tools].sort(), AGENT_BROWSER_TOOLS.map((tool) => tool.name).sort());
     for (const tool of AGENT_BROWSER_TOOLS) {
         assert.ok(tool.classification === 'read' || tool.classification === 'effect' || tool.classification === 'dynamic');
+    }
+});
+
+test('program planner browser surface is statically read-only', () => {
+    const tools = resolveAgentBrowserReadToolNames();
+    assert.equal(tools.has('browser.snapshot'), true);
+    assert.equal(tools.has('browser.query'), true);
+    assert.equal(tools.has('browser.click'), false);
+    assert.equal(tools.has('browser.fill'), false);
+    assert.equal(tools.has('browser.goto'), false);
+    assert.equal(tools.has('browser.entity'), false);
+    for (const name of tools) {
+        assert.equal(AGENT_BROWSER_TOOLS.find((tool) => tool.name === name)?.classification, 'read');
     }
 });
 

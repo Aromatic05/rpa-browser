@@ -49,5 +49,10 @@ export const AGENT_BROWSER_TOOLS: readonly AgentBrowserTool[] = agentBrowserTool
 export const resolveAgentBrowserToolNames = (): Set<string> =>
     new Set(AGENT_BROWSER_TOOLS.map((tool) => tool.name));
 
+export const resolveAgentBrowserReadToolNames = (): Set<string> =>
+    new Set(AGENT_BROWSER_TOOLS
+        .filter((tool) => tool.classification === 'read')
+        .map((tool) => tool.name));
+
 export const classifyAgentToolCall = (name: string, args: unknown): AgentToolClassification =>
     classifyBrowserOperation(name, args);

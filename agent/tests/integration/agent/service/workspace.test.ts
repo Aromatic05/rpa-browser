@@ -6,7 +6,7 @@ import {createWorkspaceHarness} from '../../../helpers/workspace_harness';
 import {createWorkflowOnFs} from '../../../../src/automation/workflow';
 import {stepExecutors} from '../../../../src/automation/runner/steps/executors';
 
-test('workspace routes agent.run through pi baseline and existing browser handlers', async () => {
+test('workspace defaults agent.run to the program-first read-only planner', async () => {
     const faux = createFauxCore({provider: 'workspace-faux', models: [{id: 'baseline'}]});
     faux.setResponses([
         fauxAssistantMessage(fauxToolCall('browser.list_tabs', {})),
@@ -44,5 +44,35 @@ test('workspace routes agent.run through pi baseline and existing browser handle
     assert.equal(payload.trace.metrics.toolCalls, 1);
     assert.equal(payload.trace.metrics.readCalls, 1);
     assert.equal(payload.trace.metrics.failedToolCalls, 0);
+    assert.equal(payload.executionMode, 'program');
+    assert.deepEqual(payload.programs, []);
+    assert.equal(workspace.state, 'idle');
+});
+
+test('workspace rejects an invalid structured program before starting retained execution', async () => {
+    const {registry} = createWorkspaceHarness({
+        pluginHost: {getExecutors: () => stepExecutors} as any,
+        agentModelRuntime: {resolve: () => null},
+    });
+    const workspaceName = `agent-invalid-${crypto.randomUUID()}`;
+    const workspace = registry.createWorkspace(workspaceName, createWorkflowOnFs(workspaceName));
+    const result = await workspace.router.handle({
+        v: 1,
+        id: crypto.randomUUID(),
+        type: 'agent.run',
+        workspaceName,
+        payload: {
+            prompt: 'Run the supplied program.',
+            provider: 'unused',
+            model: 'unused',
+            source: 'this is not valid dsl !!!',
+        },
+    }, workspace, registry);
+    const payload = result.reply.payload as any;
+
+    assert.equal(payload.executionMode, 'program');
+    assert.equal(payload.programs.length, 1);
+    assert.equal(payload.programs[0].status, 'invalid');
+    assert.equal(payload.programs[0].error.code, 'ERR_DSL_PARSE');
     assert.equal(workspace.state, 'idle');
 });
