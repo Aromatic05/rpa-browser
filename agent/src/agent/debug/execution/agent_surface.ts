@@ -1,5 +1,12 @@
 import type {AgentTool} from '@earendil-works/pi-agent-core';
 import type {PausedDslDebugExecution} from './contracts';
+import type {RecoveryContext} from '../recovery/contracts';
+import {
+    nextActionGuidanceForBarrier,
+    nextActionGuidanceForFailure,
+    renderBarrierRecoveryGuidance,
+    renderFailureRecoveryGuidance,
+} from '../recovery/guidance';
 
 export const PAUSED_DSL_DEBUG_SYSTEM_PROMPT = [
     'You control a DSL program paused before a statement, before a pending browser effect, at a commit barrier, or after a runtime failure/invariant violation.',
@@ -74,6 +81,8 @@ const barrierSystemPrompt = (
     'The current pause is already known to be a commit barrier. The pending effect descriptor is supplied below, so do not perform exploratory debugger reads before deciding.',
     'If this one pending effect is consistent with the user task, authorize it with debug.cross_barrier. If it is not consistent, abort. Use debug.refresh and debug.recompute_effect only when cross_barrier reports World conflict or recomputation is required.',
     `Pending barrier effect: ${JSON.stringify({location: pause.location, effect: pause.effect})}`,
+    'RECOVERY POLICY',
+    renderBarrierRecoveryGuidance(nextActionGuidanceForBarrier(pause)),
 ].join('\n\n');
 
 const compactBarrierSystemPrompt = (
@@ -84,35 +93,47 @@ const compactBarrierSystemPrompt = (
     'If the pending effect is consistent with the user task, authorize exactly this effect with debug.cross_barrier. If it is not consistent, abort.',
     'Use debug.refresh and debug.recompute_effect only if authorization reports World conflict or target recomputation is required.',
     `Pending barrier effect: ${JSON.stringify({location: pause.location, effect: pause.effect})}`,
+    'RECOVERY POLICY',
+    renderBarrierRecoveryGuidance(nextActionGuidanceForBarrier(pause)),
 ].join('\n\n');
 
 const compactFailureSystemPrompt = (
     pause: Extract<PausedDslDebugExecution, {reason: 'failure'}>,
-): string => [
-    'The retained DSL transaction is paused after a failure.',
-    `Failure: ${JSON.stringify(pause.failure)}`,
-    pause.rollbackAnchor
-        ? `The most recent pre-effect rollbackAnchor is ${JSON.stringify(pause.rollbackAnchor)}.`
-        : 'No pre-effect rollbackAnchor is available for this failure.',
-    'If the task requires undoing an earlier World effect, inspect debug.effects when needed and call debug.rollback with rollbackAnchor.id. If effects executed after that anchor, strategy="none" can only block; use strategy="physical" directly when UI compensation is appropriate.',
-    'If you intend to repair and re-run the failed Program point, and the relevant effect is explicitly reversible, prefer debug.rewind with rollbackAnchor.id and strategy="physical". Rewind succeeds only after rollback is verified restored; compensated, unknown, or merely compensatable recovery remains blocked from Program replay.',
-    'After a successful rewind, patch the current or future Program statement with debug.patch_program when needed, then continue the same retained execution. Never start a second Program transaction.',
-    'Interpret rollback status strictly: restored means verified restoration; compensated means the physical compensation ran but semantic equivalence is not proven; blocked/partial means recovery is incomplete.',
-    'browser.snapshot is intentionally unavailable while the retained transaction is paused. Use debugger state now; verify with browser read tools only after the transaction is terminal.',
-    'After handling recovery, do not blindly retry the original failed operation. Terminate or report the retained failure according to the user task.',
-].join('\n\n');
+    recovery: RecoveryContext = {},
+): string => {
+    const guidance = renderFailureRecoveryGuidance(nextActionGuidanceForFailure(pause, recovery));
+    return [
+        'The retained DSL transaction is paused after a failure.',
+        `Failure: ${JSON.stringify(pause.failure)}`,
+        pause.rollbackAnchor
+            ? `The most recent pre-effect rollbackAnchor is ${JSON.stringify(pause.rollbackAnchor)}.`
+            : 'No pre-effect rollbackAnchor is available for this failure.',
+        'If the task requires undoing an earlier World effect, inspect debug.effects when needed and call debug.rollback with rollbackAnchor.id. If effects executed after that anchor, strategy="none" can only block; use strategy="physical" directly when UI compensation is appropriate.',
+        'If you intend to repair and re-run the failed Program point, and the relevant effect is explicitly reversible, prefer debug.rewind with the statement savepoint from debug.rewind_plan and strategy="physical". Rewind succeeds only after rollback is verified restored; compensated, unknown, or merely compensatable recovery remains blocked from Program replay.',
+        'After a successful rewind, patch the current or future Program statement with debug.patch_program when needed, then continue the same retained execution. Never start a second Program transaction.',
+        'Interpret rollback status strictly: restored means verified restoration; compensated means the physical compensation ran but semantic equivalence is not proven; blocked/partial means recovery is incomplete.',
+        'browser.snapshot is intentionally unavailable while the retained transaction is paused. Use debugger state now; verify with browser read tools only after the transaction is terminal.',
+        'Do not retry outside the recovery budget and never resubmit a second program.',
+        'RECOVERY POLICY',
+        guidance,
+    ].join('\n\n');
+};
 
 export const debuggerSystemPromptForPause = (
     pause: PausedDslDebugExecution,
     override?: string,
+    recovery?: RecoveryContext,
 ): string => override ?? (pause.reason === 'barrier'
     ? barrierSystemPrompt(pause)
-    : PAUSED_DSL_DEBUG_SYSTEM_PROMPT);
+    : pause.reason === 'failure'
+        ? compactFailureSystemPrompt(pause, recovery)
+        : PAUSED_DSL_DEBUG_SYSTEM_PROMPT);
 
 export const compactDebuggerSystemPromptForPause = (
     pause: PausedDslDebugExecution,
+    recovery?: RecoveryContext,
 ): string => pause.reason === 'barrier'
     ? compactBarrierSystemPrompt(pause)
     : pause.reason === 'failure'
-        ? compactFailureSystemPrompt(pause)
+        ? compactFailureSystemPrompt(pause, recovery)
         : PAUSED_DSL_DEBUG_SYSTEM_PROMPT;
