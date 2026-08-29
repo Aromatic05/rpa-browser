@@ -58,10 +58,10 @@ const sourceOffset = (
     column: number,
     sourceLength: number,
 ): number => {
-    const lineStart = lineOffsets[line - 1];
-    if (lineStart === undefined || line < 1 || column < 1) {
+    if (line < 1 || line > lineOffsets.length || column < 1) {
         throw new DebugProgramMaterializationError(`invalid DSL source location: ${line}:${column}`);
     }
+    const lineStart = lineOffsets[line - 1];
     const offset = lineStart + column - 1;
     if (offset > sourceLength) {
         throw new DebugProgramMaterializationError(`DSL source location exceeds source length: ${line}:${column}`);

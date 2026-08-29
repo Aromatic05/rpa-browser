@@ -1,4 +1,6 @@
-export const REDACTED_SECRET_PLACEHOLDER = '[redacted]';
+import {REDACTED_SECRET_PLACEHOLDER} from '../../security/redaction';
+
+export {REDACTED_SECRET_PLACEHOLDER};
 
 const SECRET_KEY_TOKENS = '(?:api[_-]?key|access[_-]?key|auth(?:orization)?|cert(?:ificate)?|cookie|credential|csrf|otp|passw(?:or)?d|passphrase|private[_-]?key|secret|session|signature|token)';
 const SECRET_KEY_PATTERN = new RegExp(`^(?:.*[_\\-.])?${SECRET_KEY_TOKENS}(?:[_\\-.].*)?$`, 'iu');

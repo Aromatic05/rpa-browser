@@ -227,8 +227,7 @@ export const createDslDebugExecutionSession = (
         const existing = latestEffectRollbackSavepointId
             ? requireTransaction().readSavepoint(latestEffectRollbackSavepointId)
             : null;
-        const savepoint = existing
-            && existing.savepoint.effectSequence === journal.list().length
+        const savepoint = existing?.savepoint.effectSequence === journal.list().length
             && isSameWorldView(existing.savepoint.world, currentWorld)
             ? existing.savepoint
             : requireTransaction().internalSavepoint(view, journal.list().length);

@@ -41,12 +41,11 @@ export const computeRecoverySuccess = (
     if (mode !== 'program') {
         return null;
     }
-    const journalAvailable = result.programs !== undefined
-        && result.programs.every((program) => program.effects !== undefined);
-    if (!journalAvailable) {
+    const programs = result.programs;
+    if (!programs?.every((program) => program.effects !== undefined)) {
         return null;
     }
-    const effects = result.programs!.flatMap((program) => program.effects ?? []);
+    const effects = programs.flatMap((program) => program.effects ?? []);
     const failedWorldChanging = effects.filter(
         (effect) => effect.status === 'failed'
             && isWorldChanging(effect.worldBefore, effect.worldAfter),
@@ -65,14 +64,13 @@ export const collectAgentEvalMetrics = (
     taskSuccess: boolean,
     durationMs: number,
 ): AgentEvalMetrics => {
-    const journalAvailable = mode === 'program'
-        && result.programs !== undefined
-        && result.programs.every((program) => program.effects !== undefined);
-    const worldEffectCalls = journalAvailable
-        ? result.programs!.reduce((count, program) => count + (program.effects?.length ?? 0), 0)
+    const programs = result.programs;
+    const journalEffects = mode === 'program' && programs?.every((program) => program.effects !== undefined)
+        ? programs.flatMap((program) => program.effects ?? [])
         : null;
-    const journalEffects = journalAvailable
-        ? result.programs!.flatMap((program) => program.effects ?? [])
+    const journalAvailable = journalEffects !== null;
+    const worldEffectCalls = journalEffects
+        ? journalEffects.length
         : null;
     const failedWorldChangingEffects = journalEffects
         ? journalEffects.filter(

@@ -1,5 +1,4 @@
 import type {AgentEvalMode, AgentEvalRun} from './contracts';
-import type {AgentEvalModeAggregate} from './aggregate';
 import type {AgentEvalScenarioReport} from './harness';
 
 export type AgentEvalTrialSummary = Readonly<{

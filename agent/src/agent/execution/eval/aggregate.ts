@@ -1,4 +1,4 @@
-import type {AgentEvalMetrics, AgentEvalMode, AgentEvalRun} from './contracts';
+import type {AgentEvalMode, AgentEvalRun} from './contracts';
 
 export type AgentEvalNumericDistribution = Readonly<{
     count: number;

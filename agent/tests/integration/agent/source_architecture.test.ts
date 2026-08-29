@@ -4,16 +4,17 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const sourceRoot = path.resolve(import.meta.dirname, '../../../src');
-const contexts = ['agent', 'app', 'automation', 'interface', 'platform', 'program'] as const;
+const contexts = ['agent', 'app', 'automation', 'interface', 'platform', 'program', 'security'] as const;
 type Context = typeof contexts[number];
 
 const allowedDependencies: Record<Context, ReadonlySet<Context>> = {
-    platform: new Set(),
+    security: new Set(),
+    platform: new Set(['security']),
     program: new Set(),
-    interface: new Set(['platform']),
-    automation: new Set(['interface', 'platform', 'program']),
-    agent: new Set(['automation', 'interface', 'platform', 'program']),
-    app: new Set(['agent', 'automation', 'interface', 'platform', 'program']),
+    interface: new Set(['platform', 'security']),
+    automation: new Set(['interface', 'platform', 'program', 'security']),
+    agent: new Set(['automation', 'interface', 'platform', 'program', 'security']),
+    app: new Set(['agent', 'automation', 'interface', 'platform', 'program', 'security']),
 };
 
 const walkTypescript = (directory: string): string[] => fs

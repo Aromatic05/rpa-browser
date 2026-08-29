@@ -1,4 +1,4 @@
-import {REDACTED_SECRET_PLACEHOLDER} from '../agent/report/privacy';
+export const REDACTED_SECRET_PLACEHOLDER = '[redacted]';
 
 export type RedactionResult = Readonly<{
     value: unknown;
