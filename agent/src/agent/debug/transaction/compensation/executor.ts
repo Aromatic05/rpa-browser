@@ -45,7 +45,8 @@ const aggregateSemanticRisk = (
 ): DebugEffectSemanticRisk => {
     if (plans.some((plan) => plan.semanticRisk === 'irreversible')) {return 'irreversible';}
     if (plans.some((plan) => plan.semanticRisk === 'unknown')) {return 'unknown';}
-    return 'compensatable';
+    if (plans.some((plan) => plan.semanticRisk === 'compensatable')) {return 'compensatable';}
+    return 'reversible';
 };
 
 const normalizeExecutionFailure = (error: unknown): StepResult['error'] => {

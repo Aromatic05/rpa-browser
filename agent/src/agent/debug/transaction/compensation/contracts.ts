@@ -4,7 +4,7 @@ export type DebugCompensationPort = {
     execute: (step: StepUnion) => Promise<StepResult>;
 };
 
-export type DebugEffectSemanticRisk = 'unknown' | 'compensatable' | 'irreversible';
+export type DebugEffectSemanticRisk = 'unknown' | 'reversible' | 'compensatable' | 'irreversible';
 
 export type DebugPhysicalCompensationPlan =
     | Readonly<{

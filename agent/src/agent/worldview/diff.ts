@@ -22,6 +22,13 @@ export type WorldViewDiffResult =
         }>;
     }>;
 
+export const isEmptyWorldViewDiff = (result: WorldViewDiffResult): boolean =>
+    result.ok
+    && result.diff.mode === 'diff'
+    && result.diff.projection.meta.changedNodeCount === 0
+    && result.diff.projection.meta.changedComponentIds.length === 0
+    && result.diff.projection.meta.removedNodeKeys.length === 0;
+
 export const diffWorldViews = (before: WorldView, after: WorldView): WorldViewDiffResult => {
     const baseline = buildSnapshotProjection(before.entry);
     if (!baseline.ok) {

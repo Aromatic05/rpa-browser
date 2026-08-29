@@ -23,7 +23,7 @@ import type {QueryIR} from '../../../program/query/contracts';
 import type {WorldView, WorldViewDescriptor, WorldViewSource} from '../../worldview/contracts';
 import {describeWorldView} from '../../worldview/descriptor';
 import {buildWorldCatalog} from '../../worldview/catalog';
-import {diffWorldViews} from '../../worldview/diff';
+import {diffWorldViews, isEmptyWorldViewDiff} from '../../worldview/diff';
 import {isSameWorldView} from '../../worldview/revision';
 import {diffDebugEffect} from '../effects/diff';
 import {createDebugEffectJournal} from '../effects/journal';
@@ -662,6 +662,17 @@ export const createDslDebugExecutionSession = (
                         residualDiff,
                     });
                 }
+                if (compensation.semanticRisk === 'reversible' && isEmptyWorldViewDiff(residualDiff)) {
+                    return Object.freeze({
+                        status: 'restored' as const,
+                        mode: 'physical_verified' as const,
+                        semanticRisk: 'reversible' as const,
+                        savepoint: entry.savepoint,
+                        compensations: compensation.compensations,
+                        world: describeWorldView(compensation.world),
+                        residualDiff,
+                    });
+                }
                 return Object.freeze({
                     status: 'compensated' as const,
                     mode: 'physical' as const,
@@ -775,6 +786,7 @@ export const createDslDebugExecutionSession = (
     const rewind = async (
         continuationId: string,
         savepointId: string,
+        rewindOptions: DebugRollbackOptions = {},
     ): Promise<DslDebugRewindResult> => {
         requireActive(continuationId);
         const savedRuntime = executionSavepoints.get(savepointId);
@@ -802,7 +814,7 @@ export const createDslDebugExecutionSession = (
                 savepoint: structuredClone(saved),
             });
         }
-        const rollbackResult = await rollback(continuationId, savepointId);
+        const rollbackResult = await rollback(continuationId, savepointId, rewindOptions);
         if (rollbackResult.status !== 'restored') {
             return Object.freeze({
                 status: 'blocked' as const,
@@ -836,12 +848,12 @@ export const createDslDebugExecutionSession = (
             || pause.location.path !== saved.location.path) {
             throw new Error(`rewind resumed at unexpected DSL location: ${pause.location.programId}/${pause.location.path}`);
         }
-        if (!isSameWorldView(saved.world, pause.world)) {
+        if (!isSameWorldView(rollbackResult.world, pause.world)) {
             return Object.freeze({
                 status: 'conflict' as const,
                 savepoint: structuredClone(saved),
                 pause,
-                conflict: Object.freeze({expected: saved.world, actual: pause.world}),
+                conflict: Object.freeze({expected: rollbackResult.world, actual: pause.world}),
             });
         }
         return Object.freeze({

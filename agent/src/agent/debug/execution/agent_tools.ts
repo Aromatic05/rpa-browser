@@ -299,14 +299,15 @@ export const createPausedDslDebugAgentTools = (
         {
             name: 'debug.rewind',
             label: 'debug.rewind',
-            description: 'Rewind retained DSL execution to a saved statement point after strict World restoration. The runtime restores scope/history/provenance and nested if/for/checkpoint frames, including checkpoint output rebinding, then returns a new continuation paused at the saved statement. Effects after the savepoint block rewind.',
+            description: 'Rewind retained DSL execution to a saved statement point after strict World restoration. strategy=physical may compensate effects, but execution restarts only when every compensated effect is explicitly reversible and the semantic World diff verifies empty. Unknown or merely compensatable effects remain blocked.',
             parameters: Type.Object({
                 savepointId: Type.String({minLength: 1}),
+                strategy: Type.Optional(Type.Union([Type.Literal('none'), Type.Literal('physical')])),
             }, {additionalProperties: false}),
             execute: async (_toolCallId, params) => {
                 const current = requirePause();
-                const input = params as {savepointId: string};
-                const result = await execution.rewind(current.continuationId, input.savepointId);
+                const input = params as {savepointId: string; strategy?: 'none' | 'physical'};
+                const result = await execution.rewind(current.continuationId, input.savepointId, {strategy: input.strategy});
                 if (result.status === 'rewound' || result.status === 'conflict') {
                     pause = result.pause;
                     terminal = null;

@@ -165,6 +165,7 @@ export type DslDebugRecomputeEffectResult =
         pause: Extract<PausedDslDebugExecution, {reason: 'effect' | 'barrier'}>;
     }>;
 
+
 export type DslDebugPatchStatementResult =
     | Readonly<{
         status: 'patched';
@@ -229,7 +230,7 @@ export type DslDebugExecutionSession = {
         continuationId: string,
         target?: Readonly<{programId?: string; path?: string}>,
     ) => DslDebugRewindPlanResult;
-    rewind: (continuationId: string, savepointId: string) => Promise<DslDebugRewindResult>;
+    rewind: (continuationId: string, savepointId: string, options?: DebugRollbackOptions) => Promise<DslDebugRewindResult>;
     refresh: (continuationId: string) => Promise<PausedDslDebugExecution>;
     patchStatement: (
         continuationId: string,

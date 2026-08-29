@@ -37,6 +37,15 @@ export type DebugRollbackResult =
         world: WorldViewDescriptor;
     }>
     | Readonly<{
+        status: 'restored';
+        mode: 'physical_verified';
+        semanticRisk: 'reversible';
+        savepoint: DebugSavepoint;
+        compensations: readonly DebugEffectRecord[];
+        world: WorldViewDescriptor;
+        residualDiff: WorldViewDiffResult;
+    }>
+    | Readonly<{
         status: 'blocked';
         reason:
             | 'effects_require_compensation'

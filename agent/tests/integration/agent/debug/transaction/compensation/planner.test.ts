@@ -77,6 +77,21 @@ test('effect semantic risk stays unknown instead of inferring reversibility from
     }
 });
 
+test('explicit reversible and compensatable semantics remain distinct in compensation risk', async () => {
+    const view = withRuntimeValue(await createView(), 'buyer-input', 'old value');
+    for (const reversibility of ['reversible', 'compensatable'] as const) {
+        const entry = effectEntry(view, {
+            stepName: 'browser.fill',
+            args: {nodeId: 'buyer-input', value: 'new value'},
+            reversibility,
+        });
+        assert.equal(classifyEffectSemanticRisk(entry.record.effect), reversibility);
+        const plan = planPhysicalCompensation(entry);
+        assert.equal(plan.status, 'available');
+        assert.equal(plan.semanticRisk, reversibility);
+    }
+});
+
 test('fill with explicit nodeId can produce a physical restore-value compensation plan', async () => {
     const view = withRuntimeValue(await createView(), 'buyer-input', 'old value');
     const plan = planPhysicalCompensation(effectEntry(view, {
