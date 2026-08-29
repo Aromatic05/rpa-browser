@@ -14,6 +14,7 @@ import {
 } from '../tools/adapter';
 import {createWorkspaceProgramExecutor} from './program_executor';
 import {createWorkspaceProgramSaver} from './program_persistence';
+import {createWorkspaceProgramLibrary} from './program_library';
 
 export type WorkspaceAgentFactoryOptions = {
     modelRuntime?: AgentModelRuntime;
@@ -40,6 +41,10 @@ export const createWorkspaceAgentFactory = (
             workspaceName: deps.workspaceName,
             deps: deps.runStepsDeps,
             runWorkspaceExecution: deps.runWorkspaceExecution,
+        }),
+        programLibrary: createWorkspaceProgramLibrary({
+            workspaceName: deps.workspaceName,
+            deps: deps.runStepsDeps,
         }),
         saveProgram: createWorkspaceProgramSaver({
             workspaceName: deps.workspaceName,

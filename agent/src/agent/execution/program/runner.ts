@@ -10,6 +10,8 @@ import type {AgentProgramExecutor} from './contracts';
 import {createProgramExecutionTool, EXECUTE_PROGRAM_TOOL, type ProgramExecutionToolController} from './tool';
 import type {AgentProgramSaver} from './persistence';
 import {createProgramSaveTool, SAVE_PROGRAM_TOOL} from './save_tool';
+import type {AgentProgramLibrary} from './library';
+import {createProgramLibraryTools, LIST_PROGRAMS_TOOL, LOAD_PROGRAM_TOOL} from './library_tools';
 import {PROGRAM_DSL_AUTHORING_GUIDE} from './authoring';
 import type {AgentRunRequest, AgentRunner} from '../types';
 
@@ -27,6 +29,7 @@ export const PROGRAM_FIRST_SYSTEM_PROMPT = [
     'A compile-invalid program may be revised and submitted again. After execution has started, do not start a fresh program: diagnosis, patching, rollback, rewind, and retry stay in the same retained transaction through debug.* tools.',
     'Never claim a mutation succeeded unless the retained program reports completed and the resulting browser state is verified when practical.',
     `Program source is never persisted automatically. If and only if the user explicitly asks to save or publish the completed Program, use ${SAVE_PROGRAM_TOOL} after completion.`,
+    `Use ${LIST_PROGRAMS_TOOL} and ${LOAD_PROGRAM_TOOL} to inspect persisted workspace DSL Programs. To edit one, load its source and artifactRevision, submit the edited source through ${EXECUTE_PROGRAM_TOOL}, verify it, then use ${SAVE_PROGRAM_TOOL} with the loaded artifactRevision only when the user explicitly requested overwrite/publish.`,
     PROGRAM_DSL_AUTHORING_GUIDE,
 ].join(' ');
 
@@ -46,6 +49,7 @@ const ACTIVE_PROGRAM_CONTROL_PROMPT = [
 export type CreateProgramFirstAgentRunnerOptions = {
     readTools: AgentTool[];
     executeProgram: AgentProgramExecutor;
+    programLibrary?: AgentProgramLibrary;
     saveProgram?: AgentProgramSaver;
     modelRuntime?: AgentModelRuntime;
     readWorldRevision?: () => AgentWorldRevision | null | Promise<AgentWorldRevision | null>;
@@ -71,6 +75,7 @@ const controlSystemPrompt = (
 
 const classifyProgramToolCall = (name: string, args: unknown) => {
     if (name === EXECUTE_PROGRAM_TOOL || name === SAVE_PROGRAM_TOOL) {return 'control' as const;}
+    if (name === LIST_PROGRAMS_TOOL || name === LOAD_PROGRAM_TOOL) {return 'read' as const;}
     if (name.startsWith('debug.')) {return classifyPausedDslDebugToolCall(name);}
     return classifyAgentToolCall(name, args);
 };
@@ -128,8 +133,11 @@ export const createProgramFirstAgentRunner = (
         const save = options.saveProgram
             ? createProgramSaveTool({execution, save: options.saveProgram})
             : null;
-        const planningTools = [...options.readTools, execution.tool];
-        const terminalTools = [...options.readTools, ...(save ? [save.tool] : [])];
+        const libraryTools = options.programLibrary
+            ? createProgramLibraryTools(options.programLibrary)
+            : [];
+        const planningTools = [...options.readTools, ...libraryTools, execution.tool];
+        const terminalTools = [...options.readTools, ...libraryTools, ...(save ? [save.tool] : [])];
 
         if (request.source) {
             const first = await execution.start({
