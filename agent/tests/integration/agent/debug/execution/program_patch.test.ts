@@ -249,6 +249,27 @@ test('durable patches reject structural statement overlays so ProgramView paths 
     await execution.advance(pause.continuationId, 'abort');
 });
 
+test('durable patches reject variables unavailable at the target program point', async () => {
+    const {execution, pause} = await createExecution();
+    const tools = createPausedDslDebugAgentTools(execution, pause);
+    const patch = tools.tools.find((tool) => tool.name === 'debug.patch_program')!;
+    const result = await patch.execute('patch-missing-var', {
+        programId: 'main',
+        path: 'body.1',
+        source: 'let value = compute first(vars.missing)',
+    });
+    assert.equal((result.details as any).status, 'invalid');
+    assert.equal((result.details as any).error.code, 'ERR_DSL_PATCH_INVALID');
+    assert.equal(
+        (result.details as any).error.diagnostics.some(
+            (diagnostic: {code: string}) => diagnostic.code === 'ERR_DSL_VAR_NOT_DEFINED',
+        ),
+        true,
+    );
+    assert.deepEqual(execution.patches(pause.continuationId), []);
+    await execution.advance(pause.continuationId, 'abort');
+});
+
 test('transaction commit keeps durable program patches while invalidating old transaction rewind points', async () => {
     const {execution, pause} = await createExecution();
     const patch = execution.patchProgram(

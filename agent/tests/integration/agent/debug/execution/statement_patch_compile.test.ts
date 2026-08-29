@@ -78,3 +78,53 @@ test('resolve-based statement patch is explicitly unsupported until dynamic side
     assert.equal(result.error.code, 'ERR_DSL_PATCH_UNSUPPORTED');
     assert.match(result.error.message, /dynamic resolve sidecar/);
 });
+
+test('statement patch validates variable references at the target program point', () => {
+    const source = `
+        let first = compute first(input.values)
+        output result = vars.first
+    `;
+    const missing = compileStatementPatch(
+        source,
+        'output result = vars.missing',
+        undefined,
+        undefined,
+        {targetPath: 'body.1'},
+    );
+    assert.equal(missing.ok, false);
+    if (missing.ok) {throw new Error('expected missing variable rejection');}
+    assert.equal(missing.error.code, 'ERR_DSL_PATCH_INVALID');
+    assert.equal(missing.error.diagnostics?.some((item) => item.code === 'ERR_DSL_VAR_NOT_DEFINED'), true);
+
+    const redefine = compileStatementPatch(
+        source,
+        'let first = compute first(input.values)',
+        undefined,
+        undefined,
+        {targetPath: 'body.1'},
+    );
+    assert.equal(redefine.ok, false);
+    if (redefine.ok) {throw new Error('expected variable redefinition rejection');}
+    assert.equal(redefine.error.code, 'ERR_DSL_PATCH_INVALID');
+    assert.equal(redefine.error.diagnostics?.some((item) => item.code === 'ERR_DSL_VAR_REDEFINED'), true);
+});
+
+test('statement patch target scope includes the active for-loop item', () => {
+    const result = compileStatementPatch(
+        `
+            for item in input.items:
+              output current = item
+        `,
+        'output current = item',
+        undefined,
+        undefined,
+        {targetPath: 'body.0.body.0'},
+    );
+    assert.equal(result.ok, true);
+    if (!result.ok) {throw new Error('expected loop-item patch to validate');}
+    assert.deepEqual(result.statement, {
+        kind: 'output',
+        name: 'current',
+        expr: {kind: 'ref', ref: 'vars.item'},
+    });
+});

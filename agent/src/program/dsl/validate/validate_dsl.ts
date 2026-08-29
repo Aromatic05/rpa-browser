@@ -20,9 +20,17 @@ type ValidateScope = {
 
 const ROOT_REFS = new Set(['input', 'vars', 'output']);
 
-export const validateDsl = (program: DslProgram, options: {allowFailureRoot?: boolean} = {}): DslDiagnostic[] => {
+export type ValidateDslOptions = {
+    allowFailureRoot?: boolean;
+    initialVars?: Iterable<string>;
+};
+
+export const validateDsl = (program: DslProgram, options: ValidateDslOptions = {}): DslDiagnostic[] => {
     const diagnostics: DslDiagnostic[] = [];
-    const scope: ValidateScope = {vars: new Set<string>(), allowFailureRoot: options.allowFailureRoot};
+    const scope: ValidateScope = {
+        vars: new Set(options.initialVars ?? []),
+        allowFailureRoot: options.allowFailureRoot,
+    };
 
     for (let index = 0; index < program.body.length; index += 1) {
         validateStmt(program.body[index], scope, diagnostics, `body.${index}`);

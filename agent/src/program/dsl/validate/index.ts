@@ -1,1 +1,1 @@
-export { validateDsl } from './validate_dsl';
+export {validateDsl, type ValidateDslOptions} from './validate_dsl';

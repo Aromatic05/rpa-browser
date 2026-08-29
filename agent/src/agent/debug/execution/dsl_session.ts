@@ -514,6 +514,7 @@ export const createDslDebugExecutionSession = (
             source,
             options.context.entityRulesResolver,
             options.context.resolveResolver,
+            {targetPath, allowFailureRoot: options.context.failure !== undefined},
         );
         if (!compiled.ok) {
             return Object.freeze({
@@ -563,6 +564,7 @@ export const createDslDebugExecutionSession = (
             source,
             options.context.entityRulesResolver,
             options.context.resolveResolver,
+            {targetPath: path, allowFailureRoot: options.context.failure !== undefined},
         );
         if (!compiled.ok) {
             return Object.freeze({status: 'invalid' as const, error: compiled.error, pause: exposePause(current)});
