@@ -45,7 +45,8 @@ export const classifyActionRoute = (action: Action): ActionRouteKind => {
         || action.type.startsWith('dsl.')
         || action.type.startsWith('checkpoint.')
         || action.type.startsWith('entity_rules.')
-        || action.type.startsWith('task.run.');
+        || action.type.startsWith('task.run.')
+        || action.type.startsWith('agent.');
 
     if (actionWN && payloadWN) {return 'invalid';}
     if (isControlCommand) {return 'control';}

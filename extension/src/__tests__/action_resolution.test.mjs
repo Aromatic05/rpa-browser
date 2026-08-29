@@ -238,6 +238,38 @@ await log('dispatchActionRequest does not need lifecycle or router state', async
     assert.deepEqual(calls, ['workspace.list']);
 });
 
+await log('agent.sessions.start with workspaceName routes to workspace', async () => {
+    const reply = await dispatchActionRequest(
+        { v: 1, id: 'req-as1', type: 'agent.sessions.start', workspaceName: 'ws-1', payload: { prompt: 'p', provider: 'anthropic', model: 'claude' } },
+        mkWsClient(),
+    );
+    assert.equal(reply.type, 'agent.sessions.start.result');
+});
+
+await log('agent.sessions.start without workspaceName fails', async () => {
+    const reply = await dispatchActionRequest(
+        { v: 1, id: 'req-as2', type: 'agent.sessions.start', payload: { prompt: 'p', provider: 'anthropic', model: 'claude' } },
+        mkWsClient(),
+    );
+    assert.equal(reply.type, 'agent.sessions.start.failed');
+});
+
+await log('agent.sessions.list with workspaceName routes to workspace', async () => {
+    const reply = await dispatchActionRequest(
+        { v: 1, id: 'req-as3', type: 'agent.sessions.list', workspaceName: 'ws-1', payload: {} },
+        mkWsClient(),
+    );
+    assert.equal(reply.type, 'agent.sessions.list.result');
+});
+
+await log('agent.sessions.cancel with workspaceName routes to workspace', async () => {
+    const reply = await dispatchActionRequest(
+        { v: 1, id: 'req-as4', type: 'agent.sessions.cancel', workspaceName: 'ws-1', payload: { sessionId: 's1' } },
+        mkWsClient(),
+    );
+    assert.equal(reply.type, 'agent.sessions.cancel.result');
+});
+
 await log('projection refreshes without workspace ownership mapping', async () => {
     globalThis.chrome = { windows: { WINDOW_ID_NONE: -1 } };
     const calls = [];

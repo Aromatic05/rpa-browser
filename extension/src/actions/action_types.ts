@@ -70,6 +70,14 @@ export const REQUEST_ACTION_TYPES = {
     MCP_START: 'mcp.start',
     MCP_STOP: 'mcp.stop',
     MCP_STATUS: 'mcp.status',
+    AGENT_START: 'agent.start',
+    AGENT_STOP: 'agent.stop',
+    AGENT_STATUS: 'agent.status',
+    AGENT_RUN: 'agent.run',
+    AGENT_SESSIONS_START: 'agent.sessions.start',
+    AGENT_SESSIONS_LIST: 'agent.sessions.list',
+    AGENT_SESSIONS_STATUS: 'agent.sessions.status',
+    AGENT_SESSIONS_CANCEL: 'agent.sessions.cancel',
 
     LOG_EXT: 'log.ext',
 } as const;

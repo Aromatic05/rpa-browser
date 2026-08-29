@@ -26,6 +26,7 @@ const WORKSPACE_REQUIRED_PREFIXES = [
     'checkpoint.',
     'entity_rules.',
     'task.run.',
+    'agent.',
 ];
 
 const CONTROL_ACTIONS = new Set([

@@ -3,6 +3,12 @@ import { preparePanelAction, pushPanelLog, type PanelLogEntry } from './panel_ac
 import {mountCheckpointRecorderUI} from './checkpoint_recorder_ui.js';
 import {mountEntityRulesBrowserUI} from './entity_rules_browser_ui.js';
 import type {EntityRuleSelection} from '../../../shared/entity-rules-contract/index.js';
+import {
+    buildAgentSessionView,
+    normalizeAgentSession,
+    sanitizeForDisplay,
+    type AgentSessionSummary,
+} from './agent_session_ui.js';
 
 export type FloatingUIOptions = {
     tabName: string;
@@ -29,7 +35,7 @@ export type FloatingUIHandle = {
 type WorkspaceItem = { workspaceName: string; activeTabName?: string; tabCount: number };
 type TabItem = { tabName: string; url: string; title: string; active: boolean };
 
-type ViewKey = 'Conn' | 'WS' | 'Tabs' | 'Rec' | 'Play' | 'Flow' | 'ER' | 'Log';
+type ViewKey = 'Conn' | 'WS' | 'Tabs' | 'Rec' | 'Play' | 'Flow' | 'ER' | 'Agent' | 'Log';
 const UUIDorUnsafe = (): string => {
     if (typeof globalThis.crypto.randomUUID === 'function') {
         return globalThis.crypto.randomUUID();
@@ -71,8 +77,16 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         dslRaw: '{}',
         checkpointRaw: '{}',
         annotatorDebug: null as unknown,
+        agentSessions: [] as AgentSessionSummary[],
+        agentInputs: {
+            prompt: '',
+            provider: '',
+            model: '',
+            executionMode: '',
+        },
     };
     let pageWorkspaceName = opts.workspaceName;
+    let agentSessionPollTimer: ReturnType<typeof setTimeout> | null = null;
 
     const host = document.createElement('div');
     host.id = ROOT_ID;
@@ -145,7 +159,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     });
 
     const setOutput = (value: unknown) => {
-        state.lastReply = JSON.stringify(value, null, 2);
+        state.lastReply = JSON.stringify(sanitizeForDisplay(value), null, 2);
         out.textContent = state.lastReply;
     };
 
@@ -226,6 +240,23 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     const refreshRecordings = async () => {
         await sendPanelAction('record.list', {});
     };
+    const refreshAgentSessions = async () => {
+        await sendPanelAction('agent.sessions.list', {});
+    };
+    const clearAgentPoll = () => {
+        if (agentSessionPollTimer !== null) {
+            clearTimeout(agentSessionPollTimer);
+            agentSessionPollTimer = null;
+        }
+    };
+    const ensureAgentPoll = () => {
+        if (agentSessionPollTimer !== null) {return;}
+        if (!state.agentSessions.some((session) => session.state === 'running')) {return;}
+        agentSessionPollTimer = setTimeout(() => {
+            agentSessionPollTimer = null;
+            void refreshAgentSessions();
+        }, 2500);
+    };
 
     const parseJsonOrErr = (raw: string): Record<string, unknown> | null => {
         try {
@@ -245,7 +276,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         const keys = ['play.started', 'play.step.started', 'play.step.finished', 'play.progress', 'play.completed', 'play.failed', 'play.canceled'];
         if (!keys.includes(action.type)) {return;}
         const payload = (action.payload && typeof action.payload === 'object') ? action.payload as Record<string, unknown> : {};
-        const summary = `${action.type} ${JSON.stringify(payload).slice(0, 120)}`;
+        const summary = `${action.type} ${JSON.stringify(sanitizeForDisplay(payload)).slice(0, 120)}`;
         state.playEvents = [...state.playEvents, summary].slice(-20);
     };
 
@@ -284,6 +315,21 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
             state.unsavedStepCount = typeof unsaved.stepCount === 'number' && Number.isFinite(unsaved.stepCount)
                 ? unsaved.stepCount
                 : 0;
+        }
+        if (Array.isArray(payload.sessions)) {
+            state.agentSessions = payload.sessions.flatMap((item) => {
+                const normalized = normalizeAgentSession(item);
+                return normalized ? [normalized] : [];
+            });
+        }
+        if (!Array.isArray(payload.sessions)) {
+            const snapshot = normalizeAgentSession(payload);
+            if (snapshot) {
+                state.agentSessions = [
+                    ...state.agentSessions.filter((session) => session.sessionId !== snapshot.sessionId),
+                    snapshot,
+                ];
+            }
         }
         if (requestType === 'workspace.setActive' && !action.type.endsWith('.failed')) {
             const workspaceName = typeof payload.workspaceName === 'string' ? payload.workspaceName : '';
@@ -609,6 +655,43 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         return root;
     };
 
+    const renderAgent = () => {
+        const root = buildAgentSessionView({
+            sessions: state.agentSessions,
+            inputs: state.agentInputs,
+            onInputsChange: (patch) => {
+                state.agentInputs = {...state.agentInputs, ...patch};
+            },
+            handlers: {
+                start: async () => {
+                    const inputs = state.agentInputs;
+                    const payload: Record<string, unknown> = {
+                        prompt: inputs.prompt.trim(),
+                        provider: inputs.provider.trim(),
+                        model: inputs.model.trim(),
+                    };
+                    if (inputs.executionMode) {payload.executionMode = inputs.executionMode;}
+                    await sendPanelAction('agent.sessions.start', payload);
+                },
+                list: async () => {
+                    await refreshAgentSessions();
+                },
+                status: async (sessionId) => {
+                    await sendPanelAction('agent.sessions.status', {sessionId});
+                },
+                cancel: async (sessionId) => {
+                    await sendPanelAction('agent.sessions.cancel', {sessionId});
+                },
+                clear: () => {
+                    state.agentSessions = [];
+                    renderActiveView();
+                },
+            },
+        });
+        ensureAgentPoll();
+        return root;
+    };
+
     const renderLog = () => {
         const root = document.createElement('div');
         const box = document.createElement('div');
@@ -630,7 +713,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         state.logs.slice().reverse().forEach((item) => {
             const el = document.createElement('div');
             el.className = 'log-item';
-            const p = (item.action.payload && typeof item.action.payload === 'object') ? JSON.stringify(item.action.payload).slice(0, 100) : '';
+            const p = (item.action.payload && typeof item.action.payload === 'object') ? JSON.stringify(sanitizeForDisplay(item.action.payload)).slice(0, 100) : '';
             el.textContent = `[${item.kind}] ${item.action.type} ws=${item.action.workspaceName ?? '-'} replyTo=${item.action.replyTo ?? '-'} payload=${p}`;
             list.appendChild(el);
         });
@@ -648,10 +731,11 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         if (state.activeView === 'Play') {body.appendChild(renderPlay());}
         if (state.activeView === 'Flow') {body.appendChild(renderFlow());}
         if (state.activeView === 'ER') {body.appendChild(renderEntityRules());}
+        if (state.activeView === 'Agent') {body.appendChild(renderAgent());}
         if (state.activeView === 'Log') {body.appendChild(renderLog());}
     };
 
-    const views: ViewKey[] = ['Conn', 'WS', 'Tabs', 'Rec', 'Play', 'Flow', 'ER', 'Log'];
+    const views: ViewKey[] = ['Conn', 'WS', 'Tabs', 'Rec', 'Play', 'Flow', 'ER', 'Agent', 'Log'];
     views.forEach((name) => {
         const btn = document.createElement('button');
         btn.textContent = name;
@@ -675,6 +759,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     void refreshWorkspaces();
     void refreshTabs();
     void refreshRecordings();
+    void refreshAgentSessions();
     renderActiveView();
 
     let refreshPending = false;
@@ -693,6 +778,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         unmount: () => {
             entityRulesBrowser.unmount();
             checkpointRecorder.unmount();
+            clearAgentPoll();
             host.remove();
         },
         scheduleRefresh,
