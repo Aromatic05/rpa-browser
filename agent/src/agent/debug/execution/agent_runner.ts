@@ -2,6 +2,7 @@ import type {AgentModelRuntime} from '../../model/runtime';
 import {createReactAgentRunner} from '../../execution/react_runner';
 import type {AgentRunRequest, AgentRunResult} from '../../execution/types';
 import {mergeAgentTraceSnapshots} from '../../trace/merge';
+import type {AgentTool} from '@earendil-works/pi-agent-core';
 import {createPausedDslDebugAgentTools} from './agent_tools';
 import {
     createDslDebugExecutionSession,
@@ -39,9 +40,40 @@ export const PAUSED_DSL_DEBUG_SYSTEM_PROMPT = [
     'If an effect or barrier has a logical target and refresh moves to a new World revision, advancing returns recompute_required. Use debug.recompute_effect to re-resolve the stored QueryIR on the pinned World before continuing or crossing the barrier.',
     'debug.recompute_effect changes only the pending execution target and never mutates the World.',
     'debug.step and debug.continue advance the retained execution and may cause World effects.',
+    'If debug.step, debug.continue, or debug.cross_barrier returns status=completed, status=failed, or status=aborted, execution is terminal. Do not call any more debugger tools; report that terminal result immediately.',
     'debug.abort terminates the retained execution before the pending statement/effect; it is not rollback and does not undo earlier effects.',
     'Inspect freely, but advance execution only when your reasoning requires it.',
 ].join(' ');
+
+const BARRIER_AGENT_TOOL_NAMES = new Set([
+    'debug.cross_barrier',
+    'debug.refresh',
+    'debug.recompute_effect',
+    'debug.abort',
+]);
+
+const toolsForPause = (
+    tools: readonly AgentTool[],
+    pause: PausedDslDebugExecution,
+): AgentTool[] => pause.reason === 'barrier'
+    ? tools.filter((tool) => BARRIER_AGENT_TOOL_NAMES.has(tool.name))
+    : [...tools];
+
+const barrierSystemPrompt = (
+    pause: Extract<PausedDslDebugExecution, {reason: 'barrier'}>,
+): string => [
+    PAUSED_DSL_DEBUG_SYSTEM_PROMPT,
+    'The current pause is already known to be a commit barrier. The pending effect descriptor is supplied below, so do not perform exploratory debugger reads before deciding.',
+    'If this one pending effect is consistent with the user task, authorize it with debug.cross_barrier. If it is not consistent, abort. Use debug.refresh and debug.recompute_effect only when cross_barrier reports World conflict or recomputation is required.',
+    `Pending barrier effect: ${JSON.stringify({location: pause.location, effect: pause.effect})}`,
+].join('\n\n');
+
+const systemPromptForPause = (
+    pause: PausedDslDebugExecution,
+    override?: string,
+): string => override ?? (pause.reason === 'barrier'
+    ? barrierSystemPrompt(pause)
+    : PAUSED_DSL_DEBUG_SYSTEM_PROMPT);
 
 export type PausedDslDebugAgentRunResult = AgentRunResult & {
     execution:
@@ -90,15 +122,27 @@ export const createPausedDslDebugAgentRunner = (
         }
         const firstPause = initial.pause;
         const debuggerTools = createPausedDslDebugAgentTools(session, firstPause);
+        const allTools = debuggerTools.tools;
         const runner = createReactAgentRunner({
-            tools: debuggerTools.tools,
+            tools: toolsForPause(allTools, firstPause),
             modelRuntime: options.modelRuntime,
             classifyToolCall: classifyPausedDslDebugToolCall,
             readWorldRevision: debuggerTools.readWorldRevision,
+            prepareNextTurnWithContext: ({context}) => {
+                const nextPause = debuggerTools.readPause();
+                if (!nextPause) {return;}
+                return {
+                    context: {
+                        ...context,
+                        tools: toolsForPause(allTools, nextPause),
+                        systemPrompt: systemPromptForPause(nextPause, request.systemPrompt),
+                    },
+                };
+            },
         });
         const result = await runner.run({
             ...request,
-            systemPrompt: request.systemPrompt ?? PAUSED_DSL_DEBUG_SYSTEM_PROMPT,
+            systemPrompt: systemPromptForPause(firstPause, request.systemPrompt),
         });
         const pause = debuggerTools.readPause();
         const terminal = debuggerTools.readTerminal();

@@ -1,5 +1,5 @@
 import {contentText} from '@earendil-works/pi-ai';
-import type {AgentTool} from '@earendil-works/pi-agent-core';
+import type {AgentOptions, AgentTool} from '@earendil-works/pi-agent-core';
 import {createReactAgentSession} from '../loop/react';
 import {getDefaultAgentModelRuntime, type AgentModelRuntime} from '../model/runtime';
 import {classifyAgentToolCall, type AgentToolClassification} from '../tools/policy';
@@ -11,6 +11,7 @@ export type CreateReactAgentRunnerDeps = {
     modelRuntime?: AgentModelRuntime;
     classifyToolCall?: (name: string, args: unknown) => AgentToolClassification;
     readWorldRevision?: () => AgentWorldRevision | null | Promise<AgentWorldRevision | null>;
+    prepareNextTurnWithContext?: AgentOptions['prepareNextTurnWithContext'];
 };
 
 const lastAssistantText = (messages: readonly unknown[]): string => {
@@ -35,6 +36,7 @@ export const createReactAgentRunner = (deps: CreateReactAgentRunnerDeps): AgentR
             tools: deps.tools,
             systemPrompt: request.systemPrompt,
             onEvent: trace.handle,
+            prepareNextTurnWithContext: deps.prepareNextTurnWithContext,
         });
         await session.agent.prompt(request.prompt);
         return {

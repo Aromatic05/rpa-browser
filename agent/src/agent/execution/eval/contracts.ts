@@ -50,6 +50,7 @@ export type AgentEvalRun = Readonly<{
     taskId: string;
     mode: AgentEvalMode;
     success: boolean;
+    durationMs: number;
     verification: AgentEvalVerification;
     metrics: AgentEvalMetrics;
     result: AgentRunResult;

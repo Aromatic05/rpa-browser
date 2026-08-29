@@ -20,6 +20,7 @@ export const evaluateAgentTask = async (
     const runs: Partial<Record<AgentEvalMode, AgentEvalRun>> = {};
     for (const mode of modes) {
         await task.prepare?.(mode);
+        const startedAt = performance.now();
         const result = await harness.runner.run({
             prompt: task.prompt,
             provider: task.provider,
@@ -28,11 +29,13 @@ export const evaluateAgentTask = async (
             ...(task.input ? {input: structuredClone(task.input)} : {}),
             ...(task.systemPrompt ? {systemPrompt: task.systemPrompt} : {}),
         });
+        const durationMs = performance.now() - startedAt;
         const verification = normalizeVerification(await task.verify(result, mode));
         runs[mode] = Object.freeze({
             taskId: task.id,
             mode,
             success: verification.passed,
+            durationMs,
             verification: structuredClone(verification),
             metrics: collectAgentEvalMetrics(result, mode),
             result,

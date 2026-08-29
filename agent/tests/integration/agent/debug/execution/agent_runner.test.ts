@@ -115,6 +115,61 @@ test('product barrier policy resumes normal statements without returning to step
     assert.equal(result.session.auditEffects().length, 1);
 });
 
+test('barrier tool surface expands to full debugger after the authorized effect fails', async () => {
+    const faux = createFauxCore({provider: 'faux-debugger', models: [{id: 'debugger'}]});
+    faux.setResponses([
+        fauxAssistantMessage(fauxToolCall('debug.cross_barrier', {})),
+        fauxAssistantMessage(fauxToolCall('debug.execution', {})),
+        fauxAssistantMessage(fauxToolCall('debug.continue', {})),
+        fauxAssistantMessage('failure inspected after barrier'),
+    ]);
+    const [view] = await createViews();
+    const runner = createPausedDslDebugAgentRunner({
+        source: 'click input.target',
+        context: {
+            workspaceName: 'ws-1',
+            deps: {} as RunStepsDeps,
+            input: {target: {nodeId: 'submit'}},
+            stepExecutionPort: {
+                execute: async (step) => ({
+                    stepId: step.id,
+                    ok: false,
+                    error: {code: 'ERR_CLICK_FAILED', message: 'click failed'},
+                }),
+            },
+        },
+        worldViewSource: {pin: async () => view},
+        debug: {
+            initialMode: 'continue',
+            barrierOn: ['unknown'],
+            barrierResumeMode: 'continue',
+            breakOnFailure: true,
+        },
+        modelRuntime: {
+            resolve: (provider, model) => provider === 'faux-debugger' && model === 'debugger'
+                ? {model: faux.getModel(), streamFn: faux.streamSimple}
+                : null,
+        },
+    });
+
+    const result = await runner.run({
+        provider: 'faux-debugger',
+        model: 'debugger',
+        prompt: 'Authorize the effect, then diagnose a failure if one occurs.',
+    });
+
+    assert.equal(result.text, 'failure inspected after barrier');
+    assert.equal(result.execution.status, 'failed');
+    assert.deepEqual(result.trace.tools.map((tool) => tool.toolName), [
+        'debug.cross_barrier',
+        'debug.execution',
+        'debug.continue',
+    ]);
+    assert.equal(result.trace.metrics.failedToolCalls, 0);
+    assert.equal(result.session.auditEffects().length, 1);
+    assert.equal(result.session.auditEffects()[0].outcome.status, 'failed');
+});
+
 test('paused DSL Agent runner lets the model inspect, step and continue a retained execution', async () => {
     const faux = createFauxCore({provider: 'faux-debugger', models: [{id: 'debugger'}]});
     faux.setResponses([

@@ -1,4 +1,10 @@
-import {Agent, type AgentEvent, type AgentTool, type StreamFn} from '@earendil-works/pi-agent-core';
+import {
+    Agent,
+    type AgentEvent,
+    type AgentOptions,
+    type AgentTool,
+    type StreamFn,
+} from '@earendil-works/pi-agent-core';
 import type {Api, Model} from '@earendil-works/pi-ai';
 
 export type ReactAgentSessionOptions = {
@@ -8,6 +14,7 @@ export type ReactAgentSessionOptions = {
     tools: AgentTool[];
     systemPrompt?: string;
     onEvent?: (event: AgentEvent) => void | Promise<void>;
+    prepareNextTurnWithContext?: AgentOptions['prepareNextTurnWithContext'];
 };
 
 export const REACT_BASELINE_SYSTEM_PROMPT = [
@@ -30,6 +37,7 @@ export const createReactAgentSession = (options: ReactAgentSessionOptions): Reac
         streamFn: options.streamFn,
         getApiKey: options.getApiKey,
         toolExecution: 'sequential',
+        prepareNextTurnWithContext: options.prepareNextTurnWithContext,
     });
     if (options.onEvent) {agent.subscribe(options.onEvent);}
     return {agent};

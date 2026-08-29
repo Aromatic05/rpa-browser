@@ -60,6 +60,7 @@ test('eval compares program-first and baseline without inventing hidden world-ef
 
     assert.deepEqual(prepares, ['program', 'react-baseline']);
     assert.equal(report.runs.program?.success, true);
+    assert.equal(typeof report.runs.program?.durationMs, 'number');
     assert.equal(report.runs['react-baseline']?.success, false);
     assert.equal(report.runs.program?.metrics.effects.worldEffectCalls, 1);
     assert.equal(report.runs.program?.metrics.effects.availability, 'program-journal');
