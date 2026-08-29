@@ -143,6 +143,85 @@ export type EntityRuleConfig = {
     strict: boolean;
 };
 
+export type IrreversibleApprovalMode = 'deny' | 'require-human' | 'allow';
+
+export type InteractionPolicy = 'interactive' | 'headless';
+
+export type AgentModelDefaults = {
+    /** 默认 provider 名（provider/model/baseUrl 三者同时为空表示未配置，回退到环境变量） */
+    provider: string;
+    /** 默认模型 id */
+    model: string;
+    /** provider 兼容终端地址 */
+    baseUrl: string;
+    /** 认证令牌引用（形式：env:VAR_NAME | file:PATH），永不存放明文密钥 */
+    apiKeyRef: string;
+};
+
+export type AgentServiceBinding = {
+    /** 监听地址 */
+    host: string;
+    /** 监听端口（0 表示自动分配）；范围内 [0, 65535] */
+    port: number;
+    /** Agent 服务 HTTP 路径 */
+    agentPath: string;
+    /** 健康检查路径 */
+    healthPath: string;
+};
+
+export type GovernanceBudget = {
+    /** 最大决策轮数 */
+    maxTurns: number;
+    /** 最大工具调用数 */
+    maxToolCalls: number;
+    /** 最大外部世界副作用数 */
+    maxWorldEffects: number;
+    /** 出错后可执行的最大副作用数 */
+    maxPostErrorEffects: number;
+    /** 最大恢复尝试数 */
+    maxRecoveryAttempts: number;
+    /** 墙钟截止时间（毫秒） */
+    wallClockDeadlineMs: number;
+    /** 不可逆操作审批模式 */
+    irreversibleApproval: IrreversibleApprovalMode;
+};
+
+export type RetentionPolicy = {
+    /** 保留时长（毫秒）；0 表示不按时间限制 */
+    maxAgeMs: number;
+    /** 最大保留条目数；0 表示不限制数量 */
+    maxCount: number;
+};
+
+export type SessionRetentionConfig = {
+    /** 会话持久化根目录 */
+    storageRoot: string;
+    retention: RetentionPolicy;
+};
+
+export type ReportRetentionConfig = {
+    /** 运行报告根目录 */
+    root: string;
+    retention: RetentionPolicy;
+};
+
+export type AgentAuthConfig = {
+    /** 是否启用承载令牌鉴权 */
+    enabled: boolean;
+    /** 令牌引用（形式：env:VAR_NAME | file:PATH），永不存放明文密钥 */
+    tokenRef: string;
+};
+
+export type AgentConfig = {
+    model: AgentModelDefaults;
+    service: AgentServiceBinding;
+    governance: GovernanceBudget;
+    sessions: SessionRetentionConfig;
+    reports: ReportRetentionConfig;
+    auth: AgentAuthConfig;
+    interaction: InteractionPolicy;
+};
+
 export type RunnerConfig = {
     waitPolicy: WaitPolicy;
     retryPolicy: RetryPolicy;
@@ -151,4 +230,5 @@ export type RunnerConfig = {
     checkpointPolicy: CheckpointPolicy;
     mcpPolicy: McpPolicy;
     entityRules: EntityRuleConfig;
+    agent: AgentConfig;
 };

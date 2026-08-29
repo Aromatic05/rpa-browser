@@ -10,6 +10,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { defaultRunnerConfig } from './defaults';
+import { assertValidAgentConfig } from './validate';
 import type { RunnerConfig } from './config_schema';
 
 const defaultConfigPath = () =>
@@ -123,6 +124,31 @@ const applyEnvOverrides = (config: RunnerConfig): RunnerConfig => {
     set(['mcpPolicy', 'enableTools'], envCsv('RUNNER_MCP_ENABLE_TOOLS'));
     set(['mcpPolicy', 'disableTools'], envCsv('RUNNER_MCP_DISABLE_TOOLS'));
 
+    set(['agent', 'model', 'provider'], process.env.RUNNER_AGENT_PROVIDER);
+    set(['agent', 'model', 'model'], process.env.RUNNER_AGENT_MODEL);
+    set(['agent', 'model', 'baseUrl'], process.env.RUNNER_AGENT_BASE_URL);
+    set(['agent', 'model', 'apiKeyRef'], process.env.RUNNER_AGENT_API_KEY_REF);
+    set(['agent', 'service', 'host'], process.env.RUNNER_AGENT_SERVICE_HOST);
+    set(['agent', 'service', 'port'], envNumber('RUNNER_AGENT_SERVICE_PORT'));
+    set(['agent', 'service', 'agentPath'], process.env.RUNNER_AGENT_SERVICE_PATH);
+    set(['agent', 'service', 'healthPath'], process.env.RUNNER_AGENT_SERVICE_HEALTH_PATH);
+    set(['agent', 'governance', 'maxTurns'], envNumber('RUNNER_AGENT_GOVERNANCE_MAX_TURNS'));
+    set(['agent', 'governance', 'maxToolCalls'], envNumber('RUNNER_AGENT_GOVERNANCE_MAX_TOOL_CALLS'));
+    set(['agent', 'governance', 'maxWorldEffects'], envNumber('RUNNER_AGENT_GOVERNANCE_MAX_WORLD_EFFECTS'));
+    set(['agent', 'governance', 'maxPostErrorEffects'], envNumber('RUNNER_AGENT_GOVERNANCE_MAX_POST_ERROR_EFFECTS'));
+    set(['agent', 'governance', 'maxRecoveryAttempts'], envNumber('RUNNER_AGENT_GOVERNANCE_MAX_RECOVERY_ATTEMPTS'));
+    set(['agent', 'governance', 'wallClockDeadlineMs'], envNumber('RUNNER_AGENT_GOVERNANCE_WALL_CLOCK_DEADLINE_MS'));
+    set(['agent', 'governance', 'irreversibleApproval'], process.env.RUNNER_AGENT_IRREVERSIBLE_APPROVAL);
+    set(['agent', 'sessions', 'storageRoot'], process.env.RUNNER_AGENT_SESSION_STORAGE_ROOT);
+    set(['agent', 'sessions', 'retention', 'maxAgeMs'], envNumber('RUNNER_AGENT_SESSION_MAX_AGE_MS'));
+    set(['agent', 'sessions', 'retention', 'maxCount'], envNumber('RUNNER_AGENT_SESSION_MAX_COUNT'));
+    set(['agent', 'reports', 'root'], process.env.RUNNER_AGENT_REPORT_ROOT);
+    set(['agent', 'reports', 'retention', 'maxAgeMs'], envNumber('RUNNER_AGENT_REPORT_MAX_AGE_MS'));
+    set(['agent', 'reports', 'retention', 'maxCount'], envNumber('RUNNER_AGENT_REPORT_MAX_COUNT'));
+    set(['agent', 'auth', 'enabled'], envBool('RUNNER_AGENT_AUTH_ENABLED'));
+    set(['agent', 'auth', 'tokenRef'], process.env.RUNNER_AGENT_AUTH_TOKEN_REF);
+    set(['agent', 'interaction'], process.env.RUNNER_AGENT_INTERACTION);
+
     return mergeDeep(config, patch);
 };
 
@@ -130,5 +156,7 @@ export const loadRunnerConfig = (opts?: { configPath?: string }): RunnerConfig =
     const filePath = opts?.configPath || process.env.RUNNER_CONFIG_PATH || defaultConfigPath();
     const fileConfig = readJsonIfExists(filePath);
     const merged = mergeDeep(defaultRunnerConfig, fileConfig || undefined);
-    return applyEnvOverrides(merged);
+    const config = applyEnvOverrides(merged);
+    assertValidAgentConfig(config.agent);
+    return config;
 };

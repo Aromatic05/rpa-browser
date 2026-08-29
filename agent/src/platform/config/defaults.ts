@@ -2,8 +2,45 @@
  * RunnerConfig 默认值。
  */
 
-import type { RunnerConfig } from './config_schema';
+import type { AgentConfig, RunnerConfig } from './config_schema';
 import { defaultEntityRuleConfig } from './entity_rules';
+
+export const defaultAgentConfig: AgentConfig = {
+    model: {
+        provider: '',
+        model: '',
+        baseUrl: '',
+        apiKeyRef: 'env:RPA_AGENT_API_KEY',
+    },
+    service: {
+        host: '127.0.0.1',
+        port: 0,
+        agentPath: '/agent',
+        healthPath: '/health',
+    },
+    governance: {
+        maxTurns: 50,
+        maxToolCalls: 200,
+        maxWorldEffects: 50,
+        maxPostErrorEffects: 5,
+        maxRecoveryAttempts: 3,
+        wallClockDeadlineMs: 5 * 60 * 1000,
+        irreversibleApproval: 'deny',
+    },
+    sessions: {
+        storageRoot: '.artifacts/sessions',
+        retention: { maxAgeMs: 7 * 24 * 60 * 60 * 1000, maxCount: 100 },
+    },
+    reports: {
+        root: '.artifacts/reports',
+        retention: { maxAgeMs: 30 * 24 * 60 * 60 * 1000, maxCount: 200 },
+    },
+    auth: {
+        enabled: false,
+        tokenRef: 'env:RPA_AGENT_AUTH_TOKEN',
+    },
+    interaction: 'interactive',
+};
 
 export const defaultRunnerConfig: RunnerConfig = {
     waitPolicy: {
@@ -78,4 +115,5 @@ export const defaultRunnerConfig: RunnerConfig = {
             'browser.mouse',
         ],
     },
+    agent: defaultAgentConfig,
 };

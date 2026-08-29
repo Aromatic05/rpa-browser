@@ -19,5 +19,24 @@ export const resolveRunnerConfig = (overrides?: Partial<RunnerConfig>): RunnerCo
     return { ...base, ...overrides };
 };
 
-export type { RunnerConfig, McpToolGroup, McpPolicy, EntityRuleConfig } from './config_schema';
+export type {
+    RunnerConfig,
+    McpToolGroup,
+    McpPolicy,
+    EntityRuleConfig,
+    AgentConfig,
+    AgentModelDefaults,
+    AgentServiceBinding,
+    GovernanceBudget,
+    RetentionPolicy,
+    SessionRetentionConfig,
+    ReportRetentionConfig,
+    AgentAuthConfig,
+    InteractionPolicy,
+    IrreversibleApprovalMode,
+} from './config_schema';
 export { defaultEntityRuleConfig, defaultEntityRuleRootDir, selectEntityRuleProfiles } from './entity_rules';
+export { defaultAgentConfig } from './defaults';
+export { assertValidAgentConfig } from './validate';
+export type { SecretRef } from './secret_ref';
+export { parseSecretRef, secretRefToRefString } from './secret_ref';
