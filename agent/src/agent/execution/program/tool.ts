@@ -4,10 +4,13 @@ import {createPausedDslDebugAgentTools, type PausedDslDebugAgentTools} from '../
 import {debuggerToolsForPause} from '../../debug/execution/agent_surface';
 import type {DebugEffectRecord} from '../../debug/effects/contracts';
 import type {AgentWorldRevision} from '../../trace/collector';
+import type {CredentialResolver} from '../../../security/credentials';
+import {createDenyAllCredentialResolver} from '../../../security/credentials';
 import type {
     AgentProgramEffectSummary,
     AgentProgramExecutionSummary,
 } from '../types';
+import {materializeCredentialInput} from './credentials';
 import type {AgentProgram, AgentProgramExecutionStart, AgentProgramExecutor} from './contracts';
 
 export const EXECUTE_PROGRAM_TOOL = 'agent.execute_program';
@@ -110,7 +113,9 @@ export type ProgramExecutionToolController = Readonly<{
 
 export const createProgramExecutionTool = (options: {
     execute: AgentProgramExecutor;
+    credentialResolver?: CredentialResolver;
 }): ProgramExecutionToolController => {
+    const resolveCredentials = options.credentialResolver ?? createDenyAllCredentialResolver();
     const attempts: ProgramAttempt[] = [];
     const latest = (): ProgramAttempt | undefined => attempts.at(-1);
     const latestDebugger = (): PausedDslDebugAgentTools | null => latest()?.debugger ?? null;
@@ -120,9 +125,19 @@ export const createProgramExecutionTool = (options: {
         if (previous && summarizeAttempt(previous).status !== 'invalid') {
             throw new Error('a program execution already started; repair or rollback must remain inside its retained transaction');
         }
-        const executionStart = await options.execute(program);
+        const materializedInput = await materializeCredentialInput(program.input, resolveCredentials);
+        const executionStart = await options.execute({
+            source: program.source,
+            input: materializedInput,
+        });
         const attempt: ProgramAttempt = {
-            start: executionStart,
+            start: {
+                ...executionStart,
+                summary: {
+                    ...executionStart.summary,
+                    input: structuredClone(program.input),
+                },
+            },
             ...(executionStart.debug
                 ? {debugger: createPausedDslDebugAgentTools(executionStart.debug.session, executionStart.debug.pause)}
                 : {}),

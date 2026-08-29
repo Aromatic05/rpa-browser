@@ -28,6 +28,7 @@ import type {AgentProgramLibrary} from './library';
 import {createProgramLibraryTools, LIST_PROGRAMS_TOOL, LOAD_PROGRAM_TOOL} from './library_tools';
 import {PROGRAM_DSL_AUTHORING_GUIDE} from './authoring';
 import type {AgentRunRequest} from '../types';
+import type {CredentialResolver} from '../../../security/credentials';
 
 export const PROGRAM_FIRST_SYSTEM_PROMPT = [
     'You are the planner and controller for a program-first browser automation agent.',
@@ -66,6 +67,7 @@ export type CreateProgramFirstAgentRunnerOptions = {
     programLibrary?: AgentProgramLibrary;
     saveProgram?: AgentProgramSaver;
     modelRuntime?: AgentModelRuntime;
+    credentialResolver?: CredentialResolver;
     readWorldRevision?: () => AgentWorldRevision | null | Promise<AgentWorldRevision | null>;
     governancePolicy?: GovernancePolicy;
     governanceController?: GovernanceController;
@@ -164,7 +166,10 @@ export const createProgramFirstAgentRunner = (
             ?? createGovernanceController(options.governancePolicy ?? SAFE_UNATTENDED_POLICY, Date.now());
         const budgetStore = createRecoveryBudgetStore(options.recoveryBudgetLimits);
 
-        const execution = createProgramExecutionTool({execute: options.executeProgram});
+        const execution = createProgramExecutionTool({
+            execute: options.executeProgram,
+            ...(options.credentialResolver ? {credentialResolver: options.credentialResolver} : {}),
+        });
         const save = options.saveProgram
             ? createProgramSaveTool({execution, save: options.saveProgram})
             : null;
