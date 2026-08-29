@@ -7,6 +7,8 @@
  * - op 名称使用字符串联合类型，避免拼写错误
  */
 
+import type { RedactionPolicy } from '../../../security/redaction';
+
 export type TraceOpName =
     | 'trace.tabs.create'
     | 'trace.tabs.switch'
@@ -82,6 +84,7 @@ export type TraceContext = {
     hooks: TraceHooks;
     cache: TraceCache;
     tags?: TraceTags;
+    redact?: RedactionPolicy;
 };
 
 export type TraceCache = {

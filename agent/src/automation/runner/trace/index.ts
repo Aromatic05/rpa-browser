@@ -6,6 +6,7 @@ export type * from './types';
 export * from './sink';
 export * from './hooks';
 export * from './trace_call';
+export * from './redact';
 export * from './a11y';
 export * from './dom';
 export * from './tools';

@@ -1,5 +1,7 @@
 import type {AgentEvent} from '@earendil-works/pi-agent-core';
 import type {AgentToolClassification} from '../tools/policy';
+import {REDACTED_SECRET_PLACEHOLDER} from '../report/privacy';
+import {createRedactionPolicy, type RedactionPolicy} from '../../security/redaction';
 
 export type AgentWorldRevision = {
     pageEpoch: string;
@@ -40,9 +42,34 @@ export type AgentTraceCollector = {
 export type AgentTraceCollectorOptions = {
     classifyToolCall: (name: string, args: unknown) => AgentToolClassification;
     readWorldRevision?: () => AgentWorldRevision | null | Promise<AgentWorldRevision | null>;
+    redact?: RedactionPolicy;
+};
+
+const SENSITIVE_ARG_KEYS_BY_TOOL: Record<string, readonly string[] | undefined> = {
+    'browser.fill': ['value'],
+    'browser.type': ['text'],
+    'browser.select_option': ['values'],
+};
+
+const redactToolCallArgs = (toolName: string, args: unknown, policy: RedactionPolicy): unknown => {
+    const keys = SENSITIVE_ARG_KEYS_BY_TOOL[toolName];
+    if (keys) {
+        const record = args as Record<string, unknown> | null | undefined;
+        if (record !== null && typeof record === 'object' && !Array.isArray(record)) {
+            const masked: Record<string, unknown> = {...record};
+            for (const key of keys) {
+                if (Object.prototype.hasOwnProperty.call(masked, key)) {
+                    masked[key] = REDACTED_SECRET_PLACEHOLDER;
+                }
+            }
+            return policy.redact(masked).value;
+        }
+    }
+    return policy.redact(args).value;
 };
 
 export const createAgentTraceCollector = (options: AgentTraceCollectorOptions): AgentTraceCollector => {
+    const policy = options.redact ?? createRedactionPolicy();
     let turns = 0;
     let toolCalls = 0;
     let readCalls = 0;
@@ -67,7 +94,7 @@ export const createAgentTraceCollector = (options: AgentTraceCollectorOptions): 
                     toolCallId: event.toolCallId,
                     toolName: event.toolName,
                     classification,
-                    args: structuredClone(event.args),
+                    args: redactToolCallArgs(event.toolName, structuredClone(event.args), policy),
                     startedAt: Date.now(),
                     worldBefore: await readRevision(),
                 };

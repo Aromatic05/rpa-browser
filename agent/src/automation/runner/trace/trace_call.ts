@@ -8,6 +8,10 @@
  */
 
 import type { TraceContext, TraceOpName, ToolError, ToolResult, TraceEvent } from './types';
+import { createRedactionPolicy } from '../../../security/redaction';
+import { redactToolError, redactTraceEvent } from './redact';
+
+const DEFAULT_REDACTION = createRedactionPolicy();
 
 export type TraceCallMeta = {
     op: TraceOpName;
@@ -19,6 +23,7 @@ export const traceCall = async <T>(
     meta: TraceCallMeta,
     run: () => Promise<T>,
 ): Promise<ToolResult<T>> => {
+    const policy = ctx.redact ?? DEFAULT_REDACTION;
     const startTs = Date.now();
     const startEvent: TraceEvent = {
         type: 'op.start',
@@ -27,8 +32,9 @@ export const traceCall = async <T>(
         tags: ctx.tags,
         args: meta.args,
     };
-    await ctx.hooks.beforeOp?.(startEvent);
-    await Promise.all(ctx.sinks.map((sink) => sink.write(startEvent)));
+    const redactedStartEvent = redactTraceEvent(startEvent, policy);
+    await ctx.hooks.beforeOp?.(redactedStartEvent);
+    await Promise.all(ctx.sinks.map((sink) => sink.write(redactedStartEvent)));
 
     try {
         const data = await run();
@@ -42,8 +48,9 @@ export const traceCall = async <T>(
             args: meta.args,
             result: data,
         };
-        await Promise.all(ctx.sinks.map((sink) => sink.write(endEvent)));
-        await ctx.hooks.afterOp?.(endEvent);
+        const redactedEndEvent = redactTraceEvent(endEvent, policy);
+        await Promise.all(ctx.sinks.map((sink) => sink.write(redactedEndEvent)));
+        await ctx.hooks.afterOp?.(redactedEndEvent);
         return { ok: true, data };
     } catch (error) {
         const mapped = mapTraceError(error);
@@ -57,9 +64,10 @@ export const traceCall = async <T>(
             args: meta.args,
             error: mapped,
         };
-        await Promise.all(ctx.sinks.map((sink) => sink.write(endEvent)));
-        await ctx.hooks.afterOp?.(endEvent);
-        await ctx.hooks.onError?.(endEvent, mapped);
+        const redactedEndEvent = redactTraceEvent(endEvent, policy);
+        await Promise.all(ctx.sinks.map((sink) => sink.write(redactedEndEvent)));
+        await ctx.hooks.afterOp?.(redactedEndEvent);
+        await ctx.hooks.onError?.(redactedEndEvent, redactToolError(mapped, policy));
         return { ok: false, error: mapped };
     }
 };

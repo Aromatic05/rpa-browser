@@ -7,15 +7,22 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { TraceEvent, TraceSink } from './types';
 import { getLogger } from '../../../platform/logging/logger';
+import { createRedactionPolicy, type RedactionPolicy } from '../../../security/redaction';
+import { redactTraceEvent } from './redact';
 
 /**
  * MemorySink：将事件存入内存数组，便于测试与调试。
  */
 export class MemorySink implements TraceSink {
     private readonly events: TraceEvent[] = [];
+    private readonly policy: RedactionPolicy;
+
+    constructor(redact?: RedactionPolicy) {
+        this.policy = redact ?? createRedactionPolicy();
+    }
 
     write(event: TraceEvent): void {
-        this.events.push(event);
+        this.events.push(redactTraceEvent(event, this.policy));
     }
 
     getEvents(): TraceEvent[] {
@@ -33,10 +40,15 @@ export class MemorySink implements TraceSink {
  */
 export class ConsoleSink implements TraceSink {
     private readonly log = getLogger('trace');
+    private readonly policy: RedactionPolicy;
+
+    constructor(redact?: RedactionPolicy) {
+        this.policy = redact ?? createRedactionPolicy();
+    }
 
     write(event: TraceEvent): void {
         // 控制台输出保持简洁，避免泄露敏感数据
-        this.log('[trace]', event.type, event.op, event);
+        this.log('[trace]', event.type, event.op, redactTraceEvent(event, this.policy));
     }
 }
 
@@ -47,16 +59,24 @@ export class ConsoleSink implements TraceSink {
  */
 export class FileSink implements TraceSink {
     private readonly stream: fs.WriteStream;
+    private readonly policy: RedactionPolicy;
 
-    constructor(filePath: string) {
+    constructor(filePath: string, redact?: RedactionPolicy) {
         const dir = path.dirname(filePath);
         if (!fs.existsSync(dir)) {
             fs.mkdirSync(dir, { recursive: true });
         }
         this.stream = fs.createWriteStream(filePath, { flags: 'a' });
+        this.policy = redact ?? createRedactionPolicy();
     }
 
     write(event: TraceEvent): void {
-        this.stream.write(`${JSON.stringify(event)}\n`);
+        this.stream.write(`${JSON.stringify(redactTraceEvent(event, this.policy))}\n`);
+    }
+
+    close(): Promise<void> {
+        return new Promise((resolve) => {
+            this.stream.end(() => { resolve(); });
+        });
     }
 }

@@ -21,6 +21,7 @@ import type {
 } from './types';
 import type { A11yCandidate } from './a11y/find';
 import type { PageRegistry } from '../../runtime/browser/page_registry';
+import type { RedactionPolicy } from '../../../security/redaction';
 import { traceCall } from './trace_call';
 import { createLoggingHooks } from './hooks';
 import { getA11yTree } from './a11y/getA11yTree';
@@ -101,12 +102,14 @@ export const createTraceContext = (opts: {
     sinks?: TraceSink[];
     hooks?: TraceHooks;
     tags?: TraceTags;
+    redact?: RedactionPolicy;
 }): TraceContext => ({
     sinks: opts.sinks || [],
     // 默认启用日志 hooks，便于 demo/人工验收；调用方可显式覆盖为 noop
     hooks: opts.hooks || createLoggingHooks(),
     cache: {},
     tags: opts.tags,
+    redact: opts.redact,
 });
 
 export const createTraceTools = (opts: {
@@ -118,8 +121,14 @@ export const createTraceTools = (opts: {
     sinks?: TraceSink[];
     hooks?: TraceHooks;
     tags?: TraceTags;
+    redact?: RedactionPolicy;
 }): { tools: BrowserAutomationTools; ctx: TraceContext } => {
-    const ctx = createTraceContext({ sinks: opts.sinks, hooks: opts.hooks, tags: opts.tags });
+    const ctx = createTraceContext({
+        sinks: opts.sinks,
+        hooks: opts.hooks,
+        tags: opts.tags,
+        redact: opts.redact,
+    });
     let currentPage = opts.page;
 
     const run = <T,>(op: TraceOpName, args: unknown, fn: () => Promise<T>) =>
