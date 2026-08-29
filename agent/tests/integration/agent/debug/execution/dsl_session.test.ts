@@ -291,6 +291,8 @@ test('effect journal records only executed effects with before and after World r
 
     const completed = await execution.advance(stepped.pause.continuationId, 'continue');
     assert.equal(completed.status, 'completed');
+    assert.equal(execution.auditEffects().length, 1);
+    assert.equal(execution.auditEffects()[0].effect.stepName, 'browser.click');
 });
 
 test('failed effects enter the journal before the failure pause', async () => {

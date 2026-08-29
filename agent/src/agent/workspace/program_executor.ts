@@ -34,6 +34,7 @@ const invalidProgram = (
         message: error.message,
         ...('diagnostics' in error ? {details: structuredClone(error.diagnostics)} : {}),
     },
+    effects: [],
 });
 
 export const createWorkspaceProgramExecutor = (
@@ -84,9 +85,21 @@ export const createWorkspaceProgramExecutor = (
                 worldViewSource,
                 compensationPort,
                 modelRuntime: options.modelRuntime,
+                debug: {
+                    initialMode: 'continue',
+                    breakOnFailure: true,
+                    barrierOn: ['unknown', 'compensatable', 'irreversible'],
+                    barrierResumeMode: 'continue',
+                },
             }).run({...request, systemPrompt: undefined}),
         );
         const execution = result.execution;
+        const effects = result.session.auditEffects().map((record) => Object.freeze({
+            sequence: record.sequence,
+            stepName: record.effect.stepName,
+            status: record.outcome.status,
+            ...(record.compensates ? {compensates: record.compensates.effectSequence} : {}),
+        }));
         const error = execution.status === 'failed'
             ? {
                 code: execution.failure.code,
@@ -105,6 +118,7 @@ export const createWorkspaceProgramExecutor = (
             text: result.text,
             ...(error ? {error} : {}),
             trace: result.trace,
+            effects,
         };
     } catch (error) {
         if (error instanceof DslParseError || error instanceof DslValidationError || error instanceof UnsupportedError) {

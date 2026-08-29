@@ -76,3 +76,33 @@ test('workspace rejects an invalid structured program before starting retained e
     assert.equal(payload.programs[0].error.code, 'ERR_DSL_PARSE');
     assert.equal(workspace.state, 'idle');
 });
+
+test('workspace executes a pure structured program without requiring a debugger model', async () => {
+    const {registry} = createWorkspaceHarness({
+        pluginHost: {getExecutors: () => stepExecutors} as any,
+        agentModelRuntime: {resolve: () => null},
+    });
+    const workspaceName = `agent-pure-${crypto.randomUUID()}`;
+    const workspace = registry.createWorkspace(workspaceName, createWorkflowOnFs(workspaceName));
+    const result = await workspace.router.handle({
+        v: 1,
+        id: crypto.randomUUID(),
+        type: 'agent.run',
+        workspaceName,
+        payload: {
+            prompt: 'Run the supplied program.',
+            provider: 'unused',
+            model: 'unused',
+            source: 'output ok = input.ok',
+            input: {ok: true},
+        },
+    }, workspace, registry);
+    const payload = result.reply.payload as any;
+
+    assert.equal(payload.executionMode, 'program');
+    assert.equal(payload.text, '{"ok":true}');
+    assert.equal(payload.programs[0].status, 'completed');
+    assert.deepEqual(payload.programs[0].effects, []);
+    assert.equal(payload.trace.metrics.turns, 0);
+    assert.equal(workspace.state, 'idle');
+});

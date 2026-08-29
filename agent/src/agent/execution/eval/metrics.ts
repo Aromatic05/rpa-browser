@@ -19,23 +19,25 @@ const repairMetrics = (result: AgentRunResult): AgentEvalRepairMetrics => ({
 export const collectAgentEvalMetrics = (
     result: AgentRunResult,
     mode: AgentEvalMode,
-): AgentEvalMetrics => ({
-    turns: result.trace.metrics.turns,
-    toolCalls: result.trace.metrics.toolCalls,
-    readCalls: result.trace.metrics.readCalls,
-    controlCalls: result.trace.metrics.controlCalls,
-    failedToolCalls: result.trace.metrics.failedToolCalls,
-    postErrorEffectCalls: result.trace.metrics.postErrorEffectCalls,
-    effects: mode === 'react-baseline'
-        ? {
+): AgentEvalMetrics => {
+    const journalAvailable = mode === 'program'
+        && result.programs !== undefined
+        && result.programs.every((program) => program.effects !== undefined);
+    const worldEffectCalls = journalAvailable
+        ? result.programs!.reduce((count, program) => count + (program.effects?.length ?? 0), 0)
+        : null;
+    return {
+        turns: result.trace.metrics.turns,
+        toolCalls: result.trace.metrics.toolCalls,
+        readCalls: result.trace.metrics.readCalls,
+        controlCalls: result.trace.metrics.controlCalls,
+        failedToolCalls: result.trace.metrics.failedToolCalls,
+        postErrorEffectCalls: result.trace.metrics.postErrorEffectCalls,
+        effects: {
             toolEffectCalls: result.trace.metrics.effectCalls,
-            worldEffectCalls: result.trace.metrics.effectCalls,
-            availability: 'tool-trace',
-        }
-        : {
-            toolEffectCalls: result.trace.metrics.effectCalls,
-            worldEffectCalls: null,
-            availability: 'not-exposed',
+            worldEffectCalls,
+            availability: journalAvailable ? 'program-journal' : 'not-exposed',
         },
-    repair: repairMetrics(result),
-});
+        repair: repairMetrics(result),
+    };
+};

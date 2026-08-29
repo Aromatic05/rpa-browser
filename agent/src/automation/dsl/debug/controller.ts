@@ -16,6 +16,7 @@ export type CreateDslDebugControllerOptions = {
     breakBeforeEffects?: boolean;
     breakOnFailure?: boolean;
     barrierOn?: readonly EffectReversibility[];
+    barrierResumeMode?: 'continue' | 'step';
 };
 
 type ActivePause = {
@@ -128,7 +129,9 @@ export const createDslDebugController = (
                 statement: structuredClone(statement),
             });
         },
-        crossBarrier: (continuationId) => {release(continuationId, 'step', true);},
+        crossBarrier: (continuationId) => {
+            release(continuationId, options.barrierResumeMode ?? 'step', true);
+        },
         abort: (continuationId) => {
             if (active?.pause.continuationId !== continuationId) {
                 throw new Error(`DSL continuation is not paused: ${continuationId}`);

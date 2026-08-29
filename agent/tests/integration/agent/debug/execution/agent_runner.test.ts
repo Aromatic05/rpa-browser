@@ -30,6 +30,91 @@ const createViews = async (): Promise<[WorldView, WorldView]> => {
     return [view(first), view(second)];
 };
 
+test('continued DSL execution completes without invoking a debugger model when no pause is needed', async () => {
+    const [view] = await createViews();
+    const runner = createPausedDslDebugAgentRunner({
+        source: 'output result = input.value',
+        context: {
+            workspaceName: 'ws-1',
+            deps: {} as RunStepsDeps,
+            input: {value: 8},
+        },
+        worldViewSource: {pin: async () => view},
+        debug: {initialMode: 'continue', breakOnFailure: true},
+        modelRuntime: {resolve: () => null},
+    });
+
+    const result = await runner.run({
+        provider: 'unused',
+        model: 'unused',
+        prompt: 'Run the program.',
+    });
+
+    assert.equal(result.execution.status, 'completed');
+    assert.equal(result.text, '{"result":8}');
+    assert.deepEqual(result.trace.metrics, {
+        turns: 0,
+        toolCalls: 0,
+        readCalls: 0,
+        controlCalls: 0,
+        effectCalls: 0,
+        failedToolCalls: 0,
+        postErrorEffectCalls: 0,
+    });
+});
+
+test('product barrier policy resumes normal statements without returning to step mode', async () => {
+    const faux = createFauxCore({provider: 'faux-debugger', models: [{id: 'debugger'}]});
+    faux.setResponses([
+        fauxAssistantMessage(fauxToolCall('debug.cross_barrier', {})),
+        fauxAssistantMessage('effect authorized and program completed'),
+    ]);
+    const [firstView, secondView] = await createViews();
+    let live = firstView;
+    let clickCalls = 0;
+    const runner = createPausedDslDebugAgentRunner({
+        source: 'click input.target\noutput done = input.done',
+        context: {
+            workspaceName: 'ws-1',
+            deps: {} as RunStepsDeps,
+            input: {target: {nodeId: 'submit'}, done: true},
+            stepExecutionPort: {
+                execute: async (step) => {
+                    clickCalls += 1;
+                    live = secondView;
+                    return {stepId: step.id, ok: true, data: {}};
+                },
+            },
+        },
+        worldViewSource: {pin: async () => live},
+        debug: {
+            initialMode: 'continue',
+            barrierOn: ['unknown'],
+            barrierResumeMode: 'continue',
+            breakOnFailure: true,
+        },
+        modelRuntime: {
+            resolve: (provider, model) => provider === 'faux-debugger' && model === 'debugger'
+                ? {model: faux.getModel(), streamFn: faux.streamSimple}
+                : null,
+        },
+    });
+
+    const result = await runner.run({
+        provider: 'faux-debugger',
+        model: 'debugger',
+        prompt: 'Authorize the pending effect.',
+    });
+
+    assert.equal(result.execution.status, 'completed');
+    assert.equal(result.text, 'effect authorized and program completed');
+    assert.equal(clickCalls, 1);
+    assert.equal(result.trace.metrics.turns, 2);
+    assert.equal(result.trace.metrics.toolCalls, 1);
+    assert.equal(result.trace.tools[0].toolName, 'debug.cross_barrier');
+    assert.equal(result.session.auditEffects().length, 1);
+});
+
 test('paused DSL Agent runner lets the model inspect, step and continue a retained execution', async () => {
     const faux = createFauxCore({provider: 'faux-debugger', models: [{id: 'debugger'}]});
     faux.setResponses([
@@ -305,7 +390,7 @@ test('paused DSL Agent runner handles World conflict through pure refresh before
                 execute: async (step) => ({stepId: step.id, ok: true, data: {}}),
             },
         },
-        worldViewSource: {pin: async () => pinCalls++ < 2 ? firstView : secondView},
+        worldViewSource: {pin: async () => pinCalls++ === 0 ? firstView : secondView},
         debug: {initialMode: 'step'},
         modelRuntime: {
             resolve: (provider, model) => provider === 'faux-debugger' && model === 'debugger'

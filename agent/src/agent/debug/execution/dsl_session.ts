@@ -94,12 +94,15 @@ export const createDslDebugExecutionSession = (
     }>>();
     let transaction: DebugTransaction | null = null;
     let transactionEffectStartSequence = 0;
-    const ensureTransaction = async (): Promise<DebugTransaction> => {
+    const initializeTransaction = (view: WorldView): DebugTransaction => {
         if (!transaction) {
-            transaction = createDebugTransaction(await options.worldViewSource.pin());
+            transaction = createDebugTransaction(view);
             transactionEffectStartSequence = journal.list().length;
         }
         return transaction;
+    };
+    const ensureTransaction = async (): Promise<DebugTransaction> => {
+        return initializeTransaction(await options.worldViewSource.pin());
     };
     const requireTransaction = (): DebugTransaction => {
         if (!transaction) {throw new Error('DSL debug transaction is not initialized');}
@@ -174,7 +177,6 @@ export const createDslDebugExecutionSession = (
     };
     const debugPort: DslDebugPort = {
         beforeStatement: async (event) => {
-            await ensureTransaction();
             const patch = programPatches.get(event.location.programId, event.location.path);
             if (!patch) {return await controller.port.beforeStatement(event);}
             const patchedEvent = Object.freeze({
@@ -417,6 +419,7 @@ export const createDslDebugExecutionSession = (
         if (active) {throw new Error('DSL debug execution is already paused');}
         const pause = await controller.waitForPause();
         const view = await options.worldViewSource.pin();
+        initializeTransaction(view);
         const debug = createDebugQuerySession(view);
         const effectResolvedAt = (pause.reason === 'effect' || pause.reason === 'barrier')
             && pause.effect.logicalTarget
@@ -1192,6 +1195,7 @@ export const createDslDebugExecutionSession = (
                 currentPath,
             );
         },
+        auditEffects: () => journal.list(),
         effects: (continuationId: string) => {
             requireActive(continuationId);
             return journal.list();

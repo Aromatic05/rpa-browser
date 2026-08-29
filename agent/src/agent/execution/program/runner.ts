@@ -6,6 +6,7 @@ import {mergeAgentTraceSnapshots} from '../../trace/merge';
 import type {AgentWorldRevision} from '../../trace/collector';
 import type {AgentProgramExecutor} from './contracts';
 import {createProgramExecutionTool, EXECUTE_PROGRAM_TOOL} from './tool';
+import {PROGRAM_DSL_AUTHORING_GUIDE} from './authoring';
 import type {AgentRunner} from '../types';
 
 export const PROGRAM_FIRST_SYSTEM_PROMPT = [
@@ -18,6 +19,7 @@ export const PROGRAM_FIRST_SYSTEM_PROMPT = [
     'For mutation tasks, encode a checkable postcondition with ensure when possible.',
     'A compile-invalid program may be revised and submitted again. After execution has started, do not start a fresh program: diagnosis, patching, rollback, rewind, and retry belong to the retained transactional debugger.',
     'Never claim a mutation succeeded unless execute_program reports completed. Read-only tasks may finish without executing a program.',
+    PROGRAM_DSL_AUTHORING_GUIDE,
 ].join(' ');
 
 export type CreateProgramFirstAgentRunnerOptions = {

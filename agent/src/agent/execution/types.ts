@@ -2,6 +2,13 @@ import type {AgentTraceSnapshot} from '../trace/collector';
 
 export type AgentExecutionMode = 'program' | 'react-baseline';
 
+export type AgentProgramEffectSummary = Readonly<{
+    sequence: number;
+    stepName: string;
+    status: 'succeeded' | 'failed';
+    compensates?: number;
+}>;
+
 export type AgentRunRequest = {
     prompt: string;
     provider: string;
@@ -19,6 +26,7 @@ export type AgentProgramExecutionSummary = Readonly<{
     text?: string;
     error?: Readonly<{code: string; message: string; details?: unknown}>;
     trace?: AgentTraceSnapshot;
+    effects?: readonly AgentProgramEffectSummary[];
 }>;
 
 export type AgentRunResult = {

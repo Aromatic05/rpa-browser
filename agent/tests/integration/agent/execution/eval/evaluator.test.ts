@@ -37,6 +37,14 @@ test('eval compares program-first and baseline without inventing hidden world-ef
                 text: mode === 'program' ? 'verified' : 'done',
                 trace: trace(mode),
                 executionMode: mode,
+                ...(mode === 'program'
+                    ? {programs: [{
+                        source: 'fill input.target with input.value',
+                        input: {},
+                        status: 'completed' as const,
+                        effects: [{sequence: 1, stepName: 'browser.fill', status: 'succeeded' as const}],
+                    }]}
+                    : {}),
             };
         },
     };
@@ -53,12 +61,13 @@ test('eval compares program-first and baseline without inventing hidden world-ef
     assert.deepEqual(prepares, ['program', 'react-baseline']);
     assert.equal(report.runs.program?.success, true);
     assert.equal(report.runs['react-baseline']?.success, false);
-    assert.equal(report.runs.program?.metrics.effects.worldEffectCalls, null);
-    assert.equal(report.runs.program?.metrics.effects.availability, 'not-exposed');
+    assert.equal(report.runs.program?.metrics.effects.worldEffectCalls, 1);
+    assert.equal(report.runs.program?.metrics.effects.availability, 'program-journal');
     assert.equal(report.runs.program?.metrics.repair.patchCalls, 1);
     assert.equal(report.runs.program?.metrics.repair.rewindCalls, 1);
-    assert.equal(report.runs['react-baseline']?.metrics.effects.worldEffectCalls, 1);
-    assert.equal(report.runs['react-baseline']?.metrics.effects.availability, 'tool-trace');
+    assert.equal(report.runs['react-baseline']?.metrics.effects.toolEffectCalls, 1);
+    assert.equal(report.runs['react-baseline']?.metrics.effects.worldEffectCalls, null);
+    assert.equal(report.runs['react-baseline']?.metrics.effects.availability, 'not-exposed');
 });
 
 test('eval can run only one mode for product-only regression tasks', async () => {

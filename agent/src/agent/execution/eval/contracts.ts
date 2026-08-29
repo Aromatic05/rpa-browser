@@ -32,7 +32,7 @@ export type AgentEvalRepairMetrics = Readonly<{
 export type AgentEvalEffectMetrics = Readonly<{
     toolEffectCalls: number;
     worldEffectCalls: number | null;
-    availability: 'tool-trace' | 'not-exposed';
+    availability: 'program-journal' | 'not-exposed';
 }>;
 
 export type AgentEvalMetrics = Readonly<{

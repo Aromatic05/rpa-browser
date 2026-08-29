@@ -240,6 +240,7 @@ export type DslDebugExecutionSession = {
     program: (continuationId: string, programId?: string) => DebugProgramView;
     history: (continuationId: string, programId?: string) => DebugExecutionHistory;
     patches: (continuationId: string, programId?: string) => readonly DebugProgramPatch[];
+    auditEffects: () => readonly DebugEffectRecord[];
     effects: (continuationId: string) => readonly DebugEffectRecord[];
     explain: (continuationId: string, path: string) => DebugValueExplanation;
     recompute: (continuationId: string, path: string) => DebugValueRecomputeResult;

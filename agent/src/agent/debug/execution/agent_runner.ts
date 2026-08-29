@@ -1,6 +1,7 @@
 import type {AgentModelRuntime} from '../../model/runtime';
 import {createReactAgentRunner} from '../../execution/react_runner';
 import type {AgentRunRequest, AgentRunResult} from '../../execution/types';
+import {mergeAgentTraceSnapshots} from '../../trace/merge';
 import {createPausedDslDebugAgentTools} from './agent_tools';
 import {
     createDslDebugExecutionSession,
@@ -66,7 +67,28 @@ export const createPausedDslDebugAgentRunner = (
             compensationPort: options.compensationPort,
             debug: options.debug ?? {initialMode: 'step'},
         });
-        const firstPause = await session.waitForPause();
+        const initial = await Promise.race([
+            session.waitForPause().then((pause) => ({status: 'paused' as const, pause})),
+            session.waitForCompletion().then(
+                (completed) => ({status: 'completed' as const, output: structuredClone(completed.scope.output)}),
+                (error) => ({status: 'failed' as const, failure: normalizeInitialFailure(error)}),
+            ),
+        ]);
+        if (initial.status !== 'paused') {
+            return {
+                provider: request.provider,
+                model: request.model,
+                text: initial.status === 'completed'
+                    ? JSON.stringify(initial.output)
+                    : initial.failure.message,
+                trace: mergeAgentTraceSnapshots([]),
+                execution: initial.status === 'completed'
+                    ? {status: 'completed' as const}
+                    : {status: 'failed' as const, failure: initial.failure},
+                session,
+            };
+        }
+        const firstPause = initial.pause;
         const debuggerTools = createPausedDslDebugAgentTools(session, firstPause);
         const runner = createReactAgentRunner({
             tools: debuggerTools.tools,
@@ -93,3 +115,18 @@ export const createPausedDslDebugAgentRunner = (
         };
     },
 });
+
+const normalizeInitialFailure = (error: unknown): DslDebugTerminalFailure => {
+    if (error && typeof error === 'object') {
+        const value = error as {code?: unknown; message?: unknown; details?: unknown};
+        return Object.freeze({
+            code: typeof value.code === 'string' ? value.code : 'ERR_DSL_RUNTIME',
+            message: typeof value.message === 'string' ? value.message : 'DSL execution failed',
+            ...(value.details === undefined ? {} : {details: structuredClone(value.details)}),
+        });
+    }
+    return Object.freeze({
+        code: 'ERR_DSL_RUNTIME',
+        message: typeof error === 'string' ? error : 'DSL execution failed',
+    });
+};
