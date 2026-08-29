@@ -1,4 +1,7 @@
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import {chromium} from 'playwright';
 import {createOpenAICompatibleAgentModelRuntime} from '../../../src/agent/model/runtime';
 import {evaluateAgentTask} from '../../../src/agent/execution/eval/evaluator';
@@ -11,6 +14,47 @@ const requiredEnv = (name: string): string => {
     const value = process.env[name]?.trim();
     if (!value) {throw new Error(`${name} is required`);}
     return value;
+};
+
+type LiveModelConfig = Readonly<{
+    provider: string;
+    model: string;
+    baseUrl: string;
+    apiKey: string;
+}>;
+
+const resolveLiveModelConfig = (): LiveModelConfig => {
+    const provider = process.env.RPA_AGENT_PROVIDER?.trim();
+    const model = process.env.RPA_AGENT_MODEL?.trim();
+    const baseUrl = process.env.RPA_AGENT_BASE_URL?.trim();
+    const apiKey = process.env.RPA_AGENT_API_KEY?.trim();
+    if (provider && model && baseUrl && apiKey) {return {provider, model, baseUrl, apiKey};}
+    if ([provider, baseUrl, apiKey].some(Boolean)) {
+        throw new Error('RPA_AGENT_PROVIDER, RPA_AGENT_MODEL, RPA_AGENT_BASE_URL, and RPA_AGENT_API_KEY must be provided together');
+    }
+
+    const opencodeProvider = requiredEnv('RPA_AGENT_OPENCODE_PROVIDER');
+    const configPath = process.env.RPA_AGENT_OPENCODE_CONFIG?.trim()
+        || path.join(os.homedir(), '.config', 'opencode', 'opencode.json');
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf8')) as {
+        provider?: Record<string, {
+            options?: {baseURL?: unknown; apiKey?: unknown};
+            models?: Record<string, unknown>;
+        }>;
+    };
+    const entry = config.provider?.[opencodeProvider];
+    const resolvedBaseUrl = typeof entry?.options?.baseURL === 'string' ? entry.options.baseURL.trim() : '';
+    const resolvedApiKey = typeof entry?.options?.apiKey === 'string' ? entry.options.apiKey.trim() : '';
+    const resolvedModel = model || Object.keys(entry?.models ?? {})[0] || '';
+    if (!entry || !resolvedBaseUrl || !resolvedApiKey || !resolvedModel) {
+        throw new Error(`OpenCode provider is incomplete: ${opencodeProvider}`);
+    }
+    return {
+        provider: opencodeProvider,
+        model: resolvedModel,
+        baseUrl: resolvedBaseUrl,
+        apiKey: resolvedApiKey,
+    };
 };
 
 const fixtureHtml = (revision: string): string => `<!doctype html>
@@ -34,6 +78,7 @@ const compactRun = (run: NonNullable<Awaited<ReturnType<typeof evaluateAgentTask
         name: tool.toolName,
         classification: tool.classification,
         isError: tool.isError ?? false,
+        ...(tool.isError ? {args: tool.args} : {}),
     })),
     program: run.result.programs?.map((program) => ({
         status: program.status,
@@ -44,10 +89,7 @@ const compactRun = (run: NonNullable<Awaited<ReturnType<typeof evaluateAgentTask
 });
 
 const main = async (): Promise<void> => {
-    const provider = requiredEnv('RPA_AGENT_PROVIDER');
-    const model = requiredEnv('RPA_AGENT_MODEL');
-    const baseUrl = requiredEnv('RPA_AGENT_BASE_URL');
-    const apiKey = requiredEnv('RPA_AGENT_API_KEY');
+    const {provider, model, baseUrl, apiKey} = resolveLiveModelConfig();
     const modelRuntime = createOpenAICompatibleAgentModelRuntime({provider, model, baseUrl, apiKey});
     const browser = await chromium.launch({
         headless: process.env.RPA_EVAL_HEADED !== '1',

@@ -56,7 +56,27 @@ export const createWorkspaceAgentReadTools = (deps: WorkspaceMcpToolDeps): Agent
     return createAgentToolsFromHandlers(
         getToolSpecs({enabledTools}),
         getToolHandlers(deps, {enabledTools}),
-    );
+    ).map((tool) => {
+        if (tool.name === 'browser.list_tabs') {
+            return {
+                ...tool,
+                description: 'List tabs only when the task is genuinely multi-tab or the active tab is ambiguous. For ordinary current-page tasks, inspect the active page directly with browser.snapshot.',
+            };
+        }
+        if (tool.name === 'browser.query') {
+            return {
+                ...tool,
+                description: 'Query Snapshot V2 business entities using the canonical business query schema. This is not a generic DOM/ARIA selector lookup. Do not guess a businessTag; use it only when inspection already exposes a real business entity/tag.',
+            };
+        }
+        if (tool.name === 'browser.capture_resolve') {
+            return {
+                ...tool,
+                description: 'Resolve an observed DOM/ARIA target into a stable StepResolve draft. For ordinary form controls without business annotations, call this after browser.snapshot using the observed nodeId/role/name and pass the resolved target into program input.',
+            };
+        }
+        return tool;
+    });
 };
 
 export const readWorkspaceWorldRevision = (deps: WorkspaceMcpToolDeps): AgentWorldRevision | null => {

@@ -15,6 +15,8 @@ export const PROGRAM_FIRST_SYSTEM_PROMPT = [
     `All mutations must be expressed as DSL source and submitted through ${EXECUTE_PROGRAM_TOOL}.`,
     'The DSL supports query/let/compute, fill, click, control flow, checkpoints, output, and ensure invariants.',
     'Prefer logical queries or entity-rule references over fragile raw node identities when available.',
+    'For a normal single-page task, inspect the active page directly; do not list tabs unless tab identity matters.',
+    'Never guess a businessTag. If the page has no explicit business annotation, resolve an observed DOM/ARIA target with browser.capture_resolve instead of browser.query.',
     'Put task values and explicit targets in the structured program input object rather than interpolating untrusted values into DSL source.',
     'For mutation tasks, encode a checkable postcondition with ensure when possible.',
     'A compile-invalid program may be revised and submitted again. After execution has started, do not start a fresh program: diagnosis, patching, rollback, rewind, and retry belong to the retained transactional debugger.',
