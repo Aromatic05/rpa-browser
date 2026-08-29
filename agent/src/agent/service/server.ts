@@ -1,6 +1,9 @@
 import http from 'node:http';
 import {AgentRequestError, parseAgentRunRequest} from '../execution/request';
 import {SessionCancelledError, type SessionManager} from './session/manager';
+import type {AgentServiceEndpoint, AgentServiceSecurity} from './security/contracts';
+import {authorizeAgentRequest} from './security/guard';
+import type {Principal} from '../../security/context';
 
 const writeJson = (res: http.ServerResponse, status: number, payload: unknown): void => {
     res.statusCode = status;
@@ -51,6 +54,7 @@ export type AgentHttpServerOptions = {
     agentPath?: string;
     healthPath?: string;
     log?: (...args: unknown[]) => void;
+    security?: AgentServiceSecurity;
 };
 
 export const createAgentHttpServer = async (
@@ -60,9 +64,24 @@ export const createAgentHttpServer = async (
     const agentPath = options.agentPath || process.env.RPA_AGENT_PATH || '/agent';
     const healthPath = options.healthPath || process.env.RPA_AGENT_HEALTH_PATH || '/health';
     const sessionsPath = `${agentPath}/sessions`;
+    const security = options.security;
+
+    const writeJsonSafe = (res: http.ServerResponse, status: number, payload: unknown): void => {
+        const sanitized = security ? security.redactionPolicy.redact(payload).value : payload;
+        writeJson(res, status, sanitized);
+    };
 
     const server = http.createServer((req, res) => {
         void (async () => {
+            const requireAuthz = async (endpoint: AgentServiceEndpoint): Promise<Principal | null> => {
+                const authz = await authorizeAgentRequest(security, req.headers.authorization, endpoint);
+                if (!authz.ok) {
+                    writeJsonSafe(res, authz.status, authz.body);
+                    return null;
+                }
+                return authz.principal;
+            };
+
             const url = new URL(req.url || '/', `http://${req.headers.host || `${host}:${String(options.port)}`}`);
             const pathname = url.pathname;
 
@@ -77,6 +96,8 @@ export const createAgentHttpServer = async (
             }
 
             if (req.method === 'POST' && pathname === agentPath) {
+                const principal = await requireAuthz('run');
+                if (!principal) {return;}
                 const request = parseAgentRunRequest(await readJsonBody(req));
                 const {sessionId, result} = await options.manager.runTracked(request);
                 res.setHeader('x-session-id', sessionId);
@@ -86,47 +107,59 @@ export const createAgentHttpServer = async (
 
             if (pathname === sessionsPath) {
                 if (req.method === 'POST') {
+                    const principal = await requireAuthz('sessionStart');
+                    if (!principal) {return;}
                     const request = parseAgentRunRequest(await readJsonBody(req));
                     writeJson(res, 202, options.manager.start(request));
                     return;
                 }
                 if (req.method === 'GET') {
+                    const principal = await requireAuthz('sessionList');
+                    if (!principal) {return;}
                     writeJson(res, 200, {sessions: options.manager.list()});
                     return;
                 }
                 if (req.method === 'DELETE' || req.method === 'POST') {
-                    writeJson(res, 405, {error: 'method not allowed'});
+                    writeJsonSafe(res, 405, {error: 'method not allowed'});
                     return;
                 }
-                writeJson(res, 405, {error: 'method not allowed'});
+                writeJsonSafe(res, 405, {error: 'method not allowed'});
                 return;
             }
 
             const reportId = parseReportId(pathname, sessionsPath);
             if (reportId !== null && req.method === 'GET') {
+                const principal = await requireAuthz('sessionReport');
+                if (!principal) {return;}
                 const report = options.manager.report(reportId);
-                if (!report) {writeJson(res, 404, {error: 'session report not found'}); return;}
+                if (!report) {writeJsonSafe(res, 404, {error: 'session report not found'}); return;}
                 writeJson(res, 200, report);
                 return;
             }
 
             const statusId = parseStatusId(pathname, sessionsPath);
             if (statusId !== null && req.method === 'GET') {
+                const principal = await requireAuthz('sessionStatus');
+                if (!principal) {return;}
                 const snapshot = options.manager.status(statusId);
-                if (!snapshot) {writeJson(res, 404, {error: 'session not found'}); return;}
+                if (!snapshot) {writeJsonSafe(res, 404, {error: 'session not found'}); return;}
                 writeJson(res, 200, snapshot);
                 return;
             }
 
             const cancelId = parseCancelId(pathname, sessionsPath);
             if (cancelId !== null && req.method === 'POST') {
+                const principal = await requireAuthz('sessionCancel');
+                if (!principal) {return;}
                 const snapshot = options.manager.cancel(cancelId);
-                if (!snapshot) {writeJson(res, 404, {error: 'session not found'}); return;}
+                if (!snapshot) {writeJsonSafe(res, 404, {error: 'session not found'}); return;}
                 writeJson(res, 200, snapshot);
                 return;
             }
 
             if (pathname === `${sessionsPath}/prune` && req.method === 'POST') {
+                const principal = await requireAuthz('sessionPrune');
+                if (!principal) {return;}
                 const body = await readJsonBody(req) as Record<string, unknown>;
                 const policy: {maxAgeMs?: number; maxCount?: number} = {};
                 if (body.maxAgeMs !== undefined) {
@@ -145,7 +178,7 @@ export const createAgentHttpServer = async (
                 return;
             }
 
-            writeJson(res, 404, {error: 'not found'});
+            writeJsonSafe(res, 404, {error: 'not found'});
         })().catch((error) => {
             options.log?.('agent http handler error', error);
             if (res.headersSent) {
@@ -153,14 +186,14 @@ export const createAgentHttpServer = async (
                 return;
             }
             if (error instanceof AgentRequestError || error instanceof SyntaxError) {
-                writeJson(res, 400, {error: error.message});
+                writeJsonSafe(res, 400, {error: error.message});
                 return;
             }
             if (error instanceof SessionCancelledError) {
-                writeJson(res, 409, {error: error.message});
+                writeJsonSafe(res, 409, {error: error.message});
                 return;
             }
-            writeJson(res, 500, {error: error instanceof Error ? error.message : String(error)});
+            writeJsonSafe(res, 500, {error: error instanceof Error ? error.message : String(error)});
         });
     });
 

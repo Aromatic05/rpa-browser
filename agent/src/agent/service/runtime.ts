@@ -11,6 +11,8 @@ import type {AgentRunRequest, AgentRunResult, AgentRunner} from '../execution/ty
 import {createAgentHttpServer} from './server';
 import {createSessionManager, type SessionManager} from './session/manager';
 import {createFileSystemSessionStorage} from './session/storage';
+import {createAgentServiceSecurity} from './security';
+import type {AgentServiceSecurityOptions} from './security/contracts';
 
 export type WorkspaceAgentService = WorkspaceService & {
     run: (request: AgentRunRequest) => Promise<AgentRunResult>;
@@ -27,6 +29,7 @@ export type WorkspaceAgentServiceDeps = {
      */
     dataDir?: string;
     log?: (...args: unknown[]) => void;
+    security?: AgentServiceSecurityOptions;
 };
 
 export const createWorkspaceAgentService = (deps: WorkspaceAgentServiceDeps): WorkspaceAgentService => {
@@ -38,6 +41,7 @@ export const createWorkspaceAgentService = (deps: WorkspaceAgentServiceDeps): Wo
         ? createFileSystemSessionStorage({dataDir: path.resolve(deps.dataDir), log: deps.log})
         : undefined;
     const sessions = createSessionManager({runner: deps.runner, storage, log: deps.log});
+    const security = createAgentServiceSecurity(deps.security);
 
     return {
         name: 'agent',
@@ -57,6 +61,7 @@ export const createWorkspaceAgentService = (deps: WorkspaceAgentServiceDeps): Wo
                     workspaceName: deps.workspaceName,
                     port,
                     log: deps.log,
+                    security: security ?? undefined,
                 });
                 stopServer = server.stop;
                 status = 'running';
