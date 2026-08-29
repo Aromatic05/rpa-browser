@@ -16,6 +16,7 @@ export type ReactAgentSessionOptions = {
     onEvent?: (event: AgentEvent) => void | Promise<void>;
     prepareNextTurnWithContext?: AgentOptions['prepareNextTurnWithContext'];
     beforeToolCall?: AgentOptions['beforeToolCall'];
+    afterToolCall?: AgentOptions['afterToolCall'];
     signal?: AbortSignal;
 };
 
@@ -41,6 +42,7 @@ export const createReactAgentSession = (options: ReactAgentSessionOptions): Reac
         toolExecution: 'sequential',
         prepareNextTurnWithContext: options.prepareNextTurnWithContext,
         beforeToolCall: options.beforeToolCall,
+        afterToolCall: options.afterToolCall,
     });
     if (options.onEvent) {agent.subscribe(options.onEvent);}
     if (options.signal) {

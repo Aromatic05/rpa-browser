@@ -1,11 +1,15 @@
-import type {AgentTraceSnapshot} from './collector';
+import type {AgentTraceSnapshot, AgentTraceContextMetrics} from './collector';
 import {createRedactionPolicy, type RedactionPolicy} from '../../security/redaction';
+import {mergeAgentContextAccounts} from '../tools/context/budget';
 
 export const mergeAgentTraceSnapshots = (
     snapshots: readonly AgentTraceSnapshot[],
     redact?: RedactionPolicy,
 ): AgentTraceSnapshot => {
     const policy = redact ?? createRedactionPolicy();
+    const contexts = snapshots
+        .map((snapshot) => snapshot.context)
+        .filter((context): context is AgentTraceContextMetrics => Boolean(context));
     return {
         metrics: snapshots.reduce((total, snapshot) => ({
             turns: total.turns + snapshot.metrics.turns,
@@ -28,5 +32,6 @@ export const mergeAgentTraceSnapshots = (
             .flatMap((snapshot) => structuredClone(snapshot.tools)
                 .map((tool) => ({...tool, args: policy.redact(tool.args).value})))
             .sort((left, right) => left.startedAt - right.startedAt),
+        ...(contexts.length > 0 ? {context: mergeAgentContextAccounts(contexts)} : {}),
     };
 };

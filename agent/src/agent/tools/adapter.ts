@@ -6,25 +6,30 @@ import type {WorkspaceMcpToolDeps} from '../../automation/runtime/mcp/tool_handl
 import {getToolHandlers} from '../../automation/runtime/mcp/tool_registry';
 import type {AgentWorldRevision} from '../trace/collector';
 import {resolveAgentBrowserReadToolNames, resolveAgentBrowserToolNames} from './policy';
+import {
+    serializeAgentToolError,
+    serializeAgentToolResult,
+    type ToolResultSizePolicy,
+} from './context/limit';
 
-const stringify = (value: unknown): string => {
-    try {
-        return JSON.stringify(value);
-    } catch {
-        return String(value);
-    }
+export type AgentToolsAdapterOptions = {
+    resultSizePolicy?: ToolResultSizePolicy;
 };
 
-const toolError = (name: string, result: Awaited<ReturnType<McpToolHandler>>): Error =>
-    new Error(stringify({
-        tool: name,
-        error: result.error ?? {code: 'ERR_TOOL_FAILED', message: `${name} failed`},
-        results: result.results,
-    }));
+const toolError = (
+    name: string,
+    result: Awaited<ReturnType<McpToolHandler>>,
+    policy?: ToolResultSizePolicy,
+): Error => new Error(serializeAgentToolError(name, {
+    tool: name,
+    error: result.error ?? {code: 'ERR_TOOL_FAILED', message: `${name} failed`},
+    results: result.results,
+}, policy));
 
 export const createAgentToolsFromHandlers = (
     specs: readonly ToolSpec[],
     handlers: Readonly<Record<string, McpToolHandler>>,
+    options: AgentToolsAdapterOptions = {},
 ): AgentTool[] => specs.map((spec) => {
     const handler = handlers[spec.name];
     return {
@@ -34,28 +39,37 @@ export const createAgentToolsFromHandlers = (
         parameters: Type.Unsafe(spec.inputSchema),
         execute: async (_toolCallId, params) => {
             const result = await handler(params);
-            if (!result.ok) {throw toolError(spec.name, result);}
+            if (!result.ok) {throw toolError(spec.name, result, options.resultSizePolicy);}
+            const content = serializeAgentToolResult(spec.name, result, options.resultSizePolicy);
             return {
-                content: [{type: 'text' as const, text: stringify(result)}],
+                content: [{type: 'text' as const, text: content.text}],
                 details: result,
             };
         },
     };
 });
 
-export const createWorkspaceAgentTools = (deps: WorkspaceMcpToolDeps): AgentTool[] => {
+export const createWorkspaceAgentTools = (
+    deps: WorkspaceMcpToolDeps,
+    options: AgentToolsAdapterOptions = {},
+): AgentTool[] => {
     const enabledTools = resolveAgentBrowserToolNames();
     return createAgentToolsFromHandlers(
         getToolSpecs({enabledTools}),
         getToolHandlers(deps, {enabledTools}),
+        options,
     );
 };
 
-export const createWorkspaceAgentReadTools = (deps: WorkspaceMcpToolDeps): AgentTool[] => {
+export const createWorkspaceAgentReadTools = (
+    deps: WorkspaceMcpToolDeps,
+    options: AgentToolsAdapterOptions = {},
+): AgentTool[] => {
     const enabledTools = resolveAgentBrowserReadToolNames();
     return createAgentToolsFromHandlers(
         getToolSpecs({enabledTools}),
         getToolHandlers(deps, {enabledTools}),
+        options,
     ).map((tool) => {
         if (tool.name === 'browser.snapshot') {
             return {

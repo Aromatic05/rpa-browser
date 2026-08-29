@@ -1,12 +1,14 @@
-import {contentText} from '@earendil-works/pi-ai';
+import {contentText, type ToolResultMessage} from '@earendil-works/pi-ai';
 import type {
     Agent,
     AgentEvent,
+    AgentMessage,
     AgentOptions,
     AgentTool,
     BeforeToolCallContext,
+    PrepareNextTurnContext,
 } from '@earendil-works/pi-agent-core';
-import {createReactAgentSession} from '../loop/react';
+import {createReactAgentSession, REACT_BASELINE_SYSTEM_PROMPT} from '../loop/react';
 import {getDefaultAgentModelRuntime, type AgentModelRuntime} from '../model/runtime';
 import {classifyAgentToolCall, type AgentToolClassification} from '../tools/policy';
 import {createAgentTraceCollector, type AgentTraceSnapshot, type AgentWorldRevision} from '../trace/collector';
@@ -19,6 +21,12 @@ import {
     type GovernancePolicy,
     type GovernanceStopReason,
 } from '../governance';
+import {
+    AgentContextBudgetExceededError,
+    createAgentContextAccountant,
+    type RunnerContextBudget,
+} from '../tools/context/budget';
+import {measureProviderVisibleContext} from '../tools/context/measure';
 import type {AgentRunRequest, AgentRunResult} from './types';
 
 export type CreateReactAgentRunnerDeps = {
@@ -28,6 +36,7 @@ export type CreateReactAgentRunnerDeps = {
     readWorldRevision?: () => AgentWorldRevision | null | Promise<AgentWorldRevision | null>;
     prepareNextTurnWithContext?: AgentOptions['prepareNextTurnWithContext'];
     governance?: ReactRunnerGovernanceOptions;
+    contextBudget?: RunnerContextBudget;
     signal?: AbortSignal;
 };
 
@@ -66,18 +75,27 @@ const evaluateTrace = (
     now: number,
 ) => controller.recordTrace(trace, now);
 
+const userMessageFromPrompt = (prompt: string): AgentMessage => ({
+    role: 'user',
+    content: [{type: 'text', text: prompt}],
+    timestamp: Date.now(),
+});
+
 export const createReactAgentRunner = (deps: CreateReactAgentRunnerDeps): GovernedAgentRunner => ({
     run: async (request) => {
         const modelBinding = (deps.modelRuntime ?? getDefaultAgentModelRuntime()).resolve(request.provider, request.model);
         if (!modelBinding) {throw new Error(`model not found: ${request.provider}/${request.model}`);}
         const controller = deps.governance?.controller
             ?? createGovernanceController(deps.governance?.policy ?? SAFE_UNATTENDED_POLICY, Date.now());
+        const accountant = createAgentContextAccountant(deps.contextBudget);
         const trace = createAgentTraceCollector({
             classifyToolCall: deps.classifyToolCall ?? classifyAgentToolCall,
             readWorldRevision: deps.readWorldRevision,
+            context: () => accountant.account(),
         });
         const outcome: {stopReason?: GovernanceStopReason; pendingApproval?: GovernanceApprovalRequest} = {};
         const agentRef: {current: Agent | null} = {current: null};
+        let batchToolResults: ToolResultMessage[] = [];
 
         const stop = (reason: GovernanceStopReason): void => {
             if (outcome.stopReason === undefined && outcome.pendingApproval === undefined) {
@@ -94,6 +112,7 @@ export const createReactAgentRunner = (deps: CreateReactAgentRunnerDeps): Govern
         };
 
         const onEvent = async (event: AgentEvent): Promise<void> => {
+            if (event.type === 'turn_start') {batchToolResults = [];}
             await trace.handle(event);
             if (
                 event.type === 'turn_end'
@@ -126,20 +145,88 @@ export const createReactAgentRunner = (deps: CreateReactAgentRunnerDeps): Govern
                 stop(decision.reason);
                 return {block: true, reason: `governance: ${decision.reason}`};
             }
+            const current = accountant.checkBeforeTool(
+                context.context.systemPrompt,
+                context.context.messages,
+                context.context.tools ?? [],
+                batchToolResults,
+            );
+            if (accountant.overflow()) {
+                agentRef.current?.abort();
+                return {
+                    block: true,
+                    reason: `agent context budget exceeded: ${current.chars} chars / ${current.bytes} bytes exceeds limit ${accountant.budget.maxChars} chars`,
+                };
+            }
             return undefined;
         };
+
+        const afterToolCall: NonNullable<AgentOptions['afterToolCall']> = async ({
+            toolCall,
+            result,
+            isError,
+        }) => {
+            batchToolResults.push({
+                role: 'toolResult',
+                toolCallId: toolCall.id,
+                toolName: toolCall.name,
+                content: result.content,
+                details: result.details as unknown,
+                isError,
+                timestamp: Date.now(),
+            });
+            return undefined;
+        };
+
+        const prepareNextTurn: NonNullable<AgentOptions['prepareNextTurnWithContext']> = async (
+            context: PrepareNextTurnContext,
+        ) => {
+            const next = deps.prepareNextTurnWithContext
+                ? await deps.prepareNextTurnWithContext(context)
+                : undefined;
+            const effective = next?.context ?? context.context;
+            accountant.recordTurn(effective.systemPrompt, effective.messages, effective.tools ?? []);
+            const overflow = accountant.overflow();
+            if (overflow) {
+                throw new AgentContextBudgetExceededError(
+                    {chars: overflow.chars, bytes: overflow.bytes},
+                    overflow.limitChars,
+                    overflow.turn,
+                );
+            }
+            return next;
+        };
+
+        const systemPrompt = request.systemPrompt ?? REACT_BASELINE_SYSTEM_PROMPT;
+        const initialSize = measureProviderVisibleContext(
+            systemPrompt,
+            [userMessageFromPrompt(request.prompt)],
+            deps.tools,
+        );
+        if (initialSize.chars > accountant.budget.maxChars) {
+            throw new AgentContextBudgetExceededError(initialSize, accountant.budget.maxChars, 0);
+        }
 
         const session = createReactAgentSession({
             ...modelBinding,
             tools: deps.tools,
             systemPrompt: request.systemPrompt,
             onEvent,
-            prepareNextTurnWithContext: deps.prepareNextTurnWithContext,
+            prepareNextTurnWithContext: prepareNextTurn,
             beforeToolCall,
+            afterToolCall,
             signal: deps.signal,
         });
         agentRef.current = session.agent;
         await session.agent.prompt(request.prompt);
+        const overflow = accountant.overflow();
+        if (overflow) {
+            throw new AgentContextBudgetExceededError(
+                {chars: overflow.chars, bytes: overflow.bytes},
+                overflow.limitChars,
+                overflow.turn,
+            );
+        }
         return {
             provider: request.provider,
             model: request.model,

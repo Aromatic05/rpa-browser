@@ -2,6 +2,7 @@ import type {AgentEvent} from '@earendil-works/pi-agent-core';
 import type {AgentToolClassification} from '../tools/policy';
 import {REDACTED_SECRET_PLACEHOLDER} from '../report/privacy';
 import {createRedactionPolicy, type RedactionPolicy} from '../../security/redaction';
+import type {AgentContextAccount} from '../tools/context/budget';
 
 export type AgentWorldRevision = {
     pageEpoch: string;
@@ -21,6 +22,8 @@ export type AgentToolTrace = {
     worldAfter?: AgentWorldRevision | null;
 };
 
+export type AgentTraceContextMetrics = AgentContextAccount;
+
 export type AgentTraceSnapshot = {
     metrics: {
         turns: number;
@@ -32,6 +35,7 @@ export type AgentTraceSnapshot = {
         postErrorEffectCalls: number;
     };
     tools: AgentToolTrace[];
+    context?: AgentTraceContextMetrics;
 };
 
 export type AgentTraceCollector = {
@@ -43,6 +47,7 @@ export type AgentTraceCollectorOptions = {
     classifyToolCall: (name: string, args: unknown) => AgentToolClassification;
     readWorldRevision?: () => AgentWorldRevision | null | Promise<AgentWorldRevision | null>;
     redact?: RedactionPolicy;
+    context?: () => AgentTraceContextMetrics | undefined;
 };
 
 const SENSITIVE_ARG_KEYS_BY_TOOL: Record<string, readonly string[] | undefined> = {
@@ -124,9 +129,21 @@ export const createAgentTraceCollector = (options: AgentTraceCollectorOptions): 
                 sawToolError = true;
             }
         },
-        snapshot: () => structuredClone({
-            metrics: {turns, toolCalls, readCalls, controlCalls, effectCalls, failedToolCalls, postErrorEffectCalls},
-            tools,
-        }),
+        snapshot: () => {
+            const context = options.context?.();
+            return structuredClone({
+                metrics: {
+                    turns,
+                    toolCalls,
+                    readCalls,
+                    controlCalls,
+                    effectCalls,
+                    failedToolCalls,
+                    postErrorEffectCalls,
+                },
+                tools,
+                ...(context ? {context} : {}),
+            });
+        },
     };
 };
