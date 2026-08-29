@@ -113,6 +113,7 @@ test('agent session UI emits workspace-scoped actions and renders state transiti
             if (type === 'agent.sessions.list') {
                 return result(type, {
                     sessions: [
+                        snapshot('session-1', 'running'),
                         snapshot('session-2', 'running'),
                         snapshot('session-3', 'paused'),
                         snapshot('session-4', 'completed'),
@@ -122,7 +123,8 @@ test('agent session UI emits workspace-scoped actions and renders state transiti
                 });
             }
             if (type === 'agent.sessions.cancel') {
-                return result(type, snapshot('session-2', 'cancelled'));
+                const sessionId = typeof payload?.sessionId === 'string' ? payload.sessionId : 'session-1';
+                return result(type, snapshot(sessionId, 'cancelled'));
             }
             if (type === 'agent.sessions.status') {
                 return result(type, snapshot('session-2', 'completed'));
@@ -216,14 +218,26 @@ test('agent session UI emits workspace-scoped actions and renders state transiti
         click(refreshBtn);
         await flush();
 
-        const cancelBtn = Array.from(shadow.querySelectorAll('.body [data-session-id="session-2"] button'))
+        // A stale list reply must not revert a settled session back to running.
+        const completedAfterRefresh = shadow.querySelector('.body [data-session-id="session-2"]');
+        assert.equal((completedAfterRefresh as HTMLElement).dataset.sessionState, 'completed');
+
+        const cancelBtn = Array.from(shadow.querySelectorAll('.body [data-session-id="session-1"] button'))
             .find((b) => b.textContent === 'Cancel');
         click(cancelBtn);
         await flush();
         const cancelCall = calls.findLast((call) => call.type === 'agent.sessions.cancel');
         assert.ok(cancelCall, 'agent.sessions.cancel must be emitted');
         assert.deepEqual(cancelCall.address, {workspaceName: 'ws-1'});
-        assert.deepEqual(cancelCall.payload, {sessionId: 'session-2'});
+        assert.deepEqual(cancelCall.payload, {sessionId: 'session-1'});
+        const cancelledAfterCancel = shadow.querySelector('.body [data-session-id="session-1"]');
+        assert.equal((cancelledAfterCancel as HTMLElement).dataset.sessionState, 'cancelled');
+
+        click(refreshBtn);
+        await flush();
+        // The cancelled session remains terminal even though the mock still lists it running.
+        const cancelledAfterRefresh = shadow.querySelector('.body [data-session-id="session-1"]');
+        assert.equal((cancelledAfterRefresh as HTMLElement).dataset.sessionState, 'cancelled');
     } finally {
         handle.unmount();
         Object.assign(globalThis, previous);
@@ -462,6 +476,193 @@ test('agent session UI emits agent.sessions.prune only after confirmation', () =
         dom.window.confirm = () => false;
         click(pruneBtn);
         assert.deepEqual(pruneCalls, [5], 'prune must not fire when confirmation is declined');
+    } finally {
+        Object.assign(globalThis, previous);
+        dom.window.close();
+    }
+});
+
+test('agent session UI reflects loading and error status without hiding the session list', () => {
+    const {dom, previous} = setupDom();
+    try {
+        const session = normalizeAgentSession({
+            sessionId: 'session-status',
+            state: 'running',
+            createdAt: 1,
+            startedAt: 1,
+            endedAt: null,
+            request: {prompt: 'p', provider: 'p', model: 'm'},
+            result: null,
+            error: null,
+            reportAvailable: false,
+            resumable: false,
+        });
+        assert.ok(session);
+
+        const start = buildAgentSessionView({
+            sessions: [session],
+            inputs: {prompt: '', provider: '', model: '', executionMode: ''},
+            onInputsChange: () => undefined,
+            handlers: {
+                start: () => undefined,
+                list: () => undefined,
+                status: () => undefined,
+                cancel: () => undefined,
+                clear: () => undefined,
+            },
+            status: {kind: 'loading', loading: 'start'},
+        });
+        const startBtn = Array.from(start.querySelectorAll('button')).find((b) => b.textContent === 'Starting…');
+        assert.ok(startBtn, 'Start button label reflects a pending start');
+        assert.equal((startBtn as HTMLButtonElement).disabled, true);
+        assert.match(start.textContent ?? '', /Starting session…/);
+        assert.ok(start.querySelector('[data-session-id="session-status"]'), 'sessions remain visible while starting');
+
+        const list = buildAgentSessionView({
+            sessions: [session],
+            inputs: {prompt: '', provider: '', model: '', executionMode: ''},
+            onInputsChange: () => undefined,
+            handlers: {
+                start: () => undefined,
+                list: () => undefined,
+                status: () => undefined,
+                cancel: () => undefined,
+                clear: () => undefined,
+            },
+            status: {kind: 'loading', loading: 'list'},
+        });
+        const refreshBtn = Array.from(list.querySelectorAll('button')).find((b) => b.textContent === 'Refreshing…');
+        assert.ok(refreshBtn, 'Refresh button label reflects a pending list');
+        assert.equal((refreshBtn as HTMLButtonElement).disabled, true);
+        assert.match(list.textContent ?? '', /Refreshing sessions…/);
+
+        const errored = buildAgentSessionView({
+            sessions: [session],
+            inputs: {prompt: '', provider: '', model: '', executionMode: ''},
+            onInputsChange: () => undefined,
+            handlers: {
+                start: () => undefined,
+                list: () => undefined,
+                status: () => undefined,
+                cancel: () => undefined,
+                clear: () => undefined,
+            },
+            status: {kind: 'error', message: 'connection lost'},
+        });
+        const errorHint = errored.querySelector('[data-status-hint="error"]');
+        assert.ok(errorHint, 'error hint is rendered');
+        assert.match((errorHint as HTMLElement).textContent ?? '', /agent: connection lost/);
+        assert.ok(errored.querySelector('[data-session-id="session-status"]'), 'sessions remain visible after an error');
+    } finally {
+        Object.assign(globalThis, previous);
+        dom.window.close();
+    }
+});
+
+test('agent session UI selects a session and gates Report buttons by report availability', () => {
+    const {dom, previous} = setupDom();
+    try {
+        const reportable = normalizeAgentSession({
+            sessionId: 'session-with-report',
+            state: 'completed',
+            createdAt: 1,
+            startedAt: 1,
+            endedAt: 2,
+            request: {prompt: 'p', provider: 'p', model: 'm', executionMode: 'program'},
+            result: {text: 'done', executionMode: 'program', programs: []},
+            error: null,
+            reportAvailable: true,
+            resumable: false,
+        });
+        const bare = normalizeAgentSession({
+            sessionId: 'session-no-report',
+            state: 'cancelled',
+            createdAt: 1,
+            startedAt: 1,
+            endedAt: 2,
+            request: {prompt: 'p', provider: 'p', model: 'm'},
+            result: null,
+            error: null,
+            reportAvailable: false,
+            resumable: false,
+        });
+        assert.ok(reportable && bare);
+        const selected: string[] = [];
+        const reportCalls: string[] = [];
+        const root = buildAgentSessionView({
+            sessions: [reportable, bare],
+            inputs: {prompt: '', provider: '', model: '', executionMode: ''},
+            onInputsChange: () => undefined,
+            handlers: {
+                start: () => undefined,
+                list: () => undefined,
+                status: () => undefined,
+                cancel: () => undefined,
+                clear: () => undefined,
+                select: (sessionId) => { selected.push(sessionId); },
+                report: (sessionId) => { reportCalls.push(sessionId); },
+            },
+            selectedSessionId: 'session-with-report',
+        });
+
+        const withReportItem = root.querySelector('[data-session-id="session-with-report"]') as HTMLElement;
+        assert.ok(withReportItem);
+        assert.equal(withReportItem.dataset.selected, 'true');
+        const reportBtn = Array.from(withReportItem.querySelectorAll('button')).find((b) => b.textContent === 'Report');
+        assert.ok(reportBtn, 'Report button is available when reportAvailable');
+        click(reportBtn);
+        assert.deepEqual(reportCalls, ['session-with-report']);
+
+        const bareItem = root.querySelector('[data-session-id="session-no-report"]') as HTMLElement;
+        assert.ok(bareItem, 'cancelled session without a report is rendered');
+        const bareReportBtn = Array.from(bareItem.querySelectorAll('button')).find((b) => b.textContent === 'Report');
+        assert.equal(bareReportBtn, undefined, 'no Report button when the report is unavailable');
+        assert.match(bareItem.textContent ?? '', /report: unavailable/);
+        assert.equal(bareItem.dataset.selected, 'false');
+
+        const selectable = root.querySelector('[data-session-id="session-no-report"] .selectable');
+        assert.ok(selectable, 'session header is selectable when a select handler exists');
+        click(selectable);
+        assert.deepEqual(selected, ['session-no-report']);
+    } finally {
+        Object.assign(globalThis, previous);
+        dom.window.close();
+    }
+});
+
+test('agent session UI disables Cancel while that session cancellation is pending', () => {
+    const {dom, previous} = setupDom();
+    try {
+        const session = normalizeAgentSession({
+            sessionId: 'session-cancelling',
+            state: 'running',
+            createdAt: 1,
+            startedAt: 1,
+            endedAt: null,
+            request: {prompt: 'p', provider: 'p', model: 'm'},
+            result: null,
+            error: null,
+            reportAvailable: false,
+            resumable: false,
+        });
+        assert.ok(session);
+        const root = buildAgentSessionView({
+            sessions: [session],
+            inputs: {prompt: '', provider: '', model: '', executionMode: ''},
+            onInputsChange: () => undefined,
+            handlers: {
+                start: () => undefined,
+                list: () => undefined,
+                status: () => undefined,
+                cancel: () => undefined,
+                clear: () => undefined,
+            },
+            pendingCancelSessionIds: new Set(['session-cancelling']),
+        });
+        const cancelBtn = Array.from(root.querySelectorAll('[data-session-id="session-cancelling"] button'))
+            .find((b) => b.textContent?.startsWith('Cancelling…'));
+        assert.ok(cancelBtn, 'Cancel button reflects the pending cancellation');
+        assert.equal((cancelBtn as HTMLButtonElement).disabled, true);
     } finally {
         Object.assign(globalThis, previous);
         dom.window.close();

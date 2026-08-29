@@ -77,6 +77,13 @@ export type AgentSessionReportViewState = Readonly<{
     report?: AgentSessionReportSummary | null;
 }>;
 
+export type AgentSessionLoadingKind = 'list' | 'start';
+
+export type AgentSessionViewStatus =
+    | Readonly<{kind: 'idle'}>
+    | Readonly<{kind: 'loading'; loading: AgentSessionLoadingKind}>
+    | Readonly<{kind: 'error'; message: string}>;
+
 export type AgentSessionInputs = {
     prompt: string;
     provider: string;
@@ -90,6 +97,7 @@ export type AgentSessionHandlers = {
     status: (sessionId: string) => void | Promise<void>;
     cancel: (sessionId: string) => void | Promise<void>;
     clear: () => void;
+    select?: (sessionId: string) => void | Promise<void>;
     report?: (sessionId: string) => void | Promise<void>;
     prune?: (maxCount: number) => void | Promise<void>;
 };
@@ -101,6 +109,9 @@ export type AgentSessionViewOptions = {
     handlers: AgentSessionHandlers;
     report?: AgentSessionReportViewState | null;
     pruneMaxCount?: number;
+    status?: AgentSessionViewStatus;
+    selectedSessionId?: string | null;
+    pendingCancelSessionIds?: ReadonlySet<string>;
 };
 
 const AGENT_SESSION_STATES: readonly AgentSessionState[] = ['running', 'paused', 'completed', 'failed', 'cancelled'];
@@ -280,11 +291,18 @@ const STATE_LABELS: Record<AgentSessionState, string> = {
     cancelled: 'cancelled',
 };
 
-const createButton = (label: string, onClick: () => unknown, primary = false): HTMLButtonElement => {
+const createButton = (
+    label: string,
+    onClick: () => unknown,
+    primary = false,
+    disabled = false,
+): HTMLButtonElement => {
     const btn = document.createElement('button');
     btn.textContent = label;
     if (primary) {btn.classList.add('primary');}
+    if (disabled) {btn.disabled = true; btn.classList.add('disabled');}
     btn.addEventListener('click', () => {
+        if (btn.disabled) {return;}
         void Promise.resolve(onClick());
     });
     return btn;
@@ -319,6 +337,8 @@ const renderProgramStatus = (session: AgentSessionSummary): HTMLElement[] => {
 const renderSession = (
     session: AgentSessionSummary,
     handlers: AgentSessionHandlers,
+    selected = false,
+    pendingCancel = false,
 ): HTMLElement => {
     const item = document.createElement('div');
     item.className = 'log-item';
@@ -326,21 +346,33 @@ const renderSession = (
     item.dataset.sessionState = session.state;
     item.dataset.reportAvailable = String(session.reportAvailable);
     item.dataset.resumable = String(session.resumable);
+    item.dataset.selected = String(selected);
 
     const head = document.createElement('div');
     head.className = 'hint';
     const mode = session.request.executionMode ? ` · ${session.request.executionMode}` : '';
     head.textContent = `[${STATE_LABELS[session.state]}] ${session.request.model || session.request.provider || session.sessionId}${mode}`;
+    if (handlers.select) {
+        head.classList.add('selectable');
+        head.addEventListener('click', () => {
+            void Promise.resolve(handlers.select?.(session.sessionId));
+        });
+    }
     item.appendChild(head);
 
     const controlsRow = document.createElement('div');
     controlsRow.className = 'row';
     if (session.state === 'running') {
         controlsRow.appendChild(createButton('Status', () => handlers.status(session.sessionId)));
-        controlsRow.appendChild(createButton('Cancel', () => handlers.cancel(session.sessionId)));
+        controlsRow.appendChild(createButton(
+            pendingCancel ? 'Cancelling…' : 'Cancel',
+            () => handlers.cancel(session.sessionId),
+            false,
+            pendingCancel,
+        ));
     }
     const report = handlers.report;
-    if (report) {
+    if (report && session.reportAvailable) {
         controlsRow.appendChild(createButton('Report', () => report(session.sessionId)));
     }
     if (controlsRow.childElementCount > 0) {
@@ -463,6 +495,9 @@ const renderReport = (
 
 export const buildAgentSessionView = (opts: AgentSessionViewOptions): HTMLElement => {
     const root = document.createElement('div');
+    const status = opts.status ?? {kind: 'idle' as const};
+    const startPending = status.kind === 'loading' && status.loading === 'start';
+    const listPending = status.kind === 'loading' && status.loading === 'list';
 
     const runBox = section('Agent Session');
     const promptInput = document.createElement('textarea');
@@ -508,15 +543,37 @@ export const buildAgentSessionView = (opts: AgentSessionViewOptions): HTMLElemen
 
     const runRow = document.createElement('div');
     runRow.className = 'row';
-    runRow.appendChild(createButton('Start', () => opts.handlers.start(opts.inputs), true));
-    runRow.appendChild(createButton('Refresh', () => opts.handlers.list()));
+    runRow.appendChild(createButton(
+        startPending ? 'Starting…' : 'Start',
+        () => opts.handlers.start(opts.inputs),
+        true,
+        startPending,
+    ));
+    runRow.appendChild(createButton(
+        listPending ? 'Refreshing…' : 'Refresh',
+        () => opts.handlers.list(),
+        false,
+        listPending,
+    ));
     runBox.appendChild(runRow);
+    if (startPending) {
+        const loading = hint('Starting session…');
+        loading.dataset.statusHint = 'start';
+        runBox.appendChild(loading);
+    }
     const listRow = document.createElement('div');
     listRow.className = 'row';
     listRow.appendChild(createButton('agent.sessions.list', () => opts.handlers.list()));
     listRow.appendChild(createButton('Clear View', () => { opts.handlers.clear(); }));
     runBox.appendChild(listRow);
     root.appendChild(runBox);
+
+    if (status.kind === 'error') {
+        const error = hint(`agent: ${status.message}`);
+        error.className = 'hint agent-error';
+        error.dataset.statusHint = 'error';
+        root.appendChild(error);
+    }
 
     if (opts.report) {
         root.appendChild(renderReport(opts.report, opts.handlers));
@@ -536,10 +593,20 @@ export const buildAgentSessionView = (opts: AgentSessionViewOptions): HTMLElemen
         listBox.appendChild(pruneRow);
     }
     const sessions = [...opts.sessions].sort((a, b) => b.createdAt - a.createdAt);
-    if (sessions.length === 0) {
+    if (listPending) {
+        const refreshing = hint('Refreshing sessions…');
+        refreshing.dataset.statusHint = 'list';
+        listBox.appendChild(refreshing);
+    }
+    if (sessions.length === 0 && !listPending) {
         listBox.appendChild(hint('No agent sessions.'));
     } else {
-        sessions.forEach((session) => listBox.appendChild(renderSession(session, opts.handlers)));
+        sessions.forEach((session) => listBox.appendChild(renderSession(
+            session,
+            opts.handlers,
+            session.sessionId === opts.selectedSessionId,
+            opts.pendingCancelSessionIds?.has(session.sessionId) ?? false,
+        )));
     }
     root.appendChild(listBox);
 
