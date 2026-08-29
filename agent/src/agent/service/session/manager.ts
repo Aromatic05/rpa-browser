@@ -1,6 +1,10 @@
 import type {AgentRunRequest, AgentRunResult, AgentRunner} from '../../execution/types';
+import {buildAgentRunReport} from '../../report/builder';
+import type {AgentRunReport} from '../../report/contracts';
 import {createSessionStore} from './store';
-import type {SessionId, SessionSnapshot, SessionState} from './types';
+import type {SessionId, SessionReport, SessionSnapshot, SessionState} from './types';
+import type {SessionStorage} from './storage';
+import type {SessionRetentionPolicy} from './store';
 
 export class SessionCancelledError extends Error {
     readonly code = 'ERR_SESSION_CANCELLED';
@@ -58,16 +62,36 @@ export type SessionManager = {
     cancel: (sessionId: SessionId) => SessionSnapshot | null;
     status: (sessionId: SessionId) => SessionSnapshot | null;
     list: () => SessionSnapshot[];
+    report: (sessionId: SessionId) => SessionReport | null;
+    prune: (policy: SessionRetentionPolicy) => number;
 };
 
 export type SessionManagerOptions = {
     runner: AgentRunner;
+    storage?: SessionStorage;
     log?: (...args: unknown[]) => void;
 };
 
 export const createSessionManager = (options: SessionManagerOptions): SessionManager => {
-    const store = createSessionStore();
+    const store = createSessionStore({storage: options.storage});
     const controllers = new Map<SessionId, AbortController>();
+
+    const settle = (
+        sessionId: SessionId,
+        state: Exclude<SessionState, 'running'>,
+        result: AgentRunResult | null,
+        error: SessionSnapshot['error'],
+    ): void => {
+        let report: AgentRunReport | undefined;
+        if (result !== null) {
+            try {
+                report = buildAgentRunReport(result);
+            } catch (reportError) {
+                options.log?.('agent session report build failed', sessionId, reportError);
+            }
+        }
+        store.settle(sessionId, {state, result, error, report});
+    };
 
     const execute = async (sessionId: SessionId, request: AgentRunRequest): Promise<AgentRunResult> => {
         const controller = new AbortController();
@@ -78,13 +102,17 @@ export const createSessionManager = (options: SessionManagerOptions): SessionMan
                 controller.signal,
                 () => new SessionCancelledError(sessionId),
             );
-            store.settle(sessionId, {state: deriveState(result), result});
+            const state = deriveState(result);
+            settle(sessionId, state, result, null);
             return result;
         } catch (error) {
             if (error instanceof SessionCancelledError) {
-                store.settle(sessionId, {state: 'cancelled', error: {code: error.code, message: error.message}});
+                store.settle(sessionId, {
+                    state: 'cancelled',
+                    error: {code: error.code, message: error.message},
+                });
             } else {
-                store.settle(sessionId, {state: 'failed', error: {code: errorCode(error), message: errorMessage(error)}});
+                settle(sessionId, 'failed', null, {code: errorCode(error), message: errorMessage(error)});
             }
             throw error;
         } finally {
@@ -120,5 +148,10 @@ export const createSessionManager = (options: SessionManagerOptions): SessionMan
         },
         status: (sessionId) => store.get(sessionId),
         list: () => store.list(),
+        report: (sessionId) => {
+            const report = store.getReport(sessionId);
+            return report === null ? null : {sessionId, report};
+        },
+        prune: (policy) => store.prune(policy),
     };
 };

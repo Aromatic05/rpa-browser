@@ -1,4 +1,5 @@
 import type {AgentExecutionMode, AgentRunResult} from '../../execution/types';
+import type {AgentRunReport} from '../../report/contracts';
 
 export type SessionId = string;
 
@@ -35,4 +36,11 @@ export type SessionSnapshot = Readonly<{
     request: SessionRequestSummary;
     result: AgentRunResult | null;
     error: SessionError | null;
+    reportAvailable: boolean;
+    resumable: boolean;
+}>;
+
+export type SessionReport = Readonly<{
+    sessionId: SessionId;
+    report: AgentRunReport | null;
 }>;

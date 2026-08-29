@@ -24,6 +24,25 @@ const readJsonBody = async (req: http.IncomingMessage): Promise<unknown> => {
     return JSON.parse(raw);
 };
 
+const parseStatusId = (pathname: string, sessionsPath: string): string | null => {
+    const prefix = `${sessionsPath}/`;
+    if (!pathname.startsWith(prefix)) {return null;}
+    const rest = pathname.slice(prefix.length);
+    if (!rest || rest.includes('/')) {return null;}
+    return rest;
+};
+
+const parseReportId = (pathname: string, sessionsPath: string): string | null => {
+    const suffix = '/report';
+    if (!pathname.endsWith(suffix)) {return null;}
+    return parseStatusId(pathname.slice(0, -suffix.length), sessionsPath);
+};
+
+const parseCancelId = (pathname: string, sessionsPath: string): string | null => {
+    if (!pathname.endsWith('/cancel')) {return null;}
+    return parseStatusId(pathname.slice(0, -'/cancel'.length), sessionsPath);
+};
+
 export type AgentHttpServerOptions = {
     manager: SessionManager;
     workspaceName: string;
@@ -41,19 +60,6 @@ export const createAgentHttpServer = async (
     const agentPath = options.agentPath || process.env.RPA_AGENT_PATH || '/agent';
     const healthPath = options.healthPath || process.env.RPA_AGENT_HEALTH_PATH || '/health';
     const sessionsPath = `${agentPath}/sessions`;
-
-    const parseStatusId = (pathname: string): string | null => {
-        const prefix = `${sessionsPath}/`;
-        if (!pathname.startsWith(prefix)) {return null;}
-        const id = pathname.slice(prefix.length);
-        if (!id || id.includes('/')) {return null;}
-        return id;
-    };
-
-    const parseCancelId = (pathname: string): string | null => {
-        if (!pathname.endsWith('/cancel')) {return null;}
-        return parseStatusId(pathname.slice(0, -'/cancel'.length));
-    };
 
     const server = http.createServer((req, res) => {
         void (async () => {
@@ -88,11 +94,23 @@ export const createAgentHttpServer = async (
                     writeJson(res, 200, {sessions: options.manager.list()});
                     return;
                 }
+                if (req.method === 'DELETE' || req.method === 'POST') {
+                    writeJson(res, 405, {error: 'method not allowed'});
+                    return;
+                }
                 writeJson(res, 405, {error: 'method not allowed'});
                 return;
             }
 
-            const statusId = parseStatusId(pathname);
+            const reportId = parseReportId(pathname, sessionsPath);
+            if (reportId !== null && req.method === 'GET') {
+                const report = options.manager.report(reportId);
+                if (!report) {writeJson(res, 404, {error: 'session report not found'}); return;}
+                writeJson(res, 200, report);
+                return;
+            }
+
+            const statusId = parseStatusId(pathname, sessionsPath);
             if (statusId !== null && req.method === 'GET') {
                 const snapshot = options.manager.status(statusId);
                 if (!snapshot) {writeJson(res, 404, {error: 'session not found'}); return;}
@@ -100,11 +118,30 @@ export const createAgentHttpServer = async (
                 return;
             }
 
-            const cancelId = parseCancelId(pathname);
+            const cancelId = parseCancelId(pathname, sessionsPath);
             if (cancelId !== null && req.method === 'POST') {
                 const snapshot = options.manager.cancel(cancelId);
                 if (!snapshot) {writeJson(res, 404, {error: 'session not found'}); return;}
                 writeJson(res, 200, snapshot);
+                return;
+            }
+
+            if (pathname === `${sessionsPath}/prune` && req.method === 'POST') {
+                const body = await readJsonBody(req) as Record<string, unknown>;
+                const policy: {maxAgeMs?: number; maxCount?: number} = {};
+                if (body.maxAgeMs !== undefined) {
+                    if (typeof body.maxAgeMs !== 'number' || !Number.isFinite(body.maxAgeMs) || body.maxAgeMs < 0) {
+                        throw new AgentRequestError('maxAgeMs must be a non-negative number');
+                    }
+                    policy.maxAgeMs = body.maxAgeMs;
+                }
+                if (body.maxCount !== undefined) {
+                    if (typeof body.maxCount !== 'number' || !Number.isInteger(body.maxCount) || body.maxCount < 0) {
+                        throw new AgentRequestError('maxCount must be a non-negative integer');
+                    }
+                    policy.maxCount = body.maxCount;
+                }
+                writeJson(res, 200, {pruned: options.manager.prune(policy)});
                 return;
             }
 

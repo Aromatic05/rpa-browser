@@ -1,4 +1,5 @@
 import type {AgentRunRequest, AgentRunResult} from '../../../../../src/agent/execution/types';
+import type {AgentToolTrace} from '../../../../../src/agent/trace/collector';
 
 export type Deferred<T> = {
     promise: Promise<T>;
@@ -36,6 +37,33 @@ export const makeResult = (overrides: Partial<AgentRunResult> = {}): AgentRunRes
     model: 'model',
     text: 'done',
     trace: makeTrace(),
+    ...overrides,
+});
+
+export const makeResultWithSecret = (overrides: Partial<AgentRunResult> = {}): AgentRunResult => ({
+    ...makeResult(),
+    trace: {
+        metrics: {
+            turns: 1,
+            toolCalls: 1,
+            readCalls: 0,
+            controlCalls: 0,
+            effectCalls: 1,
+            failedToolCalls: 0,
+            postErrorEffectCalls: 0,
+        },
+        tools: [{
+            toolCallId: 'tc1',
+            toolName: 'effect.configure',
+            classification: 'effect',
+            args: {apiKey: 'raw-secret-value', safe: 'visible'},
+            startedAt: Date.now(),
+            endedAt: Date.now(),
+            isError: false,
+            worldBefore: null,
+            worldAfter: null,
+        } as AgentToolTrace],
+    },
     ...overrides,
 });
 

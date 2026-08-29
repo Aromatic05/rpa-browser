@@ -9,6 +9,7 @@ import type {
 } from '../../automation/runtime/service/types';
 import {AgentRequestError, parseAgentRunRequest} from '../execution/request';
 import type {AgentRunRequest, AgentRunResult} from '../execution/types';
+import type {SessionRetentionPolicy} from './session/store';
 import type {WorkspaceAgentService} from './runtime';
 
 export type AgentControl = {
@@ -17,6 +18,24 @@ export type AgentControl = {
     status: () => WorkspaceServiceStatusResult;
     run: (request: AgentRunRequest) => Promise<AgentRunResult>;
     handle: (input: WorkspaceRouterInput) => Promise<ControlPlaneResult>;
+};
+
+const parseRetentionPolicy = (payload: unknown): SessionRetentionPolicy => {
+    const value = (payload ?? {}) as Record<string, unknown>;
+    const policy: SessionRetentionPolicy = {};
+    if (value.maxAgeMs !== undefined) {
+        if (typeof value.maxAgeMs !== 'number' || !Number.isFinite(value.maxAgeMs) || value.maxAgeMs < 0) {
+            throw new AgentRequestError('maxAgeMs must be a non-negative number');
+        }
+        policy.maxAgeMs = value.maxAgeMs;
+    }
+    if (value.maxCount !== undefined) {
+        if (typeof value.maxCount !== 'number' || !Number.isInteger(value.maxCount) || value.maxCount < 0) {
+            throw new AgentRequestError('maxCount must be a non-negative integer');
+        }
+        policy.maxCount = value.maxCount;
+    }
+    return policy;
 };
 
 export const createAgentControl = (service: WorkspaceAgentService): AgentControl => ({
@@ -81,6 +100,30 @@ export const createAgentControl = (service: WorkspaceAgentService): AgentControl
                     throw new ActionError(ERROR_CODES.ERR_NOT_FOUND, `session not found: ${targetId}`);
                 }
                 return {reply: replyAction(action, snapshot), events: []};
+            }
+            case 'agent.sessions.report': {
+                const {sessionId} = (action.payload ?? {}) as {sessionId?: string};
+                const targetId = (sessionId || '').trim();
+                if (!targetId) {
+                    throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'sessionId is required');
+                }
+                const report = service.sessions.report(targetId);
+                if (!report) {
+                    throw new ActionError(ERROR_CODES.ERR_NOT_FOUND, `session report not found: ${targetId}`);
+                }
+                return {reply: replyAction(action, report), events: []};
+            }
+            case 'agent.sessions.prune': {
+                try {
+                    const policy = parseRetentionPolicy(action.payload);
+                    const pruned = service.sessions.prune(policy);
+                    return {reply: replyAction(action, {pruned}), events: []};
+                } catch (error) {
+                    if (error instanceof AgentRequestError) {
+                        throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, error.message);
+                    }
+                    throw error;
+                }
             }
             default:
                 throw new ActionError(ERROR_CODES.ERR_UNSUPPORTED, `unsupported agent action: ${action.type}`);

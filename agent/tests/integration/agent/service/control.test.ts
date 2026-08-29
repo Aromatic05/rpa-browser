@@ -141,3 +141,39 @@ test('agent control rejects unknown session status and cancel', async () => {
         /session not found/,
     );
 });
+
+test('agent control returns a persisted session report after completion', async () => {
+    const {control, input} = createHarness();
+    const run = await control.handle(input('agent.run', {prompt: 'go', provider: 'p', model: 'm'}));
+    const sessions = await control.handle(input('agent.sessions.list'));
+    const sessionId = ((sessions.reply.payload as any).sessions as Array<{sessionId: string}>)[0].sessionId;
+
+    const report = await control.handle(input('agent.sessions.report', {sessionId}));
+    const payload = report.reply.payload as any;
+    assert.equal(payload.sessionId, sessionId);
+    assert.equal(payload.report.run.provider, 'p');
+    assert.equal(payload.report.terminal.status, 'completed');
+});
+
+test('agent control rejects a report for an unknown session', async () => {
+    const {control, input} = createHarness();
+    await assert.rejects(
+        () => control.handle(input('agent.sessions.report', {sessionId: 'missing'})),
+        /session report not found/,
+    );
+});
+
+test('agent control prunes sessions by retention policy', async () => {
+    const {control, input} = createHarness();
+    for (let index = 0; index < 3; index++) {
+        await control.handle(input('agent.run', {prompt: `go-${index}`, provider: 'p', model: 'm'}));
+    }
+    const before = await control.handle(input('agent.sessions.list'));
+    assert.equal(((before.reply.payload as any).sessions as unknown[]).length, 3);
+
+    const pruned = await control.handle(input('agent.sessions.prune', {maxCount: 1}));
+    assert.equal((pruned.reply.payload as any).pruned, 2);
+
+    const after = await control.handle(input('agent.sessions.list'));
+    assert.equal(((after.reply.payload as any).sessions as unknown[]).length, 1);
+});

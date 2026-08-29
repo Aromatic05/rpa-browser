@@ -1,3 +1,4 @@
+import path from 'node:path';
 import type {PortAllocator} from '../../automation/runtime/service/ports';
 import type {
     WorkspaceService,
@@ -9,6 +10,7 @@ import type {
 import type {AgentRunRequest, AgentRunResult, AgentRunner} from '../execution/types';
 import {createAgentHttpServer} from './server';
 import {createSessionManager, type SessionManager} from './session/manager';
+import {createFileSystemSessionStorage} from './session/storage';
 
 export type WorkspaceAgentService = WorkspaceService & {
     run: (request: AgentRunRequest) => Promise<AgentRunResult>;
@@ -19,6 +21,11 @@ export type WorkspaceAgentServiceDeps = {
     workspaceName: string;
     portAllocator: PortAllocator;
     runner: AgentRunner;
+    /**
+     * Optional durable storage directory for session metadata and terminal reports.
+     * When omitted, sessions are retained only in memory for the current process.
+     */
+    dataDir?: string;
     log?: (...args: unknown[]) => void;
 };
 
@@ -26,7 +33,11 @@ export const createWorkspaceAgentService = (deps: WorkspaceAgentServiceDeps): Wo
     let status: WorkspaceServiceStatus = 'stopped';
     let port: number | null = null;
     let stopServer: (() => Promise<void>) | null = null;
-    const sessions = createSessionManager({runner: deps.runner, log: deps.log});
+
+    const storage = deps.dataDir
+        ? createFileSystemSessionStorage({dataDir: path.resolve(deps.dataDir), log: deps.log})
+        : undefined;
+    const sessions = createSessionManager({runner: deps.runner, storage, log: deps.log});
 
     return {
         name: 'agent',
