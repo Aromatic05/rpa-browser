@@ -3,8 +3,10 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import {createAgentControl} from '../../../../src/agent/service/control';
 import type {WorkspaceAgentService} from '../../../../src/agent/service/runtime';
+import {createSessionManager} from '../../../../src/agent/service/session/manager';
+import type {AgentRunner, AgentRunResult} from '../../../../src/agent/execution/types';
 
-const runResult = {
+const runResult: AgentRunResult = {
     provider: 'p',
     model: 'm',
     text: 'done',
@@ -30,7 +32,19 @@ const action = (type: string, payload: unknown = {}) => ({
     payload,
 });
 
-const createHarness = () => {
+const deferred = <T>() => {
+    let resolve!: (value: T) => void;
+    let reject!: (error: unknown) => void;
+    const promise = new Promise<T>((res, rej) => {
+        resolve = res;
+        reject = rej;
+    });
+    return {promise, resolve, reject};
+};
+
+const flush = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
+
+const createHarness = (runner: AgentRunner = {run: async () => runResult}) => {
     let status: 'stopped' | 'running' = 'stopped';
     const service: WorkspaceAgentService = {
         name: 'agent',
@@ -46,7 +60,8 @@ const createHarness = () => {
         status: () => ({
             serviceName: 'agent', workspaceName: 'ws', port: status === 'running' ? 12345 : null, status,
         }),
-        run: async () => runResult,
+        run: (request) => service.sessions.run(request),
+        sessions: createSessionManager({runner}),
     };
     const control = createAgentControl(service);
     const workspace = {name: 'ws', agent: control} as any;
@@ -76,5 +91,53 @@ test('agent control validates and delegates run requests', async () => {
     await assert.rejects(
         () => control.handle(input('agent.run', {provider: 'p', model: 'm'})),
         /prompt is required/,
+    );
+});
+
+test('agent control starts, lists, and reads a session by stable id', async () => {
+    const pending = deferred<AgentRunResult>();
+    const {control, input} = createHarness({run: () => pending.promise});
+
+    const started = await control.handle(input('agent.sessions.start', {prompt: 'go', provider: 'p', model: 'm'}));
+    const startedPayload = started.reply.payload as any;
+    assert.equal(started.reply.type, 'agent.sessions.start.result');
+    assert.equal(startedPayload.state, 'running');
+    assert.equal(typeof startedPayload.sessionId, 'string');
+
+    const listed = await control.handle(input('agent.sessions.list'));
+    const listPayload = listed.reply.payload as any;
+    assert.equal(listPayload.sessions.length, 1);
+    assert.equal(listPayload.sessions[0].sessionId, startedPayload.sessionId);
+
+    pending.resolve(runResult);
+    await flush();
+
+    const status = await control.handle(input('agent.sessions.status', {sessionId: startedPayload.sessionId}));
+    assert.equal((status.reply.payload as any).state, 'completed');
+});
+
+test('agent control cancels a running session by id', async () => {
+    const pending = deferred<AgentRunResult>();
+    const {control, input} = createHarness({run: () => pending.promise});
+
+    const started = await control.handle(input('agent.sessions.start', {prompt: 'go', provider: 'p', model: 'm'}));
+    const sessionId = (started.reply.payload as any).sessionId;
+
+    const cancelled = await control.handle(input('agent.sessions.cancel', {sessionId}));
+    assert.equal((cancelled.reply.payload as any).state, 'cancelled');
+    await flush();
+    const status = await control.handle(input('agent.sessions.status', {sessionId}));
+    assert.equal((status.reply.payload as any).state, 'cancelled');
+});
+
+test('agent control rejects unknown session status and cancel', async () => {
+    const {control, input} = createHarness();
+    await assert.rejects(
+        () => control.handle(input('agent.sessions.status', {sessionId: 'missing'})),
+        /session not found/,
+    );
+    await assert.rejects(
+        () => control.handle(input('agent.sessions.cancel', {sessionId: 'missing'})),
+        /session not found/,
     );
 });

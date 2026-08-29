@@ -8,9 +8,11 @@ import type {
 } from '../../automation/runtime/service/types';
 import type {AgentRunRequest, AgentRunResult, AgentRunner} from '../execution/types';
 import {createAgentHttpServer} from './server';
+import {createSessionManager, type SessionManager} from './session/manager';
 
 export type WorkspaceAgentService = WorkspaceService & {
     run: (request: AgentRunRequest) => Promise<AgentRunResult>;
+    sessions: SessionManager;
 };
 
 export type WorkspaceAgentServiceDeps = {
@@ -24,11 +26,13 @@ export const createWorkspaceAgentService = (deps: WorkspaceAgentServiceDeps): Wo
     let status: WorkspaceServiceStatus = 'stopped';
     let port: number | null = null;
     let stopServer: (() => Promise<void>) | null = null;
+    const sessions = createSessionManager({runner: deps.runner, log: deps.log});
 
     return {
         name: 'agent',
         workspaceName: deps.workspaceName,
-        run: (request) => deps.runner.run(request),
+        run: (request) => sessions.run(request),
+        sessions,
         async start(): Promise<WorkspaceServiceStartResult> {
             if (status === 'running' && port !== null) {
                 return {serviceName: 'agent', workspaceName: deps.workspaceName, port, status};
@@ -38,7 +42,7 @@ export const createWorkspaceAgentService = (deps: WorkspaceAgentServiceDeps): Wo
             try {
                 port = await deps.portAllocator.allocate(deps.workspaceName, 'agent');
                 const server = await createAgentHttpServer({
-                    runner: deps.runner,
+                    manager: sessions,
                     workspaceName: deps.workspaceName,
                     port,
                     log: deps.log,

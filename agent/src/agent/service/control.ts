@@ -48,6 +48,40 @@ export const createAgentControl = (service: WorkspaceAgentService): AgentControl
                     throw error;
                 }
             }
+            case 'agent.sessions.start': {
+                try {
+                    const snapshot = service.sessions.start(parseAgentRunRequest(action.payload));
+                    return {reply: replyAction(action, snapshot), events: []};
+                } catch (error) {
+                    if (error instanceof AgentRequestError) {
+                        throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, error.message);
+                    }
+                    throw error;
+                }
+            }
+            case 'agent.sessions.list': {
+                return {reply: replyAction(action, {sessions: service.sessions.list()}), events: []};
+            }
+            case 'agent.sessions.status': {
+                const {sessionId} = (action.payload ?? {}) as {sessionId?: string};
+                const snapshot = service.sessions.status((sessionId || '').trim());
+                if (!snapshot) {
+                    throw new ActionError(ERROR_CODES.ERR_NOT_FOUND, `session not found: ${sessionId}`);
+                }
+                return {reply: replyAction(action, snapshot), events: []};
+            }
+            case 'agent.sessions.cancel': {
+                const {sessionId} = (action.payload ?? {}) as {sessionId?: string};
+                const targetId = (sessionId || '').trim();
+                if (!targetId) {
+                    throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'sessionId is required');
+                }
+                const snapshot = service.sessions.cancel(targetId);
+                if (!snapshot) {
+                    throw new ActionError(ERROR_CODES.ERR_NOT_FOUND, `session not found: ${targetId}`);
+                }
+                return {reply: replyAction(action, snapshot), events: []};
+            }
             default:
                 throw new ActionError(ERROR_CODES.ERR_UNSUPPORTED, `unsupported agent action: ${action.type}`);
         }
