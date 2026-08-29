@@ -22,13 +22,19 @@ export const compileStatementPatch = (
     patchSource: string,
     entityRulesResolver?: DslEntityRulesResolver,
     resolveResolver?: DslResolveResolver,
-    options: {targetPath?: string; allowFailureRoot?: boolean} = {},
+    options: {
+        targetPath?: string;
+        initialVars?: Iterable<string>;
+        allowFailureRoot?: boolean;
+    } = {},
 ): CompileStatementPatchResult => {
     try {
         const original = parseDsl(originalSource);
         const imports = original.imports ?? [];
-        let initialVars: ReadonlySet<string> | undefined;
-        if (options.targetPath) {
+        let initialVars: ReadonlySet<string> | undefined = options.initialVars === undefined
+            ? undefined
+            : new Set(options.initialVars);
+        if (!initialVars && options.targetPath) {
             const linkedOriginal = linkDsl(original, entityRulesResolver, resolveResolver);
             if (linkedOriginal.diagnostics.length > 0) {
                 return invalid('original DSL could not be linked for patch validation');

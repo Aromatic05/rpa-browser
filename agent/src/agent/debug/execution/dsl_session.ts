@@ -33,6 +33,8 @@ import {createDebugValueProvenanceStore} from '../provenance/store';
 import {recomputeDebugValue} from '../provenance/recompute';
 import {buildDebugProgramView, type DebugProgramView} from '../program/view';
 import {createDebugProgramPatchStore, isDurableProgramPatchStatement} from '../program/patches';
+import {buildDebugProgramOverlay} from '../program/overlay';
+import {collectAvailableVariablesAtPath} from '../../../program/dsl/analysis/available_variables';
 import {createDebugStatementHistoryStore} from '../history/store';
 import {buildDebugExecutionHistory} from '../history/view';
 import {compileStatementPatch} from './patch_statement';
@@ -514,7 +516,10 @@ export const createDslDebugExecutionSession = (
             source,
             options.context.entityRulesResolver,
             options.context.resolveResolver,
-            {targetPath, allowFailureRoot: options.context.failure !== undefined},
+            {
+                initialVars: Object.keys(current.pause.scope.vars),
+                allowFailureRoot: options.context.failure !== undefined,
+            },
         );
         if (!compiled.ok) {
             return Object.freeze({
@@ -559,12 +564,15 @@ export const createDslDebugExecutionSession = (
                 pause: exposePause(current),
             });
         }
+        const overlay = buildDebugProgramOverlay(program, programPatches.list(programId));
+        const initialVars = collectAvailableVariablesAtPath(overlay, path);
+        if (!initialVars) {throw new Error(`DSL debug program path disappeared: ${programId}/${path}`);}
         const compiled = compileStatementPatch(
             program.source,
             source,
             options.context.entityRulesResolver,
             options.context.resolveResolver,
-            {targetPath: path, allowFailureRoot: options.context.failure !== undefined},
+            {initialVars, allowFailureRoot: options.context.failure !== undefined},
         );
         if (!compiled.ok) {
             return Object.freeze({status: 'invalid' as const, error: compiled.error, pause: exposePause(current)});

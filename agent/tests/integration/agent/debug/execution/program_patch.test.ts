@@ -105,6 +105,36 @@ test('durable program patches overlay future/current statements without modifyin
     assert.deepEqual((completed.details as any).output, {result: 3});
 });
 
+test('later durable patches validate against the current program overlay', async () => {
+    const {execution, pause} = await createExecution();
+    const tools = createPausedDslDebugAgentTools(execution, pause);
+    const tool = (name: string) => tools.tools.find((candidate) => candidate.name === name)!;
+
+    const define = await tool('debug.patch_program').execute('patch-define', {
+        programId: 'main',
+        path: 'body.1',
+        source: 'let nextValue = compute first(input.next)',
+    });
+    assert.equal((define.details as any).status, 'patched');
+
+    const consume = await tool('debug.patch_program').execute('patch-consume', {
+        programId: 'main',
+        path: 'body.2',
+        source: 'output result = vars.nextValue',
+    });
+    assert.equal((consume.details as any).status, 'patched');
+    assert.equal(execution.patches(pause.continuationId).length, 2);
+
+    await tool('debug.step').execute('step-first', {});
+    const outputPause = await tool('debug.step').execute('step-next-value', {});
+    assert.equal((outputPause.details as any).pause.location.path, 'body.2');
+    assert.deepEqual((outputPause.details as any).pause.scope.vars, {first: 1, nextValue: 3});
+
+    const completed = await tool('debug.continue').execute('continue', {});
+    assert.equal((completed.details as any).status, 'completed');
+    assert.deepEqual((completed.details as any).output, {result: 3});
+});
+
 test('patching an executed path installs the overlay before rewind and reapplies it on the new continuation', async () => {
     const {execution, pause} = await createExecution();
     const tools = createPausedDslDebugAgentTools(execution, pause);
