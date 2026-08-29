@@ -95,6 +95,8 @@ const compactFailureSystemPrompt = (
         ? `The most recent pre-effect rollbackAnchor is ${JSON.stringify(pause.rollbackAnchor)}.`
         : 'No pre-effect rollbackAnchor is available for this failure.',
     'If the task requires undoing an earlier World effect, inspect debug.effects when needed and call debug.rollback with rollbackAnchor.id. If effects executed after that anchor, strategy="none" can only block; use strategy="physical" directly when UI compensation is appropriate.',
+    'If you intend to repair and re-run the failed Program point, and the relevant effect is explicitly reversible, prefer debug.rewind with rollbackAnchor.id and strategy="physical". Rewind succeeds only after rollback is verified restored; compensated, unknown, or merely compensatable recovery remains blocked from Program replay.',
+    'After a successful rewind, patch the current or future Program statement with debug.patch_program when needed, then continue the same retained execution. Never start a second Program transaction.',
     'Interpret rollback status strictly: restored means verified restoration; compensated means the physical compensation ran but semantic equivalence is not proven; blocked/partial means recovery is incomplete.',
     'browser.snapshot is intentionally unavailable while the retained transaction is paused. Use debugger state now; verify with browser read tools only after the transaction is terminal.',
     'After handling recovery, do not blindly retry the original failed operation. Terminate or report the retained failure according to the user task.',
