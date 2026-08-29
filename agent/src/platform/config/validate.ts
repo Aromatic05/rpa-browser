@@ -6,6 +6,7 @@
  * - 保留策略数值约束与 /sessions/prune 校验一致
  */
 
+import path from 'node:path';
 import type {
     AgentConfig,
     InteractionPolicy,
@@ -107,6 +108,24 @@ const assertSessions = (agent: AgentConfig): void => {
 const assertReports = (agent: AgentConfig): void => {
     assertNonEmptyPath(agent.reports.root, 'reports.root');
     assertRetentionPolicy(agent.reports.retention, 'reports.retention');
+    const expectedRoot = path.normalize(path.join(agent.sessions.storageRoot, 'reports'));
+    const actualRoot = path.normalize(agent.reports.root);
+    if (actualRoot !== expectedRoot) {
+        fail(
+            'reports.root',
+            `must equal the co-located session reports directory (${JSON.stringify(expectedRoot)}), got ${JSON.stringify(agent.reports.root)}`,
+        );
+    }
+    if (
+        agent.reports.retention.maxAgeMs !== agent.sessions.retention.maxAgeMs
+        || agent.reports.retention.maxCount !== agent.sessions.retention.maxCount
+    ) {
+        fail(
+            'reports.retention',
+            'must equal sessions.retention because reports are co-stored with sessions, ' +
+                `sessions.retention=${JSON.stringify(agent.sessions.retention)}, got ${JSON.stringify(agent.reports.retention)}`,
+        );
+    }
 };
 
 const assertAuth = (agent: AgentConfig): void => {

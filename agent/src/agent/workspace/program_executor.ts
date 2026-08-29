@@ -3,7 +3,9 @@ import {
     type RunStepsDeps,
 } from '../../automation/runner/run_steps';
 import {materializeReferencedCheckpointRuntimeSnapshot} from '../../automation/runner/checkpoint';
-import {compileDslSource} from '../../automation/dsl/runtime';
+import {compileDslSource, type StepExecutionPort} from '../../automation/dsl/runtime';
+import {createCredentialResolvingStepExecutor} from '../../automation/dsl/runtime/credentials';
+import {createDenyAllCredentialResolver, type CredentialResolver} from '../../security/credentials';
 import {
     DslParseError,
     DslValidationError,
@@ -15,6 +17,7 @@ import type {
     DslDebugTerminalFailure,
 } from '../debug/execution/contracts';
 import {createWorkspaceWorldViewSource} from '../worldview/workspace';
+import type {WorldViewSource} from '../worldview/contracts';
 import type {
     AgentProgram,
     AgentProgramExecutionStart,
@@ -26,6 +29,8 @@ export type CreateWorkspaceProgramExecutorOptions = {
     workspaceName: string;
     deps: RunStepsDeps;
     runWorkspaceExecution: <T>(actionType: string, run: () => Promise<T>) => Promise<T>;
+    credentialResolver?: CredentialResolver;
+    worldViewSource?: WorldViewSource;
 };
 
 const invalidProgram = (
@@ -136,17 +141,22 @@ export const createWorkspaceProgramExecutor = (
         throw error;
     }
 
-    const worldViewSource = createWorkspaceWorldViewSource({
+    const worldViewSource = options.worldViewSource ?? createWorkspaceWorldViewSource({
         workspaceName: options.workspaceName,
         deps: options.deps,
     });
+    const resolver = options.credentialResolver ?? createDenyAllCredentialResolver();
+    const executeStep = (step: Parameters<typeof executeStepWithRuntimeContracts>[0]) =>
+        executeStepWithRuntimeContracts(step, options.workspaceName, options.deps, {
+            checkpointProvider: runtime.provider,
+            entityRulesResolver: runtime.entityRulesResolver,
+            resolveResolver: runtime.resolveResolver,
+        });
+    const stepExecutionPort: StepExecutionPort = {
+        execute: createCredentialResolvingStepExecutor({resolver, execute: executeStep}),
+    };
     const compensationPort = {
-        execute: (step: Parameters<typeof executeStepWithRuntimeContracts>[0]) =>
-            executeStepWithRuntimeContracts(step, options.workspaceName, options.deps, {
-                checkpointProvider: runtime.provider,
-                entityRulesResolver: runtime.entityRulesResolver,
-                resolveResolver: runtime.resolveResolver,
-            }),
+        execute: executeStep,
     };
 
     return await options.runWorkspaceExecution('agent.program.start', async () => {
@@ -159,6 +169,7 @@ export const createWorkspaceProgramExecutor = (
                 checkpointProvider: runtime.provider,
                 entityRulesResolver: runtime.entityRulesResolver,
                 resolveResolver: runtime.resolveResolver,
+                stepExecutionPort,
             },
             worldViewSource,
             compensationPort,

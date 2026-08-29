@@ -2,7 +2,6 @@ import path from 'node:path';
 import type { Page } from 'playwright';
 import { resolvePaths } from '../../automation/runtime/browser/context_manager';
 import { createWorkspaceRegistry } from '../../automation/runtime/workspace/registry';
-import {createWorkspaceAgentFactory} from '../../agent/workspace/factory';
 import { createExecutionBindings } from '../../automation/runtime/execution/bindings';
 import { createRecordingState, cleanupRecording, ensureRecorder, isWorkspaceRecordingEnabled } from '../../automation/recording/recording';
 import { createConsoleStepSink, setRunStepsDeps } from '../../automation/runner/run_steps';
@@ -20,6 +19,7 @@ import type { RunStepsDeps } from '../../automation/runner/run_steps_types';
 import {PageSnapshotSessionStore} from '../../automation/snapshot/session';
 import {SnapshotProjectionBaselineStore} from '../../automation/runner/session';
 import {createRecordingSnapshotPort} from '../../automation/recording/pipeline/snapshot';
+import {composeWorkspaceAgentDependencies} from './composition';
 
 const TAB_NAME_KEY = '__rpa_tab_name';
 const NAV_DEDUPE_WINDOW_MS = 1200;
@@ -79,6 +79,9 @@ const recordingState = createRecordingState({snapshotPort: createRecordingSnapsh
 
 const portAllocator = createPortAllocator();
 
+const composed = await composeWorkspaceAgentDependencies(config);
+logNotice('agent composition', composed.describe());
+
 const workspaceRegistry = createWorkspaceRegistry({
     tabNameKey: TAB_NAME_KEY,
     extensionPaths: paths.extensionPaths,
@@ -90,7 +93,7 @@ const workspaceRegistry = createWorkspaceRegistry({
     runStepsDeps,
     runnerConfig: config,
     portAllocator,
-    agentFactory: createWorkspaceAgentFactory(),
+    agentFactory: composed.agentFactory,
     dispatchAction: async (action) => await controlActionDispatcher.dispatch(action),
     onPageBound: (page, tabName) => { onPageBoundHook(page, tabName); },
     onBindingClosed: (tabName) => { onBindingClosedHook(tabName); },

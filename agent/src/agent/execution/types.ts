@@ -16,6 +16,20 @@ export type AgentProgramEffectSummary = Readonly<{
     compensates?: number;
 }>;
 
+export type AgentProgramPauseReason = 'statement' | 'effect' | 'barrier' | 'failure';
+
+export type AgentProgramPause = Readonly<{
+    reason: AgentProgramPauseReason;
+    continuationId: string;
+    stepName?: string;
+    risk?: 'unknown' | 'reversible' | 'compensatable' | 'irreversible';
+    failure?: Readonly<{code: string; message: string}>;
+}>;
+
+export type AgentRunContinuation = Readonly<{
+    resume: () => Promise<AgentRunResult>;
+}>;
+
 export type AgentRunRequest = {
     prompt: string;
     provider: string;
@@ -35,6 +49,7 @@ export type AgentProgramExecutionSummary = Readonly<{
     error?: Readonly<{code: string; message: string; details?: unknown}>;
     trace?: AgentTraceSnapshot;
     effects?: readonly AgentProgramEffectSummary[];
+    pause?: AgentProgramPause;
 }>;
 
 export type AgentProgramSavedArtifact = Readonly<{
@@ -50,6 +65,7 @@ export type AgentRunResult = {
     executionMode?: AgentExecutionMode;
     programs?: readonly AgentProgramExecutionSummary[];
     savedPrograms?: readonly AgentProgramSavedArtifact[];
+    continuation?: AgentRunContinuation;
 };
 
 export type AgentRunner = {

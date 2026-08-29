@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import type { Page } from 'playwright';
 import { resolvePaths } from '../../automation/runtime/browser/context_manager';
 import { createWorkspaceRegistry } from '../../automation/runtime/workspace/registry';
-import {createWorkspaceAgentFactory} from '../../agent/workspace/factory';
 import { createExecutionBindings } from '../../automation/runtime/execution/bindings';
 import {
     createRecordingState,
@@ -32,6 +31,7 @@ import type { RunStepsDeps } from '../../automation/runner/run_steps_types';
 import {PageSnapshotSessionStore} from '../../automation/snapshot/session';
 import {SnapshotProjectionBaselineStore} from '../../automation/runner/session';
 import {createRecordingSnapshotPort} from '../../automation/recording/pipeline/snapshot';
+import {composeWorkspaceAgentDependencies} from './composition';
 
 const TAB_NAME_KEY = '__rpa_tab_name';
 const TAB_PING_TIMEOUT_MS = 45000;
@@ -126,6 +126,9 @@ const runStepsDeps: RunStepsDeps = {
 setRunStepsDeps(runStepsDeps);
 const recordingState = createRecordingState({snapshotPort: createRecordingSnapshotPort(runStepsDeps)});
 
+const composed = await composeWorkspaceAgentDependencies(config);
+log('agent composition', composed.describe());
+
 workspaceRegistry = createWorkspaceRegistry({
     tabNameKey: TAB_NAME_KEY,
     extensionPaths: paths.extensionPaths,
@@ -140,7 +143,7 @@ workspaceRegistry = createWorkspaceRegistry({
     runStepsDeps,
     runnerConfig: config,
     portAllocator: createPortAllocator(),
-    agentFactory: createWorkspaceAgentFactory(),
+    agentFactory: composed.agentFactory,
     dispatchAction: async (action) => await handleAction(action),
     onPageBound: (page, bindingName) => {
         onPageBoundHook(page, bindingName);

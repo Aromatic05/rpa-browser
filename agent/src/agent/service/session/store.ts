@@ -75,7 +75,9 @@ const toSnapshot = (record: SessionRecord): SessionSnapshot => Object.freeze({
     result: record.result,
     error: record.error,
     reportAvailable: record.reportAvailable,
-    resumable: record.state === 'paused' && record.result !== null,
+    resumable: record.state === 'paused'
+        && record.result?.continuation !== undefined,
+    interactions: [],
 });
 
 export type SessionStoreOptions = {
@@ -90,6 +92,8 @@ export type SessionRetentionPolicy = {
 export type SessionStore = {
     create: (request: AgentRunRequest) => SessionSnapshot;
     settle: (sessionId: SessionId, patch: SessionSettle) => SessionSnapshot | null;
+    reopen: (sessionId: SessionId) => SessionSnapshot | null;
+    terminate: (sessionId: SessionId, patch: SessionSettle) => SessionSnapshot | null;
     get: (sessionId: SessionId) => SessionSnapshot | null;
     getReport: (sessionId: SessionId) => AgentRunReport | null;
     list: () => SessionSnapshot[];
@@ -154,6 +158,29 @@ export const createSessionStore = (options: SessionStoreOptions = {}): SessionSt
             record.state = patch.state;
             record.result = patch.result ?? null;
             record.error = patch.error ?? null;
+            record.endedAt = Date.now();
+            if (patch.report) {
+                record.report = patch.report;
+                record.reportAvailable = true;
+            }
+            persist(record);
+            return toSnapshot(record);
+        },
+        reopen: (sessionId) => {
+            const record = records.get(sessionId);
+            if (record?.state !== 'paused') {return null;}
+            record.state = 'running';
+            record.endedAt = null;
+            persist(record);
+            return toSnapshot(record);
+        },
+        terminate: (sessionId, patch) => {
+            const record = records.get(sessionId);
+            if (!record) {return null;}
+            if (record.state !== 'paused') {return toSnapshot(record);}
+            record.state = patch.state;
+            if (patch.result !== undefined) {record.result = patch.result;}
+            if (patch.error !== undefined) {record.error = patch.error;}
             record.endedAt = Date.now();
             if (patch.report) {
                 record.report = patch.report;

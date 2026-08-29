@@ -32,8 +32,8 @@ export const defaultAgentConfig: AgentConfig = {
         retention: { maxAgeMs: 7 * 24 * 60 * 60 * 1000, maxCount: 100 },
     },
     reports: {
-        root: '.artifacts/reports',
-        retention: { maxAgeMs: 30 * 24 * 60 * 60 * 1000, maxCount: 200 },
+        root: '.artifacts/sessions/reports',
+        retention: { maxAgeMs: 7 * 24 * 60 * 60 * 1000, maxCount: 100 },
     },
     auth: {
         enabled: false,

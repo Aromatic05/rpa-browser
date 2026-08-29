@@ -50,7 +50,8 @@ test('agent defaults preserve current delivery behavior', () => {
     });
     assert.equal(agent.sessions.storageRoot, '.artifacts/sessions');
     assert.equal(agent.sessions.retention.maxAgeMs, 7 * 24 * 60 * 60 * 1000);
-    assert.equal(agent.reports.root, '.artifacts/reports');
+    assert.equal(agent.reports.root, '.artifacts/sessions/reports');
+    assert.deepEqual(agent.reports.retention, agent.sessions.retention);
     assert.equal(agent.auth.enabled, false);
     assert.equal(agent.auth.tokenRef, 'env:RPA_AGENT_AUTH_TOKEN');
     assert.equal(agent.interaction, 'interactive');
@@ -61,6 +62,7 @@ test('agent partial file overrides keep default siblings and drop unknown keys',
         agent: {
             governance: {maxTurns: 12, bogus: 1},
             sessions: {retention: {maxAgeMs: 3_600_000}},
+            reports: {retention: {maxAgeMs: 3_600_000}},
             service: {bogon: true},
         },
     }, (configPath) => {
@@ -70,6 +72,7 @@ test('agent partial file overrides keep default siblings and drop unknown keys',
         assert.equal(agent.governance.irreversibleApproval, 'deny');
         assert.equal(agent.sessions.retention.maxAgeMs, 3_600_000);
         assert.equal(agent.sessions.retention.maxCount, 100);
+        assert.equal(agent.reports.retention.maxAgeMs, 3_600_000);
         assert.equal(agent.service.host, '127.0.0.1');
         assert.equal('bogus' in agent.governance, false);
         assert.equal('bogon' in agent.service, false);
@@ -149,9 +152,22 @@ test('agent rejects unsafe or malformed path shapes', () => {
     withRunnerFile({agent: {service: {healthPath: '/health/../secret'}}}, (configPath) => {
         assert.throws(() => loadRunnerConfig({configPath}), /agent\.service\.healthPath/);
     });
-    withRunnerFile({agent: {sessions: {storageRoot: '../shared/sessions'}}}, (configPath) => {
+    withRunnerFile({agent: {
+        sessions: {storageRoot: '../shared/sessions'},
+        reports: {root: '../shared/sessions/reports'},
+    }}, (configPath) => {
         const agent = loadRunnerConfig({configPath}).agent;
         assert.equal(agent.sessions.storageRoot, '../shared/sessions');
+        assert.equal(agent.reports.root, '../shared/sessions/reports');
+    });
+});
+
+test('agent rejects a report retention that diverges from the co-stored session retention', () => {
+    withRunnerFile({agent: {reports: {retention: {maxAgeMs: 30 * 24 * 60 * 60 * 1000, maxCount: 200}}}}, (configPath) => {
+        assert.throws(() => loadRunnerConfig({configPath}), /agent\.reports\.retention/);
+    });
+    withRunnerFile({agent: {sessions: {retention: {maxCount: 5}}}}, (configPath) => {
+        assert.throws(() => loadRunnerConfig({configPath}), /agent\.reports\.retention/);
     });
 });
 
@@ -167,6 +183,7 @@ test('agent environment overrides take precedence over file and defaults', () =>
             RUNNER_AGENT_AUTH_ENABLED: 'true',
             RUNNER_AGENT_AUTH_TOKEN_REF: 'env:TEST_AGENT_TOKEN',
             RUNNER_AGENT_SESSION_MAX_COUNT: '7',
+            RUNNER_AGENT_REPORT_MAX_COUNT: '7',
             RUNNER_AGENT_PROVIDER: 'openai',
             RUNNER_AGENT_MODEL: 'gpt-4.1',
             RUNNER_AGENT_BASE_URL: 'https://api.openai.com/v1',
@@ -179,6 +196,7 @@ test('agent environment overrides take precedence over file and defaults', () =>
             assert.equal(agent.auth.enabled, true);
             assert.equal(agent.auth.tokenRef, 'env:TEST_AGENT_TOKEN');
             assert.equal(agent.sessions.retention.maxCount, 7);
+            assert.equal(agent.reports.retention.maxCount, 7);
             assert.equal(agent.model.provider, 'openai');
             assert.equal(agent.model.model, 'gpt-4.1');
             assert.deepEqual(agent.model.apiKeyRef, 'file:.secrets/model.token');

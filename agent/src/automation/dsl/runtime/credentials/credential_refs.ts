@@ -1,5 +1,5 @@
-import type {CredentialResolver} from '../../../security/credentials';
-import {parseCredentialRef, serializeCredentialRef} from '../../../security/credentials';
+import type {CredentialRef, CredentialResolver} from '../../../../security/credentials';
+import {parseCredentialRef, serializeCredentialRef} from '../../../../security/credentials';
 
 export const isCredentialRefString = (value: unknown): value is string => {
     if (typeof value !== 'string') {return false;}
@@ -15,7 +15,26 @@ export const isCredentialRefString = (value: unknown): value is string => {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
     typeof value === 'object' && value !== null && !Array.isArray(value);
 
-const rewriteValue = async (
+export const collectCredentialRefs = (value: unknown): readonly CredentialRef[] => {
+    if (isCredentialRefString(value)) {return [parseCredentialRef(value)];}
+    if (Array.isArray(value)) {
+        const collected: CredentialRef[] = [];
+        for (const child of value) {
+            collected.push(...collectCredentialRefs(child));
+        }
+        return collected;
+    }
+    if (isRecord(value)) {
+        const collected: CredentialRef[] = [];
+        for (const child of Object.values(value)) {
+            collected.push(...collectCredentialRefs(child));
+        }
+        return collected;
+    }
+    return [];
+};
+
+export const resolveCredentialRefsDeep = async (
     value: unknown,
     resolve: CredentialResolver['resolve'],
 ): Promise<unknown> => {
@@ -25,27 +44,16 @@ const rewriteValue = async (
     if (Array.isArray(value)) {
         const rewritten: unknown[] = new Array<unknown>(value.length);
         for (let index = 0; index < value.length; index += 1) {
-            rewritten[index] = await rewriteValue(value[index], resolve);
+            rewritten[index] = await resolveCredentialRefsDeep(value[index], resolve);
         }
         return rewritten;
     }
     if (isRecord(value)) {
         const rewritten: Record<string, unknown> = {};
         for (const [key, child] of Object.entries(value)) {
-            rewritten[key] = await rewriteValue(child, resolve);
+            rewritten[key] = await resolveCredentialRefsDeep(child, resolve);
         }
         return rewritten;
     }
     return value;
-};
-
-export const materializeCredentialInput = async (
-    input: Readonly<Record<string, unknown>>,
-    resolver: CredentialResolver,
-): Promise<Record<string, unknown>> => {
-    const materialized: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(input)) {
-        materialized[key] = await rewriteValue(value, resolver.resolve);
-    }
-    return materialized;
 };

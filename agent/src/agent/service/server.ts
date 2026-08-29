@@ -1,5 +1,10 @@
 import http from 'node:http';
 import {AgentRequestError, parseAgentRunRequest} from '../execution/request';
+import {
+    InteractionConcurrencyError,
+    InteractionStateError,
+    InteractionValidationError,
+} from '../interaction';
 import {SessionCancelledError, type SessionManager} from './session/manager';
 import type {AgentServiceEndpoint, AgentServiceSecurity} from './security/contracts';
 import {authorizeAgentRequest} from './security/guard';
@@ -44,6 +49,42 @@ const parseReportId = (pathname: string, sessionsPath: string): string | null =>
 const parseCancelId = (pathname: string, sessionsPath: string): string | null => {
     if (!pathname.endsWith('/cancel')) {return null;}
     return parseStatusId(pathname.slice(0, -'/cancel'.length), sessionsPath);
+};
+
+type InteractionRoute = Readonly<{
+    sessionId: string;
+    interactionId: string | null;
+    verb: 'approve' | 'deny' | null;
+}>;
+
+const parseInteractionRoute = (pathname: string, sessionsPath: string): InteractionRoute | null => {
+    const prefix = `${sessionsPath}/`;
+    if (!pathname.startsWith(prefix)) {return null;}
+    const segments = pathname.slice(prefix.length).split('/');
+    if (segments.length < 2 || segments[0] === '' || segments[1] !== 'interactions') {return null;}
+    const sessionId = decodeURIComponent(segments[0]);
+    if (segments.length === 2) {return {sessionId, interactionId: null, verb: null};}
+    if (!segments[2]) {return null;}
+    const interactionId = decodeURIComponent(segments[2]);
+    if (segments.length === 3) {return {sessionId, interactionId, verb: null};}
+    if (segments.length === 4 && (segments[3] === 'approve' || segments[3] === 'deny')) {
+        return {sessionId, interactionId, verb: segments[3]};
+    }
+    return null;
+};
+
+const requireRevision = (body: Record<string, unknown>): number => {
+    if (typeof body.revision !== 'number' || !Number.isInteger(body.revision) || body.revision < 0) {
+        throw new AgentRequestError('revision must be a non-negative integer');
+    }
+    return body.revision;
+};
+
+const requireActor = (body: Record<string, unknown>, field: string): string => {
+    if (typeof body[field] !== 'string' || body[field].trim().length === 0) {
+        throw new AgentRequestError(`${field} is required`);
+    }
+    return body[field].trim();
 };
 
 export type AgentHttpServerOptions = {
@@ -157,6 +198,56 @@ export const createAgentHttpServer = async (
                 return;
             }
 
+            const interactionRoute = parseInteractionRoute(pathname, sessionsPath);
+            if (interactionRoute !== null) {
+                if (req.method === 'GET' && interactionRoute.interactionId === null) {
+                    const principal = await requireAuthz('sessionStatus');
+                    if (!principal) {return;}
+                    const sessionInteractions = options.manager.listInteractions(interactionRoute.sessionId);
+                    if (sessionInteractions === null) {
+                        writeJsonSafe(res, 404, {error: 'session not found'});
+                        return;
+                    }
+                    writeJsonSafe(res, 200, {sessionId: interactionRoute.sessionId, interactions: sessionInteractions});
+                    return;
+                }
+                if (req.method === 'GET' && interactionRoute.interactionId !== null) {
+                    const principal = await requireAuthz('sessionStatus');
+                    if (!principal) {return;}
+                    const record = options.manager.getInteraction(interactionRoute.sessionId, interactionRoute.interactionId);
+                    if (!record) {writeJsonSafe(res, 404, {error: 'interaction not found'}); return;}
+                    writeJsonSafe(res, 200, record);
+                    return;
+                }
+                if (req.method === 'POST' && interactionRoute.verb !== null && interactionRoute.interactionId !== null) {
+                    const principal = await requireAuthz(
+                        interactionRoute.verb === 'approve' ? 'run' : 'sessionCancel',
+                    );
+                    if (!principal) {return;}
+                    const body = (await readJsonBody(req)) as Record<string, unknown>;
+                    const revision = requireRevision(body);
+                    const decided = interactionRoute.verb === 'approve'
+                        ? await options.manager.approveInteraction(
+                            interactionRoute.sessionId,
+                            interactionRoute.interactionId,
+                            revision,
+                            requireActor(body, 'approvedBy'),
+                        )
+                        : await options.manager.denyInteraction(
+                            interactionRoute.sessionId,
+                            interactionRoute.interactionId,
+                            revision,
+                            requireActor(body, 'deniedBy'),
+                            requireActor(body, 'reason'),
+                        );
+                    if (!decided) {writeJsonSafe(res, 404, {error: 'interaction not found'}); return;}
+                    writeJsonSafe(res, 200, decided);
+                    return;
+                }
+                writeJsonSafe(res, 405, {error: 'method not allowed'});
+                return;
+            }
+
             if (pathname === `${sessionsPath}/prune` && req.method === 'POST') {
                 const principal = await requireAuthz('sessionPrune');
                 if (!principal) {return;}
@@ -185,12 +276,16 @@ export const createAgentHttpServer = async (
                 res.end();
                 return;
             }
-            if (error instanceof AgentRequestError || error instanceof SyntaxError) {
+            if (error instanceof AgentRequestError || error instanceof SyntaxError || error instanceof InteractionValidationError) {
                 writeJsonSafe(res, 400, {error: error.message});
                 return;
             }
             if (error instanceof SessionCancelledError) {
                 writeJsonSafe(res, 409, {error: error.message});
+                return;
+            }
+            if (error instanceof InteractionConcurrencyError || error instanceof InteractionStateError) {
+                writeJsonSafe(res, 409, {error: error.message, code: error.code});
                 return;
             }
             writeJsonSafe(res, 500, {error: error instanceof Error ? error.message : String(error)});

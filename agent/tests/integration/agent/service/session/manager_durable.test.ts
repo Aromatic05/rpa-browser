@@ -78,22 +78,32 @@ test('paused snapshots survive restart but are not resumable', async () => {
     const dataDir = tempDir();
     try {
         const storage = createFileSystemSessionStorage({dataDir});
-        const result = makeResult({
-            programs: [{source: 'output ok = input.ok', input: {}, status: 'paused'}],
+        const paused = makeResult({
+            programs: [{
+                source: 'output ok = input.ok',
+                input: {},
+                status: 'paused',
+                pause: {reason: 'barrier', continuationId: 'cont-1', stepName: 'effect.submit', risk: 'irreversible'},
+            }],
+            continuation: {resume: async () => makeResult({text: 'resumed'})},
         });
-        const manager = createSessionManager({runner: {run: async () => result}, storage});
+        const manager = createSessionManager({runner: {run: async () => paused}, storage});
         const {sessionId} = await manager.runTracked(makeRequest());
 
         assert.equal(manager.status(sessionId)?.state, 'paused');
         assert.equal(manager.status(sessionId)?.resumable, true);
+        const interactions = manager.listInteractions(sessionId)!;
+        assert.equal(interactions.length, 1);
+        assert.equal(interactions[0].status, 'pending');
 
         const next = createSessionManager({runner: {run: async () => makeResult()}, storage});
         const recovered = next.status(sessionId)!;
         assert.equal(recovered.state, 'paused');
         assert.equal(recovered.resumable, false);
         assert.equal(recovered.reportAvailable, true);
-        const pausedReport = next.report(sessionId)!;
-        assert.equal(pausedReport.report!.terminal.status, 'paused');
+        assert.deepEqual(recovered.interactions, []);
+        assert.equal(await next.approveInteraction(sessionId, interactions[0].id, interactions[0].revision, 'ops-1'), null);
+        assert.equal(next.report(sessionId)!.report!.terminal.status, 'paused');
     } finally {
         fs.rmSync(dataDir, {recursive: true, force: true});
     }

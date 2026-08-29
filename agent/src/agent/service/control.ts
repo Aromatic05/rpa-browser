@@ -8,6 +8,11 @@ import type {
     WorkspaceServiceStopResult,
 } from '../../automation/runtime/service/types';
 import {AgentRequestError, parseAgentRunRequest} from '../execution/request';
+import {
+    InteractionConcurrencyError,
+    InteractionStateError,
+    InteractionValidationError,
+} from '../interaction';
 import type {AgentRunRequest, AgentRunResult} from '../execution/types';
 import type {SessionRetentionPolicy} from './session/store';
 import type {WorkspaceAgentService} from './runtime';
@@ -18,6 +23,33 @@ export type AgentControl = {
     status: () => WorkspaceServiceStatusResult;
     run: (request: AgentRunRequest) => Promise<AgentRunResult>;
     handle: (input: WorkspaceRouterInput) => Promise<ControlPlaneResult>;
+};
+
+const requireBoundId = (value: unknown, name: string): string => {
+    if (typeof value !== 'string' || value.trim().length === 0) {
+        throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, `${name} is required`);
+    }
+    return value.trim();
+};
+
+const requireRevision = (value: unknown): number => {
+    if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
+        throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'revision must be a non-negative integer');
+    }
+    return value;
+};
+
+const toInteractionActionError = (error: unknown): ActionError => {
+    if (error instanceof InteractionValidationError) {
+        return new ActionError(ERROR_CODES.ERR_BAD_ARGS, error.message);
+    }
+    if (error instanceof InteractionConcurrencyError) {
+        return new ActionError(ERROR_CODES.ERR_STALE, error.message);
+    }
+    if (error instanceof InteractionStateError) {
+        return new ActionError(ERROR_CODES.ERR_BAD_STATE, error.message);
+    }
+    throw error;
 };
 
 const parseRetentionPolicy = (payload: unknown): SessionRetentionPolicy => {
@@ -123,6 +155,91 @@ export const createAgentControl = (service: WorkspaceAgentService): AgentControl
                         throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, error.message);
                     }
                     throw error;
+                }
+            }
+            case 'agent.interactions.list': {
+                const {sessionId} = (action.payload ?? {}) as {sessionId?: string};
+                const targetId = requireBoundId(sessionId, 'sessionId');
+                const interactions = service.sessions.listInteractions(targetId);
+                if (interactions === null) {
+                    throw new ActionError(ERROR_CODES.ERR_NOT_FOUND, `session not found: ${targetId}`);
+                }
+                return {reply: replyAction(action, {interactions}), events: []};
+            }
+            case 'agent.interactions.get': {
+                const {sessionId, interactionId} = (action.payload ?? {}) as {
+                    sessionId?: string;
+                    interactionId?: string;
+                };
+                const targetId = requireBoundId(sessionId, 'sessionId');
+                const targetInteractionId = requireBoundId(interactionId, 'interactionId');
+                const record = service.sessions.getInteraction(targetId, targetInteractionId);
+                if (!record) {
+                    throw new ActionError(ERROR_CODES.ERR_NOT_FOUND, `interaction not found: ${targetInteractionId}`);
+                }
+                return {reply: replyAction(action, record), events: []};
+            }
+            case 'agent.interactions.approve': {
+                const {sessionId, interactionId, revision, approvedBy} = (action.payload ?? {}) as {
+                    sessionId?: string;
+                    interactionId?: string;
+                    revision?: number;
+                    approvedBy?: string;
+                };
+                const targetId = requireBoundId(sessionId, 'sessionId');
+                const targetInteractionId = requireBoundId(interactionId, 'interactionId');
+                const approvedActor = requireBoundId(approvedBy, 'approvedBy');
+                const expectedRevision = requireRevision(revision);
+                try {
+                    const decided = await service.sessions.approveInteraction(
+                        targetId,
+                        targetInteractionId,
+                        expectedRevision,
+                        approvedActor,
+                    );
+                    if (!decided) {
+                        throw new ActionError(
+                            ERROR_CODES.ERR_NOT_FOUND,
+                            `interaction not found for session: ${targetInteractionId}`,
+                        );
+                    }
+                    return {reply: replyAction(action, decided), events: []};
+                } catch (error) {
+                    if (error instanceof ActionError) {throw error;}
+                    throw toInteractionActionError(error);
+                }
+            }
+            case 'agent.interactions.deny': {
+                const {sessionId, interactionId, revision, deniedBy, reason} = (action.payload ?? {}) as {
+                    sessionId?: string;
+                    interactionId?: string;
+                    revision?: number;
+                    deniedBy?: string;
+                    reason?: string;
+                };
+                const targetId = requireBoundId(sessionId, 'sessionId');
+                const targetInteractionId = requireBoundId(interactionId, 'interactionId');
+                const deniedActor = requireBoundId(deniedBy, 'deniedBy');
+                const denyReason = requireBoundId(reason, 'reason');
+                const expectedRevision = requireRevision(revision);
+                try {
+                    const decided = await service.sessions.denyInteraction(
+                        targetId,
+                        targetInteractionId,
+                        expectedRevision,
+                        deniedActor,
+                        denyReason,
+                    );
+                    if (!decided) {
+                        throw new ActionError(
+                            ERROR_CODES.ERR_NOT_FOUND,
+                            `interaction not found for session: ${targetInteractionId}`,
+                        );
+                    }
+                    return {reply: replyAction(action, decided), events: []};
+                } catch (error) {
+                    if (error instanceof ActionError) {throw error;}
+                    throw toInteractionActionError(error);
                 }
             }
             default:

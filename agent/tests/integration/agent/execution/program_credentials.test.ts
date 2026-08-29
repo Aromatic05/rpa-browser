@@ -3,13 +3,9 @@ import assert from 'node:assert/strict';
 import {createFauxCore, fauxAssistantMessage, fauxToolCall} from '@earendil-works/pi-ai';
 import {createProgramFirstAgentRunner} from '../../../../src/agent/execution/program/runner';
 import type {AgentProgramExecutor} from '../../../../src/agent/execution/program/contracts';
-import {createMemoryCredentialResolver, createCredentialRef, serializeCredentialRef} from '../../../../src/security/credentials';
-import {SecurityError} from '../../../../src/security/errors';
+import {createCredentialRef, serializeCredentialRef} from '../../../../src/security/credentials';
 import type {AgentProgramSaveRequest} from '../../../../src/agent/execution/program/persistence';
-import {
-    isCredentialRefString,
-    materializeCredentialInput,
-} from '../../../../src/agent/execution/program/credentials';
+import {isCredentialRefString} from '../../../../src/automation/dsl/runtime/credentials';
 
 const CANARY = 'tok_canary_3f9a2c_d0e1f2';
 
@@ -21,7 +17,6 @@ const runtime = (faux: ReturnType<typeof createFauxCore>) => ({
         : null,
 });
 
-const resolvableApiToken = () => createMemoryCredentialResolver({'env:API_TOKEN': CANARY});
 
 for (const value of [
     {name: 'null object', value: '{"id":1}'},
@@ -45,33 +40,37 @@ test('isCredentialRefString accepts only the canonical ref encoding', () => {
     assert.equal(isCredentialRefString(['x']), false);
 });
 
-test('materializeCredentialInput resolves nested refs and preserves ordinary scalars', async () => {
-    const materialized = await materializeCredentialInput({
-        token: serializeCredentialRef(apiTokenRef()),
-        username: 'alice',
-        retries: 3,
-        enabled: true,
-        flags: [null, 'plain'],
-        nested: {token: serializeCredentialRef(apiTokenRef()), value: 'plain'},
-    }, resolvableApiToken());
-    assert.deepEqual(materialized, {
-        token: CANARY,
-        username: 'alice',
-        retries: 3,
-        enabled: true,
-        flags: [null, 'plain'],
-        nested: {token: CANARY, value: 'plain'},
+test('the tool layer never resolves a credential: reference-only input reaches the executor and completes', async () => {
+    const faux = createFauxCore({provider: 'faux', models: [{id: 'planner'}]});
+    faux.setResponses([
+        fauxAssistantMessage(fauxToolCall('agent.execute_program', {
+            source: 'fill input.target with input.value',
+            input: {target: {nodeId: 'buyer'}, value: serializeCredentialRef(apiTokenRef())},
+        })),
+        fauxAssistantMessage('Completed the program.'),
+    ]);
+    const programs: Array<{source: string; input: Readonly<Record<string, unknown>>}> = [];
+    const runner = createProgramFirstAgentRunner({
+        readTools: [],
+        executeProgram: async (program) => {
+            programs.push(program);
+            return {summary: {...program, status: 'completed', text: 'ok'}};
+        },
+        modelRuntime: runtime(faux),
     });
+
+    const result = await runner.run({prompt: 'Fill buyer', provider: 'faux', model: 'planner'});
+
+    assert.equal(result.programs?.[0]?.status, 'completed');
+    const refString = serializeCredentialRef(apiTokenRef());
+    assert.deepEqual(programs, [{
+        source: 'fill input.target with input.value',
+        input: {target: {nodeId: 'buyer'}, value: refString},
+    }]);
+    assert.ok(!JSON.stringify(result).includes(CANARY), 'runner result leaked the canary secret');
 });
 
-test('materializeCredentialInput fails on unknown refs before any resolution succeeds', async () => {
-    await assert.rejects(
-        () => materializeCredentialInput({token: serializeCredentialRef(apiTokenRef())}, createMemoryCredentialResolver({})),
-        (error) => error instanceof SecurityError && error.code === 'ERR_SECURITY_CREDENTIAL_NOT_FOUND',
-    );
-});
-
-test('canary secret reaches the executor only, never the faux model context nor the summary', async () => {
+test('the canary secret stays out of the model context and summaries while the executor receives reference-only input', async () => {
     const faux = createFauxCore({provider: 'faux', models: [{id: 'planner'}]});
     const contexts: string[] = [];
     faux.setResponses([
@@ -87,15 +86,14 @@ test('canary secret reaches the executor only, never the faux model context nor 
             return fauxAssistantMessage('Completed through the program transaction.');
         },
     ]);
-    const materializedPrograms: Array<{source: string; input: Readonly<Record<string, unknown>>}> = [];
+    const programs: Array<{source: string; input: Readonly<Record<string, unknown>>}> = [];
     const execute: AgentProgramExecutor = async (program) => {
-        materializedPrograms.push(program);
+        programs.push(program);
         return {summary: {...program, status: 'completed', text: 'program complete'}};
     };
     const runner = createProgramFirstAgentRunner({
         readTools: [],
         executeProgram: execute,
-        credentialResolver: resolvableApiToken(),
         modelRuntime: runtime(faux),
     });
 
@@ -109,9 +107,9 @@ test('canary secret reaches the executor only, never the faux model context nor 
     }
     assert.ok(contexts[1].includes(escapedRef), 'faux model context must carry the reference only');
     assert.ok(!contexts[1].includes(CANARY), 'the reference-only model context still leaked the canary secret');
-    assert.deepEqual(materializedPrograms, [{
+    assert.deepEqual(programs, [{
         source: 'fill input.target with input.value',
-        input: {target: {nodeId: 'buyer'}, value: CANARY},
+        input: {target: {nodeId: 'buyer'}, value: refString},
     }]);
     const summary = result.programs?.[0];
     assert.equal(summary?.status, 'completed');
@@ -120,17 +118,16 @@ test('canary secret reaches the executor only, never the faux model context nor 
     assert.ok(!JSON.stringify(result).includes(CANARY), 'runner result leaked the canary secret');
 });
 
-test('direct source execution materializes refs and keeps summaries reference-only', async () => {
+test('direct source execution passes reference-only input and keeps summaries reference-only', async () => {
     const refString = serializeCredentialRef(apiTokenRef());
-    const materializedPrograms: Array<{source: string; input: Readonly<Record<string, unknown>>}> = [];
+    const programs: Array<{source: string; input: Readonly<Record<string, unknown>>}> = [];
     const execute: AgentProgramExecutor = async (program) => {
-        materializedPrograms.push(program);
+        programs.push(program);
         return {summary: {...program, status: 'completed', text: 'direct'}};
     };
     const runner = createProgramFirstAgentRunner({
         readTools: [],
         executeProgram: execute,
-        credentialResolver: resolvableApiToken(),
         modelRuntime: {resolve: () => null},
     });
 
@@ -142,9 +139,9 @@ test('direct source execution materializes refs and keeps summaries reference-on
         input: {ok: true, token: refString, nested: {token: refString}},
     });
 
-    assert.deepEqual(materializedPrograms, [{
+    assert.deepEqual(programs, [{
         source: 'output ok = input.ok',
-        input: {ok: true, token: CANARY, nested: {token: CANARY}},
+        input: {ok: true, token: refString, nested: {token: refString}},
     }]);
     const summary = result.programs?.[0];
     assert.deepEqual(summary?.input, {ok: true, token: refString, nested: {token: refString}});
@@ -163,27 +160,27 @@ test('saved Program and its materialized source never contain the resolved secre
         fauxAssistantMessage(fauxToolCall('agent.save_program', {name: 'login'})),
         fauxAssistantMessage('Saved the completed Program.'),
     ]);
-    const materializedPrograms: Array<{input: Readonly<Record<string, unknown>>}> = [];
+    const programs: Array<{input: Readonly<Record<string, unknown>>}> = [];
     const saves: Array<{name: string; source: string}> = [];
     const runner = createProgramFirstAgentRunner({
         readTools: [],
         executeProgram: async (program) => {
-            materializedPrograms.push(program);
+            programs.push(program);
             return {summary: {...program, status: 'completed', text: 'program complete'}};
         },
         saveProgram: async (request: AgentProgramSaveRequest) => {
             saves.push({name: request.name, source: request.source});
             return {status: 'saved', name: request.name, artifactRevision: 'revision-1'};
         },
-        credentialResolver: resolvableApiToken(),
         modelRuntime: runtime(faux),
     });
 
     const result = await runner.run({prompt: 'Fill and save', provider: 'faux', model: 'planner'});
 
-    assert.deepEqual(materializedPrograms, [{
+    const refString = serializeCredentialRef(apiTokenRef());
+    assert.deepEqual(programs, [{
         source: 'fill input.target with input.value',
-        input: {target: {nodeId: 'buyer'}, value: CANARY},
+        input: {target: {nodeId: 'buyer'}, value: refString},
     }]);
     assert.equal(saves.length, 1);
     assert.equal(saves[0].source, 'fill input.target with input.value');
@@ -193,34 +190,8 @@ test('saved Program and its materialized source never contain the resolved secre
     assert.ok(!JSON.stringify(result).includes(CANARY), 'runner result leaked the canary secret');
 });
 
-test('unknown credential ref fails before any mutation regardless of injected resolver', async () => {
-    const missing = createMemoryCredentialResolver({});
-    const executeSpy: Array<{source: string}> = [];
-    const runner = createProgramFirstAgentRunner({
-        readTools: [],
-        executeProgram: async (program) => {
-            executeSpy.push(program);
-            return {summary: {...program, status: 'completed', text: 'unreachable'}};
-        },
-        credentialResolver: missing,
-        modelRuntime: {resolve: () => null},
-    });
-
-    await assert.rejects(
-        () => runner.run({
-            prompt: 'Run supplied program',
-            provider: 'unused',
-            model: 'unused',
-            source: 'output ok = input.ok',
-            input: {token: serializeCredentialRef(apiTokenRef())},
-        }),
-        (error) => error instanceof SecurityError && error.code === 'ERR_SECURITY_CREDENTIAL_NOT_FOUND',
-    );
-    assert.deepEqual(executeSpy, [], 'executor must not run when a ref is unresolvable');
-});
-
-test('without an injected resolver any credential ref is denied before mutation', async () => {
-    const executeSpy: Array<{source: string}> = [];
+test('an unused unresolvable ref in input does not block a program that never consumes it', async () => {
+    const executeSpy: Array<{source: string; input: Readonly<Record<string, unknown>>}> = [];
     const runner = createProgramFirstAgentRunner({
         readTools: [],
         executeProgram: async (program) => {
@@ -230,31 +201,60 @@ test('without an injected resolver any credential ref is denied before mutation'
         modelRuntime: {resolve: () => null},
     });
 
-    await assert.rejects(
-        () => runner.run({
-            prompt: 'Run supplied program',
-            provider: 'unused',
-            model: 'unused',
-            source: 'output ok = input.ok',
-            input: {token: serializeCredentialRef(apiTokenRef())},
-        }),
-        (error) => error instanceof SecurityError && error.code === 'ERR_SECURITY_CREDENTIAL_UNRESOLVABLE',
-    );
-    assert.deepEqual(executeSpy, [], 'executor must not run when no resolver is configured');
+    const result = await runner.run({
+        prompt: 'Run supplied program',
+        provider: 'unused',
+        model: 'unused',
+        source: 'output ok = input.ok',
+        input: {ok: true, token: serializeCredentialRef(apiTokenRef())},
+    });
+
+    const refString = serializeCredentialRef(apiTokenRef());
+    assert.equal(executeSpy.length, 1, 'an input ref is only resolved when a mutation needs it');
+    assert.deepEqual(executeSpy[0], {
+        source: 'output ok = input.ok',
+        input: {ok: true, token: refString},
+    });
+    assert.equal(result.programs?.[0]?.status, 'completed');
+    assert.ok(!JSON.stringify(result).includes(CANARY), 'runner result leaked the canary secret');
 });
 
-test('an unresolvable ref submitted by the model fails the tool call without reaching the executor', async () => {
+test('without an injected resolver the tool still hands reference-only input without touching any resolver', async () => {
+    const executeSpy: Array<{source: string; input: Readonly<Record<string, unknown>>}> = [];
+    const runner = createProgramFirstAgentRunner({
+        readTools: [],
+        executeProgram: async (program) => {
+            executeSpy.push(program);
+            return {summary: {...program, status: 'completed', text: 'ok'}};
+        },
+        modelRuntime: {resolve: () => null},
+    });
+
+    const result = await runner.run({
+        prompt: 'Run supplied program',
+        provider: 'unused',
+        model: 'unused',
+        source: 'output ok = input.ok',
+        input: {token: serializeCredentialRef(apiTokenRef())},
+    });
+
+    const refString = serializeCredentialRef(apiTokenRef());
+    assert.deepEqual(executeSpy, [{
+        source: 'output ok = input.ok',
+        input: {token: refString},
+    }]);
+    assert.equal(result.programs?.[0]?.status, 'completed');
+    assert.ok(!JSON.stringify(result).includes(CANARY), 'runner result leaked the canary secret');
+});
+
+test('an unresolvable ref submitted by the model reaches the executor instead of failing the tool call', async () => {
     const faux = createFauxCore({provider: 'faux', models: [{id: 'planner'}]});
     faux.setResponses([
         fauxAssistantMessage(fauxToolCall('agent.execute_program', {
             source: 'fill input.target with input.value',
             input: {target: {nodeId: 'buyer'}, value: serializeCredentialRef(apiTokenRef())},
         })),
-        fauxAssistantMessage(fauxToolCall('agent.execute_program', {
-            source: 'fill input.target with input.value',
-            input: {target: {nodeId: 'buyer'}, value: 'alice'},
-        })),
-        fauxAssistantMessage('Retried with a plain value.'),
+        fauxAssistantMessage('Completed.'),
     ]);
     const executeSpy: Array<{source: string}> = [];
     const runner = createProgramFirstAgentRunner({
@@ -263,15 +263,15 @@ test('an unresolvable ref submitted by the model fails the tool call without rea
             executeSpy.push(program);
             return {summary: {...program, status: 'completed', text: 'ok'}};
         },
-        credentialResolver: createMemoryCredentialResolver({}),
         modelRuntime: runtime(faux),
     });
 
     const result = await runner.run({prompt: 'Fill buyer', provider: 'faux', model: 'planner'});
 
-    assert.equal(executeSpy.length, 1, 'only the retry program may reach the executor');
-    assert.equal(result.trace.metrics.failedToolCalls, 1);
+    assert.equal(executeSpy.length, 1, 'the reference-only program must reach the executor');
+    assert.equal(result.trace.metrics.failedToolCalls, 0, 'an input ref must not fail the tool call up front');
     assert.equal(result.programs?.[0]?.status, 'completed');
+    assert.ok(!JSON.stringify(result).includes(CANARY), 'runner result leaked the canary secret');
 });
 
 test('ordinary scalar input passes through unchanged and never touches the resolver', async () => {
@@ -289,11 +289,6 @@ test('ordinary scalar input passes through unchanged and never touches the resol
         executeProgram: async (program) => {
             programInputs.push(program.input);
             return {summary: {...program, status: 'completed', text: 'ok'}};
-        },
-        credentialResolver: {
-            resolve: async () => {throw new Error('resolve must not be called for scalar input');},
-            has: () => {throw new Error('has must not be called for scalar input');},
-            describe: () => '',
         },
         modelRuntime: runtime(faux),
     });

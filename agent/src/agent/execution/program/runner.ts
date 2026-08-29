@@ -27,8 +27,7 @@ import {createProgramSaveTool, SAVE_PROGRAM_TOOL} from './save_tool';
 import type {AgentProgramLibrary} from './library';
 import {createProgramLibraryTools, LIST_PROGRAMS_TOOL, LOAD_PROGRAM_TOOL} from './library_tools';
 import {PROGRAM_DSL_AUTHORING_GUIDE} from './authoring';
-import type {AgentRunRequest} from '../types';
-import type {CredentialResolver} from '../../../security/credentials';
+import type {AgentRunContinuation, AgentRunRequest} from '../types';
 
 export const PROGRAM_FIRST_SYSTEM_PROMPT = [
     'You are the planner and controller for a program-first browser automation agent.',
@@ -67,7 +66,6 @@ export type CreateProgramFirstAgentRunnerOptions = {
     programLibrary?: AgentProgramLibrary;
     saveProgram?: AgentProgramSaver;
     modelRuntime?: AgentModelRuntime;
-    credentialResolver?: CredentialResolver;
     readWorldRevision?: () => AgentWorldRevision | null | Promise<AgentWorldRevision | null>;
     governancePolicy?: GovernancePolicy;
     governanceController?: GovernanceController;
@@ -112,6 +110,49 @@ const readProgramWorldRevision = async (
     const debugRevision = execution.readWorldRevision();
     if (debugRevision) {return debugRevision;}
     return fallback ? await fallback() : null;
+};
+
+const retainedContinuation = (
+    execution: ProgramExecutionToolController,
+    request: AgentRunRequest,
+): AgentRunContinuation => ({
+    resume: async () => {
+        const outcome = await execution.continuePaused();
+        const base = {
+            provider: request.provider,
+            model: request.model,
+            text: '',
+            trace: mergeAgentTraceSnapshots([]),
+            executionMode: 'program' as const,
+            programs: execution.readAttempts(),
+        };
+        if (outcome.status === 'completed') {
+            return {...base, text: JSON.stringify(outcome.output)};
+        }
+        if (outcome.status === 'failed') {
+            return {...base, text: outcome.failure.message};
+        }
+        if (outcome.status === 'aborted') {
+            return {...base, text: 'program execution was aborted'};
+        }
+        if (outcome.status === 'conflict') {
+            throw Object.assign(
+                new Error('retained program continuation conflicted with the pinned world'),
+                {code: 'ERR_AGENT_PROGRAM_CONFLICT'},
+            );
+        }
+        return withContinuation(base, execution, request);
+    },
+});
+
+const withContinuation = (
+    base: ProgramFirstAgentRunResult,
+    execution: ProgramExecutionToolController,
+    request: AgentRunRequest,
+): ProgramFirstAgentRunResult => {
+    const pause = execution.readPause();
+    if (!pause || pause.reason === 'failure') {return base;}
+    return {...base, continuation: retainedContinuation(execution, request)};
 };
 
 const recoveryActionForTool = (name: string): RecoveryBudgetAction | null => {
@@ -166,10 +207,7 @@ export const createProgramFirstAgentRunner = (
             ?? createGovernanceController(options.governancePolicy ?? SAFE_UNATTENDED_POLICY, Date.now());
         const budgetStore = createRecoveryBudgetStore(options.recoveryBudgetLimits);
 
-        const execution = createProgramExecutionTool({
-            execute: options.executeProgram,
-            ...(options.credentialResolver ? {credentialResolver: options.credentialResolver} : {}),
-        });
+        const execution = createProgramExecutionTool({execute: options.executeProgram});
         const save = options.saveProgram
             ? createProgramSaveTool({execution, save: options.saveProgram})
             : null;
@@ -247,12 +285,12 @@ export const createProgramFirstAgentRunner = (
                 ...request,
                 systemPrompt: controlSystemPrompt(execution, request, recoveryContext),
             });
-            return {
+            return withContinuation({
                 ...result,
                 executionMode: 'program',
                 programs: execution.readAttempts(),
                 ...(save && save.readSaved().length > 0 ? {savedPrograms: save.readSaved()} : {}),
-            };
+            }, execution, request);
         }
 
         const runner = createReactAgentRunner({
@@ -274,11 +312,11 @@ export const createProgramFirstAgentRunner = (
             ...request,
             systemPrompt: requestSystemPrompt(request),
         });
-        return {
+        return withContinuation({
             ...result,
             executionMode: 'program',
             programs: execution.readAttempts(),
             ...(save && save.readSaved().length > 0 ? {savedPrograms: save.readSaved()} : {}),
-        };
+        }, execution, request);
     },
 });

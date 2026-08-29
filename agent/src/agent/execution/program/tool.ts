@@ -2,16 +2,15 @@ import {Type} from '@earendil-works/pi-ai';
 import type {AgentTool} from '@earendil-works/pi-agent-core';
 import {createPausedDslDebugAgentTools, type PausedDslDebugAgentTools} from '../../debug/execution/agent_tools';
 import {debuggerToolsForPause} from '../../debug/execution/agent_surface';
+import type {DslDebugAdvanceResult} from '../../debug/execution/contracts';
 import type {DebugEffectRecord} from '../../debug/effects/contracts';
 import type {AgentWorldRevision} from '../../trace/collector';
-import type {CredentialResolver} from '../../../security/credentials';
-import {createDenyAllCredentialResolver} from '../../../security/credentials';
 import type {
     AgentProgramEffectSummary,
     AgentProgramExecutionSummary,
+    AgentProgramPause,
 } from '../types';
-import {materializeCredentialInput} from './credentials';
-import type {AgentProgram, AgentProgramExecutionStart, AgentProgramExecutor} from './contracts';
+import {summarizePause, type AgentProgram, type AgentProgramExecutionStart, type AgentProgramExecutor} from './contracts';
 
 export const EXECUTE_PROGRAM_TOOL = 'agent.execute_program';
 
@@ -61,7 +60,15 @@ const summarizeAttempt = (attempt: ProgramAttempt): AgentProgramExecutionSummary
     const terminal = attempt.debugger.readTerminal();
     const base = attempt.start.summary;
     const effects = effectSummaries(attempt);
-    if (pause) {return {...base, status: 'paused', materializedSource, effects};}
+    if (pause) {
+        return {
+            ...base,
+            status: 'paused',
+            materializedSource,
+            effects,
+            pause: summarizePause(pause),
+        };
+    }
     if (!terminal) {return {...base, materializedSource, effects};}
     if (terminal.status === 'completed') {
         return {
@@ -97,6 +104,13 @@ const summarizeAttempt = (attempt: ProgramAttempt): AgentProgramExecutionSummary
     };
 };
 
+export type AgentProgramContinueResult =
+    | Readonly<{status: 'paused'; pause: AgentProgramPause}>
+    | Readonly<{status: 'completed'; output: Readonly<Record<string, unknown>>}>
+    | Readonly<{status: 'failed'; failure: Readonly<{code: string; message: string}>}>
+    | Readonly<{status: 'aborted'}>
+    | Readonly<{status: 'conflict'}>;
+
 export type ProgramExecutionToolController = Readonly<{
     tool: AgentTool;
     start: (program: AgentProgram) => Promise<AgentProgramExecutionSummary>;
@@ -109,13 +123,12 @@ export type ProgramExecutionToolController = Readonly<{
     readEffects: () => readonly DebugEffectRecord[];
     hasStartedProgram: () => boolean;
     hasCompletedProgram: () => boolean;
+    continuePaused: () => Promise<AgentProgramContinueResult>;
 }>;
 
 export const createProgramExecutionTool = (options: {
     execute: AgentProgramExecutor;
-    credentialResolver?: CredentialResolver;
 }): ProgramExecutionToolController => {
-    const resolveCredentials = options.credentialResolver ?? createDenyAllCredentialResolver();
     const attempts: ProgramAttempt[] = [];
     const latest = (): ProgramAttempt | undefined => attempts.at(-1);
     const latestDebugger = (): PausedDslDebugAgentTools | null => latest()?.debugger ?? null;
@@ -125,10 +138,9 @@ export const createProgramExecutionTool = (options: {
         if (previous && summarizeAttempt(previous).status !== 'invalid') {
             throw new Error('a program execution already started; repair or rollback must remain inside its retained transaction');
         }
-        const materializedInput = await materializeCredentialInput(program.input, resolveCredentials);
         const executionStart = await options.execute({
             source: program.source,
-            input: materializedInput,
+            input: structuredClone(program.input),
         });
         const attempt: ProgramAttempt = {
             start: {
@@ -190,5 +202,30 @@ export const createProgramExecutionTool = (options: {
         readEffects: () => latest()?.start.debug?.session.auditEffects() ?? [],
         hasStartedProgram: () => attempts.some((attempt) => summarizeAttempt(attempt).status !== 'invalid'),
         hasCompletedProgram: () => latest() ? summarizeAttempt(latest()!).status === 'completed' : false,
+        continuePaused: async () => {
+            const attempt = latest();
+            const debuggerTools = attempt?.debugger;
+            const pause = debuggerTools?.readPause();
+            if (!attempt || !debuggerTools || !pause) {
+                throw new Error('no retained paused program to continue');
+            }
+            if (pause.reason === 'failure') {
+                throw new Error('failure pauses are not resumable by approval');
+            }
+            const toolName = pause.reason === 'barrier' ? 'debug.cross_barrier' : 'debug.continue';
+            const tool = debuggerTools.tools.find((candidate) => candidate.name === toolName);
+            if (!tool) {throw new Error(`retained execution has no ${toolName} tool`);}
+            const outcome = await tool.execute('hitl-approval', {});
+            const details = outcome.details as DslDebugAdvanceResult;
+            if (details.status === 'paused' || details.status === 'barrier' || details.status === 'recompute_required') {
+                return {status: 'paused' as const, pause: summarizePause(details.pause)};
+            }
+            if (details.status === 'completed') {return {status: 'completed' as const, output: details.output};}
+            if (details.status === 'failed') {
+                return {status: 'failed' as const, failure: {code: details.failure.code, message: details.failure.message}};
+            }
+            if (details.status === 'conflict') {return {status: 'conflict' as const};}
+            return {status: 'aborted' as const};
+        },
     };
 };

@@ -1,4 +1,13 @@
-export type {SessionId, SessionState, SessionSnapshot, SessionRequestSummary, SessionError, SessionReport} from './types';
+export type {
+    SessionId,
+    SessionState,
+    SessionSnapshot,
+    SessionRequestSummary,
+    SessionError,
+    SessionReport,
+    SessionInteractionView,
+    SessionInteractionPolicy,
+} from './types';
 export {createSessionStore, type SessionStore, type SessionSettle, type SessionRetentionPolicy} from './store';
 export {
     createInMemorySessionStorage,
@@ -7,4 +16,10 @@ export {
     type StoredSessionMetadata,
     type CreateFileSystemSessionStorageOptions,
 } from './storage';
-export {createSessionManager, SessionCancelledError, type SessionManager, type SessionManagerOptions} from './manager';
+export {
+    createSessionManager,
+    SessionCancelledError,
+    type SessionManager,
+    type SessionManagerOptions,
+    type InteractionDecisionResult,
+} from './manager';
