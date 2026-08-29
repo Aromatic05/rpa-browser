@@ -28,12 +28,18 @@ export type AgentRunRequest = {
 
 export type AgentProgramExecutionSummary = Readonly<{
     source: string;
+    materializedSource?: string;
     input: Readonly<Record<string, unknown>>;
     status: 'completed' | 'paused' | 'failed' | 'aborted' | 'invalid';
     text?: string;
     error?: Readonly<{code: string; message: string; details?: unknown}>;
     trace?: AgentTraceSnapshot;
     effects?: readonly AgentProgramEffectSummary[];
+}>;
+
+export type AgentProgramSavedArtifact = Readonly<{
+    name: string;
+    artifactRevision: string;
 }>;
 
 export type AgentRunResult = {
@@ -43,6 +49,7 @@ export type AgentRunResult = {
     trace: AgentTraceSnapshot;
     executionMode?: AgentExecutionMode;
     programs?: readonly AgentProgramExecutionSummary[];
+    savedPrograms?: readonly AgentProgramSavedArtifact[];
 };
 
 export type AgentRunner = {

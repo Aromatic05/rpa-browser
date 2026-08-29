@@ -10,10 +10,10 @@ import type { RunStepsDeps } from '../runner/run_steps';
 import type { WorkspaceEntityRulesProvider } from '../snapshot/rules/runtime/contracts';
 import {workflowArtifactRevision, type Workflow, type WorkflowDsl, type WorkflowDummy} from '../workflow';
 import type { StepResolve } from '../runner/steps/types';
-import { validateStepResolveFileForSerialization } from '../runner/serialization/types';
 import { materializeReferencedCheckpointRuntimeSnapshot } from '../runner/checkpoint';
 import { validateDslCheckpointGraph } from './validate';
 import type { DslCheckpointProvider } from './emit';
+import {saveWorkflowDsl} from './save';
 
 const DSL_DUMMY: WorkflowDummy = {kind: 'dsl'};
 
@@ -85,19 +85,6 @@ const validateCheckpointGraph = (
     ).diagnostics,
 });
 
-const validateStepResolves = (value: unknown): Record<string, StepResolve> => {
-    try {
-        const resolves = structuredClone(value) as Record<string, StepResolve>;
-        validateStepResolveFileForSerialization({version: 1, resolves});
-        return resolves;
-    } catch (error) {
-        throw new ActionError(
-            ERROR_CODES.ERR_WORKFLOW_BAD_ARGS,
-            `invalid DSL resolve sidecar: ${error instanceof Error ? error.message : String(error)}`,
-        );
-    }
-};
-
 const readExpectedRevision = (value: unknown): string | null | undefined => {
     if (value === undefined) {return undefined;}
     if (value === null) {return null;}
@@ -150,30 +137,15 @@ export const createDslControl = (services: DslControlServices): DslControl => ({
             }
             const dslName = payload.dslName || resolveDefaultDslName(workflow);
             const expectedRevision = readExpectedRevision(payload.expectedRevision);
-            const stepResolves = payload.stepResolves === undefined
-                ? existingDslResolves(workflow, dslName)
-                : validateStepResolves(payload.stepResolves);
-            const resolveResolver = createDslResolveResolver(workflow, new Map([[dslName, stepResolves]]));
-            const validation = validateDslSource(payload.content, entityRulesResolver, resolveResolver);
-            if (validation.diagnostics.length > 0) {
-                throw new DslValidationError(validation.diagnostics);
-            }
-            const checkpointDiagnostics = validateCheckpointGraph(
-                payload.content,
-                workspace.checkpoint.getProvider(workflow),
+            const saved = saveWorkflowDsl({
+                workflow,
+                checkpointProvider: workspace.checkpoint.getProvider(workflow),
                 entityRulesResolver,
-                resolveResolver,
-            );
-            if (checkpointDiagnostics.length > 0) {
-                throw new DslValidationError(checkpointDiagnostics);
-            }
-            const saved = workflow.save(
-                {kind: 'dsl', name: dslName, content: payload.content, stepResolves},
-                {expectedRevision},
-            );
-            if (saved.kind !== 'dsl') {
-                throw new ActionError(ERROR_CODES.ERR_INTERNAL, 'unexpected DSL artifact kind after save');
-            }
+                dslName,
+                content: payload.content,
+                ...(payload.stepResolves === undefined ? {} : {stepResolves: payload.stepResolves}),
+                expectedRevision,
+            });
             return {
                 reply: replyAction(action, {
                     workspaceName: workspace.name,
@@ -259,8 +231,3 @@ export const createDslControl = (services: DslControlServices): DslControl => ({
         };
     },
 });
-
-const existingDslResolves = (workflow: Workflow, dslName: string): Record<string, StepResolve> => {
-    const existing = workflow.get(dslName, DSL_DUMMY);
-    return existing?.kind === 'dsl' ? existing.stepResolves : {};
-};

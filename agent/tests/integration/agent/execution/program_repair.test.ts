@@ -8,7 +8,9 @@ import {
 import type {StreamFn} from '@earendil-works/pi-agent-core';
 import {createProgramFirstAgentRunner} from '../../../../src/agent/execution/program/runner';
 import type {AgentProgramExecutor} from '../../../../src/agent/execution/program/contracts';
+import type {AgentProgramSaveRequest} from '../../../../src/agent/execution/program/persistence';
 import {createDslDebugExecutionSession} from '../../../../src/agent/debug/execution/dsl_session';
+import type {DslDebugExecutionSession} from '../../../../src/agent/debug/execution/contracts';
 import type {WorldView} from '../../../../src/agent/worldview/contracts';
 import type {DslEntityRulesProfile, DslEntityRulesResolver} from '../../../../src/automation/dsl/link';
 import {PageSnapshotSessionStore} from '../../../../src/automation/snapshot';
@@ -137,6 +139,7 @@ test('program-first Agent restores World, rewinds the Program point, patches it,
             return {stepId: step.id, ok: true, data: {filled: true}};
         },
     };
+    const retained = {session: null as DslDebugExecutionSession | null};
     const executeProgram: AgentProgramExecutor = async (program) => {
         assert.equal(program.source, source);
         const session = createDslDebugExecutionSession({
@@ -157,6 +160,7 @@ test('program-first Agent restores World, rewinds the Program point, patches it,
                 barrierResumeMode: 'continue',
             },
         });
+        retained.session = session;
         const pause = await session.waitForPause();
         assert.equal(pause.reason, 'failure');
         return {
@@ -187,13 +191,20 @@ test('program-first Agent restores World, rewinds the Program point, patches it,
                     }))
                     : modelTurn === 4
                         ? fauxAssistantMessage(fauxToolCall('debug.continue', {}))
-                        : fauxAssistantMessage('World restored, failing statement patched, repaired Program completed.');
+                        : modelTurn === 5
+                            ? fauxAssistantMessage(fauxToolCall('agent.save_program', {name: 'repaired-flow'}))
+                            : fauxAssistantMessage('World restored, failing statement patched, repaired Program completed and saved.');
         faux.setResponses([response]);
         return faux.streamSimple(model, context, options);
     };
+    const saves: AgentProgramSaveRequest[] = [];
     const runner = createProgramFirstAgentRunner({
         readTools: [],
         executeProgram,
+        saveProgram: async (request) => {
+            saves.push(request);
+            return {status: 'saved', name: request.name, artifactRevision: 'revision-repaired'};
+        },
         modelRuntime: {
             resolve: (provider, model) => provider === 'faux-repair' && model === 'repair'
                 ? {model: faux.getModel(), streamFn}
@@ -202,17 +213,18 @@ test('program-first Agent restores World, rewinds the Program point, patches it,
     });
 
     const result = await runner.run({
-        prompt: 'Repair the failed reversible fill without repeating its side effect.',
+        prompt: 'Repair the failed reversible fill without repeating its side effect, then save the repaired Program as repaired-flow.',
         provider: 'faux-repair',
         model: 'repair',
     });
 
-    assert.equal(result.text, 'World restored, failing statement patched, repaired Program completed.');
+    assert.equal(result.text, 'World restored, failing statement patched, repaired Program completed and saved.');
     assert.deepEqual(result.trace.tools.map((tool) => tool.toolName), [
         'agent.execute_program',
         'debug.rewind',
         'debug.patch_program',
         'debug.continue',
+        'agent.save_program',
     ]);
     assert.equal(result.trace.metrics.failedToolCalls, 0);
     assert.deepEqual(values, ['new value', 'old value']);
@@ -221,6 +233,19 @@ test('program-first Agent restores World, rewinds the Program point, patches it,
     assert.equal(result.programs?.length, 1);
     assert.equal(result.programs?.[0].status, 'completed');
     assert.equal(result.programs?.[0].text, '{"repaired":true,"done":true}');
+    assert.equal(result.programs?.[0].materializedSource, [
+        'use entity_rules "semantic-order-page" as order',
+        'output repaired = input.done',
+        'output done = input.done',
+    ].join('\n'));
+    assert.deepEqual(saves, [{
+        name: 'repaired-flow',
+        source: result.programs?.[0].materializedSource,
+    }]);
+    assert.deepEqual(result.savedPrograms, [{
+        name: 'repaired-flow',
+        artifactRevision: 'revision-repaired',
+    }]);
     assert.deepEqual(result.programs?.[0].effects?.map((effect) => ({
         status: effect.status,
         compensates: effect.compensates,
@@ -228,4 +253,11 @@ test('program-first Agent restores World, rewinds the Program point, patches it,
         {status: 'failed', compensates: undefined},
         {status: 'succeeded', compensates: 1},
     ]);
+    const retainedSession = retained.session;
+    assert.ok(retainedSession);
+    assert.equal(retainedSession.materializeProgram(), [
+        'use entity_rules "semantic-order-page" as order',
+        'output repaired = input.done',
+        'output done = input.done',
+    ].join('\n'));
 });

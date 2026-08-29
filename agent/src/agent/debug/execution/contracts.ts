@@ -239,6 +239,7 @@ export type DslDebugExecutionSession = {
     ) => DebugComputeResult;
     catalog: (continuationId: string) => WorldCatalog;
     program: (continuationId: string, programId?: string) => DebugProgramView;
+    materializeProgram: (programId?: string) => string;
     history: (continuationId: string, programId?: string) => DebugExecutionHistory;
     patches: (continuationId: string, programId?: string) => readonly DebugProgramPatch[];
     auditEffects: () => readonly DebugEffectRecord[];

@@ -106,3 +106,51 @@ test('workspace executes a pure structured program without requiring a debugger 
     assert.equal(payload.trace.metrics.turns, 0);
     assert.equal(workspace.state, 'idle');
 });
+
+test('workspace Agent explicitly persists a completed Program through the workflow DSL store', async () => {
+    const faux = createFauxCore({provider: 'workspace-save-faux', models: [{id: 'save'}]});
+    const source = 'output ok = input.ok';
+    faux.setResponses([
+        fauxAssistantMessage(fauxToolCall('agent.execute_program', {source, input: {ok: true}})),
+        fauxAssistantMessage(fauxToolCall('agent.save_program', {name: 'generated'})),
+        fauxAssistantMessage('Completed and saved generated.'),
+    ]);
+    const {registry} = createWorkspaceHarness({
+        pluginHost: {getExecutors: () => stepExecutors} as any,
+        agentModelRuntime: {
+            resolve: (provider, model) => provider === 'workspace-save-faux' && model === 'save'
+                ? {model: faux.getModel(), streamFn: faux.streamSimple}
+                : null,
+        },
+    });
+    const workspaceName = `agent-save-${crypto.randomUUID()}`;
+    const workspace = registry.createWorkspace(workspaceName, createWorkflowOnFs(workspaceName));
+    const result = await workspace.router.handle({
+        v: 1,
+        id: crypto.randomUUID(),
+        type: 'agent.run',
+        workspaceName,
+        payload: {
+            prompt: 'Run the Program and explicitly save the completed reusable Program as generated.',
+            provider: 'workspace-save-faux',
+            model: 'save',
+        },
+    }, workspace, registry);
+    const payload = result.reply.payload as any;
+    const saved = workspace.workflow.get('generated', {kind: 'dsl'});
+
+    assert.equal(payload.text, 'Completed and saved generated.');
+    assert.deepEqual(payload.trace.tools.map((tool: {toolName: string}) => tool.toolName), [
+        'agent.execute_program',
+        'agent.save_program',
+    ]);
+    assert.equal(payload.programs[0].status, 'completed');
+    assert.equal(payload.programs[0].materializedSource, source);
+    assert.equal(payload.savedPrograms.length, 1);
+    assert.equal(payload.savedPrograms[0].name, 'generated');
+    assert.equal(saved?.kind, 'dsl');
+    if (saved?.kind !== 'dsl') {throw new Error('expected persisted generated DSL');}
+    assert.equal(saved.content, source);
+    assert.deepEqual(saved.stepResolves, {});
+    assert.equal(workspace.state, 'idle');
+});

@@ -13,6 +13,7 @@ import {
     readWorkspaceWorldRevision,
 } from '../tools/adapter';
 import {createWorkspaceProgramExecutor} from './program_executor';
+import {createWorkspaceProgramSaver} from './program_persistence';
 
 export type WorkspaceAgentFactoryOptions = {
     modelRuntime?: AgentModelRuntime;
@@ -39,6 +40,10 @@ export const createWorkspaceAgentFactory = (
             workspaceName: deps.workspaceName,
             deps: deps.runStepsDeps,
             runWorkspaceExecution: deps.runWorkspaceExecution,
+        }),
+        saveProgram: createWorkspaceProgramSaver({
+            workspaceName: deps.workspaceName,
+            deps: deps.runStepsDeps,
         }),
         readWorldRevision: () => readWorkspaceWorldRevision(toolDeps),
         modelRuntime: options.modelRuntime,

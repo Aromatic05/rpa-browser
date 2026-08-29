@@ -35,6 +35,7 @@ import {recomputeDebugValue} from '../provenance/recompute';
 import {buildDebugProgramView, type DebugProgramView} from '../program/view';
 import {createDebugProgramPatchStore, isDurableProgramPatchStatement} from '../program/patches';
 import {buildDebugProgramOverlay} from '../program/overlay';
+import {materializeDebugProgramSource} from '../program/materialize';
 import {collectAvailableVariablesAtPath} from '../../../program/dsl/analysis/available_variables';
 import {createDebugStatementHistoryStore} from '../history/store';
 import {buildDebugExecutionHistory} from '../history/view';
@@ -1315,6 +1316,11 @@ export const createDslDebugExecutionSession = (
             const program = programs.get(targetProgramId);
             if (!program) {throw new Error(`DSL debug program is unavailable: ${targetProgramId}`);}
             return program;
+        },
+        materializeProgram: (programId = 'main') => {
+            const program = programs.get(programId);
+            if (!program) {throw new Error(`DSL debug program is unavailable: ${programId}`);}
+            return materializeDebugProgramSource(program, programPatches.list(programId));
         },
         patches: (continuationId: string, programId?: string) => {
             requireActive(continuationId);

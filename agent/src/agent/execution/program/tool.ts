@@ -47,17 +47,23 @@ const effectSummaries = (attempt: ProgramAttempt): readonly AgentProgramEffectSu
     })) ?? attempt.start.summary.effects ?? [];
 
 const summarizeAttempt = (attempt: ProgramAttempt): AgentProgramExecutionSummary => {
-    if (!attempt.debugger || !attempt.start.debug) {return attempt.start.summary;}
+    const materializedSource = attempt.start.debug
+        ? attempt.start.debug.session.materializeProgram()
+        : attempt.start.summary.source;
+    if (!attempt.debugger || !attempt.start.debug) {
+        return {...attempt.start.summary, materializedSource};
+    }
     const pause = attempt.debugger.readPause();
     const terminal = attempt.debugger.readTerminal();
     const base = attempt.start.summary;
     const effects = effectSummaries(attempt);
-    if (pause) {return {...base, status: 'paused', effects};}
-    if (!terminal) {return {...base, effects};}
+    if (pause) {return {...base, status: 'paused', materializedSource, effects};}
+    if (!terminal) {return {...base, materializedSource, effects};}
     if (terminal.status === 'completed') {
         return {
             ...base,
             status: 'completed',
+            materializedSource,
             text: JSON.stringify(terminal.output),
             error: undefined,
             effects,
@@ -67,6 +73,7 @@ const summarizeAttempt = (attempt: ProgramAttempt): AgentProgramExecutionSummary
         return {
             ...base,
             status: 'failed',
+            materializedSource,
             text: terminal.failure.message,
             error: {
                 code: terminal.failure.code,
@@ -79,6 +86,7 @@ const summarizeAttempt = (attempt: ProgramAttempt): AgentProgramExecutionSummary
     return {
         ...base,
         status: 'aborted',
+        materializedSource,
         text: 'program execution was aborted',
         error: {code: 'ERR_AGENT_PROGRAM_ABORTED', message: 'program execution was aborted'},
         effects,
@@ -89,10 +97,13 @@ export type ProgramExecutionToolController = Readonly<{
     tool: AgentTool;
     start: (program: AgentProgram) => Promise<AgentProgramExecutionSummary>;
     readAttempts: () => readonly AgentProgramExecutionSummary[];
+    readLatest: () => AgentProgramExecutionSummary | null;
+    readMaterializedSource: () => string | null;
     readDebugTools: () => readonly AgentTool[] | null;
     readPause: () => ReturnType<PausedDslDebugAgentTools['readPause']>;
     readWorldRevision: () => AgentWorldRevision | null;
     hasStartedProgram: () => boolean;
+    hasCompletedProgram: () => boolean;
 }>;
 
 export const createProgramExecutionTool = (options: {
@@ -144,6 +155,14 @@ export const createProgramExecutionTool = (options: {
         tool,
         start,
         readAttempts: () => attempts.map(summarizeAttempt),
+        readLatest: () => {
+            const attempt = latest();
+            return attempt ? summarizeAttempt(attempt) : null;
+        },
+        readMaterializedSource: () => {
+            const attempt = latest();
+            return attempt ? summarizeAttempt(attempt).materializedSource ?? null : null;
+        },
         readDebugTools: () => {
             const debuggerTools = latestDebugger();
             const pause = latestPause();
@@ -152,5 +171,6 @@ export const createProgramExecutionTool = (options: {
         readPause: latestPause,
         readWorldRevision: () => latestDebugger()?.readWorldRevision() ?? null,
         hasStartedProgram: () => attempts.some((attempt) => summarizeAttempt(attempt).status !== 'invalid'),
+        hasCompletedProgram: () => latest() ? summarizeAttempt(latest()!).status === 'completed' : false,
     };
 };

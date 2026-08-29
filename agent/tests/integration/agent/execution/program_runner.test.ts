@@ -113,6 +113,7 @@ test('program-first runner controls a retained barrier in the same ReAct session
     ]);
     let crossed = 0;
     const session = {
+        materializeProgram: () => 'fill input.target with input.value',
         crossBarrier: async () => {
             crossed += 1;
             return {status: 'completed' as const, output: {filled: 'alice'}};

@@ -8,6 +8,8 @@ import {mergeAgentTraceSnapshots} from '../../trace/merge';
 import type {AgentWorldRevision} from '../../trace/collector';
 import type {AgentProgramExecutor} from './contracts';
 import {createProgramExecutionTool, EXECUTE_PROGRAM_TOOL, type ProgramExecutionToolController} from './tool';
+import type {AgentProgramSaver} from './persistence';
+import {createProgramSaveTool, SAVE_PROGRAM_TOOL} from './save_tool';
 import {PROGRAM_DSL_AUTHORING_GUIDE} from './authoring';
 import type {AgentRunRequest, AgentRunner} from '../types';
 
@@ -24,13 +26,15 @@ export const PROGRAM_FIRST_SYSTEM_PROMPT = [
     'For mutation tasks, encode a checkable postcondition with ensure when possible.',
     'A compile-invalid program may be revised and submitted again. After execution has started, do not start a fresh program: diagnosis, patching, rollback, rewind, and retry stay in the same retained transaction through debug.* tools.',
     'Never claim a mutation succeeded unless the retained program reports completed and the resulting browser state is verified when practical.',
+    `Program source is never persisted automatically. If and only if the user explicitly asks to save or publish the completed Program, use ${SAVE_PROGRAM_TOOL} after completion.`,
     PROGRAM_DSL_AUTHORING_GUIDE,
 ].join(' ');
 
 const TERMINAL_PROGRAM_PROMPT = [
     'You are verifying the result of a program-first browser task. The retained program transaction is terminal.',
     'Do not start another program.',
-    'Use only the available read tools to verify the resulting browser state, then report the result.',
+    `Use browser read tools to verify the resulting state. ${SAVE_PROGRAM_TOOL} may also be available, but call it only when the user explicitly asked to save or publish this Program.`,
+    'A save conflict returns currentRevision without writing. Do not overwrite an existing artifact unless the user requested that overwrite; an approved retry must pass the observed currentRevision as expectedRevision.',
 ].join(' ');
 
 const ACTIVE_PROGRAM_CONTROL_PROMPT = [
@@ -42,6 +46,7 @@ const ACTIVE_PROGRAM_CONTROL_PROMPT = [
 export type CreateProgramFirstAgentRunnerOptions = {
     readTools: AgentTool[];
     executeProgram: AgentProgramExecutor;
+    saveProgram?: AgentProgramSaver;
     modelRuntime?: AgentModelRuntime;
     readWorldRevision?: () => AgentWorldRevision | null | Promise<AgentWorldRevision | null>;
 };
@@ -65,7 +70,7 @@ const controlSystemPrompt = (
 };
 
 const classifyProgramToolCall = (name: string, args: unknown) => {
-    if (name === EXECUTE_PROGRAM_TOOL) {return 'control' as const;}
+    if (name === EXECUTE_PROGRAM_TOOL || name === SAVE_PROGRAM_TOOL) {return 'control' as const;}
     if (name.startsWith('debug.')) {return classifyPausedDslDebugToolCall(name);}
     return classifyAgentToolCall(name, args);
 };
@@ -82,7 +87,7 @@ const readProgramWorldRevision = async (
 const prepareProgramContext = (
     execution: ProgramExecutionToolController,
     planningTools: readonly AgentTool[],
-    readTools: readonly AgentTool[],
+    terminalTools: readonly AgentTool[],
     request: AgentRunRequest,
 ) => ({context}: Parameters<NonNullable<Parameters<typeof createReactAgentRunner>[0]['prepareNextTurnWithContext']>>[0]) => {
     const debugTools = execution.readDebugTools();
@@ -99,7 +104,7 @@ const prepareProgramContext = (
         return {
             context: {
                 ...context,
-                tools: [...readTools],
+                tools: [...terminalTools],
                 systemPrompt: [TERMINAL_PROGRAM_PROMPT, request.systemPrompt]
                     .filter((value): value is string => Boolean(value))
                     .join('\n\n'),
@@ -120,7 +125,11 @@ export const createProgramFirstAgentRunner = (
 ): AgentRunner => ({
     run: async (request) => {
         const execution = createProgramExecutionTool({execute: options.executeProgram});
+        const save = options.saveProgram
+            ? createProgramSaveTool({execution, save: options.saveProgram})
+            : null;
         const planningTools = [...options.readTools, execution.tool];
+        const terminalTools = [...options.readTools, ...(save ? [save.tool] : [])];
 
         if (request.source) {
             const first = await execution.start({
@@ -147,7 +156,7 @@ export const createProgramFirstAgentRunner = (
                 prepareNextTurnWithContext: prepareProgramContext(
                     execution,
                     planningTools,
-                    options.readTools,
+                    terminalTools,
                     request,
                 ),
             });
@@ -159,6 +168,7 @@ export const createProgramFirstAgentRunner = (
                 ...result,
                 executionMode: 'program',
                 programs: execution.readAttempts(),
+                ...(save && save.readSaved().length > 0 ? {savedPrograms: save.readSaved()} : {}),
             };
         }
 
@@ -170,7 +180,7 @@ export const createProgramFirstAgentRunner = (
             prepareNextTurnWithContext: prepareProgramContext(
                 execution,
                 planningTools,
-                options.readTools,
+                terminalTools,
                 request,
             ),
         });
@@ -182,6 +192,7 @@ export const createProgramFirstAgentRunner = (
             ...result,
             executionMode: 'program',
             programs: execution.readAttempts(),
+            ...(save && save.readSaved().length > 0 ? {savedPrograms: save.readSaved()} : {}),
         };
     },
 });
