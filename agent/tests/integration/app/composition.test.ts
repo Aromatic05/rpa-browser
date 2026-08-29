@@ -83,6 +83,57 @@ test('config and env values reach the composed factory and service options', asy
     });
 });
 
+test('model API key is resolved lazily at invocation, not at composition', async () => {
+    await withRunnerFile({
+        agent: {
+            model: {
+                provider: 'openai',
+                model: 'gpt-4.1',
+                baseUrl: 'https://api.example.test/v1',
+                apiKeyRef: 'env:TEST_MISSING_KEY',
+            },
+        },
+    }, async (configPath) => {
+        const config = loadRunnerConfig({configPath});
+        const composed = await composeWorkspaceAgentDependencies(config, {env: {}});
+
+        const modelRuntime = composed.modelRuntime;
+        assert.ok(modelRuntime, 'composition must succeed without resolving a missing API key');
+        const binding = modelRuntime.resolve('openai', 'gpt-4.1');
+        assert.ok(binding);
+
+        await assert.rejects(binding.getApiKey?.('openai') as Promise<unknown>, (error: unknown) =>
+            error instanceof Error && error.name === 'ModelCredentialError');
+    });
+});
+
+test('canary API key value never appears in describe or serialized composition', async () => {
+    await withRunnerFile({
+        agent: {
+            model: {
+                provider: 'openai',
+                model: 'gpt-4.1',
+                baseUrl: 'https://api.example.test/v1',
+                apiKeyRef: 'env:TEST_CANARY_KEY',
+            },
+        },
+    }, async (configPath) => {
+        const config = loadRunnerConfig({configPath});
+        const canary = 'sk-CANARY-9f8e7d6c';
+        const composed = await composeWorkspaceAgentDependencies(config, {env: {TEST_CANARY_KEY: canary}});
+
+        const modelRuntime = composed.modelRuntime;
+        assert.ok(modelRuntime);
+        const binding = modelRuntime.resolve('openai', 'gpt-4.1');
+        assert.ok(binding);
+        assert.equal(await binding.getApiKey?.('openai'), canary);
+
+        const serialized = JSON.stringify(composed.describe());
+        assert.ok(serialized.includes('env:TEST_CANARY_KEY'));
+        assert.equal(serialized.includes(canary), false);
+    });
+});
+
 test('auth-enabled composition fails closed when the token ref is missing', async () => {
     await withRunnerFile({
         agent: {auth: {enabled: true, tokenRef: 'env:RPA_TEST_AUTH_TOKEN'}},

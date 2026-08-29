@@ -16,38 +16,75 @@ export type OpenAICompatibleModelConfig = {
     provider: string;
     model: string;
     baseUrl: string;
-    apiKey: string;
     contextWindow?: number;
     maxTokens?: number;
 };
 
-export const createOpenAICompatibleAgentModelRuntime = (
-    config: OpenAICompatibleModelConfig,
+export type OpenAICompatibleModelConfigWithApiKey = OpenAICompatibleModelConfig & {
+    apiKey: string;
+};
+
+export type OpenAICompatibleModelConfigWithCredential = OpenAICompatibleModelConfig & {
+    getApiKey: (provider: string) => string | undefined | Promise<string | undefined>;
+};
+
+export class ModelCredentialError extends Error {
+    readonly code: string;
+
+    constructor(code: string, message: string) {
+        super(message);
+        this.name = 'ModelCredentialError';
+        this.code = code;
+    }
+}
+
+const buildModel = (config: OpenAICompatibleModelConfig): Model<'openai-completions'> => ({
+    id: config.model,
+    name: config.model,
+    api: 'openai-completions',
+    provider: config.provider,
+    baseUrl: config.baseUrl,
+    reasoning: false,
+    input: ['text'],
+    cost: {input: 0, output: 0, cacheRead: 0, cacheWrite: 0},
+    contextWindow: config.contextWindow ?? 128_000,
+    maxTokens: config.maxTokens ?? 8_192,
+});
+
+const buildStreamFn = (): StreamFn => (resolvedModel, context, options) =>
+    streamOpenAICompletions(resolvedModel as Model<'openai-completions'>, context, options);
+
+export const createOpenAICompatibleAgentModelRuntimeWithCredential = (
+    config: OpenAICompatibleModelConfigWithCredential,
 ): AgentModelRuntime => {
-    const model: Model<'openai-completions'> = {
-        id: config.model,
-        name: config.model,
-        api: 'openai-completions',
-        provider: config.provider,
-        baseUrl: config.baseUrl,
-        reasoning: false,
-        input: ['text'],
-        cost: {input: 0, output: 0, cacheRead: 0, cacheWrite: 0},
-        contextWindow: config.contextWindow ?? 128_000,
-        maxTokens: config.maxTokens ?? 8_192,
-    };
-    const streamFn: StreamFn = (resolvedModel, context, options) =>
-        streamOpenAICompletions(resolvedModel as Model<'openai-completions'>, context, options);
+    const model = buildModel(config);
+    const streamFn = buildStreamFn();
     return {
-        resolve: (provider, modelId) => provider === config.provider && modelId === config.model
-            ? {
-                model,
-                streamFn,
-                getApiKey: (requestedProvider) => requestedProvider === config.provider ? config.apiKey : undefined,
-            }
-            : null,
+        resolve: (provider, modelId) =>
+            provider === config.provider && modelId === config.model
+                ? {
+                    model,
+                    streamFn,
+                    getApiKey: (requestedProvider) =>
+                        requestedProvider === config.provider
+                            ? config.getApiKey(requestedProvider)
+                            : undefined,
+                }
+                : null,
     };
 };
+
+export const createOpenAICompatibleAgentModelRuntime = (
+    config: OpenAICompatibleModelConfigWithApiKey,
+): AgentModelRuntime =>
+    createOpenAICompatibleAgentModelRuntimeWithCredential({
+        provider: config.provider,
+        model: config.model,
+        baseUrl: config.baseUrl,
+        contextWindow: config.contextWindow,
+        maxTokens: config.maxTokens,
+        getApiKey: (provider) => (provider === config.provider ? config.apiKey : undefined),
+    });
 
 const emptyModelRuntime: AgentModelRuntime = {resolve: () => null};
 
@@ -55,9 +92,17 @@ export const createEnvironmentAgentModelRuntime = (): AgentModelRuntime => {
     const provider = process.env.RPA_AGENT_PROVIDER?.trim();
     const model = process.env.RPA_AGENT_MODEL?.trim();
     const baseUrl = process.env.RPA_AGENT_BASE_URL?.trim();
-    const apiKey = process.env.RPA_AGENT_API_KEY?.trim();
-    if (!provider || !model || !baseUrl || !apiKey) {return emptyModelRuntime;}
-    return createOpenAICompatibleAgentModelRuntime({provider, model, baseUrl, apiKey});
+    if (!provider || !model || !baseUrl) {return emptyModelRuntime;}
+    return createOpenAICompatibleAgentModelRuntimeWithCredential({
+        provider,
+        model,
+        baseUrl,
+        getApiKey: (requestedProvider) => {
+            if (requestedProvider !== provider) {return undefined;}
+            const apiKey = process.env.RPA_AGENT_API_KEY?.trim();
+            return apiKey !== undefined && apiKey.length > 0 ? apiKey : undefined;
+        },
+    });
 };
 
 let defaultRuntime: AgentModelRuntime | undefined;

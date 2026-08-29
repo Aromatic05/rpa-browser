@@ -1,5 +1,9 @@
 import path from 'node:path';
-import {createOpenAICompatibleAgentModelRuntime, type AgentModelRuntime} from '../../agent/model/runtime';
+import {
+    createOpenAICompatibleAgentModelRuntimeWithCredential,
+    ModelCredentialError,
+    type AgentModelRuntime,
+} from '../../agent/model/runtime';
 import {createGovernancePolicy, type GovernancePolicy} from '../../agent/governance';
 import {createWorkspaceAgentFactory} from '../../agent/workspace/factory';
 import type {WorkspaceAgentFactory} from '../../automation/runtime/workspace/agent';
@@ -8,14 +12,15 @@ import {createBearerAuthenticator, CAPABILITIES, createRedactionPolicy} from '..
 import type {CredentialResolver, SecretValue} from '../../security/credentials';
 import type {Principal} from '../../security/context';
 import type {RunnerConfig} from '../../platform/config';
-import {parseSecretRef} from '../../platform/config/secret_ref';
+import {parseSecretRef, type SecretRef} from '../../platform/config/secret_ref';
 import {
     createSecretRefResolver,
     credentialResolverFromSecretRefResolver,
     envOf,
     nodeFileSystem,
 } from '../../platform/security';
-import type {SecretFileSystem} from '../../platform/security/contracts';
+import {SecretResolutionError} from '../../platform/security/error';
+import type {SecretFileSystem, SecretRefResolver} from '../../platform/security/contracts';
 
 const AGENT_PRINCIPAL: Principal = Object.freeze({
     id: 'rpa-agent',
@@ -58,6 +63,23 @@ const assertConfigurationComplete = (provider: string, model: string, baseUrl: s
     }
 };
 
+const resolveModelApiKey = async (
+    secretResolver: SecretRefResolver,
+    apiKeyRef: SecretRef,
+): Promise<string> => {
+    try {
+        return (await secretResolver.resolve(apiKeyRef)).value;
+    } catch (error) {
+        if (error instanceof SecretResolutionError) {
+            throw new ModelCredentialError(
+                'MODEL_API_KEY_UNRESOLVABLE',
+                'model API key could not be resolved from agent.model.apiKeyRef at model invocation',
+            );
+        }
+        throw error;
+    }
+};
+
 export const composeWorkspaceAgentDependencies = async (
     config: RunnerConfig,
     options: WorkspaceAgentCompositionOptions = {},
@@ -77,12 +99,15 @@ export const composeWorkspaceAgentDependencies = async (
     assertConfigurationComplete(modelDefaults.provider, modelDefaults.model, modelDefaults.baseUrl);
     let modelRuntime: AgentModelRuntime | undefined;
     if (modelDefaults.provider.length > 0) {
-        const apiKey = (await secretResolver.resolve(parseSecretRef(modelDefaults.apiKeyRef))).value;
-        modelRuntime = createOpenAICompatibleAgentModelRuntime({
+        const apiKeyRef = parseSecretRef(modelDefaults.apiKeyRef);
+        modelRuntime = createOpenAICompatibleAgentModelRuntimeWithCredential({
             provider: modelDefaults.provider,
             model: modelDefaults.model,
             baseUrl: modelDefaults.baseUrl,
-            apiKey,
+            getApiKey: async (requestedProvider) => {
+                if (requestedProvider !== modelDefaults.provider) {return undefined;}
+                return resolveModelApiKey(secretResolver, apiKeyRef);
+            },
         });
     }
 
