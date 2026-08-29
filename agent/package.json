@@ -27,6 +27,7 @@
         "test:trace": "node scripts/run_tests_isolated.mjs --import tsx --test \"tests/integration/trace/**/*.test.ts\"",
         "test:smoke:mcp": "tsx scripts/mcp_smoke_client.ts",
         "eval:agent:live": "tsx tests/live/agent/program_vs_baseline.ts",
+        "eval:agent:rollback": "tsx tests/live/agent/failure_rollback.ts",
         "test:unit:snapshot:perf": "SNAPSHOT_V2_PERF_BASELINE=1 node scripts/run_tests_isolated.mjs --import tsx --test tests/integration/runner/steps/snapshot_performance_baseline.test.ts",
         "snapshot:v2:capture-framework-fixtures": "tsx scripts/snapshot_v2_capture_framework_fixtures.ts",
         "snapshot:v2:stage1-baseline": "tsx scripts/snapshot_v2_stage1_baseline.ts",

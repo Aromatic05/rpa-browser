@@ -64,6 +64,19 @@ const compactBarrierSystemPrompt = (
     `Pending barrier effect: ${JSON.stringify({location: pause.location, effect: pause.effect})}`,
 ].join('\n\n');
 
+const compactFailureSystemPrompt = (
+    pause: Extract<PausedDslDebugExecution, {reason: 'failure'}>,
+): string => [
+    'The retained DSL transaction is paused after a failure.',
+    `Failure: ${JSON.stringify(pause.failure)}`,
+    pause.rollbackAnchor
+        ? `The most recent pre-effect rollbackAnchor is ${JSON.stringify(pause.rollbackAnchor)}.`
+        : 'No pre-effect rollbackAnchor is available for this failure.',
+    'If the task requires undoing an earlier World effect, inspect debug.effects when needed and call debug.rollback with rollbackAnchor.id. Use strategy="physical" only when UI compensation is appropriate.',
+    'Interpret rollback status strictly: restored means verified restoration; compensated means the physical compensation ran but semantic equivalence is not proven; blocked/partial means recovery is incomplete.',
+    'After handling recovery, do not blindly retry the original failed operation. Terminate or report the retained failure according to the user task.',
+].join('\n\n');
+
 export const debuggerSystemPromptForPause = (
     pause: PausedDslDebugExecution,
     override?: string,
@@ -75,4 +88,6 @@ export const compactDebuggerSystemPromptForPause = (
     pause: PausedDslDebugExecution,
 ): string => pause.reason === 'barrier'
     ? compactBarrierSystemPrompt(pause)
-    : PAUSED_DSL_DEBUG_SYSTEM_PROMPT;
+    : pause.reason === 'failure'
+        ? compactFailureSystemPrompt(pause)
+        : PAUSED_DSL_DEBUG_SYSTEM_PROMPT;
