@@ -27,7 +27,7 @@ const trace = (mode: 'program' | 'react-baseline') => ({
 });
 
 test('eval compares program-first and baseline without inventing hidden world-effect counts', async () => {
-    const prepares: string[] = [];
+    const prepares: Array<{mode: string; trialIndex: number}> = [];
     const runner: AgentRunner = {
         run: async (request) => {
             const mode = request.executionMode ?? 'program';
@@ -60,14 +60,17 @@ test('eval compares program-first and baseline without inventing hidden world-ef
         prompt: 'Complete the form.',
         provider: 'faux',
         model: 'model',
-        prepare: async (mode) => {prepares.push(mode);},
+        prepare: async (mode, trialIndex) => {prepares.push({mode, trialIndex});},
         verify: (result) => ({passed: result.text === 'verified', evidence: result.text}),
     });
 
-    assert.deepEqual(prepares, ['program', 'react-baseline']);
+    assert.deepEqual(prepares, [{mode: 'program', trialIndex: 0}, {mode: 'react-baseline', trialIndex: 0}]);
     assert.equal(report.runs.program?.success, true);
+    assert.equal(report.runs.program?.trialIndex, 0);
     assert.equal(typeof report.runs.program?.durationMs, 'number');
     assert.equal(report.runs['react-baseline']?.success, false);
+    assert.equal(report.runs.program?.metrics.taskSuccess, true);
+    assert.equal(report.runs.program?.metrics.recoverySuccess, true);
     assert.equal(report.runs.program?.metrics.effects.worldEffectCalls, 1);
     assert.equal(report.runs.program?.metrics.effects.failedWorldChangingEffects, 0);
     assert.equal(report.runs.program?.metrics.effects.compensationEffects, 0);
@@ -76,16 +79,17 @@ test('eval compares program-first and baseline without inventing hidden world-ef
     assert.equal(report.runs.program?.metrics.repair.rewindCalls, 1);
     assert.equal(report.runs['react-baseline']?.metrics.effects.toolEffectCalls, 1);
     assert.equal(report.runs['react-baseline']?.metrics.effects.worldEffectCalls, null);
+    assert.equal(report.runs['react-baseline']?.metrics.recoverySuccess, null);
     assert.equal(report.runs['react-baseline']?.metrics.effects.failedWorldChangingEffects, null);
     assert.equal(report.runs['react-baseline']?.metrics.effects.compensationEffects, null);
     assert.equal(report.runs['react-baseline']?.metrics.effects.availability, 'not-exposed');
 });
 
 test('eval can run only one mode for product-only regression tasks', async () => {
-    const calls: string[] = [];
+    const calls: Array<{mode: string; trialIndex: number}> = [];
     const runner: AgentRunner = {
         run: async (request) => {
-            calls.push(request.executionMode ?? 'missing');
+            calls.push({mode: request.executionMode ?? 'missing', trialIndex: (request.input?.trialIndex as number) ?? 0});
             return {
                 provider: request.provider,
                 model: request.model,
@@ -102,7 +106,32 @@ test('eval can run only one mode for product-only regression tasks', async () =>
         verify: () => true,
     });
 
-    assert.deepEqual(calls, ['program']);
+    assert.deepEqual(calls, [{mode: 'program', trialIndex: 0}]);
     assert.equal(report.runs.program?.success, true);
     assert.equal(report.runs['react-baseline'], undefined);
+});
+
+test('eval passes trial index through prepare and verify', async () => {
+    const seenTrials: number[] = [];
+    const runner: AgentRunner = {
+        run: async () => ({
+            provider: 'faux',
+            model: 'model',
+            text: 'ok',
+            trace: trace('program'),
+        }),
+    };
+    await evaluateAgentTask({runner, modes: ['program']}, {
+        id: 'trial-aware',
+        prompt: 'task',
+        provider: 'p',
+        model: 'm',
+        prepare: async (_mode, trialIndex) => { seenTrials.push(trialIndex); },
+        verify: async (_result, _mode, trialIndex) => {
+            seenTrials.push(trialIndex);
+            return true;
+        },
+    }, {trialIndex: 7});
+
+    assert.deepEqual(seenTrials, [7, 7]);
 });

@@ -1,14 +1,9 @@
 import crypto from 'node:crypto';
-import {chromium} from 'playwright';
-import {createOpenAICompatibleAgentModelRuntime} from '../../../src/agent/model/runtime';
-import {evaluateAgentTask} from '../../../src/agent/execution/eval/evaluator';
-import type {AgentRunResult, AgentRunner} from '../../../src/agent/execution/types';
-import {createWorkflowOnFs} from '../../../src/automation/workflow';
-import {
-    stepExecutors,
-    type ExecutorFn,
-} from '../../../src/automation/runner/steps/executors';
-import {createWorkspaceHarness} from '../../helpers/workspace_harness';
+import type {Page} from 'playwright';
+import {runLiveAgentScenario} from './runner';
+import {agentEvalReportToJson, allModesPassed} from '../../../src/agent/execution/eval/report';
+import type {AgentEvalScenario} from '../../../src/agent/execution/eval/contracts';
+import {stepExecutors, type ExecutorFn} from '../../../src/automation/runner/steps/executors';
 import {resolveLiveModelConfig} from './model_config';
 
 const fixtureHtml = (): string => `<!doctype html>
@@ -23,72 +18,32 @@ const fixtureHtml = (): string => `<!doctype html>
   </body>
 </html>`;
 
-const compactRun = (run: NonNullable<Awaited<ReturnType<typeof evaluateAgentTask>>['runs']['program']>) => ({
-    success: run.success,
-    durationMs: Math.round(run.durationMs),
-    verification: run.verification,
-    metrics: run.metrics,
-    tools: run.result.trace.tools.map((tool) => ({
-        name: tool.toolName,
-        classification: tool.classification,
-        isError: tool.isError ?? false,
-        ...(tool.toolName === 'debug.rollback' ? {args: tool.args} : {}),
-    })),
-    programs: run.result.programs?.map((program) => ({
-        status: program.status,
-        effects: program.effects,
-        error: program.error,
-    })),
-});
-
 const main = async (): Promise<void> => {
-    const {provider, model, baseUrl, apiKey} = resolveLiveModelConfig();
-    const modelRuntime = createOpenAICompatibleAgentModelRuntime({provider, model, baseUrl, apiKey});
-    const browser = await chromium.launch({
-        headless: process.env.RPA_EVAL_HEADED !== '1',
-        chromiumSandbox: false,
-        args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    });
-    try {
-        const page = await browser.newPage({viewport: {width: 900, height: 600}});
-        let injectNextFillFailure = true;
-        const injectedFill: ExecutorFn = async (step, deps, workspaceName, context) => {
-            const result = await stepExecutors['browser.fill'](step, deps, workspaceName, context);
-            if (!injectNextFillFailure || !result.ok) {return result;}
-            injectNextFillFailure = false;
-            return {
-                stepId: step.id,
-                ok: false,
-                error: {
-                    code: 'ERR_INJECTED_POST_EFFECT',
-                    message: 'Injected failure after browser.fill already mutated the page',
-                },
-            };
-        };
-        const executors = {...stepExecutors, 'browser.fill': injectedFill};
-        const {registry} = createWorkspaceHarness({
-            getPage: async () => page,
-            pluginHost: {getExecutors: () => executors} as never,
-            agentModelRuntime: modelRuntime,
-        });
-        const workspaceName = `agent-live-side-effect-error-${crypto.randomUUID()}`;
-        const workspace = registry.createWorkspace(workspaceName, createWorkflowOnFs(workspaceName));
-        workspace.tabs.createTab({tabName: 'main'});
-        workspace.tabs.bindPage('main', page);
+    const {provider, model} = resolveLiveModelConfig();
+    const context: {page?: Page; injectNextFillFailure?: boolean} = {};
 
-        const runner: AgentRunner = {
-            run: async (request) => {
-                const response = await workspace.router.handle({
-                    v: 1,
-                    id: crypto.randomUUID(),
-                    type: 'agent.run',
-                    workspaceName,
-                    payload: request,
-                }, workspace, registry);
-                return response.reply.payload as AgentRunResult;
+    const injectedFill: ExecutorFn = async (step, deps, workspaceName, executionContext) => {
+        const result = await stepExecutors['browser.fill'](step, deps, workspaceName, executionContext);
+        if (!context.injectNextFillFailure || !result.ok) {return result;}
+        context.injectNextFillFailure = false;
+        return {
+            stepId: step.id,
+            ok: false,
+            error: {
+                code: 'ERR_INJECTED_POST_EFFECT',
+                message: 'Injected failure after browser.fill already mutated the page',
             },
         };
-        const report = await evaluateAgentTask({runner}, {
+    };
+
+    const scenario: AgentEvalScenario = {
+        version: 1,
+        id: 'post-effect-fill-error',
+        name: 'Post-effect fill error recovery',
+        description: 'A fill reports failure after already mutating the page; the agent must recover.',
+        modes: ['program', 'react-baseline'],
+        trials: 1,
+        task: {
             id: 'post-effect-fill-error',
             prompt: [
                 'Set the Name field on the current page from Before to Alice.',
@@ -98,26 +53,23 @@ const main = async (): Promise<void> => {
             provider,
             model,
             prepare: async () => {
-                injectNextFillFailure = true;
-                await page.goto(`data:text/html,${encodeURIComponent(fixtureHtml())}`, {waitUntil: 'domcontentloaded'});
+                context.injectNextFillFailure = true;
+                await context.page!.goto(`data:text/html,${encodeURIComponent(fixtureHtml())}`, {waitUntil: 'domcontentloaded'});
             },
             verify: async () => ({
-                passed: await page.locator('#Name').inputValue() === 'Before',
-                evidence: {value: await page.locator('#Name').inputValue()},
+                passed: await context.page!.locator('#Name').inputValue() === 'Before',
+                evidence: {value: await context.page!.locator('#Name').inputValue()},
             }),
-        });
+        },
+    };
 
-        const program = report.runs.program;
-        const baseline = report.runs['react-baseline'];
-        process.stdout.write(`${JSON.stringify({
-            taskId: report.taskId,
-            ...(program ? {program: compactRun(program)} : {}),
-            ...(baseline ? {baseline: compactRun(baseline)} : {}),
-        }, null, 2)}\n`);
-        if ([program, baseline].some((run) => run && !run.success)) {process.exitCode = 1;}
-    } finally {
-        await browser.close();
-    }
+    const report = await runLiveAgentScenario({
+        scenario,
+        context,
+        executors: {'browser.fill': injectedFill},
+    });
+    process.stdout.write(`${agentEvalReportToJson(report)}\n`);
+    process.exitCode = allModesPassed(report) ? 0 : 1;
 };
 
 main().catch((error) => {
