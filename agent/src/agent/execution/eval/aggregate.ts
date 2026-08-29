@@ -34,6 +34,12 @@ export type AgentEvalModeAggregate = Readonly<{
     failedWorldChangingEffects: AgentEvalNumericDistribution | AgentEvalUnknownDistribution;
     compensationEffects: AgentEvalNumericDistribution | AgentEvalUnknownDistribution;
     worldEffectCalls: AgentEvalNumericDistribution | AgentEvalUnknownDistribution;
+    context: Readonly<{
+        peakChars: AgentEvalNumericDistribution | AgentEvalUnknownDistribution;
+        peakBytes: AgentEvalNumericDistribution | AgentEvalUnknownDistribution;
+        lastChars: AgentEvalNumericDistribution | AgentEvalUnknownDistribution;
+        lastBytes: AgentEvalNumericDistribution | AgentEvalUnknownDistribution;
+    }>;
     repair: Readonly<{
         rewindCalls: AgentEvalNumericDistribution;
         rollbackCalls: AgentEvalNumericDistribution;
@@ -113,6 +119,12 @@ export const computeAgentEvalAggregates = (
             failedWorldChangingEffects: optionalDistribution(metrics.map((m) => m.effects.failedWorldChangingEffects)),
             compensationEffects: optionalDistribution(metrics.map((m) => m.effects.compensationEffects)),
             worldEffectCalls: optionalDistribution(metrics.map((m) => m.effects.worldEffectCalls)),
+            context: Object.freeze({
+                peakChars: optionalDistribution(metrics.map((m) => m.context.peakChars)),
+                peakBytes: optionalDistribution(metrics.map((m) => m.context.peakBytes)),
+                lastChars: optionalDistribution(metrics.map((m) => m.context.lastChars)),
+                lastBytes: optionalDistribution(metrics.map((m) => m.context.lastBytes)),
+            }),
             repair: Object.freeze({
                 rewindCalls: requiredDistribution(metrics.map((m) => m.repair.rewindCalls)),
                 rollbackCalls: requiredDistribution(metrics.map((m) => m.repair.rollbackCalls)),

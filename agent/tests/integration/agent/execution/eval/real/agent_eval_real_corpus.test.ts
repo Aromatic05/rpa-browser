@@ -335,10 +335,55 @@ test('the real corpus report is consumed by the committed paired analysis with u
     assert.equal(restore.journal.compensationEffects.baselineObservable, 0);
 });
 
-test('real corpus trials are deterministic per seed', async () => {
+test('real corpus trials are deterministic per seed; context sizes are run-varying like durationMs', async () => {
     const first = await runRealCorpus();
     const second = await runRealCorpus();
-    assert.equal(toAgentEvalCorpusJson(first), toAgentEvalCorpusJson(second));
+
+    const contextOf = (report: Awaited<ReturnType<typeof runRealCorpus>>) =>
+        report.reports.flatMap((scenario) => [
+            ...(scenario.runs.program ?? []),
+            ...(scenario.runs['react-baseline'] ?? []),
+        ]).map((run) => run.metrics.context);
+    const firstContext = contextOf(first);
+    const secondContext = contextOf(second);
+    assert.equal(firstContext.length, 28, 'every run carries context metrics');
+    for (const ctx of firstContext) {
+        assert.equal(ctx.availability, 'provider-visible', 'the real runners expose context accounting');
+        assert.equal(typeof ctx.peakChars, 'number');
+        assert.equal(typeof ctx.peakBytes, 'number');
+        assert.equal(typeof ctx.lastChars, 'number');
+        assert.equal(typeof ctx.lastBytes, 'number');
+    }
+    assert.deepEqual(
+        firstContext.map(({availability}) => availability),
+        secondContext.map(({availability}) => availability),
+        'availability is schema-stable across runs',
+    );
+
+    const stripContext = (value: unknown): unknown => {
+        if (Array.isArray(value)) {
+            return value.map(stripContext);
+        }
+        if (value && typeof value === 'object') {
+            const source = value as Record<string, unknown>;
+            const result: Record<string, unknown> = {};
+            for (const key of Object.keys(source)) {
+                if (key === 'context') {
+                    continue;
+                }
+                result[key] = stripContext(source[key]);
+            }
+            return result;
+        }
+        return value;
+    };
+    const stableJson = (report: Awaited<ReturnType<typeof runRealCorpus>>) =>
+        stripContext(JSON.parse(toAgentEvalCorpusJson(report)));
+    assert.deepEqual(
+        stableJson(first),
+        stableJson(second),
+        'all non-context fields are byte-deterministic per seed; exact context sizes reflect the run-varying serialized content (tool-call ids), so like durationMs they are not part of the stable corpus comparison',
+    );
     assert.equal(
         agentEvalCorpusExitCode(first),
         1,

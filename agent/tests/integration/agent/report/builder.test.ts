@@ -66,6 +66,18 @@ test('report builder captures a successful program run with journal, artifacts, 
         {kind: 'program', name: 'order-fill', artifactRevision: 'artifact-rev-3'},
     ]);
 
+    assert.deepEqual(report.context, {
+        lastChars: 400,
+        lastBytes: 412,
+        peakChars: 400,
+        peakBytes: 412,
+        turns: [
+            {turn: 1, chars: 120, bytes: 120},
+            {turn: 2, chars: 260, bytes: 268},
+            {turn: 3, chars: 400, bytes: 412},
+        ],
+    });
+
     assert.equal(report.toolCalls.length, 4);
     assert.deepEqual(report.toolCalls[0], {
         toolCallId: 't1',
@@ -158,6 +170,7 @@ test('report builder keeps baseline runs honest when no effect journal exists', 
         {pageEpoch: 'page-9', captureRevision: 5},
     ]);
     assert.equal(report.toolMetrics.effectCalls, 1);
+    assert.equal(report.context, undefined);
 });
 
 test('report builder surfaces verified rewind repair through repair metrics and terminal state', () => {

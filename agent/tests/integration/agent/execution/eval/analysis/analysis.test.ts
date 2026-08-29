@@ -381,3 +381,149 @@ test('stable JSON, CSV and Markdown render deterministically with unknowns visib
     assert.equal(parsed.scenarios.length, 1);
     assert.equal(parsed.overall.recoverySuccess.unknownBaseline, 2);
 });
+
+const contextVisible = (
+    values: {peakChars: number; peakBytes: number; lastChars: number; lastBytes: number},
+) => ({availability: 'provider-visible' as const, ...values});
+
+test('Program-first smaller context yields negative mean delta and CI below zero (lower-is-better)', () => {
+    const report = buildCorpus(31, [{
+        scenarioId: 'ctx-small',
+        trials: 3,
+        runs: [
+            programRun(0, {context: contextVisible({peakChars: 1000, peakBytes: 1200, lastChars: 900, lastBytes: 1100})}),
+            programRun(1, {context: contextVisible({peakChars: 1100, peakBytes: 1320, lastChars: 990, lastBytes: 1210})}),
+            programRun(2, {context: contextVisible({peakChars: 1200, peakBytes: 1440, lastChars: 1080, lastBytes: 1320})}),
+            baselineRun(0, {context: contextVisible({peakChars: 4000, peakBytes: 4800, lastChars: 3800, lastBytes: 4500})}),
+            baselineRun(1, {context: contextVisible({peakChars: 4300, peakBytes: 5160, lastChars: 4180, lastBytes: 4950})}),
+            baselineRun(2, {context: contextVisible({peakChars: 4600, peakBytes: 5520, lastChars: 4560, lastBytes: 5400})}),
+        ],
+    }]);
+    const analysis = analyzeAgentEvalCorpus(report);
+    const scenario = analysis.scenarios[0];
+    assert.equal(scenario.matchedPairs, 3);
+
+    const peakChars = scenario.context.peakChars;
+    assert.equal(peakChars.unknown, false);
+    assert.equal(peakChars.pairs, 3);
+    assert.equal(peakChars.programObservable, 3);
+    assert.equal(peakChars.baselineObservable, 3);
+    assert.equal(peakChars.unknownProgram, 0);
+    assert.equal(peakChars.unknownBaseline, 0);
+    closeTo(peakChars.programMean ?? 0, 1100);
+    closeTo(peakChars.baselineMean ?? 0, 4300);
+    closeTo(peakChars.meanDelta ?? 0, -3200);
+    assert.ok(peakChars.ci);
+    assert.ok(peakChars.ci.upper < 0, 'deterministic CI excludes zero');
+    closeTo(peakChars.cohensDz ?? 0, -16);
+
+    const peakBytes = scenario.context.peakBytes;
+    closeTo(peakBytes.meanDelta ?? 0, -3840);
+    assert.ok(peakBytes.ci && peakBytes.ci.upper < 0);
+
+    const lastChars = scenario.context.lastChars;
+    closeTo(lastChars.meanDelta ?? 0, -3190);
+    assert.ok(lastChars.ci && lastChars.ci.upper < 0);
+
+    const lastBytes = scenario.context.lastBytes;
+    closeTo(lastBytes.meanDelta ?? 0, -3740);
+    assert.ok(lastBytes.ci && lastBytes.ci.upper < 0);
+
+    const csv = analysisToCsv(analysis);
+    const csvLines = csv.split('\n').map(parseCsvLine);
+    const header = csvLines[0];
+    const row = csvLines.find((line) => line[0] === 'ctx-small');
+    assert.ok(row);
+    const cell = (key: string): string => row[header.indexOf(key)];
+    assert.equal(cell('peakCharsDelta'), '-3200.000');
+    assert.equal(cell('peakCharsPairs'), '3');
+    assert.equal(cell('peakCharsUnknownProgram'), '0');
+    assert.equal(cell('peakCharsUnknownBaseline'), '0');
+    assert.equal(cell('d_peakChars'), '-16.000');
+
+    const markdown = analysisToMarkdown(analysis);
+    assert.match(markdown, /## Context metrics \(provider-visible serialized size\)/);
+    assert.match(markdown, /\| peakChars Δ \[95% CI\] \|/);
+    assert.match(markdown, /\| \*\*overall\*\* \| -3200\.000 \[/);
+    assert.match(markdown, /lower-is-better/);
+});
+
+test('context metrics with one side missing stay unknown and excluded, never zero', () => {
+    const report = buildCorpus(37, [{
+        scenarioId: 'ctx-missing',
+        trials: 2,
+        runs: [
+            programRun(0, {context: contextVisible({peakChars: 1000, peakBytes: 1200, lastChars: 900, lastBytes: 1100})}),
+            programRun(1, {context: contextVisible({peakChars: 2000, peakBytes: 2400, lastChars: 1900, lastBytes: 2100})}),
+            baselineRun(0),
+            baselineRun(1),
+        ],
+    }]);
+    const analysis = analyzeAgentEvalCorpus(report);
+    const scenario = analysis.scenarios[0];
+    assert.equal(scenario.matchedPairs, 2);
+
+    const peakChars = scenario.context.peakChars;
+    assert.equal(peakChars.unknown, true);
+    assert.equal(peakChars.pairs, 0);
+    assert.equal(peakChars.programObservable, 2);
+    assert.equal(peakChars.baselineObservable, 0);
+    assert.equal(peakChars.unknownProgram, 0);
+    assert.equal(peakChars.unknownBaseline, 2);
+    closeTo(peakChars.programMean ?? 0, 1500);
+    assert.equal(peakChars.baselineMean, null);
+    assert.equal(peakChars.meanDelta, null);
+    assert.equal(peakChars.ci, null);
+    assert.equal(peakChars.meanDelta === 0, false, 'missing side is never coerced to zero');
+    assert.equal(peakChars.baselineMean === 0, false);
+
+    const csv = analysisToCsv(analysis);
+    const csvLines = csv.split('\n').map(parseCsvLine);
+    const header = csvLines[0];
+    const row = csvLines.find((line) => line[0] === 'ctx-missing');
+    assert.ok(row);
+    const cell = (key: string): string => row[header.indexOf(key)];
+    assert.equal(cell('peakCharsDelta'), '');
+    assert.equal(cell('peakCharsPairs'), 'unknown');
+    assert.equal(cell('peakCharsUnknownProgram'), '0');
+    assert.equal(cell('peakCharsUnknownBaseline'), '2');
+    assert.equal(cell('peakCharsBaselineMean'), '');
+
+    const markdown = analysisToMarkdown(analysis);
+    assert.match(markdown, /unknown \(program 0, baseline 2\)/);
+
+    const json = analysisToStableJson(analysis);
+    const parsed = JSON.parse(json) as {
+        scenarios: [{context: {peakChars: {unknown: boolean; meanDelta: number | null; baselineMean: number | null}}}];
+    };
+    assert.equal(parsed.scenarios[0]?.context?.peakChars?.unknown, true);
+    assert.equal(parsed.scenarios[0]?.context?.peakChars?.meanDelta, null);
+    assert.equal(parsed.scenarios[0]?.context?.peakChars?.baselineMean, null);
+});
+
+test('context metrics pair only trials where both sides are observable', () => {
+    const report = buildCorpus(41, [{
+        scenarioId: 'ctx-partial',
+        trials: 3,
+        runs: [
+            programRun(0, {context: contextVisible({peakChars: 1000, peakBytes: 1200, lastChars: 900, lastBytes: 1100})}),
+            programRun(1, {context: contextVisible({peakChars: 2000, peakBytes: 2400, lastChars: 1900, lastBytes: 2100})}),
+            programRun(2, {context: contextVisible({peakChars: 3000, peakBytes: 3600, lastChars: 2900, lastBytes: 3100})}),
+            baselineRun(0),
+            baselineRun(1, {context: contextVisible({peakChars: 5000, peakBytes: 6000, lastChars: 4900, lastBytes: 5100})}),
+            baselineRun(2, {context: contextVisible({peakChars: 6000, peakBytes: 7200, lastChars: 5900, lastBytes: 6100})}),
+        ],
+    }]);
+    const analysis = analyzeAgentEvalCorpus(report);
+    const peakChars = analysis.scenarios[0].context.peakChars;
+    assert.equal(peakChars.unknown, false);
+    assert.equal(peakChars.pairs, 2);
+    assert.equal(peakChars.programObservable, 3);
+    assert.equal(peakChars.baselineObservable, 2);
+    assert.equal(peakChars.unknownProgram, 0);
+    assert.equal(peakChars.unknownBaseline, 1);
+    closeTo(peakChars.programMean ?? 0, 2000);
+    closeTo(peakChars.baselineMean ?? 0, 5500);
+    closeTo(peakChars.meanDelta ?? 0, -3000);
+    assert.ok(peakChars.ci && peakChars.ci.upper < 0);
+});

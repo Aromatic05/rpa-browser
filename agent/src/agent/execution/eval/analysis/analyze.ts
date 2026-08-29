@@ -14,12 +14,14 @@ import {
 import type {
     AgentEvalAggregateAnalysis,
     AgentEvalAnalysis,
+    AgentEvalAnalysisContextMetricKey,
     AgentEvalAnalysisJournalMetricKey,
     AgentEvalAnalysisMetricKey,
     AgentEvalAnalysisOptions,
     AgentEvalFailureCategory,
     AgentEvalScenarioAnalysis,
     MatchedTrial,
+    ObservableContextMetric,
     ObservableJournalMetric,
     PairedBooleanDelta,
     PairedNumericDelta,
@@ -27,6 +29,7 @@ import type {
     UnmatchedTrial,
 } from './contracts';
 import {
+    AGENT_EVAL_ANALYSIS_CONTEXT_METRICS,
     AGENT_EVAL_ANALYSIS_JOURNAL_METRICS,
     AGENT_EVAL_ANALYSIS_METRICS,
     AGENT_EVAL_ANALYSIS_VERSION,
@@ -51,6 +54,16 @@ const journalAccessors: Readonly<Record<
     failedWorldChangingEffects: (run) => run.metrics.effects.failedWorldChangingEffects,
     compensationEffects: (run) => run.metrics.effects.compensationEffects,
     worldEffectCalls: (run) => run.metrics.effects.worldEffectCalls,
+};
+
+const contextAccessors: Readonly<Record<
+    AgentEvalAnalysisContextMetricKey,
+    (run: AgentEvalRun) => number | null
+>> = {
+    peakChars: (run) => run.metrics.context.peakChars,
+    peakBytes: (run) => run.metrics.context.peakBytes,
+    lastChars: (run) => run.metrics.context.lastChars,
+    lastBytes: (run) => run.metrics.context.lastBytes,
 };
 
 const meanOf = (values: readonly number[]): number =>
@@ -286,6 +299,59 @@ const observableJournalMetric = (
     });
 };
 
+const observableContextMetric = (
+    pairs: readonly MatchedTrial[],
+    key: AgentEvalAnalysisContextMetricKey,
+    scope: string,
+    bootstrap: BootstrapOptions,
+): ObservableContextMetric => {
+    const total = pairs.length;
+    const programValues: number[] = [];
+    const baselineValues: number[] = [];
+    const pairedValues: Array<{programValue: number; baselineValue: number}> = [];
+    for (const pair of pairs) {
+        const programValue = contextAccessors[key](pair.program);
+        const baselineValue = contextAccessors[key](pair.baseline);
+        if (programValue !== null) {
+            programValues.push(programValue);
+        }
+        if (baselineValue !== null) {
+            baselineValues.push(baselineValue);
+        }
+        if (programValue !== null && baselineValue !== null) {
+            pairedValues.push({programValue, baselineValue});
+        }
+    }
+    const empty: ObservableContextMetric = Object.freeze({
+        programObservable: programValues.length,
+        baselineObservable: baselineValues.length,
+        unknownProgram: total - programValues.length,
+        unknownBaseline: total - baselineValues.length,
+        pairs: 0,
+        programMean: programValues.length > 0 ? meanOf(programValues) : null,
+        baselineMean: baselineValues.length > 0 ? meanOf(baselineValues) : null,
+        meanDelta: null,
+        ci: null,
+        cohensDz: null,
+        unknown: true,
+    });
+    if (pairedValues.length === 0) {
+        return empty;
+    }
+    const diffs = pairedValues.map((value) => value.programValue - value.baselineValue);
+    return Object.freeze({
+        ...empty,
+        pairs: pairedValues.length,
+        meanDelta: meanOf(diffs),
+        ci: pairedMeanDeltaCI(diffs, {
+            ...bootstrap,
+            seed: analysisBootstrapSeed(bootstrap.seed, scope, key, 'context'),
+        }),
+        cohensDz: cohensDz(diffs),
+        unknown: false,
+    });
+};
+
 const taxonomyOf = (
     runs: readonly AgentEvalRun[],
 ): Readonly<Record<AgentEvalFailureCategory, number>> => countFailureTaxonomy(runs);
@@ -344,6 +410,12 @@ const buildAggregate = (
             observableJournalMetric(input.matched, key, scope, bootstrap),
         ]),
     ) as Readonly<Record<AgentEvalAnalysisJournalMetricKey, ObservableJournalMetric>>;
+    const context = Object.fromEntries(
+        AGENT_EVAL_ANALYSIS_CONTEXT_METRICS.map((key) => [
+            key,
+            observableContextMetric(input.matched, key, scope, bootstrap),
+        ]),
+    ) as Readonly<Record<AgentEvalAnalysisContextMetricKey, ObservableContextMetric>>;
     const failureTaxonomy = {
         program: taxonomyOf(input.programRuns),
         'react-baseline': taxonomyOf(input.baselineRuns),
@@ -354,6 +426,7 @@ const buildAggregate = (
         recoverySuccess,
         numeric,
         journal,
+        context,
         failureTaxonomy,
         programRuns: input.programRuns.length,
         baselineRuns: input.baselineRuns.length,

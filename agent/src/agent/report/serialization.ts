@@ -116,6 +116,21 @@ const savedArtifactSchema = z.object({
     artifactRevision: z.string(),
 }).strict();
 
+const contextTurnSchema = z.object({
+    turn: z.number().int().nonnegative(),
+    chars: z.number().int().nonnegative(),
+    bytes: z.number().int().nonnegative(),
+    exceededBudget: z.boolean().optional(),
+}).strict();
+
+const contextMetricsSchema = z.object({
+    lastChars: z.number().int().nonnegative(),
+    lastBytes: z.number().int().nonnegative(),
+    peakChars: z.number().int().nonnegative(),
+    peakBytes: z.number().int().nonnegative(),
+    turns: z.array(contextTurnSchema),
+}).strict();
+
 const agentRunReportSchema = z.object({
     schema: z.literal(AGENT_RUN_REPORT_SCHEMA),
     schemaVersion: z.literal(AGENT_RUN_REPORT_SCHEMA_VERSION),
@@ -131,6 +146,7 @@ const agentRunReportSchema = z.object({
     effects: effectsSchema,
     programs: z.array(programSchema),
     savedArtifacts: z.array(savedArtifactSchema),
+    context: contextMetricsSchema.optional(),
     generatedAt: z.string().optional(),
 }).strict();
 

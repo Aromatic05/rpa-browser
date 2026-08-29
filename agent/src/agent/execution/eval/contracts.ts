@@ -56,6 +56,19 @@ export type AgentEvalEffectMetrics = Readonly<{
 }>;
 
 /**
+ * Provider-visible context sizes for a run. `availability` is explicit: when
+ * the runner did not expose context accounting the values stay `null`, never
+ * silently reported as zero.
+ */
+export type AgentEvalContextMetrics = Readonly<{
+    availability: 'provider-visible' | 'not-exposed';
+    peakChars: number | null;
+    peakBytes: number | null;
+    lastChars: number | null;
+    lastBytes: number | null;
+}>;
+
+/**
  * Complete per-run metrics. Metrics that a mode cannot observe are represented
  * as `null` so that aggregations can distinguish "unknown" from "zero".
  */
@@ -71,6 +84,7 @@ export type AgentEvalMetrics = Readonly<{
     recoverySuccess: boolean | null;
     durationMs: number;
     effects: AgentEvalEffectMetrics;
+    context: AgentEvalContextMetrics;
     repair: AgentEvalRepairMetrics;
 }>;
 

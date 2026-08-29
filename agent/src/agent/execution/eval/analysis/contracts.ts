@@ -28,6 +28,14 @@ export const AGENT_EVAL_ANALYSIS_JOURNAL_METRICS = [
 ] as const;
 export type AgentEvalAnalysisJournalMetricKey = (typeof AGENT_EVAL_ANALYSIS_JOURNAL_METRICS)[number];
 
+export const AGENT_EVAL_ANALYSIS_CONTEXT_METRICS = [
+    'peakChars',
+    'peakBytes',
+    'lastChars',
+    'lastBytes',
+] as const;
+export type AgentEvalAnalysisContextMetricKey = (typeof AGENT_EVAL_ANALYSIS_CONTEXT_METRICS)[number];
+
 export const AGENT_EVAL_FAILURE_CATEGORIES = [
     'planning',
     'read-resolve',
@@ -118,12 +126,36 @@ export type ObservableJournalMetric = Readonly<{
     unknown: boolean;
 }>;
 
+/**
+ * Context-size metrics (provider-visible serialized chars/bytes). Availability
+ * is conditional on the runner exposing context accounting, so a value is only
+ * ever compared when both sides of a pair are observable. Means average the
+ * observable runs on each side; `meanDelta` is the program-first minus baseline
+ * delta over both-observable pairs, where a negative delta means the
+ * program-first run kept its provider-visible context smaller (lower-is-better).
+ * Unknown is explicit via `unknownProgram` / `unknownBaseline`, never zero.
+ */
+export type ObservableContextMetric = Readonly<{
+    programObservable: number;
+    baselineObservable: number;
+    unknownProgram: number;
+    unknownBaseline: number;
+    pairs: number;
+    programMean: number | null;
+    baselineMean: number | null;
+    meanDelta: number | null;
+    ci: ConfidenceInterval | null;
+    cohensDz: number | null;
+    unknown: boolean;
+}>;
+
 export type AgentEvalAggregateAnalysis = Readonly<{
     matchedPairs: number;
     taskSuccess: PairedBooleanDelta;
     recoverySuccess: PairedRecoveryDelta;
     numeric: Readonly<Record<AgentEvalAnalysisMetricKey, PairedNumericDelta>>;
     journal: Readonly<Record<AgentEvalAnalysisJournalMetricKey, ObservableJournalMetric>>;
+    context: Readonly<Record<AgentEvalAnalysisContextMetricKey, ObservableContextMetric>>;
     failureTaxonomy: Readonly<Record<AgentEvalMode, Readonly<Record<AgentEvalFailureCategory, number>>>>;
     programRuns: number;
     baselineRuns: number;

@@ -44,6 +44,13 @@ export type AgentEvalAnalysisRunSpec = Readonly<{
     failedWorldChangingEffects?: number | null;
     compensationEffects?: number | null;
     worldEffectCalls?: number | null;
+    context?: Readonly<{
+        availability?: 'provider-visible' | 'not-exposed';
+        peakChars?: number | null;
+        peakBytes?: number | null;
+        lastChars?: number | null;
+        lastBytes?: number | null;
+    }>;
     tools?: readonly AgentEvalAnalysisToolSpec[];
     programStatus?: 'completed' | 'failed' | 'aborted' | 'invalid';
     journalEffects?: readonly AgentEvalAnalysisEffectSpec[];
@@ -94,6 +101,13 @@ export const agent_eval_analysis_makeRun = (spec: AgentEvalAnalysisRunSpec): Age
                 ? (mode === 'program' ? 0 : null)
                 : spec.compensationEffects,
             availability: mode === 'program' ? 'program-journal' : 'not-exposed',
+        }),
+        context: Object.freeze({
+            availability: spec.context?.availability ?? 'not-exposed',
+            peakChars: spec.context?.peakChars === undefined ? null : spec.context.peakChars,
+            peakBytes: spec.context?.peakBytes === undefined ? null : spec.context.peakBytes,
+            lastChars: spec.context?.lastChars === undefined ? null : spec.context.lastChars,
+            lastBytes: spec.context?.lastBytes === undefined ? null : spec.context.lastBytes,
         }),
         repair: Object.freeze({
             rewindCalls: 0,

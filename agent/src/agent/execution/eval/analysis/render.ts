@@ -2,12 +2,15 @@ import type {AgentEvalMode} from '../contracts';
 import type {AgentEvalAnalysis, AgentEvalScenarioAnalysis} from './contracts';
 import type {
     AgentEvalAggregateAnalysis,
+    AgentEvalAnalysisContextMetricKey,
     AgentEvalFailureCategory,
+    ObservableContextMetric,
     PairedBooleanDelta,
     PairedNumericDelta,
     PairedRecoveryDelta,
 } from './contracts';
 import {
+    AGENT_EVAL_ANALYSIS_CONTEXT_METRICS,
     AGENT_EVAL_ANALYSIS_JOURNAL_METRICS,
     AGENT_EVAL_ANALYSIS_METRICS,
     AGENT_EVAL_FAILURE_CATEGORIES,
@@ -82,6 +85,16 @@ const COLUMNS: readonly string[] = [
         `${key}BaselineMean`,
         `${key}Pairs`,
     ]),
+    ...AGENT_EVAL_ANALYSIS_CONTEXT_METRICS.flatMap((key) => [
+        `${key}ProgramMean`,
+        `${key}BaselineMean`,
+        `${key}Pairs`,
+        `${key}UnknownProgram`,
+        `${key}UnknownBaseline`,
+        `${key}Delta`,
+        `${key}CI`,
+        `d_${key}`,
+    ]),
     ...(['program', 'react-baseline'] as const).flatMap((mode) =>
         AGENT_EVAL_FAILURE_CATEGORIES.map((category) => `${mode}_${category}`)),
 ];
@@ -127,6 +140,17 @@ const buildRow = (source: RowSource): Readonly<Record<string, string>> => {
         set(`${key}ProgramMean`, fmt(journal.programMean));
         set(`${key}BaselineMean`, fmt(journal.baselineMean));
         set(`${key}Pairs`, journal.unknown ? 'unknown' : String(journal.pairs));
+    }
+    for (const key of AGENT_EVAL_ANALYSIS_CONTEXT_METRICS) {
+        const metric = source.aggregate.context[key];
+        set(`${key}ProgramMean`, fmt(metric.programMean));
+        set(`${key}BaselineMean`, fmt(metric.baselineMean));
+        set(`${key}Pairs`, metric.unknown ? 'unknown' : String(metric.pairs));
+        set(`${key}UnknownProgram`, String(metric.unknownProgram));
+        set(`${key}UnknownBaseline`, String(metric.unknownBaseline));
+        set(`${key}Delta`, fmt(metric.meanDelta));
+        set(`${key}CI`, ciText(metric.ci));
+        set(`d_${key}`, fmt(metric.cohensDz));
     }
     for (const mode of ['program', 'react-baseline'] as const) {
         const taxonomy = source.aggregate.failureTaxonomy[mode];
@@ -195,6 +219,24 @@ const mdTaxonomyRow = (
     ...AGENT_EVAL_FAILURE_CATEGORIES.map((category) => String(taxonomy[category])),
 ].join(' | ');
 
+const contextCell = (metric: ObservableContextMetric): string => {
+    if (metric.meanDelta === null) {
+        return `unknown (program ${metric.unknownProgram}, baseline ${metric.unknownBaseline})`;
+    }
+    return `${fmt(metric.meanDelta)} ${ciText(metric.ci)}`;
+};
+
+const mdContextRow = (
+    label: string,
+    context: Readonly<Record<AgentEvalAnalysisContextMetricKey, ObservableContextMetric>>,
+): string => [
+    label,
+    contextCell(context.peakChars),
+    contextCell(context.peakBytes),
+    contextCell(context.lastChars),
+    contextCell(context.lastBytes),
+].join(' | ');
+
 export const analysisToMarkdown = (analysis: AgentEvalAnalysis): string => {
     const comparisonHeader = '| scenario | matched | task program / baseline | task Δ [95% CI] | recovery Δ [95% CI] | turns Δ [95% CI] | duration Δ [95% CI] | W/L/T |';
     const comparisonDivider = '|---|---|---|---|---|---|---|---|';
@@ -215,6 +257,12 @@ export const analysisToMarkdown = (analysis: AgentEvalAnalysis): string => {
         overall.numeric.turns,
         overall.numeric.durationMs,
     );
+
+    const contextHeader = '| scenario | peakChars Δ [95% CI] | peakBytes Δ [95% CI] | lastChars Δ [95% CI] | lastBytes Δ [95% CI] |';
+    const contextDivider = '|---|---|---|---|---|';
+    const contextRows = analysis.scenarios.map((scenario) =>
+        mdContextRow(scenario.scenarioId, scenario.context));
+    const overallContextRow = mdContextRow('**overall**', overall.context);
 
     const taxonomyHeader = `| scenario | mode | ${AGENT_EVAL_FAILURE_CATEGORIES.join(' | ')} |`;
     const taxonomyDivider = `|${AGENT_EVAL_FAILURE_CATEGORIES.map(() => '---').join('|')}|---|---|---|`;
@@ -252,6 +300,14 @@ export const analysisToMarkdown = (analysis: AgentEvalAnalysis): string => {
         ...comparisonRows.map((row) => `| ${row} |`),
         `| ${overallRow} |`,
         '',
+        '## Context metrics (provider-visible serialized size)',
+        'Sizes are exact serialized characters (UTF-16 code units) and bytes (UTF-8). Deltas are program-first minus baseline over pairs where both sides are observable; a negative delta means the program-first run kept its provider-visible context smaller (lower-is-better). Missing observability stays unknown, never zero.',
+        '',
+        contextHeader,
+        contextDivider,
+        ...contextRows.map((row) => `| ${row} |`),
+        `| ${overallContextRow} |`,
+        '',
         '## Failure taxonomy (failed runs)',
         taxonomyHeader,
         taxonomyDivider,
@@ -262,6 +318,7 @@ export const analysisToMarkdown = (analysis: AgentEvalAnalysis): string => {
         ...unmatchedLines,
         `- bootstrap: ${analysis.bootstrap.iterations} iterations, ${Math.round(analysis.bootstrap.level * 100)}% percentile CI, deterministic seed`,
         '- journal metrics (failed world-changing effects, compensation effects, world effect calls) are reported only when observable; react-baseline journal metrics stay unknown',
+        '- context metrics (peak/last provider-visible chars and bytes) are reported only when the runner exposes context accounting; unmatched observability stays unknown, never zero',
         '',
     ].join('\n');
 };

@@ -1,5 +1,6 @@
 import type {AgentRunResult} from '../types';
 import type {
+    AgentEvalContextMetrics,
     AgentEvalEffectMetrics,
     AgentEvalMetrics,
     AgentEvalMode,
@@ -58,6 +59,26 @@ export const computeRecoverySuccess = (
     return compensationCount >= failedWorldChanging.length || rollbackCount > 0;
 };
 
+const contextMetrics = (result: AgentRunResult): AgentEvalContextMetrics => {
+    const context = result.trace.context;
+    if (context === undefined) {
+        return Object.freeze({
+            availability: 'not-exposed' as const,
+            peakChars: null,
+            peakBytes: null,
+            lastChars: null,
+            lastBytes: null,
+        });
+    }
+    return Object.freeze({
+        availability: 'provider-visible' as const,
+        peakChars: context.peakChars,
+        peakBytes: context.peakBytes,
+        lastChars: context.lastChars,
+        lastBytes: context.lastBytes,
+    });
+};
+
 export const collectAgentEvalMetrics = (
     result: AgentRunResult,
     mode: AgentEvalMode,
@@ -102,6 +123,7 @@ export const collectAgentEvalMetrics = (
         recoverySuccess: computeRecoverySuccess(result, mode),
         durationMs,
         effects,
+        context: contextMetrics(result),
         repair: repairMetrics(result),
     };
 };

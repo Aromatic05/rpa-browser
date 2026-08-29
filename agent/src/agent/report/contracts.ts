@@ -121,6 +121,21 @@ export type AgentReportSavedArtifact = Readonly<{
     artifactRevision: string;
 }>;
 
+export type AgentReportContextTurn = Readonly<{
+    turn: number;
+    chars: number;
+    bytes: number;
+    exceededBudget?: boolean;
+}>;
+
+export type AgentReportContextMetrics = Readonly<{
+    lastChars: number;
+    lastBytes: number;
+    peakChars: number;
+    peakBytes: number;
+    turns: readonly AgentReportContextTurn[];
+}>;
+
 export type AgentRunReport = Readonly<{
     schema: typeof AGENT_RUN_REPORT_SCHEMA;
     schemaVersion: typeof AGENT_RUN_REPORT_SCHEMA_VERSION;
@@ -136,6 +151,7 @@ export type AgentRunReport = Readonly<{
     effects: AgentReportEffects;
     programs: readonly AgentReportProgram[];
     savedArtifacts: readonly AgentReportSavedArtifact[];
+    context?: AgentReportContextMetrics;
     generatedAt?: string;
 }>;
 

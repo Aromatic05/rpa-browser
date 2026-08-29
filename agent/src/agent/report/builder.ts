@@ -3,10 +3,12 @@ import type {
     AgentProgramExecutionSummary,
     AgentRunResult,
 } from '../execution/types';
-import type {AgentToolTrace, AgentTraceSnapshot} from '../trace/collector';
+import type {AgentToolTrace, AgentTraceContextMetrics, AgentTraceSnapshot} from '../trace/collector';
 import {
     AGENT_RUN_REPORT_SCHEMA,
     AGENT_RUN_REPORT_SCHEMA_VERSION,
+    type AgentReportContextMetrics,
+    type AgentReportContextTurn,
     type AgentReportEffect,
     type AgentReportError,
     type AgentReportExecutionMode,
@@ -198,6 +200,26 @@ const savedArtifactsOf = (
     })),
 );
 
+const contextTurnOf = (turn: AgentReportContextTurn): AgentReportContextTurn => Object.freeze({
+    turn: turn.turn,
+    chars: turn.chars,
+    bytes: turn.bytes,
+    ...(turn.exceededBudget === undefined ? {} : {exceededBudget: turn.exceededBudget}),
+});
+
+const contextOf = (context: AgentTraceContextMetrics | undefined): AgentReportContextMetrics | undefined => {
+    if (context === undefined) {
+        return undefined;
+    }
+    return Object.freeze({
+        lastChars: context.lastChars,
+        lastBytes: context.lastBytes,
+        peakChars: context.peakChars,
+        peakBytes: context.peakBytes,
+        turns: Object.freeze(context.turns.map(contextTurnOf)),
+    });
+};
+
 export const buildAgentRunReport = (
     result: AgentRunResult,
     options?: AgentRunReportOptions,
@@ -211,6 +233,7 @@ export const buildAgentRunReport = (
         .map(revisionOf));
     const journalRevisions = effects.records.flatMap((effect) => [effect.worldBefore, effect.worldAfter]);
     const terminal = terminalOf(result, programs);
+    const context = contextOf(result.trace.context);
     const toolMetrics: AgentReportToolMetrics = Object.freeze({
         turns: result.trace.metrics.turns,
         toolCalls: result.trace.metrics.toolCalls,
@@ -238,6 +261,7 @@ export const buildAgentRunReport = (
         effects,
         programs: Object.freeze(programs.map(programOf)),
         savedArtifacts: savedArtifactsOf(result),
+        ...(context === undefined ? {} : {context}),
         ...(options?.generatedAt === undefined ? {} : {generatedAt: options.generatedAt}),
     });
 };

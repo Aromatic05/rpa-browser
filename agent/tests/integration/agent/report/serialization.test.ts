@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {buildAgentRunReport} from '../../../../src/agent/report/builder';
 import {parseAgentRunReport, serializeAgentRunReport} from '../../../../src/agent/report/serialization';
+import {createAgentContextAccountant} from '../../../../src/agent/tools/context/budget';
 import {baselineResult, successResult} from './fixtures';
 
 test('report serialization round-trips through the validation boundary', () => {
@@ -25,6 +26,7 @@ test('report serialization is byte-stable across key insertion orders', () => {
         world: report.world,
         run: report.run,
         toolCalls: report.toolCalls,
+        context: report.context,
         generatedAt: report.generatedAt,
     };
     assert.equal(
@@ -103,4 +105,38 @@ test('report never carries raw secret values from tool args, scopes, or program 
     assert.deepEqual(execute.redactedPaths, ['input.secret']);
 
     assert.deepEqual(report.programs[0].inputKeys, ['secret', 'value']);
+});
+
+test('old reports without a context field still parse: context stays absent', () => {
+    const json = serializeAgentRunReport(buildAgentRunReport(baselineResult()));
+    const parsed = parseAgentRunReport(json);
+    assert.equal(parsed.context, undefined);
+    assert.deepEqual(parsed, JSON.parse(json));
+
+    const withContext = JSON.parse(serializeAgentRunReport(buildAgentRunReport(successResult()))) as Record<string, unknown>;
+    delete withContext.context;
+    const parsedWithout = parseAgentRunReport(JSON.stringify(withContext));
+    assert.equal(parsedWithout.context, undefined);
+});
+
+test('context metrics round-trip exact counts and never persist canary content', () => {
+    const accountant = createAgentContextAccountant();
+    accountant.recordTurn('SECRET_SYSTEM_PROMPT_CANARY', [
+        {role: 'user', content: [{type: 'text', text: 'CANARY_SECRET_VALUE_1234'}], timestamp: 1},
+    ], []);
+    const result = baselineResult();
+    result.trace.context = accountant.account();
+    const json = serializeAgentRunReport(buildAgentRunReport(result));
+    const report = parseAgentRunReport(json);
+
+    assert.ok(report.context);
+    assert.equal(report.context.turns.length, 1);
+    assert.equal(report.context.lastChars, report.context.turns[0]?.chars);
+    assert.equal(report.context.peakChars, report.context.turns[0]?.chars);
+    assert.equal(report.context.lastBytes, report.context.turns[0]?.bytes);
+    assert.ok((report.context.lastChars ?? 0) > 0);
+
+    assert.equal(json.includes('CANARY_SECRET_VALUE_1234'), false);
+    assert.equal(json.includes('SECRET_SYSTEM_PROMPT_CANARY'), false);
+    assert.equal(json.includes('canary'), false);
 });

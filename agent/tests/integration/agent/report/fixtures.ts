@@ -58,24 +58,37 @@ export const successResult = (): AgentRunResult => ({
     model: 'model-x',
     text: 'verified',
     executionMode: 'program',
-    trace: traceOf([
-        tool({toolCallId: 't1', toolName: 'browser.snapshot', classification: 'read', startedAt: 100}, {
-            endedAt: 110,
-            args: {tabName: 'main'},
-            worldBefore: {pageEpoch: 'page-1', captureRevision: 1, freshness: 'fresh'},
-            worldAfter: {pageEpoch: 'page-1', captureRevision: 1, freshness: 'fresh'},
-        }),
-        tool({toolCallId: 't2', toolName: 'agent.execute_program', classification: 'control', startedAt: 200}, {
-            endedAt: 220,
-            args: {source: 'fill order.orderForm.buyer with input.value', input: {value: 'new value'}},
-        }),
-        tool({toolCallId: 't3', toolName: 'debug.continue', classification: 'control', startedAt: 300}, {endedAt: 305}),
-        tool({toolCallId: 't4', toolName: 'browser.snapshot', classification: 'read', startedAt: 400}, {
-            endedAt: 430,
-            worldBefore: {pageEpoch: 'page-1', captureRevision: 2, freshness: 'fresh'},
-            worldAfter: {pageEpoch: 'page-1', captureRevision: 2, freshness: 'fresh'},
-        }),
-    ], 3),
+    trace: {
+        ...traceOf([
+            tool({toolCallId: 't1', toolName: 'browser.snapshot', classification: 'read', startedAt: 100}, {
+                endedAt: 110,
+                args: {tabName: 'main'},
+                worldBefore: {pageEpoch: 'page-1', captureRevision: 1, freshness: 'fresh'},
+                worldAfter: {pageEpoch: 'page-1', captureRevision: 1, freshness: 'fresh'},
+            }),
+            tool({toolCallId: 't2', toolName: 'agent.execute_program', classification: 'control', startedAt: 200}, {
+                endedAt: 220,
+                args: {source: 'fill order.orderForm.buyer with input.value', input: {value: 'new value'}},
+            }),
+            tool({toolCallId: 't3', toolName: 'debug.continue', classification: 'control', startedAt: 300}, {endedAt: 305}),
+            tool({toolCallId: 't4', toolName: 'browser.snapshot', classification: 'read', startedAt: 400}, {
+                endedAt: 430,
+                worldBefore: {pageEpoch: 'page-1', captureRevision: 2, freshness: 'fresh'},
+                worldAfter: {pageEpoch: 'page-1', captureRevision: 2, freshness: 'fresh'},
+            }),
+        ], 3),
+        context: {
+            turns: [
+                {turn: 1, chars: 120, bytes: 120},
+                {turn: 2, chars: 260, bytes: 268},
+                {turn: 3, chars: 400, bytes: 412},
+            ],
+            lastChars: 400,
+            lastBytes: 412,
+            peakChars: 400,
+            peakBytes: 412,
+        },
+    },
     programs: [program({
         source: 'fill order.orderForm.buyer with input.value\noutput done = input.done',
         status: 'completed',

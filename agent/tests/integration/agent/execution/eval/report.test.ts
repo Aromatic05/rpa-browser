@@ -50,3 +50,51 @@ test('report can include raw results when requested', async () => {
     const jsonReport = toAgentEvalJsonReport(report, {includeRawResults: true});
     assert.ok('rawResult' in (jsonReport.runs.program?.[0] ?? {}));
 });
+
+test('context metrics flow into the JSON report and aggregates deterministically', async () => {
+    const runner = {
+        run: async (request: {executionMode?: 'program' | 'react-baseline'}) => ({
+            provider: 'faux',
+            model: 'model-x',
+            text: 'done',
+            executionMode: request.executionMode,
+            trace: {
+                metrics: {
+                    turns: 2, toolCalls: 1, readCalls: 1, controlCalls: 0,
+                    effectCalls: 0, failedToolCalls: 0, postErrorEffectCalls: 0,
+                },
+                tools: [],
+                context: {
+                    turns: [{turn: 1, chars: 100, bytes: 100}, {turn: 2, chars: 220, bytes: 230}],
+                    lastChars: 220,
+                    lastBytes: 230,
+                    peakChars: 220,
+                    peakBytes: 230,
+                },
+            },
+        }),
+    };
+    const report = await runAgentEvalScenario({runner, modes: ['program']}, successScenario);
+    const json = agentEvalReportToJson(report);
+    const parsed = JSON.parse(json) as {
+        runs: {program: Array<{metrics: {context: {availability: string; peakChars: number; lastBytes: number}}}>};
+        aggregates: {program: {context: {
+            peakChars: {count: number; mean: number};
+            peakBytes: {count: number; mean: number};
+            lastChars: {count: number; mean: number};
+            lastBytes: {count: number; mean: number};
+        }}};
+    };
+    const metrics = parsed.runs.program[0]?.metrics;
+    assert.deepEqual(metrics?.context, {
+        availability: 'provider-visible',
+        peakChars: 220,
+        peakBytes: 230,
+        lastChars: 220,
+        lastBytes: 230,
+    });
+    assert.equal(parsed.aggregates.program?.context?.peakChars?.count, successScenario.trials);
+    assert.equal(parsed.aggregates.program?.context?.peakChars?.mean, 220);
+    assert.ok(!('unknown' in (parsed.aggregates.program?.context?.lastChars ?? {unknown: false})));
+    assert.equal(json.includes('provider-visible'), true);
+});
