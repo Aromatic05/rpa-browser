@@ -121,6 +121,23 @@ export type DslDebugRewindPlanResult =
     }>;
 
 
+export type DslDebugCommitResult =
+    | Readonly<{
+        status: 'committed';
+        previous: DebugTransactionSnapshot;
+        transaction: DebugTransactionSnapshot;
+        world: WorldViewDescriptor;
+    }>
+    | Readonly<{
+        status: 'conflict';
+        conflict: DslDebugWorldConflict;
+    }>
+    | Readonly<{
+        status: 'unavailable';
+        reason: 'failure_pause';
+        pause: PausedDslDebugExecution;
+    }>;
+
 export type DslDebugRewindResult =
     | Readonly<{
         status: 'rewound';
@@ -218,6 +235,7 @@ export type DslDebugExecutionSession = {
     recompute: (continuationId: string, path: string) => DebugValueRecomputeResult;
     diff: (continuationId: string, effectSequence: number) => DebugEffectDiffResult;
     transaction: (continuationId: string) => DebugTransactionSnapshot;
+    commit: (continuationId: string) => Promise<DslDebugCommitResult>;
     savepoint: (continuationId: string, name?: string) => DebugSavepoint;
     executionSavepoint: (continuationId: string, savepointId: string) => DebugExecutionSavepoint | null;
     transactionDiff: (continuationId: string) => WorldViewDiffResult;

@@ -26,6 +26,7 @@ const controlTools = new Set([
     'debug.step',
     'debug.continue',
     'debug.abort',
+    'debug.commit',
     'debug.savepoint',
     'debug.rollback',
     'debug.rewind',

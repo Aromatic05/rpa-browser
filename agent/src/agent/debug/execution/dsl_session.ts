@@ -47,6 +47,7 @@ import type {
 import type {
     DebugExecutionSavepoint,
     DslDebugAdvanceResult,
+    DslDebugCommitResult,
     DslDebugExecutionSession,
     DslDebugRecomputeEffectResult,
     DslDebugRewindPlanResult,
@@ -86,8 +87,12 @@ export const createDslDebugExecutionSession = (
         origin: 'automatic' | 'explicit';
     }>>();
     let transaction: DebugTransaction | null = null;
+    let transactionEffectStartSequence = 0;
     const ensureTransaction = async (): Promise<DebugTransaction> => {
-        transaction ??= createDebugTransaction(await options.worldViewSource.pin());
+        if (!transaction) {
+            transaction = createDebugTransaction(await options.worldViewSource.pin());
+            transactionEffectStartSequence = journal.list().length;
+        }
         return transaction;
     };
     const requireTransaction = (): DebugTransaction => {
@@ -783,6 +788,51 @@ export const createDslDebugExecutionSession = (
     };
 
 
+    const commit = async (continuationId: string): Promise<DslDebugCommitResult> => {
+        const current = requireActive(continuationId);
+        if (current.pause.reason === 'failure') {
+            return Object.freeze({
+                status: 'unavailable' as const,
+                reason: 'failure_pause' as const,
+                pause: exposePause(current),
+            });
+        }
+        const actualView = await options.worldViewSource.pin();
+        const actual = describeWorldView(actualView);
+        if (!isSameWorldView(current.debug.world, actual)) {
+            return Object.freeze({
+                status: 'conflict' as const,
+                conflict: Object.freeze({expected: current.debug.world, actual}),
+            });
+        }
+        const journalSequence = journal.list().length;
+        const previous = requireTransaction().snapshot(
+            current.view,
+            journalSequence - transactionEffectStartSequence,
+        );
+        transaction = createDebugTransaction(actualView);
+        transactionEffectStartSequence = journalSequence;
+        executionSavepoints.clear();
+        active = {
+            pause: current.pause,
+            view: actualView,
+            debug: createDebugQuerySession(actualView),
+            ...(current.effectResolvedAt ? {effectResolvedAt: current.effectResolvedAt} : {}),
+        };
+        if (current.pause.reason === 'statement'
+            && isRewindableStatementLocation(current.pause.location, current.pause.frames)) {
+            const savepoint = requireTransaction().internalSavepoint(actualView, journalSequence);
+            captureExecutionSavepoint(active, savepoint, 'automatic');
+            active = {...active, automaticSavepointId: savepoint.id};
+        }
+        return Object.freeze({
+            status: 'committed' as const,
+            previous,
+            transaction: requireTransaction().snapshot(actualView, 0),
+            world: actual,
+        });
+    };
+
     const rewind = async (
         continuationId: string,
         savepointId: string,
@@ -1020,8 +1070,9 @@ export const createDslDebugExecutionSession = (
         },
         transaction: (continuationId: string) => {
             const current = requireActive(continuationId);
-            return requireTransaction().snapshot(current.view, journal.list().length);
+            return requireTransaction().snapshot(current.view, journal.list().length - transactionEffectStartSequence);
         },
+        commit,
         savepoint: (continuationId: string, name?: string) => {
             const current = requireActive(continuationId);
             let savepoint: DebugSavepoint;

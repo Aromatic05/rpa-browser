@@ -239,6 +239,21 @@ export const createPausedDslDebugAgentTools = (
             },
         },
         {
+            name: 'debug.commit',
+            label: 'debug.commit',
+            description: 'Commit the current retained transaction baseline at the pinned World without advancing the DSL. Old transaction savepoints and rewind points become invalid; the effect journal remains readable as audit history. A failure pause cannot be committed.',
+            parameters: Type.Object({}, {additionalProperties: false}),
+            execute: async () => {
+                const current = requirePause();
+                const result = await execution.commit(current.continuationId);
+                if (result.status === 'committed') {
+                    pause = await execution.refresh(current.continuationId);
+                    terminal = null;
+                }
+                return toolResult(result);
+            },
+        },
+        {
             name: 'debug.savepoint',
             label: 'debug.savepoint',
             description: 'Create transaction-local debugger savepoint metadata at the current pinned World and effect position. This does not change the World.',

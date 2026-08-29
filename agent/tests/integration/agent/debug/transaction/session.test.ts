@@ -90,3 +90,110 @@ test('retained execution transaction spans effects and exposes savepoint-relativ
 
     await execution.advance(next.pause.continuationId, 'continue');
 });
+
+test('commit moves the transaction baseline forward while preserving effect audit history', async () => {
+    const [first, second] = await createViews();
+    let current = first;
+    const execution = createDslDebugExecutionSession({
+        source: `
+            click input.target
+            output done = input.done
+        `,
+        context: {
+            workspaceName: 'ws-transaction-commit',
+            deps: {} as RunStepsDeps,
+            input: {target: {nodeId: 'submit'}, done: true},
+            stepExecutionPort: {
+                execute: async (step) => {
+                    current = second;
+                    return {stepId: step.id, ok: true, data: {clicked: true}};
+                },
+            },
+        },
+        worldViewSource: {pin: async () => current},
+        debug: {breakBeforeEffects: true, breakpoints: ['body.1']},
+    });
+
+    const effect = await execution.waitForPause();
+    const oldSavepoint = execution.savepoint(effect.continuationId, 'old-baseline');
+    const next = await execution.advance(effect.continuationId, 'continue');
+    assert.equal(next.status, 'paused');
+    if (next.status !== 'paused') {throw new Error('expected statement pause after effect');}
+    assert.equal(execution.transaction(next.pause.continuationId).effectCount, 1);
+    assert.equal(execution.effects(next.pause.continuationId).length, 1);
+
+    const committed = await execution.commit(next.pause.continuationId);
+    assert.equal(committed.status, 'committed');
+    if (committed.status !== 'committed') {throw new Error('expected commit');}
+    assert.equal(committed.previous.effectCount, 1);
+    assert.deepEqual(committed.previous.baseline.revision, first.revision);
+    assert.equal(committed.transaction.effectCount, 0);
+    assert.deepEqual(committed.transaction.baseline.revision, second.revision);
+    assert.deepEqual(committed.transaction.current.revision, second.revision);
+    assert.deepEqual(committed.transaction.savepoints, []);
+
+    assert.equal(execution.effects(next.pause.continuationId).length, 1);
+    assert.equal(execution.executionSavepoint(next.pause.continuationId, oldSavepoint.id), null);
+    const oldRollback = await execution.rollback(next.pause.continuationId, oldSavepoint.id);
+    assert.equal(oldRollback.status, 'not_found');
+
+    const freshSavepoint = execution.savepoint(next.pause.continuationId, 'new-baseline');
+    assert.equal(freshSavepoint.effectSequence, 1);
+    const after = execution.transaction(next.pause.continuationId);
+    assert.equal(after.effectCount, 0);
+    assert.equal(after.savepoints.length, 1);
+    assert.equal(after.savepoints[0].id, freshSavepoint.id);
+    await execution.advance(next.pause.continuationId, 'abort');
+});
+
+test('commit refuses stale World state without moving the transaction baseline', async () => {
+    const [first, second] = await createViews();
+    let current = first;
+    const execution = createDslDebugExecutionSession({
+        source: 'output done = input.done',
+        context: {
+            workspaceName: 'ws-transaction-commit-conflict',
+            deps: {} as RunStepsDeps,
+            input: {done: true},
+            stepExecutionPort: {execute: async (step) => ({stepId: step.id, ok: true, data: {}})},
+        },
+        worldViewSource: {pin: async () => current},
+        debug: {initialMode: 'step'},
+    });
+
+    const pause = await execution.waitForPause();
+    const before = execution.transaction(pause.continuationId);
+    current = second;
+    const committed = await execution.commit(pause.continuationId);
+    assert.equal(committed.status, 'conflict');
+    if (committed.status === 'conflict') {
+        assert.deepEqual(committed.conflict.expected.revision, first.revision);
+        assert.deepEqual(committed.conflict.actual.revision, second.revision);
+    }
+    const after = execution.transaction(pause.continuationId);
+    assert.equal(after.id, before.id);
+    assert.deepEqual(after.baseline.revision, first.revision);
+    await execution.advance(pause.continuationId, 'abort');
+});
+
+test('commit is unavailable at a failure pause', async () => {
+    const [view] = await createViews();
+    const execution = createDslDebugExecutionSession({
+        source: 'ensure compute eq(input.actual, input.expected)',
+        context: {
+            workspaceName: 'ws-transaction-commit-failure',
+            deps: {} as RunStepsDeps,
+            input: {actual: 1, expected: 2},
+            stepExecutionPort: {execute: async (step) => ({stepId: step.id, ok: true, data: {}})},
+        },
+        worldViewSource: {pin: async () => view},
+        debug: {breakOnFailure: true},
+    });
+
+    const pause = await execution.waitForPause();
+    assert.equal(pause.reason, 'failure');
+    const committed = await execution.commit(pause.continuationId);
+    assert.equal(committed.status, 'unavailable');
+    if (committed.status === 'unavailable') {assert.equal(committed.reason, 'failure_pause');}
+    await execution.advance(pause.continuationId, 'abort');
+});
