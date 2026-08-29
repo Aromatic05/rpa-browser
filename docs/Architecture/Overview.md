@@ -44,6 +44,12 @@ extension/start_extension/mcp/control
   -> trace
 ```
 
+### 2.1 产品交互
+
+- Agent 自主执行以 Task 为用户侧执行单元；人工 Teach（procedure/recovery/Recording）与 Annotate（Entity Rules）仍是产品一等 authoring 能力。
+- Task / 人机交互 / workspace activity reservation / Teach+Annotate 闭环见 [AgentProductInteraction.md](./AgentProductInteraction.md)。
+- 最终产品侧栏、Home/Task/Library/History、Structured Teach 与 Annotator 复用方式见 [AgentProductUI.md](./AgentProductUI.md)。
+
 ### 3. workflow 与 workspace/tab
 
 - workflow 绑定 workspaceName：`workflow:<scene>`。
