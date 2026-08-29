@@ -1,4 +1,4 @@
-import { createRuntimeWorkspace, type RuntimeWorkspace } from './workspace';
+import { assertWorkspaceExecutionReplaceable, createRuntimeWorkspace, type RuntimeWorkspace } from './workspace';
 import type { Workflow } from '../../workflow';
 import type { RecordingState } from '../../recording/recording';
 import type { ReplayOptions } from '../../recording/replay';
@@ -102,6 +102,7 @@ export const createWorkspaceRegistry = (runtimeDeps: WorkspaceRuntimeDeps): Work
         if (workspaces.has(toName)) {
             throw new Error(`workspace already exists: ${toName}`);
         }
+        assertWorkspaceExecutionReplaceable(existing, 'workspace.rename');
         workspaces.delete(fromName);
         const wasActive = activeWorkspaceName === fromName;
         if (wasActive) {
@@ -122,6 +123,7 @@ export const createWorkspaceRegistry = (runtimeDeps: WorkspaceRuntimeDeps): Work
         removeWorkspace: (workspaceName) => {
             const workspace = workspaces.get(workspaceName) || null;
             if (!workspace) {return null;}
+            assertWorkspaceExecutionReplaceable(workspace, 'workspace.remove');
             workspaces.delete(workspaceName);
             if (activeWorkspaceName === workspaceName) {
                 activeWorkspaceName = workspaces.keys().next().value ?? null;

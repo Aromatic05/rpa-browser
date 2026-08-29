@@ -11,7 +11,6 @@ import type { ReplayOptions } from '../../recording/replay';
 import type { RunStepsDeps } from '../../runner/run_steps';
 import type { RunnerConfig } from '../../../platform/config';
 import type { Action } from '../../../interface/actions/action_protocol';
-import { ActionError, ERROR_CODES } from '../../../interface/actions/results';
 import type { PortAllocator } from '../service/ports';
 import { createWorkspaceMcpService } from '../mcp/service';
 import { getLogger } from '../../../platform/logging/logger';
@@ -21,8 +20,28 @@ import type { WorkspaceService } from '../service/types';
 import type { WorkspaceAgentFactory } from './agent';
 import { createEntityRulesRuntime, type EntityRulesRuntime } from '../../snapshot/rules';
 import {createRunnerAnnotatorController} from '../../runner/annotator';
+import { runWorkspaceExecution, type WorkspaceExecutionLease } from './execution_coordinator';
 
 export type WorkspaceState = 'idle' | 'recording' | 'playing' | 'executing';
+
+export {
+    acquireWorkspaceExecution,
+    assertWorkspaceExecutionReplaceable,
+    enterWorkspaceState,
+    getWorkspaceExecutionLease,
+    getWorkspaceState,
+    leaveWorkspaceState,
+    pauseWorkspaceExecution,
+    requireWorkspaceState,
+    resumeWorkspaceExecution,
+    runWorkspaceExecution,
+    workspaceExecutionOwnerKind,
+    type WorkspaceExecutionIntent,
+    type WorkspaceExecutionLease,
+    type WorkspaceExecutionOwnerInput,
+    type WorkspaceExecutionOwnerKind,
+    type WorkspaceExecutionRelease,
+} from './execution_coordinator';
 
 export type RuntimeWorkspace = {
     name: string;
@@ -39,6 +58,7 @@ export type RuntimeWorkspace = {
     router: WorkspaceRouter;
     state: WorkspaceState;
     executionOwner: symbol | null;
+    executionLease: WorkspaceExecutionLease | null;
     createdAt: number;
     updatedAt: number;
 };
@@ -56,63 +76,6 @@ export type CreateRuntimeWorkspaceDeps = {
     runnerConfig: RunnerConfig;
     portAllocator: PortAllocator;
     agentFactory: WorkspaceAgentFactory;
-};
-
-export const getWorkspaceState = (workspace: RuntimeWorkspace): WorkspaceState => workspace.state;
-
-export const requireWorkspaceState = (
-    workspace: RuntimeWorkspace,
-    expected: WorkspaceState,
-    actionType: string,
-): void => {
-    if (workspace.state !== expected) {
-        throw new ActionError(ERROR_CODES.ERR_BAD_STATE, `${actionType} requires workspace state=${expected}, current=${workspace.state}`);
-    }
-};
-
-export const enterWorkspaceState = (
-    workspace: RuntimeWorkspace,
-    next: WorkspaceState,
-    actionType: string,
-): void => {
-    if (workspace.state !== 'idle') {
-        throw new ActionError(ERROR_CODES.ERR_BAD_STATE, `${actionType} requires workspace state=idle, current=${workspace.state}`);
-    }
-    workspace.state = next;
-    workspace.updatedAt = Date.now();
-};
-
-export const leaveWorkspaceState = (
-    workspace: RuntimeWorkspace,
-    expected: WorkspaceState,
-    actionType: string,
-): void => {
-    if (workspace.state !== expected) {
-        throw new ActionError(ERROR_CODES.ERR_BAD_STATE, `${actionType} requires workspace state=${expected}, current=${workspace.state}`);
-    }
-    workspace.state = 'idle';
-    workspace.updatedAt = Date.now();
-};
-
-export type WorkspaceExecutionRelease = () => void;
-
-export const acquireWorkspaceExecution = (
-    workspace: RuntimeWorkspace,
-    actionType: string,
-): WorkspaceExecutionRelease => {
-    enterWorkspaceState(workspace, 'executing', actionType);
-    const owner = Symbol(actionType);
-    workspace.executionOwner = owner;
-    let released = false;
-    return () => {
-        if (released) {return;}
-        released = true;
-        if (workspace.executionOwner !== owner) {return;}
-        workspace.executionOwner = null;
-        if (workspace.state === 'executing') {
-            leaveWorkspaceState(workspace, 'executing', actionType);
-        }
-    };
 };
 
 export const createRuntimeWorkspace = (deps: CreateRuntimeWorkspaceDeps): RuntimeWorkspace => {
@@ -134,17 +97,10 @@ export const createRuntimeWorkspace = (deps: CreateRuntimeWorkspaceDeps): Runtim
     });
     const dsl = createDslControl({ runStepsDeps: deps.runStepsDeps });
     const checkpoint = createCheckpointControl();
-    const runOwnedWorkspaceExecution = async <T>(
+    const runOwnedWorkspaceExecution = <T>(
         actionType: string,
         run: () => Promise<T>,
-    ): Promise<T> => {
-        const release = acquireWorkspaceExecution(workspace, actionType);
-        try {
-            return await run();
-        } finally {
-            release();
-        }
-    };
+    ): Promise<T> => runWorkspaceExecution(workspace, actionType, run);
     const entityRules = createEntityRulesRuntime({
         annotator: createRunnerAnnotatorController({
             runStepsDeps: deps.runStepsDeps,
@@ -201,6 +157,7 @@ export const createRuntimeWorkspace = (deps: CreateRuntimeWorkspaceDeps): Runtim
         router,
         state: 'idle',
         executionOwner: null,
+        executionLease: null,
         createdAt: now,
         updatedAt: now,
     };

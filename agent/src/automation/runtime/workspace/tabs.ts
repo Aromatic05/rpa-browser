@@ -8,9 +8,13 @@ import type { ControlPlaneResult } from '../control_plane';
 import { isWorkspaceRecordingEnabled, type RecordingState } from '../../recording/recording';
 import { recordTabActivated, recordTabClosed, recordTabCreated } from '../../recording/tab_lifecycle_recorder';
 
+export type TabBindingState = 'unbound' | 'bound' | 'stale';
+
 export type RuntimeTab = {
+    tabId: string;
     name: string;
     page: Page | null;
+    binding: TabBindingState;
     url: string;
     title: string;
     createdAt: number;
@@ -47,14 +51,39 @@ export const createWorkspaceTabs = (deps: WorkspaceTabsDeps): WorkspaceTabs => {
     const tabs = new Map<string, RuntimeTab>();
     let activeTabName: string | null = null;
 
+    const markStale = (tab: RuntimeTab) => {
+        tab.page = null;
+        tab.binding = 'stale';
+        tab.updatedAt = now();
+    };
+
+    const attachPage = (tab: RuntimeTab, page: Page) => {
+        tab.page = page;
+        tab.url = page.url();
+        tab.updatedAt = now();
+        if (page.isClosed()) {
+            markStale(tab);
+            return;
+        }
+        tab.binding = 'bound';
+        if (typeof page.on === 'function') {
+            page.on('close', () => {
+                if (tab.page !== page) {return;}
+                markStale(tab);
+            });
+        }
+    };
+
     const createTab: WorkspaceTabs['createTab'] = (input) => {
         if (tabs.has(input.tabName)) {
             throw new Error(`tab already exists: ${input.tabName}`);
         }
         const at = input.at ?? now();
         const tab: RuntimeTab = {
+            tabId: crypto.randomUUID(),
             name: input.tabName,
             page: null,
+            binding: 'unbound',
             url: '',
             title: '',
             createdAt: at,
@@ -72,11 +101,12 @@ export const createWorkspaceTabs = (deps: WorkspaceTabsDeps): WorkspaceTabs => {
         if (existing?.page && !existing.page.isClosed()) {
             return existing.page;
         }
+        if (existing?.page?.isClosed()) {
+            markStale(existing);
+        }
         const page = await deps.awaitPageBinding(tabName, timeoutMs);
         if (existing) {
-            existing.page = page;
-            existing.url = page.url();
-            existing.updatedAt = now();
+            attachPage(existing, page);
         }
         return page;
     };
@@ -86,11 +116,12 @@ export const createWorkspaceTabs = (deps: WorkspaceTabsDeps): WorkspaceTabs => {
         if (existing?.page && !existing.page.isClosed()) {
             return existing.page;
         }
+        if (existing?.page?.isClosed()) {
+            markStale(existing);
+        }
         const page = await deps.createPageBinding(tabName, input);
         if (existing) {
-            existing.page = page;
-            existing.url = page.url();
-            existing.updatedAt = now();
+            attachPage(existing, page);
         }
         return page;
     };
@@ -98,9 +129,7 @@ export const createWorkspaceTabs = (deps: WorkspaceTabsDeps): WorkspaceTabs => {
     const bindPage: WorkspaceTabs['bindPage'] = (tabName, page) => {
         const tab = tabs.get(tabName) || null;
         if (!tab) { return null; }
-        tab.page = page;
-        tab.url = page.url();
-        tab.updatedAt = now();
+        attachPage(tab, page);
         return tab;
     };
 
@@ -115,6 +144,8 @@ export const createWorkspaceTabs = (deps: WorkspaceTabsDeps): WorkspaceTabs => {
                 throw new Error(`failed to close tab page: ${tabName}: ${message}`, { cause: error });
             }
         }
+        tab.page = null;
+        tab.binding = 'unbound';
         tabs.delete(tabName);
         if (activeTabName === tabName) {
             activeTabName = tabs.keys().next().value ?? null;
@@ -230,6 +261,8 @@ export const createTabsControl = (deps: { recordingState: RecordingState; navDed
                         workspaceName: workspace.name,
                         tabs: workspace.tabs.listTabs().map((tab) => ({
                             tabName: tab.name,
+                            tabId: tab.tabId,
+                            binding: tab.binding,
                             url: tab.url,
                             title: tab.title,
                             active: active === tab.name,
