@@ -2,12 +2,36 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {JSDOM} from 'jsdom';
 import {mountFloatingUI} from '../floating_ui.js';
-import {sanitizeForDisplay} from '../agent_session_ui.js';
+import {
+    buildAgentSessionView,
+    normalizeAgentSession,
+    normalizeAgentSessionReport,
+    sanitizeForDisplay,
+} from '../agent_session_ui.js';
 import type {Action} from '../../shared/types.js';
 
 const flush = async (): Promise<void> => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     await new Promise((resolve) => setTimeout(resolve, 0));
+};
+
+const setupDom = () => {
+    const dom = new JSDOM('<!doctype html><html><body></body></html>', {url: 'https://example.test/'});
+    const previous = {
+        window: globalThis.window,
+        document: globalThis.document,
+        HTMLElement: globalThis.HTMLElement,
+        HTMLButtonElement: globalThis.HTMLButtonElement,
+        Node: globalThis.Node,
+    };
+    Object.assign(globalThis, {
+        window: dom.window,
+        document: dom.window.document,
+        HTMLElement: dom.window.HTMLElement,
+        HTMLButtonElement: dom.window.HTMLButtonElement,
+        Node: dom.window.Node,
+    });
+    return {dom, previous};
 };
 
 const snapshot = (sessionId: string, state: string): Record<string, unknown> => ({
@@ -226,4 +250,220 @@ test('sanitizeForDisplay masks API keys recursively', () => {
     assert.equal(list[0].secret, '***');
     assert.equal(list[1].ok, true);
     assert.equal(sanitized.provider, 'anthropic');
+});
+
+test('agent session UI renders a completed session report without raw tool args', async () => {
+    const {dom, previous} = setupDom();
+    try {
+        const reportCalls: string[] = [];
+        const reportPayload = {
+            schema: 'rpa.agent.run-report',
+            schemaVersion: 1,
+            run: {provider: 'anthropic', model: 'claude-sonnet', executionMode: 'program'},
+            terminal: {status: 'completed', output: 'orders summarized'},
+            toolMetrics: {
+                turns: 4,
+                toolCalls: 5,
+                readCalls: 2,
+                controlCalls: 1,
+                effectCalls: 2,
+                failedToolCalls: 0,
+                postErrorEffectCalls: 0,
+                repair: {rewindCalls: 0, rollbackCalls: 0, patchCalls: 0, recomputeCalls: 0, refreshCalls: 1},
+            },
+            world: {revisionsObserved: []},
+            toolCalls: [
+                {
+                    toolCallId: 'tc-1',
+                    toolName: 'browser.click',
+                    classification: 'effect',
+                    isError: false,
+                    startedAt: 1,
+                    durationMs: 2,
+                    args: {apiKey: 'sk-super-secret', selector: '#orders'},
+                    redactedPaths: ['apiKey'],
+                    worldBefore: null,
+                    worldAfter: null,
+                },
+            ],
+            effects: {
+                availability: 'program-journal',
+                worldEffectCalls: 2,
+                failedWorldChangingEffects: [],
+                compensationEffects: [],
+                records: [],
+            },
+            programs: [
+                {index: 0, status: 'completed', source: 'main', output: 'orders summarized', inputKeys: [], effectsExposed: true, effectCount: 2},
+            ],
+            savedArtifacts: [{kind: 'program', name: 'orders.program.json', artifactRevision: 'rev-1'}],
+        };
+        const report = normalizeAgentSessionReport(reportPayload);
+        assert.ok(report);
+        const session = normalizeAgentSession({
+            sessionId: 'session-report',
+            state: 'completed',
+            createdAt: 1,
+            startedAt: 1,
+            endedAt: 2,
+            request: {prompt: 'p', provider: 'anthropic', model: 'claude-sonnet', executionMode: 'program'},
+            result: {text: 'done', executionMode: 'program', programs: []},
+            error: null,
+            reportAvailable: true,
+            resumable: false,
+        });
+        assert.ok(session);
+
+        const root = buildAgentSessionView({
+            sessions: [session],
+            inputs: {prompt: '', provider: '', model: '', executionMode: ''},
+            onInputsChange: () => undefined,
+            handlers: {
+                start: () => undefined,
+                list: () => undefined,
+                status: () => undefined,
+                cancel: () => undefined,
+                clear: () => undefined,
+                report: (sessionId) => { reportCalls.push(sessionId); },
+            },
+            report: {sessionId: 'session-report', status: 'loaded', report},
+        });
+
+        const text = root.textContent ?? '';
+        assert.match(text, /terminal: completed/);
+        assert.match(text, /orders summarized/);
+        assert.match(text, /run: anthropic · claude-sonnet · program/);
+        assert.match(text, /governance: unavailable/);
+        assert.match(text, /tool metrics: turns: 4 · toolCalls: 5 · effectCalls: 2 · failedToolCalls: 0/);
+        assert.match(text, /rewind: 0 · rollback: 0 · patch: 0 · recompute: 0 · refresh: 1/);
+        assert.match(text, /effects: world effect calls: 2/);
+        assert.match(text, /program 0: completed — main · effects: 2/);
+        assert.match(text, /artifact: orders\.program\.json \(rev-1\)/);
+        assert.match(text, /tool calls recorded: 1 \(arguments not shown\)/);
+        assert.ok(!text.includes('sk-super-secret'), 'raw tool args must not be rendered');
+        assert.ok(!text.includes('browser.click'), 'tool call names must not be rendered');
+        assert.ok(!text.includes('tc-1'), 'tool call ids must not be rendered');
+
+        const item = root.querySelector('[data-session-id="session-report"]') as HTMLElement;
+        assert.ok(item);
+        assert.equal(item.dataset.reportAvailable, 'true');
+
+        const refreshBtn = Array.from(root.querySelectorAll('button')).find((b) => b.textContent === 'Refresh Report');
+        click(refreshBtn);
+        assert.deepEqual(reportCalls, ['session-report']);
+    } finally {
+        Object.assign(globalThis, previous);
+        dom.window.close();
+    }
+});
+
+test('agent session UI marks a paused session as not resumable after restart', () => {
+    const {dom, previous} = setupDom();
+    try {
+        const session = normalizeAgentSession({
+            sessionId: 'session-paused',
+            state: 'paused',
+            createdAt: 1,
+            startedAt: 1,
+            endedAt: 2,
+            request: {prompt: 'p', provider: 'p', model: 'm'},
+            result: null,
+            error: null,
+            reportAvailable: false,
+            resumable: false,
+        });
+        assert.ok(session);
+        const root = buildAgentSessionView({
+            sessions: [session],
+            inputs: {prompt: '', provider: '', model: '', executionMode: ''},
+            onInputsChange: () => undefined,
+            handlers: {
+                start: () => undefined,
+                list: () => undefined,
+                status: () => undefined,
+                cancel: () => undefined,
+                clear: () => undefined,
+            },
+        });
+        const item = root.querySelector('[data-session-id="session-paused"]') as HTMLElement;
+        assert.ok(item);
+        assert.equal(item.dataset.sessionState, 'paused');
+        assert.equal(item.dataset.resumable, 'false');
+        assert.match(item.textContent ?? '', /Paused — resume\/approve is not available \(resumable: false\)/);
+    } finally {
+        Object.assign(globalThis, previous);
+        dom.window.close();
+    }
+});
+
+test('agent session UI shows an explicit message when a report is missing', () => {
+    const {dom, previous} = setupDom();
+    try {
+        const session = normalizeAgentSession({
+            sessionId: 'session-noreport',
+            state: 'completed',
+            createdAt: 1,
+            startedAt: 1,
+            endedAt: 2,
+            request: {prompt: 'p', provider: 'p', model: 'm'},
+            result: null,
+            error: null,
+            reportAvailable: false,
+            resumable: false,
+        });
+        assert.ok(session);
+        const root = buildAgentSessionView({
+            sessions: [session],
+            inputs: {prompt: '', provider: '', model: '', executionMode: ''},
+            onInputsChange: () => undefined,
+            handlers: {
+                start: () => undefined,
+                list: () => undefined,
+                status: () => undefined,
+                cancel: () => undefined,
+                clear: () => undefined,
+                report: () => undefined,
+            },
+            report: {sessionId: 'session-noreport', status: 'missing'},
+        });
+        const text = root.textContent ?? '';
+        assert.match(text, /Report — session-noreport/);
+        assert.match(text, /Report unavailable for this session/);
+    } finally {
+        Object.assign(globalThis, previous);
+        dom.window.close();
+    }
+});
+
+test('agent session UI emits agent.sessions.prune only after confirmation', () => {
+    const {dom, previous} = setupDom();
+    try {
+        const pruneCalls: number[] = [];
+        const handlers = {
+            start: () => undefined,
+            list: () => undefined,
+            status: () => undefined,
+            cancel: () => undefined,
+            clear: () => undefined,
+            prune: (maxCount: number) => { pruneCalls.push(maxCount); },
+        };
+        dom.window.confirm = () => true;
+        const root = buildAgentSessionView({
+            sessions: [],
+            inputs: {prompt: '', provider: '', model: '', executionMode: ''},
+            onInputsChange: () => undefined,
+            handlers,
+            pruneMaxCount: 5,
+        });
+        const pruneBtn = Array.from(root.querySelectorAll('button')).find((b) => b.textContent === 'Prune');
+        click(pruneBtn);
+        assert.deepEqual(pruneCalls, [5]);
+
+        dom.window.confirm = () => false;
+        click(pruneBtn);
+        assert.deepEqual(pruneCalls, [5], 'prune must not fire when confirmation is declined');
+    } finally {
+        Object.assign(globalThis, previous);
+        dom.window.close();
+    }
 });

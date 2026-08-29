@@ -270,6 +270,38 @@ await log('agent.sessions.cancel with workspaceName routes to workspace', async 
     assert.equal(reply.type, 'agent.sessions.cancel.result');
 });
 
+await log('agent.sessions.report with workspaceName routes to workspace', async () => {
+    const reply = await dispatchActionRequest(
+        { v: 1, id: 'req-as5', type: 'agent.sessions.report', workspaceName: 'ws-1', payload: { sessionId: 's1' } },
+        mkWsClient(),
+    );
+    assert.equal(reply.type, 'agent.sessions.report.result');
+});
+
+await log('agent.sessions.report without workspaceName fails', async () => {
+    const reply = await dispatchActionRequest(
+        { v: 1, id: 'req-as6', type: 'agent.sessions.report', payload: { sessionId: 's1' } },
+        mkWsClient(),
+    );
+    assert.equal(reply.type, 'agent.sessions.report.failed');
+});
+
+await log('agent.sessions.prune with workspaceName routes to workspace', async () => {
+    const reply = await dispatchActionRequest(
+        { v: 1, id: 'req-as7', type: 'agent.sessions.prune', workspaceName: 'ws-1', payload: { maxCount: 20 } },
+        mkWsClient(),
+    );
+    assert.equal(reply.type, 'agent.sessions.prune.result');
+});
+
+await log('agent.sessions.prune without workspaceName fails', async () => {
+    const reply = await dispatchActionRequest(
+        { v: 1, id: 'req-as8', type: 'agent.sessions.prune', payload: { maxCount: 20 } },
+        mkWsClient(),
+    );
+    assert.equal(reply.type, 'agent.sessions.prune.failed');
+});
+
 await log('projection refreshes without workspace ownership mapping', async () => {
     globalThis.chrome = { windows: { WINDOW_ID_NONE: -1 } };
     const calls = [];

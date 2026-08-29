@@ -26,6 +26,55 @@ export type AgentSessionSummary = Readonly<{
         programs?: readonly AgentSessionProgramSummary[];
     }> | null;
     error: Readonly<{code: string; message: string}> | null;
+    reportAvailable: boolean;
+    resumable: boolean;
+}>;
+
+export type AgentSessionReportStatus = 'completed' | 'paused' | 'failed' | 'aborted' | 'invalid';
+
+export type AgentSessionReportSummary = Readonly<{
+    run: Readonly<{provider: string; model: string; executionMode: string}>;
+    terminal: Readonly<{
+        status: AgentSessionReportStatus;
+        output?: string;
+        error?: Readonly<{code: string; message: string}> | null;
+    }>;
+    toolMetrics: Readonly<{
+        turns: number | null;
+        toolCalls: number | null;
+        effectCalls: number | null;
+        failedToolCalls: number | null;
+        repair: Readonly<{
+            rewindCalls: number | null;
+            rollbackCalls: number | null;
+            patchCalls: number | null;
+            recomputeCalls: number | null;
+            refreshCalls: number | null;
+        }>;
+    }> | null;
+    effects: Readonly<{
+        availability: string;
+        worldEffectCalls: number | null;
+        failedWorldChangingEffects: number | null;
+        compensationEffects: number | null;
+    }> | null;
+    programs: readonly Readonly<{
+        index: number | null;
+        status: string;
+        source: string;
+        output?: string;
+        error?: Readonly<{code: string; message: string}> | null;
+        effectsExposed: boolean;
+        effectCount: number | null;
+    }>[];
+    savedArtifacts: readonly Readonly<{kind: string; name: string; artifactRevision: string}>[];
+    toolCallCount: number | null;
+}>;
+
+export type AgentSessionReportViewState = Readonly<{
+    sessionId: string;
+    status: 'loaded' | 'missing';
+    report?: AgentSessionReportSummary | null;
 }>;
 
 export type AgentSessionInputs = {
@@ -41,6 +90,8 @@ export type AgentSessionHandlers = {
     status: (sessionId: string) => void | Promise<void>;
     cancel: (sessionId: string) => void | Promise<void>;
     clear: () => void;
+    report?: (sessionId: string) => void | Promise<void>;
+    prune?: (maxCount: number) => void | Promise<void>;
 };
 
 export type AgentSessionViewOptions = {
@@ -48,9 +99,13 @@ export type AgentSessionViewOptions = {
     inputs: AgentSessionInputs;
     onInputsChange: (patch: Partial<AgentSessionInputs>) => void;
     handlers: AgentSessionHandlers;
+    report?: AgentSessionReportViewState | null;
+    pruneMaxCount?: number;
 };
 
 const AGENT_SESSION_STATES: readonly AgentSessionState[] = ['running', 'paused', 'completed', 'failed', 'cancelled'];
+
+const DEFAULT_PRUNE_MAX_COUNT = 20;
 
 export const isAgentSessionState = (value: unknown): value is AgentSessionState =>
     typeof value === 'string' && (AGENT_SESSION_STATES as readonly string[]).includes(value);
@@ -129,6 +184,91 @@ export const normalizeAgentSession = (raw: unknown): AgentSessionSummary | null 
         error: errorRaw === null
             ? null
             : {code: str(errorRaw.code), message: str(errorRaw.message)},
+        reportAvailable: raw.reportAvailable === true,
+        resumable: raw.resumable === true,
+    };
+};
+
+const REPORT_TERMINAL_STATUSES: readonly AgentSessionReportStatus[] = ['completed', 'paused', 'failed', 'aborted', 'invalid'];
+
+const isReportTerminalStatus = (value: string): value is AgentSessionReportStatus =>
+    (REPORT_TERMINAL_STATUSES as readonly string[]).includes(value);
+
+const reportNum = (value: unknown): number | null => (typeof value === 'number' && Number.isFinite(value) ? value : null);
+
+const reportError = (raw: unknown): Readonly<{code: string; message: string}> | null =>
+    isRecord(raw) ? {code: str(raw.code), message: str(raw.message)} : null;
+
+export const normalizeAgentSessionReport = (raw: unknown): AgentSessionReportSummary | null => {
+    if (!isRecord(raw)) {return null;}
+    const terminalRaw = isRecord(raw.terminal) ? raw.terminal : null;
+    if (!terminalRaw) {return null;}
+    const terminalStatus = str(terminalRaw.status);
+    if (!isReportTerminalStatus(terminalStatus)) {return null;}
+    const runRaw = isRecord(raw.run) ? raw.run : null;
+    const toolMetricsRaw = isRecord(raw.toolMetrics) ? raw.toolMetrics : null;
+    const repairRaw = isRecord(toolMetricsRaw?.repair) ? toolMetricsRaw.repair : null;
+    const effectsRaw = isRecord(raw.effects) ? raw.effects : null;
+    return {
+        run: {
+            provider: runRaw ? str(runRaw.provider) : '',
+            model: runRaw ? str(runRaw.model) : '',
+            executionMode: runRaw ? str(runRaw.executionMode) : '',
+        },
+        terminal: {
+            status: terminalStatus,
+            output: typeof terminalRaw.output === 'string' && terminalRaw.output.trim() ? terminalRaw.output : undefined,
+            error: reportError(terminalRaw.error),
+        },
+        toolMetrics: toolMetricsRaw === null ? null : {
+            turns: reportNum(toolMetricsRaw.turns),
+            toolCalls: reportNum(toolMetricsRaw.toolCalls),
+            effectCalls: reportNum(toolMetricsRaw.effectCalls),
+            failedToolCalls: reportNum(toolMetricsRaw.failedToolCalls),
+            repair: {
+                rewindCalls: repairRaw ? reportNum(repairRaw.rewindCalls) : null,
+                rollbackCalls: repairRaw ? reportNum(repairRaw.rollbackCalls) : null,
+                patchCalls: repairRaw ? reportNum(repairRaw.patchCalls) : null,
+                recomputeCalls: repairRaw ? reportNum(repairRaw.recomputeCalls) : null,
+                refreshCalls: repairRaw ? reportNum(repairRaw.refreshCalls) : null,
+            },
+        },
+        effects: effectsRaw === null ? null : {
+            availability: str(effectsRaw.availability) || 'not-exposed',
+            worldEffectCalls: reportNum(effectsRaw.worldEffectCalls),
+            failedWorldChangingEffects: Array.isArray(effectsRaw.failedWorldChangingEffects)
+                ? effectsRaw.failedWorldChangingEffects.length
+                : null,
+            compensationEffects: Array.isArray(effectsRaw.compensationEffects)
+                ? effectsRaw.compensationEffects.length
+                : null,
+        },
+        programs: (Array.isArray(raw.programs) ? raw.programs : []).flatMap((program) => {
+            if (!isRecord(program)) {return [];}
+            const status = str(program.status);
+            if (!status) {return [];}
+            const error = reportError(program.error);
+            return [{
+                index: reportNum(program.index),
+                status,
+                source: str(program.source),
+                output: typeof program.output === 'string' && program.output.trim() ? program.output : undefined,
+                ...(error === null ? {} : {error}),
+                effectsExposed: program.effectsExposed === true,
+                effectCount: reportNum(program.effectCount),
+            }];
+        }),
+        savedArtifacts: (Array.isArray(raw.savedArtifacts) ? raw.savedArtifacts : []).flatMap((artifact) => {
+            if (!isRecord(artifact)) {return [];}
+            const name = str(artifact.name);
+            if (!name) {return [];}
+            return [{
+                kind: str(artifact.kind) || 'program',
+                name,
+                artifactRevision: str(artifact.artifactRevision),
+            }];
+        }),
+        toolCallCount: Array.isArray(raw.toolCalls) ? raw.toolCalls.length : null,
     };
 };
 
@@ -184,6 +324,8 @@ const renderSession = (
     item.className = 'log-item';
     item.dataset.sessionId = session.sessionId;
     item.dataset.sessionState = session.state;
+    item.dataset.reportAvailable = String(session.reportAvailable);
+    item.dataset.resumable = String(session.resumable);
 
     const head = document.createElement('div');
     head.className = 'hint';
@@ -191,15 +333,23 @@ const renderSession = (
     head.textContent = `[${STATE_LABELS[session.state]}] ${session.request.model || session.request.provider || session.sessionId}${mode}`;
     item.appendChild(head);
 
+    const controlsRow = document.createElement('div');
+    controlsRow.className = 'row';
     if (session.state === 'running') {
-        const controlsRow = document.createElement('div');
-        controlsRow.className = 'row';
-        controlsRow.appendChild(createButton('Status', () => { handlers.status(session.sessionId); }));
-        controlsRow.appendChild(createButton('Cancel', () => { handlers.cancel(session.sessionId); }));
+        controlsRow.appendChild(createButton('Status', () => handlers.status(session.sessionId)));
+        controlsRow.appendChild(createButton('Cancel', () => handlers.cancel(session.sessionId)));
+    }
+    const report = handlers.report;
+    if (report) {
+        controlsRow.appendChild(createButton('Report', () => report(session.sessionId)));
+    }
+    if (controlsRow.childElementCount > 0) {
         item.appendChild(controlsRow);
     }
     if (session.state === 'paused') {
-        item.appendChild(hint('Paused — resume/approve is not available in this service.'));
+        item.appendChild(hint(session.resumable
+            ? 'Paused — resume/approve is not available in this service.'
+            : 'Paused — resume/approve is not available (resumable: false).'));
     }
     if (session.state === 'failed' && session.error) {
         item.appendChild(hint(`${session.error.code}: ${session.error.message}`));
@@ -210,7 +360,105 @@ const renderSession = (
     for (const line of renderProgramStatus(session)) {
         item.appendChild(line);
     }
+    item.appendChild(hint(`report: ${session.reportAvailable ? 'available' : 'unavailable'}`));
     return item;
+};
+
+const truncate = (text: string, max: number): string => (text.length <= max ? text : `${text.slice(0, max)}…`);
+
+const metricLabel = (label: string, value: number | null): string | null =>
+    value === null ? null : `${label}: ${String(value)}`;
+
+const renderReport = (
+    reportState: AgentSessionReportViewState,
+    handlers: AgentSessionHandlers,
+): HTMLElement => {
+    const box = section(`Report — ${reportState.sessionId}`);
+    const reportHandler = handlers.report;
+    if (reportHandler) {
+        const row = document.createElement('div');
+        row.className = 'row';
+        row.appendChild(createButton('Refresh Report', () => reportHandler(reportState.sessionId)));
+        box.appendChild(row);
+    }
+    if (reportState.status === 'missing' || !reportState.report) {
+        box.appendChild(hint('Report unavailable for this session.'));
+        return box;
+    }
+    const report = reportState.report;
+    const terminal = report.terminal;
+    const terminalText = terminal.output ?? '';
+    box.appendChild(hint(
+        `terminal: ${terminal.status}${terminalText ? ` — ${truncate(terminalText, 400)}` : ''}`,
+    ));
+    if (terminal.error?.message) {
+        box.appendChild(hint(`error: ${terminal.error.code}: ${terminal.error.message}`));
+    }
+    const runInfo = [report.run.provider, report.run.model, report.run.executionMode].filter(Boolean).join(' · ');
+    if (runInfo) {box.appendChild(hint(`run: ${runInfo}`));}
+
+    box.appendChild(hint('governance: unavailable'));
+
+    if (report.toolMetrics) {
+        const metrics = report.toolMetrics;
+        const repair = metrics.repair;
+        const parts = [
+            metricLabel('turns', metrics.turns),
+            metricLabel('toolCalls', metrics.toolCalls),
+            metricLabel('effectCalls', metrics.effectCalls),
+            metricLabel('failedToolCalls', metrics.failedToolCalls),
+            metricLabel('rewind', repair.rewindCalls),
+            metricLabel('rollback', repair.rollbackCalls),
+            metricLabel('patch', repair.patchCalls),
+            metricLabel('recompute', repair.recomputeCalls),
+            metricLabel('refresh', repair.refreshCalls),
+        ].filter((part): part is string => part !== null);
+        box.appendChild(hint(`tool metrics: ${parts.length > 0 ? parts.join(' · ') : 'none'}`));
+    } else {
+        box.appendChild(hint('tool metrics: unavailable'));
+    }
+
+    if (report.effects) {
+        const effects = report.effects;
+        if (effects.availability === 'not-exposed') {
+            box.appendChild(hint('effects: not exposed (unavailable)'));
+        } else {
+            const parts = [
+                metricLabel('world effect calls', effects.worldEffectCalls),
+                metricLabel('failed effects', effects.failedWorldChangingEffects),
+                metricLabel('compensations', effects.compensationEffects),
+            ].filter((part): part is string => part !== null);
+            box.appendChild(hint(`effects: ${parts.length > 0 ? parts.join(' · ') : 'none'}`));
+        }
+    } else {
+        box.appendChild(hint('effects: unavailable'));
+    }
+
+    if (report.programs.length > 0) {
+        for (const program of report.programs) {
+            const index = program.index === null ? '?' : String(program.index);
+            const effectsNote = program.effectsExposed && program.effectCount !== null
+                ? ` · effects: ${String(program.effectCount)}`
+                : '';
+            const errorNote = program.error?.message ? ` — ${program.error.code}: ${program.error.message}` : '';
+            box.appendChild(hint(`program ${index}: ${program.status} — ${program.source}${effectsNote}${errorNote}`));
+        }
+    } else {
+        box.appendChild(hint('programs: none'));
+    }
+
+    if (report.savedArtifacts.length > 0) {
+        for (const artifact of report.savedArtifacts) {
+            box.appendChild(hint(`artifact: ${artifact.name} (${artifact.artifactRevision})`));
+        }
+    } else {
+        box.appendChild(hint('saved artifacts: none'));
+    }
+
+    if (report.toolCallCount !== null) {
+        box.appendChild(hint(`tool calls recorded: ${String(report.toolCallCount)} (arguments not shown)`));
+    }
+    return box;
 };
 
 export const buildAgentSessionView = (opts: AgentSessionViewOptions): HTMLElement => {
@@ -270,7 +518,23 @@ export const buildAgentSessionView = (opts: AgentSessionViewOptions): HTMLElemen
     runBox.appendChild(listRow);
     root.appendChild(runBox);
 
+    if (opts.report) {
+        root.appendChild(renderReport(opts.report, opts.handlers));
+    }
+
     const listBox = section('Sessions');
+    const prune = opts.handlers.prune;
+    if (prune) {
+        const maxCount = opts.pruneMaxCount ?? DEFAULT_PRUNE_MAX_COUNT;
+        const pruneRow = document.createElement('div');
+        pruneRow.className = 'row';
+        pruneRow.appendChild(createButton('Prune', () => {
+            // eslint-disable-next-line no-alert
+            if (!window.confirm(`Delete all but the most recent ${String(maxCount)} settled sessions? This cannot be undone.`)) {return;}
+            return prune(maxCount);
+        }));
+        listBox.appendChild(pruneRow);
+    }
     const sessions = [...opts.sessions].sort((a, b) => b.createdAt - a.createdAt);
     if (sessions.length === 0) {
         listBox.appendChild(hint('No agent sessions.'));

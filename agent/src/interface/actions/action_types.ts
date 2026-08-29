@@ -79,6 +79,8 @@ export const REQUEST_ACTION_TYPES = {
     AGENT_SESSIONS_LIST: 'agent.sessions.list',
     AGENT_SESSIONS_STATUS: 'agent.sessions.status',
     AGENT_SESSIONS_CANCEL: 'agent.sessions.cancel',
+    AGENT_SESSIONS_REPORT: 'agent.sessions.report',
+    AGENT_SESSIONS_PRUNE: 'agent.sessions.prune',
 
     LOG_EXT: 'log.ext',
 } as const;
