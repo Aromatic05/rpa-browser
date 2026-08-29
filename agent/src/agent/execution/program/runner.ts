@@ -1,11 +1,25 @@
 import type {AgentTool} from '@earendil-works/pi-agent-core';
-import {createReactAgentRunner} from '../react_runner';
+import {createReactAgentRunner, type GovernedAgentRunResult} from '../react_runner';
 import type {AgentModelRuntime} from '../../model/runtime';
 import {classifyAgentToolCall} from '../../tools/policy';
 import {classifyPausedDslDebugToolCall} from '../../debug/execution/tool_policy';
 import {compactDebuggerSystemPromptForPause} from '../../debug/execution/agent_surface';
 import {mergeAgentTraceSnapshots} from '../../trace/merge';
 import type {AgentWorldRevision} from '../../trace/collector';
+import {
+    createGovernanceController,
+    SAFE_UNATTENDED_POLICY,
+    type EffectObservation,
+    type GovernanceController,
+    type GovernancePolicy,
+} from '../../governance';
+import {createRecoveryBudgetStore} from '../../debug/recovery/budget';
+import {recoveryBudgetKey} from '../../debug/recovery/key';
+import type {
+    RecoveryBudgetAction,
+    RecoveryBudgetLimits,
+    RecoveryContext,
+} from '../../debug/recovery/contracts';
 import type {AgentProgramExecutor} from './contracts';
 import {createProgramExecutionTool, EXECUTE_PROGRAM_TOOL, type ProgramExecutionToolController} from './tool';
 import type {AgentProgramSaver} from './persistence';
@@ -13,7 +27,7 @@ import {createProgramSaveTool, SAVE_PROGRAM_TOOL} from './save_tool';
 import type {AgentProgramLibrary} from './library';
 import {createProgramLibraryTools, LIST_PROGRAMS_TOOL, LOAD_PROGRAM_TOOL} from './library_tools';
 import {PROGRAM_DSL_AUTHORING_GUIDE} from './authoring';
-import type {AgentRunRequest, AgentRunner} from '../types';
+import type {AgentRunRequest} from '../types';
 
 export const PROGRAM_FIRST_SYSTEM_PROMPT = [
     'You are the planner and controller for a program-first browser automation agent.',
@@ -53,6 +67,14 @@ export type CreateProgramFirstAgentRunnerOptions = {
     saveProgram?: AgentProgramSaver;
     modelRuntime?: AgentModelRuntime;
     readWorldRevision?: () => AgentWorldRevision | null | Promise<AgentWorldRevision | null>;
+    governancePolicy?: GovernancePolicy;
+    governanceController?: GovernanceController;
+    recoveryBudgetLimits?: RecoveryBudgetLimits;
+    signal?: AbortSignal;
+};
+
+export type ProgramFirstAgentRunResult = GovernedAgentRunResult & {
+    executionMode: 'program';
 };
 
 const requestSystemPrompt = (request: AgentRunRequest): string => [
@@ -63,13 +85,14 @@ const requestSystemPrompt = (request: AgentRunRequest): string => [
 const controlSystemPrompt = (
     execution: ProgramExecutionToolController,
     request: AgentRunRequest,
+    recovery: () => RecoveryContext,
 ): string => {
     const pause = execution.readPause();
     if (!pause) {return ACTIVE_PROGRAM_CONTROL_PROMPT;}
     return [
         ACTIVE_PROGRAM_CONTROL_PROMPT,
         request.systemPrompt,
-        compactDebuggerSystemPromptForPause(pause),
+        compactDebuggerSystemPromptForPause(pause, recovery()),
     ].filter((value): value is string => Boolean(value)).join('\n\n');
 };
 
@@ -89,11 +112,19 @@ const readProgramWorldRevision = async (
     return fallback ? await fallback() : null;
 };
 
+const recoveryActionForTool = (name: string): RecoveryBudgetAction | null => {
+    if (name === 'debug.rollback') {return 'rollback';}
+    if (name === 'debug.patch_program' || name === 'debug.patch_statement') {return 'repair';}
+    if (name === 'debug.rewind') {return 'retry';}
+    return null;
+};
+
 const prepareProgramContext = (
     execution: ProgramExecutionToolController,
     planningTools: readonly AgentTool[],
     terminalTools: readonly AgentTool[],
     request: AgentRunRequest,
+    recovery: () => RecoveryContext,
 ) => ({context}: Parameters<NonNullable<Parameters<typeof createReactAgentRunner>[0]['prepareNextTurnWithContext']>>[0]) => {
     const debugTools = execution.readDebugTools();
     if (debugTools) {
@@ -101,7 +132,7 @@ const prepareProgramContext = (
             context: {
                 ...context,
                 tools: [...debugTools],
-                systemPrompt: controlSystemPrompt(execution, request),
+                systemPrompt: controlSystemPrompt(execution, request, recovery),
             },
         };
     }
@@ -127,8 +158,12 @@ const prepareProgramContext = (
 
 export const createProgramFirstAgentRunner = (
     options: CreateProgramFirstAgentRunnerOptions,
-): AgentRunner => ({
+): {run: (request: AgentRunRequest) => Promise<ProgramFirstAgentRunResult>} => ({
     run: async (request) => {
+        const governance = options.governanceController
+            ?? createGovernanceController(options.governancePolicy ?? SAFE_UNATTENDED_POLICY, Date.now());
+        const budgetStore = createRecoveryBudgetStore(options.recoveryBudgetLimits);
+
         const execution = createProgramExecutionTool({execute: options.executeProgram});
         const save = options.saveProgram
             ? createProgramSaveTool({execution, save: options.saveProgram})
@@ -138,6 +173,38 @@ export const createProgramFirstAgentRunner = (
             : [];
         const planningTools = [...options.readTools, ...libraryTools, execution.tool];
         const terminalTools = [...options.readTools, ...libraryTools, ...(save ? [save.tool] : [])];
+
+        const recoveryContext = (): RecoveryContext => ({
+            budget: budgetStore,
+            effects: execution.readEffects(),
+        });
+
+        const observeIrreversible = (toolName: string): EffectObservation | null => {
+            const pause = execution.readPause();
+            if (!pause || (pause.reason !== 'barrier' && pause.reason !== 'effect')) {return null;}
+            if (pause.effect.semantics.reversibility !== 'irreversible') {return null;}
+            if (toolName !== 'debug.cross_barrier' && toolName !== 'debug.step' && toolName !== 'debug.continue') {return null;}
+            return {
+                sequence: (pause.rollbackAnchor?.effectSequence ?? 0) + 1,
+                toolName: pause.effect.stepName,
+                declaredIrreversible: true,
+            };
+        };
+
+        const onBeforeTool = (toolName: string): void => {
+            const pause = execution.readPause();
+            if (pause?.reason !== 'failure') {return;}
+            const action = recoveryActionForTool(toolName);
+            if (!action) {return;}
+            const key = recoveryBudgetKey(pause, action);
+            if (key) {budgetStore.record(key, action);}
+        };
+
+        const reactGovernance = {
+            controller: governance,
+            observeIrreversible,
+            onBeforeTool,
+        };
 
         if (request.source) {
             const first = await execution.start({
@@ -166,11 +233,14 @@ export const createProgramFirstAgentRunner = (
                     planningTools,
                     terminalTools,
                     request,
+                    recoveryContext,
                 ),
+                governance: reactGovernance,
+                signal: options.signal,
             });
             const result = await runner.run({
                 ...request,
-                systemPrompt: controlSystemPrompt(execution, request),
+                systemPrompt: controlSystemPrompt(execution, request, recoveryContext),
             });
             return {
                 ...result,
@@ -190,7 +260,10 @@ export const createProgramFirstAgentRunner = (
                 planningTools,
                 terminalTools,
                 request,
+                recoveryContext,
             ),
+            governance: reactGovernance,
+            signal: options.signal,
         });
         const result = await runner.run({
             ...request,

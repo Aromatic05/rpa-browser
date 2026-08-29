@@ -2,6 +2,7 @@ import {Type} from '@earendil-works/pi-ai';
 import type {AgentTool} from '@earendil-works/pi-agent-core';
 import {createPausedDslDebugAgentTools, type PausedDslDebugAgentTools} from '../../debug/execution/agent_tools';
 import {debuggerToolsForPause} from '../../debug/execution/agent_surface';
+import type {DebugEffectRecord} from '../../debug/effects/contracts';
 import type {AgentWorldRevision} from '../../trace/collector';
 import type {
     AgentProgramEffectSummary,
@@ -102,6 +103,7 @@ export type ProgramExecutionToolController = Readonly<{
     readDebugTools: () => readonly AgentTool[] | null;
     readPause: () => ReturnType<PausedDslDebugAgentTools['readPause']>;
     readWorldRevision: () => AgentWorldRevision | null;
+    readEffects: () => readonly DebugEffectRecord[];
     hasStartedProgram: () => boolean;
     hasCompletedProgram: () => boolean;
 }>;
@@ -170,6 +172,7 @@ export const createProgramExecutionTool = (options: {
         },
         readPause: latestPause,
         readWorldRevision: () => latestDebugger()?.readWorldRevision() ?? null,
+        readEffects: () => latest()?.start.debug?.session.auditEffects() ?? [],
         hasStartedProgram: () => attempts.some((attempt) => summarizeAttempt(attempt).status !== 'invalid'),
         hasCompletedProgram: () => latest() ? summarizeAttempt(latest()!).status === 'completed' : false,
     };

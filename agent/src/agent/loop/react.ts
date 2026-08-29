@@ -15,6 +15,8 @@ export type ReactAgentSessionOptions = {
     systemPrompt?: string;
     onEvent?: (event: AgentEvent) => void | Promise<void>;
     prepareNextTurnWithContext?: AgentOptions['prepareNextTurnWithContext'];
+    beforeToolCall?: AgentOptions['beforeToolCall'];
+    signal?: AbortSignal;
 };
 
 export const REACT_BASELINE_SYSTEM_PROMPT = [
@@ -38,7 +40,15 @@ export const createReactAgentSession = (options: ReactAgentSessionOptions): Reac
         getApiKey: options.getApiKey,
         toolExecution: 'sequential',
         prepareNextTurnWithContext: options.prepareNextTurnWithContext,
+        beforeToolCall: options.beforeToolCall,
     });
     if (options.onEvent) {agent.subscribe(options.onEvent);}
+    if (options.signal) {
+        const signal = options.signal;
+        signal.addEventListener('abort', () => {agent.abort();}, {once: true});
+        agent.subscribe((event) => {
+            if (event.type === 'agent_start' && signal.aborted) {agent.abort();}
+        });
+    }
     return {agent};
 };
