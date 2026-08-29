@@ -33,6 +33,7 @@ type PausedDslDebugExecutionBase = Readonly<{
     location: DslStatementLocation;
     scope: DslScopeSnapshot;
     world: WorldViewDescriptor;
+    rollbackAnchor?: DebugSavepoint;
 }>;
 
 export type PausedDslDebugExecution =

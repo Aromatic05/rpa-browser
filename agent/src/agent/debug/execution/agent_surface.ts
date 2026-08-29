@@ -6,6 +6,7 @@ export const PAUSED_DSL_DEBUG_SYSTEM_PROMPT = [
     'When debug.execution reports reason=effect, inspect the effect descriptor before deciding whether to advance.',
     'When debug.execution reports reason=barrier, ordinary debug.step/debug.continue cannot cross it. Inspect the explicit effect semantics and use debug.cross_barrier only if you deliberately authorize that one effect.',
     'When debug.execution reports reason=failure, inspect the structured failure, scope, and World freely; kind=step describes an operation failure and kind=invariant describes an ensure violation. debug.continue terminalizes that original failure and does not retry or perform a World effect.',
+    'Effect/barrier pauses automatically carry a hidden pre-effect transaction rollbackAnchor. A later failure pause inherits the most recent anchor. Its id is valid for debug.rollback, but it is not a statement execution savepoint and must not be used with debug.rewind.',
     'debug.execution location includes programId, execution path, source line range when available, loop frames, and checkpoint callStack.',
     'debug.execution, debug.scope, debug.catalog, debug.program, debug.patches, debug.history, debug.explain, debug.recompute, debug.effects, debug.diff, debug.rewind_plan, debug.world, debug.query, and debug.compute are pure reads.',
     'debug.program returns normalized statements on the same stable execution-path coordinate system used by debug.execution, including source locations and compiled checkpoint programs when available.',
@@ -57,6 +58,7 @@ const compactBarrierSystemPrompt = (
     pause: Extract<PausedDslDebugExecution, {reason: 'barrier'}>,
 ): string => [
     'The retained DSL transaction is paused at a commit barrier before the pending World effect.',
+    'A pre-effect transaction rollbackAnchor has already been recorded automatically; do not spend a turn creating another savepoint.',
     'If the pending effect is consistent with the user task, authorize exactly this effect with debug.cross_barrier. If it is not consistent, abort.',
     'Use debug.refresh and debug.recompute_effect only if authorization reports World conflict or target recomputation is required.',
     `Pending barrier effect: ${JSON.stringify({location: pause.location, effect: pause.effect})}`,

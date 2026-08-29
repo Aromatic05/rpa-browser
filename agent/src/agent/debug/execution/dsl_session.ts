@@ -75,6 +75,7 @@ type ActivePause = {
     debug: DebugQuerySession;
     effectResolvedAt?: WorldViewDescriptor;
     automaticSavepointId?: string;
+    rollbackSavepointId?: string;
 };
 
 export const createDslDebugExecutionSession = (
@@ -94,6 +95,7 @@ export const createDslDebugExecutionSession = (
     }>>();
     let transaction: DebugTransaction | null = null;
     let transactionEffectStartSequence = 0;
+    let latestEffectRollbackSavepointId: string | undefined;
     const initializeTransaction = (view: WorldView): DebugTransaction => {
         if (!transaction) {
             transaction = createDebugTransaction(view);
@@ -391,12 +393,16 @@ export const createDslDebugExecutionSession = (
 
     const exposePause = (value: ActivePause): PausedDslDebugExecution => {
         const {pause, debug} = value;
+        const rollbackAnchor = value.rollbackSavepointId
+            ? requireTransaction().readSavepoint(value.rollbackSavepointId)?.savepoint
+            : undefined;
         const base = {
             continuationId: pause.continuationId,
             reason: pause.reason,
             location: pause.location,
             scope: pause.scope,
             world: debug.world,
+            ...(rollbackAnchor ? {rollbackAnchor} : {}),
         } as const;
         return pause.reason === 'effect'
             ? Object.freeze({...base, reason: 'effect' as const, effect: pause.effect})
@@ -428,11 +434,27 @@ export const createDslDebugExecutionSession = (
                 revision: pause.effect.logicalTarget.resolvedAt ?? debug.world.revision,
             })
             : undefined;
-        active = {pause, view, debug, ...(effectResolvedAt ? {effectResolvedAt} : {})};
+        active = {
+            pause,
+            view,
+            debug,
+            ...(effectResolvedAt ? {effectResolvedAt} : {}),
+            ...(latestEffectRollbackSavepointId
+                ? {rollbackSavepointId: latestEffectRollbackSavepointId}
+                : {}),
+        };
         if (pause.reason === 'statement' && isRewindableStatementLocation(pause.location, pause.frames)) {
             const savepoint = requireTransaction().internalSavepoint(view, journal.list().length);
             captureExecutionSavepoint(active, savepoint, 'automatic');
             active = {...active, automaticSavepointId: savepoint.id};
+        } else if (pause.reason === 'effect' || pause.reason === 'barrier') {
+            const savepoint = requireTransaction().internalSavepoint(view, journal.list().length);
+            latestEffectRollbackSavepointId = savepoint.id;
+            active = {
+                ...active,
+                automaticSavepointId: savepoint.id,
+                rollbackSavepointId: savepoint.id,
+            };
         }
         return exposePause(active);
     };
@@ -440,12 +462,24 @@ export const createDslDebugExecutionSession = (
     const refresh = async (continuationId: string): Promise<PausedDslDebugExecution> => {
         const current = requireActive(continuationId);
         const view = await options.worldViewSource.pin();
+        const refreshedEffectSavepoint = current.pause.reason === 'effect' || current.pause.reason === 'barrier'
+            ? requireTransaction().internalSavepoint(view, journal.list().length)
+            : null;
+        if (refreshedEffectSavepoint) {latestEffectRollbackSavepointId = refreshedEffectSavepoint.id;}
         active = {
             pause: current.pause,
             view,
             debug: createDebugQuerySession(view),
             ...(current.effectResolvedAt ? {effectResolvedAt: current.effectResolvedAt} : {}),
-            ...(current.automaticSavepointId ? {automaticSavepointId: current.automaticSavepointId} : {}),
+            ...(refreshedEffectSavepoint
+                ? {
+                    automaticSavepointId: refreshedEffectSavepoint.id,
+                    rollbackSavepointId: refreshedEffectSavepoint.id,
+                }
+                : {
+                    ...(current.automaticSavepointId ? {automaticSavepointId: current.automaticSavepointId} : {}),
+                    ...(current.rollbackSavepointId ? {rollbackSavepointId: current.rollbackSavepointId} : {}),
+                }),
         };
         return exposePause(active);
     };
@@ -798,6 +832,7 @@ export const createDslDebugExecutionSession = (
                     pause: current.pause,
                     view: compensation.world,
                     debug: createDebugQuerySession(compensation.world),
+                    ...(current.rollbackSavepointId ? {rollbackSavepointId: current.rollbackSavepointId} : {}),
                 };
                 const residualDiff = diffWorldViews(entry.world, compensation.world);
                 if (compensation.status === 'failed') {
@@ -957,6 +992,7 @@ export const createDslDebugExecutionSession = (
         );
         transaction = createDebugTransaction(actualView);
         transactionEffectStartSequence = journalSequence;
+        latestEffectRollbackSavepointId = undefined;
         executionSavepoints.clear();
         active = {
             pause: current.pause,
@@ -1032,6 +1068,7 @@ export const createDslDebugExecutionSession = (
         provenance.restore(savedRuntime.provenance);
         pendingEffectOverrides.clear();
         requireTransaction().truncateSavepoints(savepointId);
+        latestEffectRollbackSavepointId = undefined;
         for (const id of [...executionSavepoints.keys()]) {
             if (!requireTransaction().readSavepoint(id)) {executionSavepoints.delete(id);}
         }
@@ -1229,12 +1266,15 @@ export const createDslDebugExecutionSession = (
             if (current.automaticSavepointId) {
                 savepoint = requireTransaction().promoteSavepoint(current.automaticSavepointId, name);
                 const captured = executionSavepoints.get(savepoint.id);
-                if (!captured) {throw new Error(`execution savepoint not found: ${savepoint.id}`);}
-                executionSavepoints.set(savepoint.id, Object.freeze({
-                    ...captured,
-                    state: Object.freeze({...captured.state, savepoint}),
-                    origin: 'explicit' as const,
-                }));
+                if (captured) {
+                    executionSavepoints.set(savepoint.id, Object.freeze({
+                        ...captured,
+                        state: Object.freeze({...captured.state, savepoint}),
+                        origin: 'explicit' as const,
+                    }));
+                } else {
+                    captureExecutionSavepoint(current, savepoint, 'explicit');
+                }
                 active = {...current, automaticSavepointId: undefined};
             } else {
                 savepoint = requireTransaction().savepoint(current.view, journal.list().length, name);

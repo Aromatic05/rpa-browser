@@ -56,7 +56,17 @@ test('retained execution transaction spans effects and exposes savepoint-relativ
 
     const effectPause = await execution.waitForPause();
     assert.equal(effectPause.reason, 'effect');
+    assert.ok(effectPause.rollbackAnchor);
+    const automaticRollbackAnchor = effectPause.rollbackAnchor;
+    assert.equal(automaticRollbackAnchor.effectSequence, 0);
+    assert.deepEqual(automaticRollbackAnchor.world.revision, first.revision);
+    assert.deepEqual(execution.transaction(effectPause.continuationId).savepoints, []);
+    assert.equal(
+        execution.executionSavepoint(effectPause.continuationId, automaticRollbackAnchor.id),
+        null,
+    );
     const savepoint = execution.savepoint(effectPause.continuationId, 'before-submit');
+    assert.equal(savepoint.id, automaticRollbackAnchor.id);
     const before = execution.transaction(effectPause.continuationId);
     assert.equal(before.effectCount, 0);
     assert.deepEqual(before.baseline.revision, first.revision);
@@ -89,6 +99,53 @@ test('retained execution transaction spans effects and exposes savepoint-relativ
     }
 
     await execution.advance(next.pause.continuationId, 'continue');
+});
+
+test('effect failure inherits the hidden pre-effect rollback anchor without making it rewindable', async () => {
+    const [first, second] = await createViews();
+    let current = first;
+    const execution = createDslDebugExecutionSession({
+        source: 'click input.target',
+        context: {
+            workspaceName: 'ws-transaction-failure-anchor',
+            deps: {} as RunStepsDeps,
+            input: {target: {nodeId: 'submit'}},
+            stepExecutionPort: {
+                execute: async (step) => {
+                    current = second;
+                    return {
+                        stepId: step.id,
+                        ok: false,
+                        error: {code: 'ERR_NOT_FOUND', message: 'target disappeared'},
+                    };
+                },
+            },
+        },
+        worldViewSource: {pin: async () => current},
+        debug: {breakBeforeEffects: true, breakOnFailure: true},
+    });
+
+    const before = await execution.waitForPause();
+    assert.equal(before.reason, 'effect');
+    assert.ok(before.rollbackAnchor);
+    const anchor = before.rollbackAnchor;
+    const failed = await execution.advance(before.continuationId, 'continue');
+    assert.equal(failed.status, 'paused');
+    if (failed.status !== 'paused') {throw new Error('expected failure pause');}
+    assert.equal(failed.pause.reason, 'failure');
+    assert.equal(failed.pause.rollbackAnchor?.id, anchor.id);
+    assert.deepEqual(execution.transaction(failed.pause.continuationId).savepoints, []);
+    assert.equal(execution.executionSavepoint(failed.pause.continuationId, anchor.id), null);
+
+    const rollback = await execution.rollback(failed.pause.continuationId, anchor.id);
+    assert.equal(rollback.status, 'blocked');
+    if (rollback.status === 'blocked') {
+        assert.equal(rollback.reason, 'effects_require_compensation');
+        assert.equal(rollback.savepoint.id, anchor.id);
+    }
+    const rewind = await execution.rewind(failed.pause.continuationId, anchor.id);
+    assert.equal(rewind.status, 'not_found');
+    await execution.advance(failed.pause.continuationId, 'abort');
 });
 
 test('commit moves the transaction baseline forward while preserving effect audit history', async () => {
