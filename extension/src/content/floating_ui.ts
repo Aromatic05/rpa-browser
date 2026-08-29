@@ -4,10 +4,13 @@ import {mountCheckpointRecorderUI} from './checkpoint_recorder_ui.js';
 import {mountEntityRulesBrowserUI} from './entity_rules_browser_ui.js';
 import type {EntityRuleSelection} from '../../../shared/entity-rules-contract/index.js';
 import {
+    AGENT_APPROVAL_ACTOR,
     buildAgentSessionView,
+    normalizeAgentInteraction,
     normalizeAgentSession,
     normalizeAgentSessionReport,
     sanitizeForDisplay,
+    type AgentInteraction,
     type AgentSessionReportViewState,
     type AgentSessionSummary,
     type AgentSessionViewStatus,
@@ -90,6 +93,14 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         agentPendingCancels: new Set<string>(),
         agentListInFlight: false,
         agentReportInFlight: false,
+        agentInteractions: [] as AgentInteraction[],
+        agentInteractionsSessionId: null as string | null,
+        agentInteractionsInFlight: false,
+        agentInteractionsRequestSessionId: null as string | null,
+        agentInteractionsQueuedSessionId: null as string | null,
+        agentInteractionError: null as {kind: 'decision' | 'list'; message: string} | null,
+        agentPendingDecisions: new Set<string>(),
+        agentDenyReasons: {} as Record<string, string>,
         agentInputs: {
             prompt: '',
             provider: '',
@@ -274,6 +285,50 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         }, 2500);
     };
 
+    const refreshAgentInteractions = async (sessionId: string) => {
+        if (state.agentInteractionsInFlight) {
+            if (state.agentInteractionsRequestSessionId !== sessionId) {
+                state.agentInteractionsQueuedSessionId = sessionId;
+            }
+            return;
+        }
+        state.agentInteractionsInFlight = true;
+        state.agentInteractionsRequestSessionId = sessionId;
+        state.agentInteractionsSessionId = sessionId;
+        if (state.activeView === 'Agent') {renderActiveView();}
+        try {
+            await sendPanelAction('agent.interactions.list', {sessionId});
+        } finally {
+            state.agentInteractionsInFlight = false;
+            state.agentInteractionsRequestSessionId = null;
+            const queued = state.agentInteractionsQueuedSessionId;
+            state.agentInteractionsQueuedSessionId = null;
+            if (queued) {
+                void refreshAgentInteractions(queued);
+            }
+        }
+    };
+
+    const maybeLoadSelectedPausedInteractions = () => {
+        const selected = state.agentSelectedSessionId;
+        const selectedSession = selected
+            ? state.agentSessions.find((session) => session.sessionId === selected)
+            : undefined;
+        if (selectedSession?.state === 'paused') {
+            void refreshAgentInteractions(selectedSession.sessionId);
+            return;
+        }
+        if (!selected) {
+            const paused = [...state.agentSessions]
+                .filter((session) => session.state === 'paused')
+                .sort((a, b) => b.createdAt - a.createdAt);
+            if (paused.length > 0) {
+                state.agentSelectedSessionId = paused[0].sessionId;
+                void refreshAgentInteractions(paused[0].sessionId);
+            }
+        }
+    };
+
     const parseJsonOrErr = (raw: string): Record<string, unknown> | null => {
         try {
             const parsed = JSON.parse(raw.trim() ? raw : '{}') as unknown;
@@ -347,6 +402,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
             });
             state.agentStatus = {kind: 'idle'};
             state.agentListInFlight = false;
+            maybeLoadSelectedPausedInteractions();
         }
         const snapshot = normalizeAgentSession(payload);
         if (!Array.isArray(payload.sessions) && snapshot) {
@@ -359,6 +415,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
             if (requestType === 'agent.sessions.cancel') {
                 state.agentPendingCancels.delete(snapshot.sessionId);
             }
+            maybeLoadSelectedPausedInteractions();
         }
         if (requestType === 'agent.sessions.list' && !Array.isArray(payload.sessions)) {
             state.agentListInFlight = false;
@@ -377,6 +434,60 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
             }
             state.agentReportInFlight = false;
             state.agentStatus = {kind: 'idle'};
+        }
+        if (requestType === 'agent.interactions.list') {
+            const sessionId = typeof payload.sessionId === 'string' && payload.sessionId
+                ? payload.sessionId
+                : (state.agentInteractionsRequestSessionId ?? state.agentInteractionsSessionId ?? '');
+            if (action.type.endsWith('.failed')) {
+                const message = isRecord(payload) && typeof payload.message === 'string'
+                    ? payload.message
+                    : action.type;
+                state.agentInteractions = [];
+                state.agentInteractionsSessionId = sessionId || null;
+                state.agentInteractionError = {kind: 'list', message: `interactions unavailable: ${message}`};
+            } else {
+                state.agentInteractions = (Array.isArray(payload.interactions) ? payload.interactions : [])
+                    .flatMap((item) => {
+                        const normalized = normalizeAgentInteraction(item);
+                        return normalized ? [normalized] : [];
+                    });
+                state.agentInteractionsSessionId = sessionId || null;
+                if (state.agentInteractionError?.kind === 'list') {
+                    state.agentInteractionError = null;
+                }
+            }
+            state.agentInteractionsInFlight = false;
+            state.agentInteractionsRequestSessionId = null;
+        }
+        if (requestType === 'agent.interactions.approve' || requestType === 'agent.interactions.deny') {
+            if (action.type.endsWith('.failed')) {
+                const message = isRecord(payload) && typeof payload.message === 'string'
+                    ? payload.message
+                    : action.type;
+                state.agentInteractionError = {kind: 'decision', message};
+                void refreshAgentSessions();
+                const boundSessionId = state.agentInteractionsSessionId ?? state.agentSelectedSessionId;
+                if (boundSessionId) {
+                    void refreshAgentInteractions(boundSessionId);
+                }
+            } else {
+                state.agentInteractionError = null;
+                const sessionRaw = isRecord(payload.session) ? payload.session : null;
+                const snapshot = sessionRaw ? normalizeAgentSession(sessionRaw) : null;
+                if (snapshot) {
+                    const existing = state.agentSessions.find((session) => session.sessionId === snapshot.sessionId);
+                    const accepted = existing && existing.endedAt !== null && snapshot.state === 'running' ? existing : snapshot;
+                    state.agentSessions = [
+                        ...state.agentSessions.filter((session) => session.sessionId !== accepted.sessionId),
+                        accepted,
+                    ];
+                }
+                void refreshAgentSessions();
+                if (state.agentSelectedSessionId === snapshot?.sessionId) {
+                    void refreshAgentInteractions(snapshot.sessionId);
+                }
+            }
         }
         if (action.type.endsWith('.failed')) {
             const message = isRecord(payload) && typeof payload.message === 'string'
@@ -780,6 +891,16 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
             select: async (sessionId: string) => {
                 state.agentSelectedSessionId = sessionId;
                 const session = state.agentSessions.find((item) => item.sessionId === sessionId);
+                if (session?.state === 'paused') {
+                    state.agentReport = null;
+                    state.agentInteractionError = null;
+                    await refreshAgentInteractions(sessionId);
+                    if (state.activeView === 'Agent') {renderActiveView();}
+                    return;
+                }
+                state.agentInteractions = [];
+                state.agentInteractionsSessionId = null;
+                state.agentInteractionError = null;
                 if (session?.reportAvailable) {
                     await reportSession(sessionId);
                 } else {
@@ -788,6 +909,45 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
                 }
             },
             report: reportSession,
+            approve: async (input: {sessionId: string; interactionId: string; revision: number}) => {
+                if (state.agentPendingDecisions.has(input.interactionId)) {return;}
+                state.agentPendingDecisions = new Set([...state.agentPendingDecisions, input.interactionId]);
+                state.agentInteractionError = null;
+                if (state.activeView === 'Agent') {renderActiveView();}
+                try {
+                    await sendPanelAction('agent.interactions.approve', {
+                        sessionId: input.sessionId,
+                        interactionId: input.interactionId,
+                        revision: input.revision,
+                        approvedBy: AGENT_APPROVAL_ACTOR,
+                    });
+                } finally {
+                    const next = new Set(state.agentPendingDecisions);
+                    next.delete(input.interactionId);
+                    state.agentPendingDecisions = next;
+                    if (state.activeView === 'Agent') {renderActiveView();}
+                }
+            },
+            deny: async (input: {sessionId: string; interactionId: string; revision: number; reason: string}) => {
+                if (state.agentPendingDecisions.has(input.interactionId)) {return;}
+                state.agentPendingDecisions = new Set([...state.agentPendingDecisions, input.interactionId]);
+                state.agentInteractionError = null;
+                if (state.activeView === 'Agent') {renderActiveView();}
+                try {
+                    await sendPanelAction('agent.interactions.deny', {
+                        sessionId: input.sessionId,
+                        interactionId: input.interactionId,
+                        revision: input.revision,
+                        deniedBy: AGENT_APPROVAL_ACTOR,
+                        reason: input.reason.trim(),
+                    });
+                } finally {
+                    const next = new Set(state.agentPendingDecisions);
+                    next.delete(input.interactionId);
+                    state.agentPendingDecisions = next;
+                    if (state.activeView === 'Agent') {renderActiveView();}
+                }
+            },
             prune: async (maxCount: number) => {
                 await sendPanelAction('agent.sessions.prune', {maxCount});
                 await refreshAgentSessions();
@@ -800,6 +960,14 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
                 state.agentPendingCancels = new Set();
                 state.agentListInFlight = false;
                 state.agentReportInFlight = false;
+                state.agentInteractions = [];
+                state.agentInteractionsSessionId = null;
+                state.agentInteractionsInFlight = false;
+                state.agentInteractionsRequestSessionId = null;
+                state.agentInteractionsQueuedSessionId = null;
+                state.agentInteractionError = null;
+                state.agentPendingDecisions = new Set();
+                state.agentDenyReasons = {};
                 renderActiveView();
             },
         };
@@ -815,6 +983,15 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
             selectedSessionId: state.agentSelectedSessionId,
             pendingCancelSessionIds: state.agentPendingCancels,
             pruneMaxCount: 20,
+            interactions: state.agentInteractions,
+            interactionsSessionId: state.agentInteractionsSessionId,
+            interactionsLoading: state.agentInteractionsInFlight,
+            pendingDecisionInteractionIds: state.agentPendingDecisions,
+            denyReasons: state.agentDenyReasons,
+            onDenyReasonChange: (interactionId: string, reason: string) => {
+                state.agentDenyReasons = {...state.agentDenyReasons, [interactionId]: reason};
+            },
+            interactionError: state.agentInteractionError?.message ?? null,
         });
         ensureAgentPoll();
         return root;

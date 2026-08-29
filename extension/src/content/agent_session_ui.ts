@@ -91,6 +91,37 @@ export type AgentSessionInputs = {
     executionMode: string;
 };
 
+export const AGENT_APPROVAL_ACTOR = 'extension-operator';
+
+export type AgentInteractionStatus = 'pending' | 'approved' | 'denied' | 'cancelled' | 'expired';
+
+export type AgentInteractionEvidence = Readonly<{
+    summary: string;
+    effectName?: string;
+    toolName?: string;
+    riskLevel?: 'low' | 'medium' | 'high' | 'critical';
+    tags?: readonly string[];
+}>;
+
+export type AgentInteractionDecision = Readonly<{
+    kind: string;
+    actor: string;
+    at: number;
+    reason?: string;
+}>;
+
+export type AgentInteraction = Readonly<{
+    id: string;
+    kind: string;
+    status: AgentInteractionStatus;
+    createdAt: number;
+    deadlineAt: number;
+    revision: number;
+    prompt: string;
+    evidence: AgentInteractionEvidence | null;
+    decision: AgentInteractionDecision | null;
+}>;
+
 export type AgentSessionHandlers = {
     start: (inputs: AgentSessionInputs) => void | Promise<void>;
     list: () => void | Promise<void>;
@@ -100,6 +131,8 @@ export type AgentSessionHandlers = {
     select?: (sessionId: string) => void | Promise<void>;
     report?: (sessionId: string) => void | Promise<void>;
     prune?: (maxCount: number) => void | Promise<void>;
+    approve?: (input: {sessionId: string; interactionId: string; revision: number}) => void | Promise<void>;
+    deny?: (input: {sessionId: string; interactionId: string; revision: number; reason: string}) => void | Promise<void>;
 };
 
 export type AgentSessionViewOptions = {
@@ -112,11 +145,21 @@ export type AgentSessionViewOptions = {
     status?: AgentSessionViewStatus;
     selectedSessionId?: string | null;
     pendingCancelSessionIds?: ReadonlySet<string>;
+    interactions?: readonly AgentInteraction[] | null;
+    interactionsSessionId?: string | null;
+    interactionsLoading?: boolean;
+    pendingDecisionInteractionIds?: ReadonlySet<string>;
+    denyReasons?: Readonly<Record<string, string>>;
+    onDenyReasonChange?: (interactionId: string, reason: string) => void;
+    interactionError?: string | null;
 };
 
 const AGENT_SESSION_STATES: readonly AgentSessionState[] = ['running', 'paused', 'completed', 'failed', 'cancelled'];
 
 const DEFAULT_PRUNE_MAX_COUNT = 20;
+
+const EMPTY_DECISION_SET: ReadonlySet<string> = new Set();
+const EMPTY_DENY_REASONS: Readonly<Record<string, string>> = {};
 
 export const isAgentSessionState = (value: unknown): value is AgentSessionState =>
     typeof value === 'string' && (AGENT_SESSION_STATES as readonly string[]).includes(value);
@@ -197,6 +240,59 @@ export const normalizeAgentSession = (raw: unknown): AgentSessionSummary | null 
             : {code: str(errorRaw.code), message: str(errorRaw.message)},
         reportAvailable: raw.reportAvailable === true,
         resumable: raw.resumable === true,
+    };
+};
+
+const INTERACTION_STATUSES: readonly AgentInteractionStatus[] = ['pending', 'approved', 'denied', 'cancelled', 'expired'];
+
+const isInteractionStatus = (value: unknown): value is AgentInteractionStatus =>
+    typeof value === 'string' && (INTERACTION_STATUSES as readonly string[]).includes(value);
+
+const RISK_LEVELS: readonly string[] = ['low', 'medium', 'high', 'critical'];
+
+export const normalizeAgentInteraction = (raw: unknown): AgentInteraction | null => {
+    if (!isRecord(raw)) {return null;}
+    const id = str(raw.id);
+    const revision = num(raw.revision);
+    if (!id || !isInteractionStatus(raw.status) || revision === null || revision < 0 || !Number.isInteger(revision)) {
+        return null;
+    }
+    const evidenceRaw = isRecord(raw.evidence) ? raw.evidence : null;
+    const decisionRaw = isRecord(raw.decision) ? raw.decision : null;
+    const decisionKind = str(decisionRaw?.kind);
+    let decision: AgentInteractionDecision | null = null;
+    if (decisionKind && decisionRaw) {
+        const isApprove = decisionKind === 'approve';
+        const isDeny = decisionKind === 'deny';
+        decision = {
+            kind: decisionKind,
+            actor: isApprove ? str(decisionRaw.approvedBy) : isDeny ? str(decisionRaw.deniedBy) : '',
+            at: num(isApprove ? decisionRaw.approvedAt : isDeny ? decisionRaw.deniedAt : null) ?? 0,
+            reason: isDeny && typeof decisionRaw.reason === 'string' ? decisionRaw.reason : undefined,
+        };
+    }
+    return {
+        id,
+        kind: str(raw.kind),
+        status: raw.status,
+        createdAt: num(raw.createdAt) ?? 0,
+        deadlineAt: num(raw.deadlineAt) ?? 0,
+        revision,
+        prompt: str(raw.prompt),
+        evidence: evidenceRaw === null
+            ? null
+            : {
+                  summary: str(evidenceRaw.summary),
+                  ...(typeof evidenceRaw.effectName === 'string' ? {effectName: evidenceRaw.effectName} : {}),
+                  ...(typeof evidenceRaw.toolName === 'string' ? {toolName: evidenceRaw.toolName} : {}),
+                  ...(typeof evidenceRaw.riskLevel === 'string' && RISK_LEVELS.includes(evidenceRaw.riskLevel)
+                      ? {riskLevel: evidenceRaw.riskLevel as AgentInteractionEvidence['riskLevel']}
+                      : {}),
+                  ...(Array.isArray(evidenceRaw.tags)
+                      ? {tags: evidenceRaw.tags.filter((tag): tag is string => typeof tag === 'string')}
+                      : {}),
+              },
+        decision,
     };
 };
 
@@ -334,11 +430,94 @@ const renderProgramStatus = (session: AgentSessionSummary): HTMLElement[] => {
     });
 };
 
+type InteractionViewContext = {
+    interactions: readonly AgentInteraction[];
+    loading: boolean;
+    decisionPending: ReadonlySet<string>;
+    denyReasons: Readonly<Record<string, string>>;
+    error: string | null;
+    onDenyReasonChange?: (interactionId: string, reason: string) => void;
+};
+
+const formatDeadline = (deadlineAt: number): string => {
+    if (deadlineAt <= 0) {return 'unknown';}
+    return new Date(deadlineAt).toISOString();
+};
+
+const renderInteraction = (
+    sessionId: string,
+    interaction: AgentInteraction,
+    handlers: AgentSessionHandlers,
+    ctx: InteractionViewContext,
+): HTMLElement => {
+    const box = document.createElement('div');
+    box.className = 'log-item interaction';
+    box.dataset.interactionId = interaction.id;
+    box.dataset.interactionStatus = interaction.status;
+
+    box.appendChild(hint(`[${interaction.status}] ${interaction.kind}`));
+    if (interaction.evidence) {
+        const evidence = interaction.evidence;
+        box.appendChild(hint(`evidence: ${evidence.summary}`));
+        if (evidence.effectName) {box.appendChild(hint(`effect: ${evidence.effectName}`));}
+        if (evidence.toolName) {box.appendChild(hint(`tool: ${evidence.toolName}`));}
+        if (evidence.riskLevel) {box.appendChild(hint(`risk: ${evidence.riskLevel}`));}
+        if (evidence.tags && evidence.tags.length > 0) {
+            box.appendChild(hint(`tags: ${evidence.tags.join(', ')}`));
+        }
+    }
+    if (interaction.prompt) {box.appendChild(hint(`prompt: ${truncate(interaction.prompt, 120)}`));}
+    box.appendChild(hint(`deadline: ${formatDeadline(interaction.deadlineAt)}`));
+    box.appendChild(hint(`revision: ${String(interaction.revision)}`));
+
+    if (interaction.status === 'pending') {
+        const decisionPending = ctx.decisionPending.has(interaction.id);
+        const denyReason = ctx.denyReasons[interaction.id] ?? '';
+        const row = document.createElement('div');
+        row.className = 'row3';
+        const approveBtn = createButton(
+            'Approve',
+            () => handlers.approve?.({sessionId, interactionId: interaction.id, revision: interaction.revision}),
+            true,
+            decisionPending,
+        );
+        const denyBtn = createButton(
+            'Deny',
+            () => {
+                const reason = denyInput.value.trim();
+                if (!reason) {return;}
+                return handlers.deny?.({sessionId, interactionId: interaction.id, revision: interaction.revision, reason});
+            },
+            false,
+            decisionPending || !denyReason.trim(),
+        );
+        const denyInput = document.createElement('input');
+        denyInput.placeholder = 'deny reason (required)';
+        denyInput.value = denyReason;
+        denyInput.disabled = decisionPending;
+        denyInput.addEventListener('input', () => {
+            ctx.onDenyReasonChange?.(interaction.id, denyInput.value);
+            denyBtn.disabled = decisionPending || !denyInput.value.trim();
+        });
+        row.appendChild(approveBtn);
+        row.appendChild(denyInput);
+        row.appendChild(denyBtn);
+        box.appendChild(row);
+    } else {
+        const decision = interaction.decision;
+        box.appendChild(hint(decision
+            ? `decision: ${decision.kind}${decision.actor ? ` by ${decision.actor}` : ''}${decision.reason ? ` — ${decision.reason}` : ''}`
+            : 'no decision'));
+    }
+    return box;
+};
+
 const renderSession = (
     session: AgentSessionSummary,
     handlers: AgentSessionHandlers,
     selected = false,
     pendingCancel = false,
+    interactionView: InteractionViewContext | null = null,
 ): HTMLElement => {
     const item = document.createElement('div');
     item.className = 'log-item';
@@ -379,11 +558,31 @@ const renderSession = (
         item.appendChild(controlsRow);
     }
     if (session.state === 'paused') {
-        item.appendChild(hint(session.resumable
-            ? 'Paused — resume/approve is not available in this service.'
-            : 'Paused — resume/approve is not available (resumable: false).'));
+        if (selected && interactionView) {
+            const block = section('Approval Required');
+            if (interactionView.loading) {
+                const loading = hint('Loading approvals…');
+                loading.dataset.interactionsLoading = 'true';
+                block.appendChild(loading);
+            }
+            if (interactionView.error) {
+                const error = hint(`interaction error: ${interactionView.error}`);
+                error.className = 'hint agent-error';
+                error.dataset.interactionError = 'true';
+                block.appendChild(error);
+            }
+            if (!interactionView.loading && !interactionView.error && interactionView.interactions.length === 0) {
+                block.appendChild(hint('No pending approvals.'));
+            }
+            for (const interaction of interactionView.interactions) {
+                block.appendChild(renderInteraction(session.sessionId, interaction, handlers, interactionView));
+            }
+            item.appendChild(block);
+        } else {
+            item.appendChild(hint('Paused — select to review approval(s).'));
+        }
     }
-    if (session.state === 'failed' && session.error) {
+    if ((session.state === 'failed' || session.state === 'cancelled') && session.error) {
         item.appendChild(hint(`${session.error.code}: ${session.error.message}`));
     }
     if (session.result?.text.trim()) {
@@ -601,11 +800,23 @@ export const buildAgentSessionView = (opts: AgentSessionViewOptions): HTMLElemen
     if (sessions.length === 0 && !listPending) {
         listBox.appendChild(hint('No agent sessions.'));
     } else {
+        const interactions = opts.interactions ?? [];
+        const interactionView: InteractionViewContext | null = opts.interactionsSessionId
+            ? {
+                  interactions,
+                  loading: opts.interactionsLoading ?? false,
+                  decisionPending: opts.pendingDecisionInteractionIds ?? EMPTY_DECISION_SET,
+                  denyReasons: opts.denyReasons ?? EMPTY_DENY_REASONS,
+                  error: opts.interactionError ?? null,
+                  onDenyReasonChange: opts.onDenyReasonChange,
+              }
+            : null;
         sessions.forEach((session) => listBox.appendChild(renderSession(
             session,
             opts.handlers,
             session.sessionId === opts.selectedSessionId,
             opts.pendingCancelSessionIds?.has(session.sessionId) ?? false,
+            session.sessionId === opts.interactionsSessionId ? interactionView : null,
         )));
     }
     root.appendChild(listBox);

@@ -4,6 +4,7 @@ import {JSDOM} from 'jsdom';
 import {mountFloatingUI} from '../floating_ui.js';
 import {
     buildAgentSessionView,
+    normalizeAgentInteraction,
     normalizeAgentSession,
     normalizeAgentSessionReport,
     sanitizeForDisplay,
@@ -196,7 +197,7 @@ test('agent session UI emits workspace-scoped actions and renders state transiti
         }
 
         const pausedItem = shadow.querySelector('.body [data-session-id="session-3"]');
-        assert.match((pausedItem as HTMLElement).textContent ?? '', /Paused/);
+        assert.match((pausedItem as HTMLElement).textContent ?? '', /Approval Required/, 'paused sessions surface their approval view');
         const completedItem = shadow.querySelector('.body [data-session-id="session-4"]');
         assert.match((completedItem as HTMLElement).textContent ?? '', /final-text-session-4/);
         const failedItem = shadow.querySelector('.body [data-session-id="session-5"]');
@@ -371,7 +372,7 @@ test('agent session UI renders a completed session report without raw tool args'
     }
 });
 
-test('agent session UI marks a paused session as not resumable after restart', () => {
+test('agent session UI prompts selection for a paused session and hides approval controls until selected', () => {
     const {dom, previous} = setupDom();
     try {
         const session = normalizeAgentSession({
@@ -403,7 +404,12 @@ test('agent session UI marks a paused session as not resumable after restart', (
         assert.ok(item);
         assert.equal(item.dataset.sessionState, 'paused');
         assert.equal(item.dataset.resumable, 'false');
-        assert.match(item.textContent ?? '', /Paused — resume\/approve is not available \(resumable: false\)/);
+        assert.match(item.textContent ?? '', /Paused — select to review approval\(s\)\./);
+        assert.equal(
+            root.querySelector('[data-session-id="session-paused"] [data-interaction-id]'),
+            null,
+            'no approval controls until the paused session is selected',
+        );
     } finally {
         Object.assign(globalThis, previous);
         dom.window.close();
@@ -663,6 +669,215 @@ test('agent session UI disables Cancel while that session cancellation is pendin
             .find((b) => b.textContent?.startsWith('Cancelling…'));
         assert.ok(cancelBtn, 'Cancel button reflects the pending cancellation');
         assert.equal((cancelBtn as HTMLButtonElement).disabled, true);
+    } finally {
+        Object.assign(globalThis, previous);
+        dom.window.close();
+    }
+});
+
+test('normalizeAgentInteraction keeps only sanitized evidence and drops raw args/secrets', () => {
+    const raw = {
+        id: 'it-1',
+        runId: 'run-1',
+        sessionId: 'session-a',
+        kind: 'irreversible-effect-approval',
+        status: 'pending',
+        createdAt: 1,
+        deadlineAt: 2,
+        revision: 0,
+        prompt: 'Approve irreversible effect',
+        evidence: {
+            summary: 'Send order to downstream API',
+            riskLevel: 'high',
+            toolName: 'http.send',
+            tags: ['world-changing', 7],
+            args: {apiKey: 'CANARY-EVIDENCE-ARGS', selector: '#x'},
+            rawArgs: {password: 'CANARY-EVIDENCE-RAW'},
+        },
+        rawArgs: {apiKey: 'CANARY-TOP-LEVEL-RAW', secret: 'x'},
+        arguments: {secret: 'CANARY-ARGUMENTS'},
+        decision: null,
+    };
+    const normalized = normalizeAgentInteraction(raw);
+    assert.ok(normalized);
+    assert.equal(normalized.id, 'it-1');
+    assert.equal(normalized.kind, 'irreversible-effect-approval');
+    assert.equal(normalized.status, 'pending');
+    assert.equal(normalized.revision, 0);
+    assert.equal(normalized.evidence?.summary, 'Send order to downstream API');
+    assert.equal(normalized.evidence?.riskLevel, 'high');
+    assert.equal(normalized.evidence?.toolName, 'http.send');
+    assert.deepEqual(normalized.evidence?.tags, ['world-changing']);
+    const serialized = JSON.stringify(normalized);
+    assert.ok(!serialized.includes('CANARY'), 'raw args/secrets must never survive normalization');
+    assert.ok(!('args' in (normalized.evidence ?? {})), 'evidence whitelist must not leak args');
+});
+
+test('normalizeAgentInteraction reads a deny decision but ignores unknown statuses', () => {
+    const approved = normalizeAgentInteraction({
+        id: 'it-a',
+        runId: 'r',
+        sessionId: 's',
+        kind: 'irreversible-effect-approval',
+        status: 'denied',
+        createdAt: 1,
+        deadlineAt: 2,
+        revision: 1,
+        prompt: 'p',
+        evidence: {summary: 'summary'},
+        decision: {kind: 'deny', deniedBy: 'extension-operator', deniedAt: 5, reason: 'not safe'},
+    });
+    assert.ok(approved);
+    assert.equal(approved?.status, 'denied');
+    assert.equal(approved?.decision?.kind, 'deny');
+    assert.equal(approved?.decision?.actor, 'extension-operator');
+    assert.equal(approved?.decision?.reason, 'not safe');
+    assert.equal(normalizeAgentInteraction({id: 'x', status: 'mystery', revision: 0}), null, 'unknown status is rejected');
+    assert.equal(normalizeAgentInteraction({id: 'x', status: 'pending', revision: -1}), null, 'invalid revision is rejected');
+});
+
+test('agent session UI renders approval controls for a selected paused session and requires a deny reason', () => {
+    const {dom, previous} = setupDom();
+    try {
+        const session = normalizeAgentSession({
+            sessionId: 'session-approve',
+            state: 'paused',
+            createdAt: 1,
+            startedAt: 1,
+            endedAt: 2,
+            request: {prompt: 'p', provider: 'p', model: 'm', executionMode: 'program'},
+            result: null,
+            error: null,
+            reportAvailable: false,
+            resumable: true,
+        });
+        assert.ok(session);
+        const interaction = normalizeAgentInteraction({
+            id: 'it-1',
+            runId: 'run-1',
+            sessionId: 'session-approve',
+            kind: 'irreversible-effect-approval',
+            status: 'pending',
+            createdAt: 1000,
+            deadlineAt: 1000 + 900000,
+            revision: 3,
+            prompt: 'Approve irreversible effect',
+            evidence: {summary: 'Send order to downstream API', riskLevel: 'high', toolName: 'http.send'},
+            decision: null,
+            rawArgs: {apiKey: 'CANARY-UI-SECRET'},
+        });
+        assert.ok(interaction);
+        const approveCalls: Array<Record<string, unknown>> = [];
+        const denyCalls: Array<Record<string, unknown>> = [];
+        const root = buildAgentSessionView({
+            sessions: [session],
+            inputs: {prompt: '', provider: '', model: '', executionMode: ''},
+            onInputsChange: () => undefined,
+            handlers: {
+                start: () => undefined,
+                list: () => undefined,
+                status: () => undefined,
+                cancel: () => undefined,
+                clear: () => undefined,
+                approve: (input) => { approveCalls.push(input); },
+                deny: (input) => { denyCalls.push(input); },
+            },
+            selectedSessionId: 'session-approve',
+            interactions: [interaction],
+            interactionsSessionId: 'session-approve',
+            denyReasons: {},
+            onDenyReasonChange: () => undefined,
+        });
+
+        const item = root.querySelector('[data-session-id="session-approve"]') as HTMLElement;
+        assert.ok(item);
+        const text = item.textContent ?? '';
+        assert.match(text, /Approval Required/);
+        assert.match(text, /\[pending\] irreversible-effect-approval/);
+        assert.match(text, /evidence: Send order to downstream API/);
+        assert.match(text, /risk: high/);
+        assert.match(text, /tool: http\.send/);
+        assert.match(text, /revision: 3/);
+        assert.match(text, /deadline: /);
+        assert.ok(!text.includes('CANARY-UI-SECRET'), 'raw secrets must not be rendered');
+
+        const interactionEl = root.querySelector('[data-interaction-id="it-1"]') as HTMLElement;
+        assert.ok(interactionEl);
+        assert.equal(interactionEl.dataset.interactionStatus, 'pending');
+
+        const approveBtn = Array.from(item.querySelectorAll('button')).find((b) => b.textContent === 'Approve');
+        const denyBtn = Array.from(item.querySelectorAll('button')).find((b) => b.textContent === 'Deny');
+        assert.ok(approveBtn && denyBtn);
+        assert.equal((approveBtn as HTMLButtonElement).disabled, false);
+        assert.equal((denyBtn as HTMLButtonElement).disabled, true, 'Deny requires a non-empty reason');
+
+        const denyInput = item.querySelector('input[placeholder="deny reason (required)"]') as HTMLInputElement;
+        assert.ok(denyInput);
+        denyInput.value = '  ';
+        denyInput.dispatchEvent(new window.Event('input', {bubbles: true}));
+        assert.equal((denyBtn as HTMLButtonElement).disabled, true, 'whitespace-only reason keeps Deny disabled');
+        denyInput.value = 'payload would leak customer data';
+        denyInput.dispatchEvent(new window.Event('input', {bubbles: true}));
+        assert.equal((denyBtn as HTMLButtonElement).disabled, false);
+
+        click(approveBtn);
+        assert.deepEqual(approveCalls, [{sessionId: 'session-approve', interactionId: 'it-1', revision: 3}]);
+
+        click(denyBtn);
+        assert.deepEqual(denyCalls, [{
+            sessionId: 'session-approve',
+            interactionId: 'it-1',
+            revision: 3,
+            reason: 'payload would leak customer data',
+        }]);
+    } finally {
+        Object.assign(globalThis, previous);
+        dom.window.close();
+    }
+});
+
+test('agent session UI shows the terminal reason for a headless-blocked cancelled session with no buttons', () => {
+    const {dom, previous} = setupDom();
+    try {
+        const session = normalizeAgentSession({
+            sessionId: 'session-blocked',
+            state: 'cancelled',
+            createdAt: 1,
+            startedAt: 1,
+            endedAt: 2,
+            request: {prompt: 'p', provider: 'p', model: 'm'},
+            result: null,
+            error: {
+                code: 'ERR_SESSION_INTERACTION_BLOCKED',
+                message: 'approval-required irreversible effect is blocked by headless interaction policy',
+            },
+            reportAvailable: false,
+            resumable: false,
+        });
+        assert.ok(session);
+        const root = buildAgentSessionView({
+            sessions: [session],
+            inputs: {prompt: '', provider: '', model: '', executionMode: ''},
+            onInputsChange: () => undefined,
+            handlers: {
+                start: () => undefined,
+                list: () => undefined,
+                status: () => undefined,
+                cancel: () => undefined,
+                clear: () => undefined,
+                select: () => undefined,
+            },
+            selectedSessionId: 'session-blocked',
+        });
+        const item = root.querySelector('[data-session-id="session-blocked"]') as HTMLElement;
+        assert.ok(item);
+        assert.equal(item.dataset.sessionState, 'cancelled');
+        assert.match(item.textContent ?? '', /ERR_SESSION_INTERACTION_BLOCKED: approval-required irreversible effect is blocked/);
+        assert.equal(
+            Array.from(item.querySelectorAll('button')).some((b) => ['Approve', 'Deny', 'Status', 'Cancel'].includes(b.textContent ?? '')),
+            false,
+            'terminal headless-blocked sessions render no action buttons',
+        );
     } finally {
         Object.assign(globalThis, previous);
         dom.window.close();
