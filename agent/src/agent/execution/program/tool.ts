@@ -41,6 +41,8 @@ const effectSummaries = (attempt: ProgramAttempt): readonly AgentProgramEffectSu
         sequence: record.sequence,
         stepName: record.effect.stepName,
         status: record.outcome.status,
+        worldBefore: structuredClone(record.worldBefore.revision),
+        worldAfter: structuredClone(record.worldAfter.revision),
         ...(record.compensates ? {compensates: record.compensates.effectSequence} : {}),
     })) ?? attempt.start.summary.effects ?? [];
 

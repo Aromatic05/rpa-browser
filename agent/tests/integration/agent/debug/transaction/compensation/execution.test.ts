@@ -103,6 +103,71 @@ test('physical fill compensation executes as a journaled World effect without cl
     await execution.advance(next.pause.continuationId, 'abort');
 });
 
+test('automatic rollback anchor compensates a fill that mutated World before reporting failure', async () => {
+    const [before, afterFill, afterCompensation] = await createViews();
+    let current = before;
+    const values: string[] = [];
+    const programPort: StepExecutionPort = {
+        execute: async (step) => {
+            if (step.name !== 'browser.fill') {throw new Error(`unexpected step: ${step.name}`);}
+            values.push(step.args.value);
+            current = afterFill;
+            return {
+                stepId: step.id,
+                ok: false,
+                error: {code: 'ERR_INJECTED_POST_EFFECT', message: 'fill mutated before failure'},
+            };
+        },
+    };
+    const compensationPort: StepExecutionPort = {
+        execute: async (step) => {
+            if (step.name !== 'browser.fill') {throw new Error(`unexpected compensation: ${step.name}`);}
+            values.push(step.args.value);
+            current = afterCompensation;
+            return {stepId: step.id, ok: true, data: {filled: true}};
+        },
+    };
+    const execution = createDslDebugExecutionSession({
+        source: 'fill input.target with input.value',
+        context: {
+            workspaceName: 'ws-compensation-post-effect-error',
+            deps: {} as RunStepsDeps,
+            input: {target: {nodeId: 'buyer-input'}, value: 'new value'},
+            stepExecutionPort: programPort,
+        },
+        compensationPort,
+        worldViewSource: {pin: async () => current},
+        debug: {breakBeforeEffects: true, breakOnFailure: true},
+    });
+
+    const beforeEffect = await execution.waitForPause();
+    assert.equal(beforeEffect.reason, 'effect');
+    assert.ok(beforeEffect.rollbackAnchor);
+    const failed = await execution.advance(beforeEffect.continuationId, 'continue');
+    assert.equal(failed.status, 'paused');
+    if (failed.status !== 'paused') {throw new Error('expected failure pause');}
+    assert.equal(failed.pause.reason, 'failure');
+    assert.equal(failed.pause.rollbackAnchor?.id, beforeEffect.rollbackAnchor.id);
+
+    const rollback = await execution.rollback(
+        failed.pause.continuationId,
+        beforeEffect.rollbackAnchor.id,
+        {strategy: 'physical'},
+    );
+    assert.equal(rollback.status, 'compensated');
+    if (rollback.status !== 'compensated') {throw new Error('expected compensated rollback');}
+    assert.equal(rollback.semanticRisk, 'unknown');
+    assert.deepEqual(values, ['new value', 'old value']);
+    assert.deepEqual(rollback.world.revision, afterCompensation.revision);
+
+    const effects = execution.auditEffects();
+    assert.equal(effects.length, 2);
+    assert.equal(effects[0].outcome.status, 'failed');
+    assert.deepEqual(effects[1].compensates, {effectSequence: 1});
+    assert.equal(effects[1].outcome.status, 'succeeded');
+    await execution.advance(failed.pause.continuationId, 'abort');
+});
+
 test('physical rollback stays blocked when no explicit compensation executor is configured', async () => {
     const [before, afterFill] = await createViews();
     let current = before;

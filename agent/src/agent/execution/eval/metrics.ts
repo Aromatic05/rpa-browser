@@ -26,6 +26,17 @@ export const collectAgentEvalMetrics = (
     const worldEffectCalls = journalAvailable
         ? result.programs!.reduce((count, program) => count + (program.effects?.length ?? 0), 0)
         : null;
+    const journalEffects = journalAvailable
+        ? result.programs!.flatMap((program) => program.effects ?? [])
+        : null;
+    const failedWorldChangingEffects = journalEffects
+        ? journalEffects.filter((effect) => effect.status === 'failed'
+            && (effect.worldBefore.pageEpoch !== effect.worldAfter.pageEpoch
+                || effect.worldBefore.captureRevision !== effect.worldAfter.captureRevision)).length
+        : null;
+    const compensationEffects = journalEffects
+        ? journalEffects.filter((effect) => effect.compensates !== undefined).length
+        : null;
     return {
         turns: result.trace.metrics.turns,
         toolCalls: result.trace.metrics.toolCalls,
@@ -36,6 +47,8 @@ export const collectAgentEvalMetrics = (
         effects: {
             toolEffectCalls: result.trace.metrics.effectCalls,
             worldEffectCalls,
+            failedWorldChangingEffects,
+            compensationEffects,
             availability: journalAvailable ? 'program-journal' : 'not-exposed',
         },
         repair: repairMetrics(result),

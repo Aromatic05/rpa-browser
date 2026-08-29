@@ -3,6 +3,7 @@ import {
     type CreateDslDebugControllerOptions,
 } from '../../../automation/dsl/debug/controller';
 import type {
+    DslBeforeStatementEvent,
     DslDebugPort,
     DslEffectDescriptor,
     DslExecutionFrameSnapshot,
@@ -93,6 +94,7 @@ export const createDslDebugExecutionSession = (
         provenance: readonly DslValueProvenanceEvent[];
         origin: 'automatic' | 'explicit';
     }>>();
+    let currentStatementEvent: DslBeforeStatementEvent | null = null;
     let transaction: DebugTransaction | null = null;
     let transactionEffectStartSequence = 0;
     let latestEffectRollbackSavepointId: string | undefined;
@@ -177,26 +179,120 @@ export const createDslDebugExecutionSession = (
             origin,
         }));
     };
+    const isSameProgramPoint = (
+        left: DslStatementLocation,
+        right: DslStatementLocation,
+    ): boolean => left.programId === right.programId && left.path === right.path;
+    const captureStatementExecutionSavepoint = (
+        event: DslBeforeStatementEvent,
+        view: WorldView,
+        savepoint: DebugSavepoint,
+        origin: 'automatic' | 'explicit',
+    ): void => {
+        if (executionSavepoints.has(savepoint.id)) {return;}
+        const history = statementHistory.list();
+        executionSavepoints.set(savepoint.id, Object.freeze({
+            state: Object.freeze({
+                savepoint,
+                reason: 'statement' as const,
+                location: structuredClone(event.location),
+                scope: structuredClone(event.scope),
+                frames: structuredClone(event.frames),
+                historySequence: history.at(-1)?.sequence ?? 0,
+                world: describeWorldView(view),
+            }),
+            provenance: provenance.snapshot(),
+            origin,
+        }));
+    };
+    const captureCurrentStatementAt = (
+        location: DslStatementLocation,
+        view: WorldView,
+        savepoint: DebugSavepoint,
+    ): void => {
+        const event = currentStatementEvent;
+        if (!event
+            || !isSameProgramPoint(event.location, location)
+            || !isRewindableStatementLocation(event.location, event.frames)) {
+            return;
+        }
+        captureStatementExecutionSavepoint(event, view, savepoint, 'automatic');
+    };
+    const ensureEffectRollbackAnchor = (
+        location: DslStatementLocation,
+        view: WorldView,
+    ): DebugSavepoint => {
+        const currentWorld = describeWorldView(view);
+        const existing = latestEffectRollbackSavepointId
+            ? requireTransaction().readSavepoint(latestEffectRollbackSavepointId)
+            : null;
+        const savepoint = existing
+            && existing.savepoint.effectSequence === journal.list().length
+            && isSameWorldView(existing.savepoint.world, currentWorld)
+            ? existing.savepoint
+            : requireTransaction().internalSavepoint(view, journal.list().length);
+        latestEffectRollbackSavepointId = savepoint.id;
+        captureCurrentStatementAt(location, view, savepoint);
+        return savepoint;
+    };
+    const captureFailureStatementPoint = (
+        location: DslStatementLocation,
+        view: WorldView,
+    ): DebugSavepoint | null => {
+        const event = currentStatementEvent;
+        if (!event
+            || !isSameProgramPoint(event.location, location)
+            || !isRewindableStatementLocation(event.location, event.frames)) {
+            return null;
+        }
+        const rollbackRuntime = latestEffectRollbackSavepointId
+            ? executionSavepoints.get(latestEffectRollbackSavepointId)
+            : null;
+        if (rollbackRuntime && isSameProgramPoint(rollbackRuntime.state.location, location)) {
+            return null;
+        }
+        const savepoint = requireTransaction().internalSavepoint(view, journal.list().length);
+        captureStatementExecutionSavepoint(event, view, savepoint, 'automatic');
+        return savepoint;
+    };
     const debugPort: DslDebugPort = {
         beforeStatement: async (event) => {
             const patch = programPatches.get(event.location.programId, event.location.path);
-            if (!patch) {return await controller.port.beforeStatement(event);}
-            const patchedEvent = Object.freeze({
-                ...event,
-                location: Object.freeze({...event.location, kind: patch.statement.kind}),
-                statement: structuredClone(patch.statement),
-            });
-            const resolution = await controller.port.beforeStatement(patchedEvent);
-            return resolution ?? Object.freeze({statement: structuredClone(patch.statement)});
+            const effectiveEvent = patch
+                ? Object.freeze({
+                    ...event,
+                    location: Object.freeze({...event.location, kind: patch.statement.kind}),
+                    statement: structuredClone(patch.statement),
+                })
+                : event;
+            currentStatementEvent = effectiveEvent;
+            const resolution = await controller.port.beforeStatement(effectiveEvent);
+            if (resolution?.statement) {
+                currentStatementEvent = Object.freeze({
+                    ...effectiveEvent,
+                    location: Object.freeze({...effectiveEvent.location, kind: resolution.statement.kind}),
+                    statement: structuredClone(resolution.statement),
+                });
+            }
+            return patch
+                ? resolution ?? Object.freeze({statement: structuredClone(patch.statement)})
+                : resolution;
         },
-        afterStatement: (event) => {statementHistory.record(event);},
+        afterStatement: (event) => {
+            statementHistory.record(event);
+            if (currentStatementEvent && isSameProgramPoint(currentStatementEvent.location, event.location)) {
+                currentStatementEvent = null;
+            }
+        },
         beforeEffect: async (event) => {
             await ensureTransaction();
             pendingEffectOverrides.delete(event.effect.stepId);
             await controller.port.beforeEffect?.(event);
             const effect = pendingEffectOverrides.get(event.effect.stepId) ?? event.effect;
             pendingEffectOverrides.delete(event.effect.stepId);
-            journal.begin(Object.freeze({...event, effect}), await options.worldViewSource.pin());
+            const worldBefore = await options.worldViewSource.pin();
+            ensureEffectRollbackAnchor(event.location, worldBefore);
+            journal.begin(Object.freeze({...event, effect}), worldBefore);
             return effect === event.effect ? undefined : Object.freeze({effect});
         },
         afterEffect: async (event) => {
@@ -448,13 +544,15 @@ export const createDslDebugExecutionSession = (
             captureExecutionSavepoint(active, savepoint, 'automatic');
             active = {...active, automaticSavepointId: savepoint.id};
         } else if (pause.reason === 'effect' || pause.reason === 'barrier') {
-            const savepoint = requireTransaction().internalSavepoint(view, journal.list().length);
-            latestEffectRollbackSavepointId = savepoint.id;
+            const savepoint = ensureEffectRollbackAnchor(pause.location, view);
             active = {
                 ...active,
                 automaticSavepointId: savepoint.id,
                 rollbackSavepointId: savepoint.id,
             };
+        } else if (pause.reason === 'failure') {
+            const savepoint = captureFailureStatementPoint(pause.location, view);
+            if (savepoint) {active = {...active, automaticSavepointId: savepoint.id};}
         }
         return exposePause(active);
     };
@@ -462,10 +560,15 @@ export const createDslDebugExecutionSession = (
     const refresh = async (continuationId: string): Promise<PausedDslDebugExecution> => {
         const current = requireActive(continuationId);
         const view = await options.worldViewSource.pin();
+        const previousEffectSavepointId = latestEffectRollbackSavepointId;
         const refreshedEffectSavepoint = current.pause.reason === 'effect' || current.pause.reason === 'barrier'
-            ? requireTransaction().internalSavepoint(view, journal.list().length)
+            ? ensureEffectRollbackAnchor(current.pause.location, view)
             : null;
-        if (refreshedEffectSavepoint) {latestEffectRollbackSavepointId = refreshedEffectSavepoint.id;}
+        if (refreshedEffectSavepoint
+            && previousEffectSavepointId
+            && previousEffectSavepointId !== refreshedEffectSavepoint.id) {
+            executionSavepoints.delete(previousEffectSavepointId);
+        }
         active = {
             pause: current.pause,
             view,

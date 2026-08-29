@@ -61,10 +61,12 @@ test('retained execution transaction spans effects and exposes savepoint-relativ
     assert.equal(automaticRollbackAnchor.effectSequence, 0);
     assert.deepEqual(automaticRollbackAnchor.world.revision, first.revision);
     assert.deepEqual(execution.transaction(effectPause.continuationId).savepoints, []);
-    assert.equal(
-        execution.executionSavepoint(effectPause.continuationId, automaticRollbackAnchor.id),
-        null,
+    const automaticExecutionSavepoint = execution.executionSavepoint(
+        effectPause.continuationId,
+        automaticRollbackAnchor.id,
     );
+    assert.equal(automaticExecutionSavepoint?.reason, 'statement');
+    assert.equal(automaticExecutionSavepoint?.location.path, 'body.0');
     const savepoint = execution.savepoint(effectPause.continuationId, 'before-submit');
     assert.equal(savepoint.id, automaticRollbackAnchor.id);
     const before = execution.transaction(effectPause.continuationId);
@@ -73,7 +75,7 @@ test('retained execution transaction spans effects and exposes savepoint-relativ
     assert.deepEqual(savepoint.world.revision, first.revision);
     assert.equal(savepoint.effectSequence, 0);
     const executionSavepoint = execution.executionSavepoint(effectPause.continuationId, savepoint.id);
-    assert.equal(executionSavepoint?.reason, 'effect');
+    assert.equal(executionSavepoint?.reason, 'statement');
     assert.equal(executionSavepoint?.location.programId, 'main');
     assert.equal(executionSavepoint?.location.path, 'body.0');
     assert.equal(executionSavepoint?.historySequence, 0);
@@ -101,7 +103,7 @@ test('retained execution transaction spans effects and exposes savepoint-relativ
     await execution.advance(next.pause.continuationId, 'continue');
 });
 
-test('effect failure inherits the hidden pre-effect rollback anchor without making it rewindable', async () => {
+test('effect failure inherits the hidden pre-effect rollback anchor as a guarded rewind point', async () => {
     const [first, second] = await createViews();
     let current = first;
     const execution = createDslDebugExecutionSession({
@@ -135,7 +137,9 @@ test('effect failure inherits the hidden pre-effect rollback anchor without maki
     assert.equal(failed.pause.reason, 'failure');
     assert.equal(failed.pause.rollbackAnchor?.id, anchor.id);
     assert.deepEqual(execution.transaction(failed.pause.continuationId).savepoints, []);
-    assert.equal(execution.executionSavepoint(failed.pause.continuationId, anchor.id), null);
+    const executionAnchor = execution.executionSavepoint(failed.pause.continuationId, anchor.id);
+    assert.equal(executionAnchor?.reason, 'statement');
+    assert.equal(executionAnchor?.location.path, 'body.0');
 
     const rollback = await execution.rollback(failed.pause.continuationId, anchor.id);
     assert.equal(rollback.status, 'blocked');
@@ -144,8 +148,57 @@ test('effect failure inherits the hidden pre-effect rollback anchor without maki
         assert.equal(rollback.savepoint.id, anchor.id);
     }
     const rewind = await execution.rewind(failed.pause.continuationId, anchor.id);
-    assert.equal(rewind.status, 'not_found');
+    assert.equal(rewind.status, 'blocked');
+    if (rewind.status === 'blocked') {
+        assert.equal(rewind.reason, 'world_not_restored');
+    }
     await execution.advance(failed.pause.continuationId, 'abort');
+});
+
+test('continue mode records a pure failure statement checkpoint without pausing before it', async () => {
+    const [first, second] = await createViews();
+    let current = first;
+    const execution = createDslDebugExecutionSession({
+        source: `
+            click input.target
+            ensure compute eq(input.actual, input.expected)
+        `,
+        context: {
+            workspaceName: 'ws-transaction-failure-program-point',
+            deps: {} as RunStepsDeps,
+            input: {target: {nodeId: 'submit'}, actual: 1, expected: 2},
+            stepExecutionPort: {
+                execute: async (step) => {
+                    current = second;
+                    return {stepId: step.id, ok: true, data: {clicked: true}};
+                },
+            },
+        },
+        worldViewSource: {pin: async () => current},
+        debug: {breakBeforeEffects: true, breakOnFailure: true, initialMode: 'continue'},
+    });
+
+    const effect = await execution.waitForPause();
+    assert.equal(effect.reason, 'effect');
+    const afterEffect = await execution.advance(effect.continuationId, 'continue');
+    assert.equal(afterEffect.status, 'paused');
+    if (afterEffect.status !== 'paused') {throw new Error('expected invariant failure pause');}
+    assert.equal(afterEffect.pause.reason, 'failure');
+    assert.equal(afterEffect.pause.location.path, 'body.1');
+
+    const plan = execution.rewindPlan(afterEffect.pause.continuationId, {path: 'body.1'});
+    assert.equal(plan.status, 'ready');
+    if (plan.status !== 'ready') {throw new Error('expected rewind plan');}
+    const exact = plan.candidates.find((candidate) => candidate.exact);
+    assert.ok(exact);
+    assert.equal(exact.location.path, 'body.1');
+    assert.equal(exact.effectSequence, 1);
+
+    const rewound = await execution.rewind(afterEffect.pause.continuationId, exact.savepointId);
+    assert.equal(rewound.status, 'rewound');
+    if (rewound.status !== 'rewound') {throw new Error('expected rewind to failed invariant');}
+    assert.equal(rewound.pause.location.path, 'body.1');
+    await execution.advance(rewound.pause.continuationId, 'abort');
 });
 
 test('commit moves the transaction baseline forward while preserving effect audit history', async () => {

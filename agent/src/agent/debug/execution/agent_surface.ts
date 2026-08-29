@@ -38,12 +38,34 @@ const BARRIER_AGENT_TOOL_NAMES = new Set([
     'debug.abort',
 ]);
 
+const FAILURE_AGENT_TOOL_NAMES = new Set([
+    'debug.execution',
+    'debug.scope',
+    'debug.program',
+    'debug.patches',
+    'debug.history',
+    'debug.effects',
+    'debug.query',
+    'debug.compute',
+    'debug.transaction',
+    'debug.rollback',
+    'debug.rewind_plan',
+    'debug.rewind',
+    'debug.patch_program',
+    'debug.unpatch_program',
+    'debug.refresh',
+    'debug.continue',
+    'debug.abort',
+]);
+
 export const debuggerToolsForPause = (
     tools: readonly AgentTool[],
     pause: PausedDslDebugExecution,
 ): AgentTool[] => pause.reason === 'barrier'
     ? tools.filter((tool) => BARRIER_AGENT_TOOL_NAMES.has(tool.name))
-    : [...tools];
+    : pause.reason === 'failure'
+        ? tools.filter((tool) => FAILURE_AGENT_TOOL_NAMES.has(tool.name))
+        : [...tools];
 
 const barrierSystemPrompt = (
     pause: Extract<PausedDslDebugExecution, {reason: 'barrier'}>,
@@ -72,8 +94,9 @@ const compactFailureSystemPrompt = (
     pause.rollbackAnchor
         ? `The most recent pre-effect rollbackAnchor is ${JSON.stringify(pause.rollbackAnchor)}.`
         : 'No pre-effect rollbackAnchor is available for this failure.',
-    'If the task requires undoing an earlier World effect, inspect debug.effects when needed and call debug.rollback with rollbackAnchor.id. Use strategy="physical" only when UI compensation is appropriate.',
+    'If the task requires undoing an earlier World effect, inspect debug.effects when needed and call debug.rollback with rollbackAnchor.id. If effects executed after that anchor, strategy="none" can only block; use strategy="physical" directly when UI compensation is appropriate.',
     'Interpret rollback status strictly: restored means verified restoration; compensated means the physical compensation ran but semantic equivalence is not proven; blocked/partial means recovery is incomplete.',
+    'browser.snapshot is intentionally unavailable while the retained transaction is paused. Use debugger state now; verify with browser read tools only after the transaction is terminal.',
     'After handling recovery, do not blindly retry the original failed operation. Terminate or report the retained failure according to the user task.',
 ].join('\n\n');
 

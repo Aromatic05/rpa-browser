@@ -197,15 +197,18 @@ export const executeStepWithRuntimeContracts = async (
     }
 
     const fn = executors[step.name];
-    const result = await fn(runtimeStep.step, deps, workspaceName, {
-        checkpointProvider: options.checkpointProvider,
-        entityRulesResolver: options.entityRulesResolver,
-        resolveResolver: options.resolveResolver,
-    });
-    if (result.ok && shouldMarkPageSessionDirtyByStep(runtimeStep.step.name, runtimeStep.step.args)) {
-        await markPageSessionDirtyAfterStep(deps, workspaceName, runtimeStep.step);
+    const mayMutatePage = shouldMarkPageSessionDirtyByStep(runtimeStep.step.name, runtimeStep.step.args);
+    try {
+        return await fn(runtimeStep.step, deps, workspaceName, {
+            checkpointProvider: options.checkpointProvider,
+            entityRulesResolver: options.entityRulesResolver,
+            resolveResolver: options.resolveResolver,
+        });
+    } finally {
+        if (mayMutatePage) {
+            await markPageSessionDirtyAfterStep(deps, workspaceName, runtimeStep.step);
+        }
     }
-    return result;
 };
 
 const executeOne = async (

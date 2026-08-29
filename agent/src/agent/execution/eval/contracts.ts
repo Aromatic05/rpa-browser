@@ -32,6 +32,8 @@ export type AgentEvalRepairMetrics = Readonly<{
 export type AgentEvalEffectMetrics = Readonly<{
     toolEffectCalls: number;
     worldEffectCalls: number | null;
+    failedWorldChangingEffects: number | null;
+    compensationEffects: number | null;
     availability: 'program-journal' | 'not-exposed';
 }>;
 

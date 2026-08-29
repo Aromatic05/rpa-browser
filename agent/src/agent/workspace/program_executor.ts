@@ -50,6 +50,8 @@ const effectSummaries = (session: DslDebugExecutionSession): readonly AgentProgr
         sequence: record.sequence,
         stepName: record.effect.stepName,
         status: record.outcome.status,
+        worldBefore: structuredClone(record.worldBefore.revision),
+        worldAfter: structuredClone(record.worldAfter.revision),
         ...(record.compensates ? {compensates: record.compensates.effectSequence} : {}),
     }));
 

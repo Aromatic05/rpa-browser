@@ -596,7 +596,7 @@ test('rewind unwinds a loop frame inside an if frame in execution order', async 
     }
 });
 
-test('rewind rejects effect savepoints instead of treating a pending effect as a restartable statement', async () => {
+test('rewind treats a pending effect anchor as the pre-statement program point', async () => {
     const view = await createView();
     const execution = createDslDebugExecutionSession({
         source: 'click input.target',
@@ -614,13 +614,17 @@ test('rewind rejects effect savepoints instead of treating a pending effect as a
 
     const effect = await execution.waitForPause();
     assert.equal(effect.reason, 'effect');
+    assert.ok(effect.rollbackAnchor);
     const savepoint = execution.savepoint(effect.continuationId, 'pending-effect');
+    assert.equal(savepoint.id, effect.rollbackAnchor.id);
+    const executionSavepoint = execution.executionSavepoint(effect.continuationId, savepoint.id);
+    assert.equal(executionSavepoint?.reason, 'statement');
+    assert.equal(executionSavepoint?.location.path, 'body.0');
     const result = await execution.rewind(effect.continuationId, savepoint.id);
-    assert.equal(result.status, 'unsupported_target');
-    if (result.status === 'unsupported_target') {
-        assert.equal(result.reason, 'not_statement_savepoint');
-    }
-    await execution.advance(effect.continuationId, 'abort');
+    assert.equal(result.status, 'rewound');
+    if (result.status !== 'rewound') {throw new Error('expected effect statement rewind');}
+    assert.equal(result.pause.location.path, 'body.0');
+    await execution.advance(result.pause.continuationId, 'abort');
 });
 
 test('rewind accepts explicit loop statement savepoints and restores the saved iteration', async () => {

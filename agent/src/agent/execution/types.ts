@@ -2,10 +2,17 @@ import type {AgentTraceSnapshot} from '../trace/collector';
 
 export type AgentExecutionMode = 'program' | 'react-baseline';
 
+export type AgentProgramWorldRevision = Readonly<{
+    pageEpoch: string;
+    captureRevision: number;
+}>;
+
 export type AgentProgramEffectSummary = Readonly<{
     sequence: number;
     stepName: string;
     status: 'succeeded' | 'failed';
+    worldBefore: AgentProgramWorldRevision;
+    worldAfter: AgentProgramWorldRevision;
     compensates?: number;
 }>;
 

@@ -42,7 +42,13 @@ test('eval compares program-first and baseline without inventing hidden world-ef
                         source: 'fill input.target with input.value',
                         input: {},
                         status: 'completed' as const,
-                        effects: [{sequence: 1, stepName: 'browser.fill', status: 'succeeded' as const}],
+                        effects: [{
+                            sequence: 1,
+                            stepName: 'browser.fill',
+                            status: 'succeeded' as const,
+                            worldBefore: {pageEpoch: 'page-1', captureRevision: 1},
+                            worldAfter: {pageEpoch: 'page-1', captureRevision: 2},
+                        }],
                     }]}
                     : {}),
             };
@@ -63,11 +69,15 @@ test('eval compares program-first and baseline without inventing hidden world-ef
     assert.equal(typeof report.runs.program?.durationMs, 'number');
     assert.equal(report.runs['react-baseline']?.success, false);
     assert.equal(report.runs.program?.metrics.effects.worldEffectCalls, 1);
+    assert.equal(report.runs.program?.metrics.effects.failedWorldChangingEffects, 0);
+    assert.equal(report.runs.program?.metrics.effects.compensationEffects, 0);
     assert.equal(report.runs.program?.metrics.effects.availability, 'program-journal');
     assert.equal(report.runs.program?.metrics.repair.patchCalls, 1);
     assert.equal(report.runs.program?.metrics.repair.rewindCalls, 1);
     assert.equal(report.runs['react-baseline']?.metrics.effects.toolEffectCalls, 1);
     assert.equal(report.runs['react-baseline']?.metrics.effects.worldEffectCalls, null);
+    assert.equal(report.runs['react-baseline']?.metrics.effects.failedWorldChangingEffects, null);
+    assert.equal(report.runs['react-baseline']?.metrics.effects.compensationEffects, null);
     assert.equal(report.runs['react-baseline']?.metrics.effects.availability, 'not-exposed');
 });
 
