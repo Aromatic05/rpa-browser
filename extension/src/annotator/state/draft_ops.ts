@@ -59,10 +59,15 @@ const cloneDraft = (draft: CanvasDraft): CanvasDraft => ({
         annotations: entity.annotations.map((annotation) => ({
             ...annotation,
             target: {...annotation.target},
+            ...(annotation.effect ? {effect: {...annotation.effect}} : {}),
         })),
         columns: entity.columns.map((column) => ({
             ...column,
-            actions: column.actions.map((action) => ({...action, target: {...action.target}})),
+            actions: column.actions.map((action) => ({
+                ...action,
+                target: {...action.target},
+                ...(action.effect ? {effect: {...action.effect}} : {}),
+            })),
         })),
     })),
 });

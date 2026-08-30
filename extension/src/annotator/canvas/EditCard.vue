@@ -3,6 +3,7 @@ import {computed, ref, watch} from 'vue';
 import type {
     CanvasAnnotationDraft,
     CanvasColumnDraft,
+    CanvasEffectReversibility,
     CanvasEntityDraft,
     PickCandidate,
 } from '../types.js';
@@ -10,7 +11,11 @@ import type {AnnotationBoxKind} from '../layout/annotation_boxes.js';
 import {
     businessActionIntentOptions,
     businessColumnKindOptions,
+    businessEffectChoices,
     businessFieldBindingOptions,
+    normalizeBusinessEffect,
+    showsBusinessEffectEditor,
+    type BusinessEffectRole,
     type BusinessObjectEditPatch,
 } from '../state/product_ui.js';
 
@@ -75,7 +80,34 @@ const fieldKeyValue = ref('');
 const columnKindValue = ref<NonNullable<CanvasColumnDraft['kind']>>('text');
 const actionIntentValue = ref('');
 const primaryKeyValue = ref(false);
+const effectValue = ref<CanvasEffectReversibility>('unknown');
 const deleteConfirmVisible = ref(false);
+
+const effectRole = computed<BusinessEffectRole | null>(() => {
+    if (selectedRowAction.value) {return 'row_action';}
+    if (isAction.value) {return 'action';}
+    if (isNativeField.value) {return 'field';}
+    return null;
+});
+
+const effectChoiceVisible = computed(() =>
+    effectRole.value !== null && showsBusinessEffectEditor(props.entity, effectRole.value),
+);
+
+const effectQuestion = computed(() =>
+    effectRole.value === 'field' ? '填写这个字段可以撤销吗？' : '这个操作可以撤销吗？',
+);
+
+const effectChoiceOptions = businessEffectChoices();
+
+const selectedEffectHint = computed(() =>
+    effectChoiceOptions.find((option) => option.value === effectValue.value)?.hint ?? '',
+);
+
+const currentEffect = computed(() => {
+    if (selectedRowAction.value?.effect) {return selectedRowAction.value.effect;}
+    return props.annotation?.effect;
+});
 
 const resetLocalDraft = (): void => {
     nameValue.value = props.annotation?.name ?? '';
@@ -84,6 +116,7 @@ const resetLocalDraft = (): void => {
         (selectedColumn.value?.actions.length ? 'action_column' : 'text');
     actionIntentValue.value = selectedRowAction.value?.actionIntent ?? props.annotation?.businessKey ?? '';
     primaryKeyValue.value = props.isPrimaryKey;
+    effectValue.value = normalizeBusinessEffect(currentEffect.value);
     deleteConfirmVisible.value = false;
 };
 
@@ -92,9 +125,11 @@ watch(
         props.annotation?.id,
         props.annotation?.name,
         props.annotation?.businessKey,
+        props.annotation?.effect?.reversibility,
         selectedColumn.value?.kind,
         selectedColumn.value?.actions.length,
         selectedRowAction.value?.actionIntent,
+        selectedRowAction.value?.effect?.reversibility,
         props.isPrimaryKey,
     ],
     resetLocalDraft,
@@ -130,6 +165,9 @@ const hasChanges = computed(() => {
         const initialIntent = selectedRowAction.value?.actionIntent ?? props.annotation?.businessKey ?? '';
         if (actionIntentValue.value !== initialIntent) {return true;}
     }
+    if (effectChoiceVisible.value) {
+        if (effectValue.value !== normalizeBusinessEffect(currentEffect.value)) {return true;}
+    }
     return false;
 });
 
@@ -144,6 +182,9 @@ const applyChanges = (): void => {
         patch.primaryKey = primaryKeyValue.value;
     }
     if (isAction.value) {patch.actionIntent = actionIntentValue.value;}
+    if (effectChoiceVisible.value) {
+        patch.effect = {reversibility: effectValue.value};
+    }
     emit('apply', patch);
 };
 
@@ -223,6 +264,22 @@ const onDragEnd = (event: PointerEvent): void => {
                 </option>
             </select>
         </label>
+
+        <div v-if="effectChoiceVisible" class="business-effect-choice">
+            <label for="business-effect-select" class="business-field">
+                <span>{{ effectQuestion }}</span>
+                <select
+                    id="business-effect-select"
+                    v-model="effectValue"
+                    :aria-describedby="'business-effect-hint'"
+                >
+                    <option v-for="option in effectChoiceOptions" :key="option.value" :value="option.value">
+                        {{ option.label }}
+                    </option>
+                </select>
+            </label>
+            <small id="business-effect-hint" class="effect-hint">{{ selectedEffectHint }}</small>
+        </div>
 
         <button
             v-if="canSetPrimaryKey"
@@ -333,6 +390,12 @@ const onDragEnd = (event: PointerEvent): void => {
 .business-field select:focus {
     border-color: #2563eb;
     box-shadow: 0 0 0 3px rgba(37, 99, 235, .12);
+}
+.business-effect-choice { display: grid; gap: 4px; }
+.effect-hint {
+    color: #64748b;
+    font-size: 10px;
+    line-height: 1.4;
 }
 .primary-key-choice {
     width: 100%;

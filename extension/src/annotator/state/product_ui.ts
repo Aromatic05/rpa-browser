@@ -2,6 +2,8 @@ import type {AnnotationBox} from '../layout/annotation_boxes.js';
 import {entityVisualId, paginationPageVisualId} from '../visual_ids.js';
 import type {
     CanvasColumnDraft,
+    CanvasEffectDraft,
+    CanvasEffectReversibility,
     CanvasEntityDraft,
     CheckResultByAnnotation,
     PickCandidate,
@@ -238,6 +240,7 @@ export type BusinessObjectEditPatch = {
     actionIntent?: string;
     columnKind?: NonNullable<CanvasColumnDraft['kind']>;
     primaryKey?: boolean;
+    effect?: CanvasEffectDraft;
 };
 
 export const businessFieldBindingOptions = (entity: CanvasEntityDraft | null): BusinessChoice[] =>
@@ -297,6 +300,51 @@ export const businessActionIntentOptions = (
         return [{value: currentValue, label: currentLabel || '当前操作'}, ...options];
     }
     return options;
+};
+
+export type BusinessEffectChoice = BusinessChoice & {
+    hint: string;
+};
+
+const effectChoiceByReversibility: Record<CanvasEffectReversibility, BusinessEffectChoice> = {
+    unknown: {
+        value: 'unknown',
+        label: '不确定',
+        hint: '按保守策略处理：运行时不会假定此操作可以恢复。',
+    },
+    reversible: {
+        value: 'reversible',
+        label: '可以撤销',
+        hint: '在已声明的语义范围内，运行时可以退回该操作执行前的状态。',
+    },
+    compensatable: {
+        value: 'compensatable',
+        label: '可业务抵偿',
+        hint: '存在反向业务操作可以抵偿（例如冲销），但不保证恢复原始状态。',
+    },
+    irreversible: {
+        value: 'irreversible',
+        label: '不可撤销',
+        hint: '执行后无法撤销；运行到此处前需要人工确认。',
+    },
+};
+
+export const businessEffectChoices = (): BusinessEffectChoice[] =>
+    ['unknown', 'reversible', 'compensatable', 'irreversible']
+        .map((value) => effectChoiceByReversibility[value as CanvasEffectReversibility]);
+
+export const normalizeBusinessEffect = (effect: CanvasEffectDraft | undefined): CanvasEffectReversibility =>
+    effect?.reversibility ?? 'unknown';
+
+export type BusinessEffectRole = 'field' | 'action' | 'row_action';
+
+export const showsBusinessEffectEditor = (
+    entity: CanvasEntityDraft | null,
+    role: BusinessEffectRole,
+): boolean => {
+    if (!entity) {return false;}
+    if (role === 'action' || role === 'row_action') {return true;}
+    return entity.kind === 'form';
 };
 
 export type AnnotationBoxGroups = {

@@ -224,3 +224,43 @@ test('deleteVisualItem and ignoreVisualItem operate on columns, actions and pagi
     const withoutColumn = deleteVisualItem(original, 'e1', 'col');
     assert.equal(withoutColumn.entities[0].columns.length, 0);
 });
+
+test('updateAnnotation records member effect and keeps other members distinct', () => {
+    const original = makeDraft();
+    original.entities[0].annotations = [
+        makeAnnotation('refresh', 'refresh'),
+        makeAnnotation('submit', 'submit'),
+    ];
+    original.entities[0].columns = [{
+        id: 'col',
+        fieldKey: 'actions',
+        origin: 'inferred',
+        disposition: 'active',
+        actions: [{id: 'rowEdit', actionIntent: 'edit', target: {}, origin: 'inferred', disposition: 'active'}],
+    }];
+    const withEffects = updateAnnotation(original, 'e1', 'refresh', {effect: {reversibility: 'reversible'}});
+    const withBoth = updateAnnotation(withEffects, 'e1', 'submit', {effect: {reversibility: 'irreversible'}});
+    const withRow = updateColumnAction(withBoth, 'e1', 'rowEdit', {effect: {reversibility: 'compensatable'}});
+    assert.deepEqual(withRow.entities[0].annotations[0].effect, {reversibility: 'reversible'});
+    assert.deepEqual(withRow.entities[0].annotations[1].effect, {reversibility: 'irreversible'});
+    assert.deepEqual(withRow.entities[0].columns[0].actions[0].effect, {reversibility: 'compensatable'});
+});
+
+test('updateAnnotation effect patch preserves the original draft and unrelated members', () => {
+    const original = makeDraft();
+    original.entities[0].annotations = [makeAnnotation('refresh', 'refresh'), makeAnnotation('submit', 'submit')];
+    original.entities[0].annotations[0].effect = {reversibility: 'compensatable'};
+    const next = updateAnnotation(original, 'e1', 'refresh', {effect: {reversibility: 'irreversible'}});
+    assert.deepEqual(next.entities[0].annotations[0].effect, {reversibility: 'irreversible'});
+    assert.equal(next.entities[0].annotations[1].effect, undefined);
+    assert.equal(original.entities[0].annotations[0].effect?.reversibility, 'compensatable');
+});
+
+test('edits deep-clone the member effect object', () => {
+    const original = makeDraft();
+    original.entities[0].annotations = [makeAnnotation('refresh', 'refresh')];
+    original.entities[0].annotations[0].effect = {reversibility: 'reversible'};
+    const next = updateAnnotation(original, 'e1', 'refresh', {name: '刷新列表'});
+    assert.notEqual(next.entities[0].annotations[0].effect, original.entities[0].annotations[0].effect);
+    assert.deepEqual(next.entities[0].annotations[0].effect, {reversibility: 'reversible'});
+});

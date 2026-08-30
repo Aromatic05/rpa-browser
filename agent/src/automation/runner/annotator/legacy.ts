@@ -1,5 +1,6 @@
 import {replyAction} from '../../../interface/actions/action_protocol';
 import {ActionError, ERROR_CODES} from '../../../interface/actions/results';
+import type {EffectDeclaration} from '../../../program/effects/contracts';
 import type {ControlPlaneResult} from '../../runtime/control_plane';
 import type {WorkspaceRouterInput} from '../../runtime/workspace/router';
 import {
@@ -43,6 +44,7 @@ type LegacyAnnotation = {
     expect?: 'unique' | 'one_or_more';
     origin: 'inferred' | 'confirmed' | 'manual';
     disposition: 'active' | 'ignored';
+    effect?: EffectDeclaration;
 };
 type LegacyColumnAction = {
     id: string;
@@ -51,6 +53,7 @@ type LegacyColumnAction = {
     target: LegacyTarget;
     origin: 'inferred' | 'confirmed' | 'manual';
     disposition: 'active' | 'ignored';
+    effect?: EffectDeclaration;
 };
 type LegacyColumn = {
     id: string;
@@ -851,6 +854,7 @@ const compileLegacyCanvas = (
                             .map((action) => ({
                                 actionIntent: action.actionIntent,
                                 ...(action.text ? {text: action.text} : {}),
+                                ...(action.effect ? {effect: action.effect} : {}),
                             })),
                     } : {}),
                 }));
@@ -883,6 +887,7 @@ const compileLegacyCanvas = (
                         actionRole: entity.kind === 'table' ? 'module' : 'form',
                         ...(annotation.name ? {actionText: annotation.name} : {}),
                     }),
+                    ...(annotation.effect ? {effect: annotation.effect} : {}),
                 });
             });
         entity.columns.forEach((column, columnIndex) => {
@@ -905,6 +910,7 @@ const compileLegacyCanvas = (
                         actionRole: 'row',
                         columnFieldKey: column.fieldKey,
                         ...(action.text ? {actionText: action.text} : {}),
+                        ...(action.effect ? {effect: action.effect} : {}),
                     });
                 });
         });
