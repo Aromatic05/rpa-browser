@@ -225,7 +225,7 @@ test('service restart marks previously running sessions as interrupted', async (
             const status = await fetch(`http://127.0.0.1:${String(restarted.port)}/agent/sessions/${sessionId}`);
             assert.equal(status.status, 200);
             const payload = await status.json() as {state: string; error?: {code: string}};
-            assert.equal(payload.state, 'failed');
+            assert.equal(payload.state, 'interrupted');
             assert.equal(payload.error?.code, 'ERR_SESSION_INTERRUPTED');
         } finally {
             await second.stop();

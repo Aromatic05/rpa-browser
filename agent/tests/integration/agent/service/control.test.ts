@@ -197,6 +197,9 @@ const pausedRunResult = (onResume?: () => void): AgentRunResult => ({
             return {...runResult, text: 'resumed'};
         },
     },
+    control: {
+        control: async () => ({...runResult, text: 'controlled'}),
+    },
 });
 
 const actionErrorCode = (fn: () => Promise<unknown>, code: string): Promise<void> =>
@@ -215,7 +218,7 @@ test('agent control lists, gets, and approves a session interaction and resumes 
     const records = (listed.reply.payload as any).interactions as Array<any>;
     assert.equal(records.length, 1);
     assert.equal(records[0].status, 'pending');
-    assert.equal(records[0].evidence.effectName, 'effect.submit');
+    assert.equal(records[0].payload.kind, 'approval');
     assert.equal(JSON.stringify(records[0]).includes('do-not-leak'), false);
 
     const got = await control.handle(input(
@@ -235,12 +238,17 @@ test('agent control lists, gets, and approves a session interaction and resumes 
 });
 
 test('agent control rejects unknown session, wrong session binding, stale revision, and missing args', async () => {
-    const {control, input} = createHarness({run: async () => pausedRunResult()});
+    let runs = 0;
+    const {control, input} = createHarness({run: async () => {
+        runs += 1;
+        return runs === 1 ? runResult : pausedRunResult();
+    }});
     await control.handle(input('agent.run', {prompt: 'first', provider: 'p', model: 'm'}));
     await control.handle(input('agent.run', {prompt: 'second', provider: 'p', model: 'm'}));
     const sessions = await control.handle(input('agent.sessions.list'));
-    const [first, second] = (sessions.reply.payload as any).sessions as Array<any>;
-    const listed = await control.handle(input('agent.interactions.list', {sessionId: first.sessionId}));
+    const listedSessions = (sessions.reply.payload as any).sessions as Array<any>;
+    const pausedSession = listedSessions.find((entry) => entry.state === 'paused');
+    const listed = await control.handle(input('agent.interactions.list', {sessionId: pausedSession.sessionId}));
     const interaction = ((listed.reply.payload as any).interactions as Array<any>)[0];
 
     await actionErrorCode(
@@ -248,32 +256,32 @@ test('agent control rejects unknown session, wrong session binding, stale revisi
         'ERR_NOT_FOUND',
     );
     await actionErrorCode(
-        () => control.handle(input('agent.interactions.get', {sessionId: second.sessionId, interactionId: interaction.id})),
+        () => control.handle(input('agent.interactions.get', {sessionId: 'missing', interactionId: interaction.id})),
         'ERR_NOT_FOUND',
     );
     await actionErrorCode(
         () => control.handle(input(
             'agent.interactions.approve',
-            {sessionId: second.sessionId, interactionId: interaction.id, revision: 0, approvedBy: 'ops-1'},
+            {sessionId: pausedSession.sessionId, interactionId: 'missing', revision: 0, approvedBy: 'ops-1'},
         )),
         'ERR_NOT_FOUND',
     );
     await actionErrorCode(
         () => control.handle(input(
             'agent.interactions.approve',
-            {sessionId: first.sessionId, interactionId: interaction.id, revision: 5, approvedBy: 'ops-1'},
+            {sessionId: pausedSession.sessionId, interactionId: interaction.id, revision: 5, approvedBy: 'ops-1'},
         )),
         'ERR_STALE',
     );
     await actionErrorCode(
-        () => control.handle(input('agent.interactions.approve', {sessionId: first.sessionId, interactionId: interaction.id})),
+        () => control.handle(input('agent.interactions.approve', {sessionId: pausedSession.sessionId, interactionId: interaction.id})),
         'ERR_BAD_ARGS',
     );
-    const stillPaused = await control.handle(input('agent.sessions.status', {sessionId: first.sessionId}));
+    const stillPaused = await control.handle(input('agent.sessions.status', {sessionId: pausedSession.sessionId}));
     assert.equal((stillPaused.reply.payload as any).state, 'paused');
 });
 
-test('agent control deny terminates the session as cancelled with a stable reason', async () => {
+test('agent control deny never cancels and returns the denial through the retained control loop', async () => {
     const {control, input} = createHarness({run: async () => pausedRunResult()});
     await control.handle(input('agent.run', {prompt: 'go', provider: 'p', model: 'm'}));
     const sessions = await control.handle(input('agent.sessions.list'));
@@ -287,9 +295,8 @@ test('agent control deny terminates the session as cancelled with a stable reaso
     ));
     const decision = denied.reply.payload as any;
     assert.equal(decision.interaction.status, 'denied');
-    assert.equal(decision.session.state, 'cancelled');
-    assert.equal(decision.session.error.code, 'ERR_SESSION_INTERACTION_DENIED');
-    assert.equal(decision.session.error.message.includes('not safe'), true);
+    assert.notEqual(decision.session.state, 'cancelled', 'deny must never cancel the task');
+    assert.notEqual(decision.session.error?.code, 'ERR_SESSION_INTERACTION_DENIED');
     await actionErrorCode(
         () => control.handle(input(
             'agent.interactions.deny',

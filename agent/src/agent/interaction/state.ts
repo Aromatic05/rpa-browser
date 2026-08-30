@@ -1,5 +1,6 @@
 import {
     InteractionStateError,
+    decisionStatus,
     type InteractionEvent,
     type InteractionRecord,
     type InteractionStatus,
@@ -8,11 +9,16 @@ import {
 export const TERMINAL_STATUSES: ReadonlySet<InteractionStatus> = new Set([
     'approved',
     'denied',
+    'answered',
+    'resolved',
     'cancelled',
     'expired',
 ]);
 
 export const isTerminal = (status: InteractionStatus): boolean => TERMINAL_STATUSES.has(status);
+
+const initialStage = (kind: InteractionRecord['kind']): InteractionRecord['stage'] =>
+    kind === 'takeover' ? 'offered' : undefined;
 
 export const applyEvent = (record: InteractionRecord, event: InteractionEvent): InteractionRecord => {
     if (event.id !== record.id) {
@@ -31,11 +37,35 @@ export const applyEvent = (record: InteractionRecord, event: InteractionEvent): 
             if (record.status !== 'pending') {
                 throw new InteractionStateError(`cannot decide interaction in status ${record.status}`);
             }
-            const status: InteractionStatus = event.decision.kind === 'approve' ? 'approved' : 'denied';
+            if (event.decision.kind === 'returnControl') {
+                if (record.kind !== 'takeover') {
+                    throw new InteractionStateError('returnControl is only valid for takeover interactions');
+                }
+                if (record.stage !== 'active') {
+                    throw new InteractionStateError('cannot return control before the takeover is active');
+                }
+            }
             return Object.freeze({
                 ...record,
-                status,
+                status: decisionStatus(event.decision),
                 decision: event.decision,
+                stage: undefined,
+                revision: event.revision,
+            });
+        }
+        case 'staged': {
+            if (record.status !== 'pending' || record.kind !== 'takeover') {
+                throw new InteractionStateError('only a pending takeover interaction can be staged');
+            }
+            if (event.stage !== 'active') {
+                throw new InteractionStateError('a takeover can only move to the active stage');
+            }
+            if (record.stage === 'active') {
+                throw new InteractionStateError('takeover is already active');
+            }
+            return Object.freeze({
+                ...record,
+                stage: event.stage,
                 revision: event.revision,
             });
         }
@@ -47,7 +77,7 @@ export const applyEvent = (record: InteractionRecord, event: InteractionEvent): 
                 ...record,
                 status: 'cancelled',
                 decision: Object.freeze({
-                    kind: 'cancel',
+                    kind: 'cancel' as const,
                     cancelledBy: event.cancelledBy,
                     cancelledAt: event.cancelledAt,
                 }),
@@ -61,7 +91,7 @@ export const applyEvent = (record: InteractionRecord, event: InteractionEvent): 
             return Object.freeze({
                 ...record,
                 status: 'expired',
-                decision: Object.freeze({kind: 'expire', expiredAt: event.expiredAt}),
+                decision: Object.freeze({kind: 'expire' as const, expiredAt: event.expiredAt}),
                 revision: event.revision,
             });
         }
@@ -82,12 +112,13 @@ export const projectRecord = (events: ReadonlyArray<InteractionEvent>): Interact
         sessionId: first.sessionId,
         kind: first.interactionKind,
         status: 'pending',
+        stage: initialStage(first.interactionKind),
         createdAt: first.createdAt,
         deadlineAt: first.deadlineAt,
         revision: first.revision,
-        prompt: first.prompt,
-        evidence: first.evidence,
+        payload: first.payload,
         decision: null,
+        ...(first.internal === undefined ? {} : {internal: first.internal}),
     });
     for (let index = 1; index < events.length; index++) {
         record = applyEvent(record, events[index]);

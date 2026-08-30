@@ -7,6 +7,10 @@ export type {
     SessionReport,
     SessionInteractionView,
     SessionInteractionPolicy,
+    ActivityOwnerKind,
+    ActivityHumanControl,
+    ActivityReservationSnapshot,
+    ActivityReservationPort,
 } from './types';
 export {createSessionStore, type SessionStore, type SessionSettle, type SessionRetentionPolicy} from './store';
 export {
@@ -19,6 +23,7 @@ export {
 export {
     createSessionManager,
     SessionCancelledError,
+    ActivityConflictError,
     type SessionManager,
     type SessionManagerOptions,
     type InteractionDecisionResult,

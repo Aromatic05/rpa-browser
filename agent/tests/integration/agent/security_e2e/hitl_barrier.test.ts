@@ -18,7 +18,7 @@ type Interaction = {
     kind: string;
     status: string;
     revision: number;
-    evidence: {effectName?: string; summary: string; tags: string[]};
+    payload: {kind: 'approval'; actionName?: string; summary: string; risk: string};
 };
 
 const hitlBody = (provider: string, model: string) => ({
@@ -70,9 +70,9 @@ test('interactive mode creates a sanitized pending interaction and approve resum
         const listedBody = await listed.json() as {interactions: Interaction[]};
         assert.equal(listedBody.interactions.length, 1);
         const interaction = listedBody.interactions[0];
-        assert.equal(interaction.kind, 'irreversible-effect-approval');
+        assert.equal(interaction.kind, 'approval');
         assert.equal(interaction.status, 'pending');
-        assert.equal(interaction.evidence.effectName, 'browser.click');
+        assert.equal(interaction.payload.actionName, 'browser.click');
         assert.ok(!JSON.stringify(interaction).includes(SECURITY_CANARY), 'interaction evidence must be sanitized');
         assert.ok(!JSON.stringify(interaction).includes(apiTokenRefString()));
 
@@ -106,7 +106,7 @@ test('interactive mode creates a sanitized pending interaction and approve resum
     }
 });
 
-test('interactive deny cancels the retained session without executing the irreversible effect', async () => {
+test('interactive deny never cancels and never executes the irreversible effect', async () => {
     const dataDir = mkdtempDir('agent-sec-hitl-deny-');
     const calls: Array<{name: string; args: Record<string, unknown>}> = [];
     const world = await buildSecurityWorkspace({calls});
@@ -131,10 +131,10 @@ test('interactive deny cancels the retained session without executing the irreve
             body: JSON.stringify({revision: interaction.revision, deniedBy: 'ops-2', reason: 'not safe'}),
         });
         assert.equal(denied.status, 200);
-        const decision = await denied.json() as {interaction: {status: string}; session: {state: string; error: {code: string; message: string}}};
+        const decision = await denied.json() as {interaction: {status: string}; session: {state: string; error: {code: string; message: string} | null}};
         assert.equal(decision.interaction.status, 'denied');
-        assert.equal(decision.session.state, 'cancelled');
-        assert.equal(decision.session.error.code, 'ERR_SESSION_INTERACTION_DENIED');
+        assert.notEqual(decision.session.state, 'cancelled', 'deny must never cancel the task');
+        assert.notEqual(decision.session.error?.code, 'ERR_SESSION_INTERACTION_DENIED');
         assert.deepEqual(calls, [], 'denial must never execute the irreversible effect');
         assert.deepEqual(scanForString(dataDir, SECURITY_CANARY), []);
     } finally {
@@ -198,9 +198,13 @@ test('wrong-session decisions and foreign interaction lookups fail closed', asyn
     const baseUrl = `http://127.0.0.1:${String(port)}`;
     try {
         const first = await startPausedRun(baseUrl, harness.provider, harness.model);
-        const second = await startPausedRun(baseUrl, harness.provider, harness.model);
         const listed = await fetch(`${baseUrl}/agent/sessions/${first}/interactions`);
         const interaction = ((await listed.json() as {interactions: Interaction[]}).interactions)[0];
+        // Stop the first task (releasing the workspace reservation) so a second
+        // task can pause with its own interaction.
+        const stopped = await fetch(`${baseUrl}/agent/sessions/${first}/cancel`, {method: 'POST'});
+        assert.equal(stopped.status, 200);
+        const second = await startPausedRun(baseUrl, harness.provider, harness.model);
 
         const foreign = await fetch(`${baseUrl}/agent/sessions/${second}/interactions/${interaction.id}/approve`, {
             method: 'POST',
@@ -216,7 +220,7 @@ test('wrong-session decisions and foreign interaction lookups fail closed', asyn
         assert.equal(missing.status, 404);
 
         const firstStill = await (await fetch(`${baseUrl}/agent/sessions/${first}`)).json() as {state: string};
-        assert.equal(firstStill.state, 'paused');
+        assert.equal(firstStill.state, 'cancelled');
     } finally {
         await harness.stop();
         fs.rmSync(dataDir, {recursive: true, force: true});

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createSessionManager, SessionCancelledError} from '../../../../../src/agent/service/session/manager';
+import {createSessionManager, SessionCancelledError, ActivityConflictError} from '../../../../../src/agent/service/session/manager';
 import type {AgentRunResult} from '../../../../../src/agent/execution/types';
 import {deferred, flush, makeRequest, makeResult} from './helpers';
 
@@ -97,7 +97,7 @@ test('run rethrows a SessionCancelledError when the session is aborted externall
     assert.equal(manager.status(sessions[0].sessionId)?.state, 'cancelled');
 });
 
-test('concurrent sessions track independent lifecycles', async () => {
+test('one active task holds the workspace reservation and rejects a second start', async () => {
     const first = deferred<AgentRunResult>();
     const second = deferred<AgentRunResult>();
     const manager = createSessionManager({
@@ -107,17 +107,25 @@ test('concurrent sessions track independent lifecycles', async () => {
     });
 
     const a = manager.start(makeRequest({prompt: 'first'}));
-    const b = manager.start(makeRequest({prompt: 'second'}));
-    assert.notEqual(a.sessionId, b.sessionId);
+    assert.notEqual(a.sessionId, '');
+    assert.equal(manager.activityReservation().owner, 'task');
+    assert.throws(
+        () => manager.start(makeRequest({prompt: 'second'})),
+        ActivityConflictError,
+        'a second task must be rejected while the first holds the reservation',
+    );
 
     first.resolve(makeResult({text: 'a'}));
     await flush();
     assert.equal(manager.status(a.sessionId)?.state, 'completed');
-    assert.equal(manager.status(b.sessionId)?.state, 'running');
+    assert.equal(manager.activityReservation().owner, 'none', 'terminal settle releases the reservation');
 
-    manager.cancel(b.sessionId);
-    assert.equal(manager.status(b.sessionId)?.state, 'cancelled');
-    assert.equal(manager.status(a.sessionId)?.state, 'completed');
+    const b = manager.start(makeRequest({prompt: 'second'}));
+    assert.equal(manager.activityReservation().owner, 'task');
+    second.resolve(makeResult({text: 'b'}));
+    await flush();
+    assert.equal(manager.status(b.sessionId)?.state, 'completed');
+    assert.equal(manager.activityReservation().owner, 'none');
     assert.equal(manager.list().length, 2);
 });
 

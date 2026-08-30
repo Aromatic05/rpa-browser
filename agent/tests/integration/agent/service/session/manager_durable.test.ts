@@ -35,13 +35,13 @@ test('running sessions are interrupted when the service restarts', async () => {
 
         const second = createSessionManager({runner: {run: async () => makeResult()}, storage});
         const recovered = second.status(sessionId);
-        assert.equal(recovered?.state, 'failed');
+        assert.equal(recovered?.state, 'interrupted');
         assert.equal(recovered?.error?.code, 'ERR_SESSION_INTERRUPTED');
         assert.equal(recovered?.reportAvailable, false);
 
         // A third process observes the already-persisted interrupted state.
         const third = createSessionManager({runner: {run: async () => makeResult()}, storage});
-        assert.equal(third.status(sessionId)?.state, 'failed');
+        assert.equal(third.status(sessionId)?.state, 'interrupted');
     } finally {
         fs.rmSync(dataDir, {recursive: true, force: true});
     }
@@ -142,7 +142,7 @@ test('prune removes sessions by age and count while preserving running sessions'
         }
         const manager2 = createSessionManager({runner: {run: async () => makeResult()}, storage});
         // The running session from the previous process is loaded as interrupted.
-        assert.equal(manager2.status(running.sessionId)?.state, 'failed');
+        assert.equal(manager2.status(running.sessionId)?.state, 'interrupted');
         const prunedByCount = manager2.prune({maxCount: 3});
         assert.equal(prunedByCount >= 2, true);
         assert.equal(manager2.list().length <= 4, true);
@@ -151,15 +151,16 @@ test('prune removes sessions by age and count while preserving running sessions'
     }
 });
 
-test('concurrent session writes produce stable ids and durable reports', async () => {
+test('sequential session writes produce stable ids and durable reports', async () => {
     const dataDir = tempDir();
     try {
         const storage = createFileSystemSessionStorage({dataDir});
         const manager = createSessionManager({runner: {run: async () => makeResultWithSecret()}, storage});
-        const ids = await Promise.all(Array.from({length: 10}, async (_, index) => {
+        const ids: string[] = [];
+        for (let index = 0; index < 10; index++) {
             const {sessionId} = await manager.runTracked(makeRequest({prompt: `c${index}`}));
-            return sessionId;
-        }));
+            ids.push(sessionId);
+        }
 
         assert.equal(new Set(ids).size, ids.length);
         for (const id of ids) {

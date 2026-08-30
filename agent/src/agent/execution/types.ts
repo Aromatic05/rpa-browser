@@ -1,4 +1,5 @@
 import type {AgentTraceSnapshot} from '../trace/collector';
+import type {ModelRequestedInteraction} from '../interaction/contracts';
 
 export type AgentExecutionMode = 'program' | 'react-baseline';
 
@@ -28,6 +29,22 @@ export type AgentProgramPause = Readonly<{
 
 export type AgentRunContinuation = Readonly<{
     resume: () => Promise<AgentRunResult>;
+}>;
+
+/**
+ * Typed external control input delivered to the retained Agent control loop of
+ * the SAME Task/run. These are never generic prompt blobs; each kind carries
+ * the structured resolution the loop needs. The denied effect is never crossed.
+ */
+export type AgentControlInput =
+    | Readonly<{kind: 'deny'; effectName: string; reason: string; requestedAlternative?: string}>
+    | Readonly<{kind: 'clarification-answer'; question: string; answer: unknown}>
+    | Readonly<{kind: 'recovery-choice'; optionId: string; optionLabel: string}>
+    | Readonly<{kind: 'takeover-return'; savedReference?: string}>
+    | Readonly<{kind: 'interaction-timeout'; interactionKind: string; reason: string}>;
+
+export type AgentControlContinuation = Readonly<{
+    control: (input: AgentControlInput) => Promise<AgentRunResult>;
 }>;
 
 export type AgentRunRequest = {
@@ -66,6 +83,12 @@ export type AgentRunResult = {
     programs?: readonly AgentProgramExecutionSummary[];
     savedPrograms?: readonly AgentProgramSavedArtifact[];
     continuation?: AgentRunContinuation;
+    control?: AgentControlContinuation;
+    /** Typed interaction the retained Agent control loop requested: the run
+     *  paused for a human and the session creates the InteractionRecord. Never
+     *  a generic prompt blob. Approval is excluded structurally: the model can
+     *  request only clarification / recovery_decision / takeover. */
+    requestedInteraction?: ModelRequestedInteraction;
 };
 
 export type AgentRunner = {

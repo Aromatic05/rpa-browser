@@ -2,18 +2,19 @@ import {
     InteractionConcurrencyError,
     InteractionStateError,
     newInteractionId,
-    type InteractionApproveDecision,
     type InteractionCancelledEvent,
     type InteractionCreatedEvent,
     type InteractionDecidedEvent,
-    type InteractionDenyDecision,
+    type InteractionDecision,
     type InteractionEvent,
     type InteractionExpiredEvent,
     type InteractionId,
+    type InteractionInternal,
     type InteractionKind,
+    type InteractionPayload,
     type InteractionRecord,
+    type InteractionStagedEvent,
     type RunId,
-    type SanitizedEvidence,
     type SessionId,
 } from './contracts';
 import {projectRecord} from './state';
@@ -22,10 +23,10 @@ export type CreateInteractionInput = Readonly<{
     runId: RunId;
     sessionId: SessionId;
     kind: InteractionKind;
-    prompt: string;
-    evidence: SanitizedEvidence;
+    payload: InteractionPayload;
     deadlineAt: number;
     createdAt: number;
+    internal?: InteractionInternal;
 }>;
 
 export type InteractionRepository = Readonly<{
@@ -38,8 +39,9 @@ export type InteractionRepository = Readonly<{
     decide: (
         id: InteractionId,
         expectedRevision: number,
-        decision: InteractionApproveDecision | InteractionDenyDecision,
+        decision: InteractionDecision,
     ) => InteractionRecord;
+    stage: (id: InteractionId, expectedRevision: number, stage: 'active') => InteractionRecord;
     cancel: (id: InteractionId, expectedRevision: number, cancelledBy: string, cancelledAt: number) => InteractionRecord;
     expire: (id: InteractionId, expectedRevision: number, expiredAt: number) => InteractionRecord;
     projectFromEvents: (events: ReadonlyArray<InteractionEvent>) => InteractionRecord;
@@ -103,8 +105,8 @@ export const createInteractionRepository = (options: InteractionRepositoryOption
                 interactionKind: input.kind,
                 createdAt: input.createdAt,
                 deadlineAt: input.deadlineAt,
-                prompt: input.prompt,
-                evidence: input.evidence,
+                payload: input.payload,
+                ...(input.internal === undefined ? {} : {internal: input.internal}),
                 revision: 0,
             });
             log.set(id, [event]);
@@ -136,6 +138,22 @@ export const createInteractionRepository = (options: InteractionRepositoryOption
                 kind: 'decided',
                 id,
                 decision,
+                revision: record.revision + 1,
+            });
+            return append(id, event);
+        },
+        stage: (id, expectedRevision, stage) => {
+            const events = assertFound(log.get(id), id);
+            const record = projectRecord(events);
+            assertRevision(record, expectedRevision);
+            assertPending(record, 'stage');
+            if (record.kind !== 'takeover') {
+                throw new InteractionStateError(`only takeover interactions can be staged, got ${record.kind}`);
+            }
+            const event: InteractionStagedEvent = Object.freeze({
+                kind: 'staged',
+                id,
+                stage,
                 revision: record.revision + 1,
             });
             return append(id, event);

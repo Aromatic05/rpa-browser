@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import type {AgentRunRequest, AgentRunResult, AgentRunner} from '../../execution/types';
+import type {AgentRunRequest, AgentRunResult, AgentRunner, AgentControlInput} from '../../execution/types';
 import {buildAgentRunReport} from '../../report/builder';
 import type {AgentRunReport} from '../../report/contracts';
 import {
@@ -12,6 +12,7 @@ import {
 } from '../../interaction';
 import {createSessionStore} from './store';
 import type {
+    ActivityReservationSnapshot,
     SessionId,
     SessionInteractionPolicy,
     SessionInteractionView,
@@ -21,6 +22,7 @@ import type {
 } from './types';
 import type {SessionStorage} from './storage';
 import type {SessionRetentionPolicy} from './store';
+import {createWorkspaceActivityReservation, type WorkspaceActivityAcquire} from '../../product/reservation';
 
 export class SessionCancelledError extends Error {
     readonly code = 'ERR_SESSION_CANCELLED';
@@ -29,6 +31,14 @@ export class SessionCancelledError extends Error {
     constructor(sessionId: SessionId) {
         super(`session ${sessionId} was cancelled`);
         this.sessionId = sessionId;
+    }
+}
+
+export class ActivityConflictError extends Error {
+    readonly code = 'ERR_ACTIVITY_CONFLICT';
+
+    constructor(message = 'another workspace activity owns the workspace reservation') {
+        super(message);
     }
 }
 
@@ -44,13 +54,14 @@ const errorCode = (error: unknown): string => {
 };
 
 const deriveState = (result: AgentRunResult): Exclude<SessionState, 'running'> => {
+    if (result.requestedInteraction) {return 'paused';}
     const programs = result.programs ?? [];
     if (programs.some((program) => program.status === 'paused')) {return 'paused';}
     if (programs.some((program) => program.status === 'failed' || program.status === 'aborted')) {return 'failed';}
     return 'completed';
 };
 
-const PROGRAM_TAG_PREFIX = 'program:';
+const TERMINAL_STATES: ReadonlySet<SessionState> = new Set(['completed', 'failed', 'cancelled', 'interrupted']);
 
 const pausedProgramIndices = (result: AgentRunResult): number[] => {
     const indices: number[] = [];
@@ -65,30 +76,22 @@ const pendingProgramIndices = (records: ReadonlyArray<InteractionRecord>): Set<n
     const pending = new Set<number>();
     for (const record of records) {
         if (record.status !== 'pending') {continue;}
-        for (const tag of record.evidence.tags ?? []) {
-            if (tag.startsWith(PROGRAM_TAG_PREFIX)) {
-                pending.add(Number(tag.slice(PROGRAM_TAG_PREFIX.length)));
-            }
-        }
+        const index = record.internal?.programIndex;
+        if (index === undefined) {continue;}
+        pending.add(index);
     }
     return pending;
 };
 
-const approvalPrompt = (index: number, stepName: string): string =>
-    `approve ${stepName} to continue the retained run`;
-
-const approvalEvidence = (result: AgentRunResult, index: number): InteractionRecord['evidence'] => {
+const approvalPayload = (result: AgentRunResult, index: number): InteractionRecord['payload'] => {
     const program = (result.programs ?? [])[index];
     const pause = program.pause;
     const stepName = pause?.stepName;
-    const lastEffect = program.effects?.[program.effects.length - 1];
     return {
-        summary: `program ${index} requests approval before executing${stepName ? ` '${stepName}'` : ' the next effect'}${lastEffect
-            ? ` (last effect '${lastEffect.stepName}' ${lastEffect.status})`
-            : ''}`,
-        ...(stepName ? {effectName: stepName} : {}),
-        riskLevel: 'high',
-        tags: Object.freeze(['hitl', `${PROGRAM_TAG_PREFIX}${index}`]),
+        kind: 'approval',
+        actionName: stepName ?? `effect ${index}`,
+        summary: `program ${index} requests approval before executing${stepName ? ` '${stepName}'` : ' the next effect'}`,
+        risk: 'irreversible',
     };
 };
 
@@ -146,6 +149,36 @@ export type SessionManager = {
         expectedRevision: number,
         deniedBy: string,
         reason: string,
+        requestedAlternative?: string,
+    ) => Promise<InteractionDecisionResult | null>;
+    answerInteraction: (
+        sessionId: SessionId,
+        interactionId: InteractionId,
+        expectedRevision: number,
+        answeredBy: string,
+        value: unknown,
+    ) => Promise<InteractionDecisionResult | null>;
+    chooseRecoveryInteraction: (
+        sessionId: SessionId,
+        interactionId: InteractionId,
+        expectedRevision: number,
+        chosenBy: string,
+        optionId: string,
+    ) => Promise<InteractionDecisionResult | null>;
+    beginGuidanceInteraction: (
+        sessionId: SessionId,
+        interactionId: InteractionId,
+        expectedRevision: number,
+        actor: string,
+        mode: 'manual' | 'teach' | 'annotate',
+    ) => InteractionDecisionResult | null;
+    returnControlInteraction: (
+        sessionId: SessionId,
+        interactionId: InteractionId,
+        expectedRevision: number,
+        actor: string,
+        mode: 'manual' | 'teach' | 'annotate',
+        savedReference?: string,
     ) => Promise<InteractionDecisionResult | null>;
     cancelInteraction: (
         sessionId: SessionId,
@@ -153,6 +186,11 @@ export type SessionManager = {
         expectedRevision: number,
         cancelledBy: string,
     ) => InteractionDecisionResult | null;
+    expireStale: (sessionId?: SessionId) => number;
+    sweepOrphans: () => number;
+    activityReservation: () => ActivityReservationSnapshot;
+    activityAcquire: (owner: Parameters<ReturnType<typeof createWorkspaceActivityReservation>['acquire']>[0]) => WorkspaceActivityAcquire;
+    activityRelease: (owner: Parameters<ReturnType<typeof createWorkspaceActivityReservation>['acquire']>[0]) => boolean;
 };
 
 export type SessionManagerOptions = {
@@ -163,6 +201,7 @@ export type SessionManagerOptions = {
     interactionPolicy?: SessionInteractionPolicy;
     interactionTtlMs?: number;
     now?: () => number;
+    reservation?: ReturnType<typeof createWorkspaceActivityReservation>;
 };
 
 export const createSessionManager = (options: SessionManagerOptions): SessionManager => {
@@ -173,6 +212,7 @@ export const createSessionManager = (options: SessionManagerOptions): SessionMan
     const interactions = options.interactions
         ?? createInteractionService({repository: createInteractionRepository(), now});
     const runIds = new Map<SessionId, RunId>();
+    const reservation = options.reservation ?? createWorkspaceActivityReservation();
 
     const toView = (record: InteractionRecord): SessionInteractionView => ({
         id: record.id,
@@ -190,6 +230,13 @@ export const createSessionManager = (options: SessionManagerOptions): SessionMan
         });
     };
 
+    const releaseTask = (sessionId: SessionId): void => {
+        reservation.release({kind: 'task', taskId: sessionId});
+    };
+
+    const acquireTask = (sessionId: SessionId): WorkspaceActivityAcquire =>
+        reservation.acquire({kind: 'task', taskId: sessionId});
+
     const requestPauseInteractions = (sessionId: SessionId, runId: RunId, result: AgentRunResult): void => {
         const paused = pausedProgramIndices(result).filter((index) => isApprovalBarrier(result, index));
         if (paused.length === 0) {return;}
@@ -200,13 +247,29 @@ export const createSessionManager = (options: SessionManagerOptions): SessionMan
             interactions.request({
                 runId,
                 sessionId,
-                kind: 'irreversible-effect-approval',
-                prompt: approvalPrompt(index, (result.programs ?? [])[index].pause?.stepName ?? `effect ${index}`),
-                evidence: approvalEvidence(result, index),
+                kind: 'approval',
+                payload: approvalPayload(result, index),
                 deadlineAt: createdAt + ttlMs,
                 createdAt,
+                internal: {programIndex: index},
             });
         }
+    };
+
+    const requestControlInteraction = (
+        sessionId: SessionId,
+        runId: RunId,
+        payload: InteractionRecord['payload'],
+    ): void => {
+        const createdAt = now();
+        interactions.request({
+            runId,
+            sessionId,
+            kind: payload.kind,
+            payload,
+            deadlineAt: createdAt + ttlMs,
+            createdAt,
+        });
     };
 
     const settle = (
@@ -224,9 +287,27 @@ export const createSessionManager = (options: SessionManagerOptions): SessionMan
             }
         }
         store.settle(sessionId, {state, result, error, report});
+        if (TERMINAL_STATES.has(state)) {
+            releaseTask(sessionId);
+        }
         if (state !== 'paused' || result === null) {return;}
         const runId = runIds.get(sessionId);
         if (runId === undefined) {return;}
+        if (result.requestedInteraction) {
+            if (options.interactionPolicy === 'headless') {
+                store.terminate(sessionId, {
+                    state: 'cancelled',
+                    error: {
+                        code: 'ERR_SESSION_INTERACTION_BLOCKED',
+                        message: 'model-requested interaction is blocked by headless interaction policy',
+                    },
+                });
+                releaseTask(sessionId);
+                return;
+            }
+            requestControlInteraction(sessionId, runId, result.requestedInteraction);
+            return;
+        }
         const approvals = pausedProgramIndices(result).filter((index) => isApprovalBarrier(result, index));
         if (approvals.length > 0 && options.interactionPolicy === 'headless') {
             store.terminate(sessionId, {
@@ -236,6 +317,7 @@ export const createSessionManager = (options: SessionManagerOptions): SessionMan
                     message: 'approval-required irreversible effect is blocked by headless interaction policy',
                 },
             });
+            releaseTask(sessionId);
             return;
         }
         requestPauseInteractions(sessionId, runId, result);
@@ -265,6 +347,22 @@ export const createSessionManager = (options: SessionManagerOptions): SessionMan
         }
     };
 
+    const controlPaused = async (sessionId: SessionId, input: AgentControlInput): Promise<void> => {
+        const snapshot = store.get(sessionId);
+        if (snapshot?.state !== 'paused' || snapshot.result === null) {return;}
+        const control = snapshot.result.control;
+        const runId = runIds.get(sessionId);
+        if (runId === undefined || control === undefined) {return;}
+        if (interactions.listByRun(runId).some((record) => record.status === 'pending')) {return;}
+        if (!store.reopen(sessionId)) {return;}
+        try {
+            const result = await control.control(input);
+            settle(sessionId, deriveState(result), result, null);
+        } catch (error) {
+            settle(sessionId, 'failed', null, {code: errorCode(error), message: errorMessage(error)});
+        }
+    };
+
     const execute = async (sessionId: SessionId, request: AgentRunRequest): Promise<AgentRunResult> => {
         runIds.set(sessionId, crypto.randomUUID());
         const controller = new AbortController();
@@ -280,10 +378,7 @@ export const createSessionManager = (options: SessionManagerOptions): SessionMan
             return result;
         } catch (error) {
             if (error instanceof SessionCancelledError) {
-                store.settle(sessionId, {
-                    state: 'cancelled',
-                    error: {code: error.code, message: error.message},
-                });
+                settle(sessionId, 'cancelled', null, {code: error.code, message: error.message});
             } else {
                 settle(sessionId, 'failed', null, {code: errorCode(error), message: errorMessage(error)});
             }
@@ -302,6 +397,11 @@ export const createSessionManager = (options: SessionManagerOptions): SessionMan
 
     const runTracked = async (request: AgentRunRequest): Promise<{sessionId: SessionId; result: AgentRunResult}> => {
         const snapshot = store.create(request);
+        const acquired = acquireTask(snapshot.sessionId);
+        if (!acquired.ok) {
+            store.discard(snapshot.sessionId);
+            throw new ActivityConflictError('another workspace activity owns the reservation; the task was not started');
+        }
         const result = await execute(snapshot.sessionId, request);
         return {sessionId: snapshot.sessionId, result};
     };
@@ -311,6 +411,11 @@ export const createSessionManager = (options: SessionManagerOptions): SessionMan
         runTracked,
         start: (request) => {
             const snapshot = store.create(request);
+            const acquired = acquireTask(snapshot.sessionId);
+            if (!acquired.ok) {
+                store.discard(snapshot.sessionId);
+                throw new ActivityConflictError('another workspace activity owns the reservation; the task was not started');
+            }
             void execute(snapshot.sessionId, request).catch((error) => {
                 options.log?.('agent session detached run failed', snapshot.sessionId, error);
             });
@@ -327,6 +432,7 @@ export const createSessionManager = (options: SessionManagerOptions): SessionMan
                         state: 'cancelled',
                         error: {code: 'ERR_SESSION_CANCELLED', message: `session ${sessionId} was cancelled`},
                     });
+                    releaseTask(sessionId);
                 }
                 return enrich(store.get(sessionId));
             }
@@ -335,6 +441,7 @@ export const createSessionManager = (options: SessionManagerOptions): SessionMan
                 error: {code: 'ERR_SESSION_CANCELLED', message: `session ${sessionId} was cancelled`},
             });
             cancelPendingInteractions(sessionId, 'session-cancel');
+            releaseTask(sessionId);
             controller.abort();
             return enrich(store.get(sessionId));
         },
@@ -368,18 +475,65 @@ export const createSessionManager = (options: SessionManagerOptions): SessionMan
             }
             return {interaction: decided, session: enrich(store.get(sessionId))!};
         },
-        denyInteraction: async (sessionId, interactionId, expectedRevision, deniedBy, reason) => {
+        denyInteraction: async (sessionId, interactionId, expectedRevision, deniedBy, reason, requestedAlternative) => {
             const existing = boundInteraction(sessionId, interactionId);
             if (!existing) {return null;}
-            const decided = interactions.deny(interactionId, expectedRevision, deniedBy, reason);
+            const decided = interactions.deny(interactionId, expectedRevision, deniedBy, reason, requestedAlternative);
             if (decided.revision !== existing.revision && decided.status === 'denied') {
-                cancelPendingInteractions(sessionId, 'interaction-deny');
-                store.terminate(sessionId, {
-                    state: 'cancelled',
-                    error: {
-                        code: 'ERR_SESSION_INTERACTION_DENIED',
-                        message: `session ${sessionId} cancelled after interaction ${interactionId} was denied: ${reason}`,
-                    },
+                const effectName = decided.payload.kind === 'approval' ? decided.payload.actionName : 'the denied effect';
+                await controlPaused(sessionId, {
+                    kind: 'deny',
+                    effectName,
+                    reason,
+                    ...(requestedAlternative === undefined ? {} : {requestedAlternative}),
+                });
+            }
+            return {interaction: decided, session: enrich(store.get(sessionId))!};
+        },
+        answerInteraction: async (sessionId, interactionId, expectedRevision, answeredBy, value) => {
+            const existing = boundInteraction(sessionId, interactionId);
+            if (!existing) {return null;}
+            const decided = interactions.answer(interactionId, expectedRevision, answeredBy, value);
+            if (decided.revision !== existing.revision && decided.status === 'answered') {
+                const question = decided.payload.kind === 'clarification' ? decided.payload.question : '';
+                await controlPaused(sessionId, {kind: 'clarification-answer', question, answer: value});
+            }
+            return {interaction: decided, session: enrich(store.get(sessionId))!};
+        },
+        chooseRecoveryInteraction: async (sessionId, interactionId, expectedRevision, chosenBy, optionId) => {
+            const existing = boundInteraction(sessionId, interactionId);
+            if (!existing) {return null;}
+            const decided = interactions.choose(interactionId, expectedRevision, chosenBy, optionId);
+            if (decided.revision !== existing.revision && decided.status === 'resolved' && decided.decision?.kind === 'choose') {
+                const label = decided.payload.kind === 'recovery_decision'
+                    ? decided.payload.options.find((candidate) => candidate.id === optionId)?.label
+                    : undefined;
+                await controlPaused(sessionId, {
+                    kind: 'recovery-choice',
+                    optionId,
+                    optionLabel: label ?? optionId,
+                });
+            }
+            return {interaction: decided, session: enrich(store.get(sessionId))!};
+        },
+        beginGuidanceInteraction: (sessionId, interactionId, expectedRevision, actor, mode) => {
+            const existing = boundInteraction(sessionId, interactionId);
+            if (!existing) {return null;}
+            const decided = interactions.beginGuidance(interactionId, expectedRevision, actor, mode);
+            if (decided.revision !== existing.revision && decided.status === 'pending' && decided.stage === 'active') {
+                reservation.setHumanControl(sessionId, mode);
+            }
+            return {interaction: decided, session: enrich(store.get(sessionId))!};
+        },
+        returnControlInteraction: async (sessionId, interactionId, expectedRevision, actor, mode, savedReference) => {
+            const existing = boundInteraction(sessionId, interactionId);
+            if (!existing) {return null;}
+            const decided = interactions.returnControl(interactionId, expectedRevision, actor, mode, savedReference);
+            if (decided.revision !== existing.revision && decided.status === 'resolved') {
+                reservation.setHumanControl(sessionId, 'none');
+                await controlPaused(sessionId, {
+                    kind: 'takeover-return',
+                    ...(savedReference === undefined ? {} : {savedReference}),
                 });
             }
             return {interaction: decided, session: enrich(store.get(sessionId))!};
@@ -388,7 +542,52 @@ export const createSessionManager = (options: SessionManagerOptions): SessionMan
             const existing = boundInteraction(sessionId, interactionId);
             if (!existing) {return null;}
             const decided = interactions.cancel(interactionId, expectedRevision, cancelledBy);
+            if (decided.revision !== existing.revision && decided.status === 'cancelled' && existing.stage === 'active') {
+                reservation.setHumanControl(sessionId, 'none');
+            }
             return {interaction: decided, session: enrich(store.get(sessionId))!};
         },
+        expireStale: (sessionId) => {
+            const targets = sessionId !== undefined
+                ? [sessionId]
+                : store.list().filter((snapshot) => snapshot.state === 'paused').map((snapshot) => snapshot.sessionId);
+            let expired = 0;
+            for (const target of targets) {
+                if (store.get(target)?.state !== 'paused') {continue;}
+                const runId = runIds.get(target);
+                if (runId === undefined) {continue;}
+                for (const record of interactions.listByRun(runId)) {
+                    if (record.status !== 'pending') {continue;}
+                    if (now() <= record.deadlineAt) {continue;}
+                    const decided = interactions.expire(record.id, record.revision);
+                    if (decided.status === 'expired') {expired += 1;}
+                }
+            }
+            return expired;
+        },
+        sweepOrphans: () => {
+            let swept = 0;
+            for (const snapshot of store.list()) {
+                if (snapshot.state !== 'paused') {continue;}
+                const runId = runIds.get(snapshot.sessionId);
+                const pendingCount = runId === undefined
+                    ? 0
+                    : interactions.listByRun(runId).filter((record) => record.status === 'pending').length;
+                if (pendingCount > 0) {continue;}
+                store.terminate(snapshot.sessionId, {
+                    state: 'failed',
+                    error: {
+                        code: 'ERR_ORPHAN_PAUSE',
+                        message: 'task paused without a resolvable interaction and cannot continue',
+                    },
+                });
+                releaseTask(snapshot.sessionId);
+                swept += 1;
+            }
+            return swept;
+        },
+        activityReservation: () => reservation.read(),
+        activityAcquire: (owner) => reservation.acquire(owner),
+        activityRelease: (owner) => reservation.release(owner),
     };
 };

@@ -16,6 +16,7 @@ import {
 import type {AgentRunRequest, AgentRunResult} from '../execution/types';
 import type {SessionRetentionPolicy} from './session/store';
 import type {WorkspaceAgentService} from './runtime';
+import {createProductController, type ProductController} from '../product';
 
 export type AgentControl = {
     start: () => Promise<WorkspaceServiceStartResult>;
@@ -23,6 +24,8 @@ export type AgentControl = {
     status: () => WorkspaceServiceStatusResult;
     run: (request: AgentRunRequest) => Promise<AgentRunResult>;
     handle: (input: WorkspaceRouterInput) => Promise<ControlPlaneResult>;
+    /** Task-centric product control surface. */
+    product: ProductController;
 };
 
 const requireBoundId = (value: unknown, name: string): string => {
@@ -75,6 +78,10 @@ export const createAgentControl = (service: WorkspaceAgentService): AgentControl
     stop: () => service.stop(),
     status: () => service.status(),
     run: (request) => service.run(request),
+    product: createProductController({
+        manager: service.sessions,
+        workspace: service.workspaceName,
+    }),
     handle: async ({action}) => {
         switch (action.type) {
             case 'agent.start': {
