@@ -1,8 +1,8 @@
 {
     "manifest_version": 3,
-    "name": "RPA Browser Demo",
+    "name": "RPA Browser",
     "version": "0.1.0",
-    "description": "MV3 tabName demo with agent recording.",
+    "description": "Program-first browser automation with teachable page knowledge and transactional agent execution.",
     "permissions": [
         "storage",
         "activeTab",
@@ -14,7 +14,7 @@
         "<all_urls>"
     ],
     "action": {
-        "default_title": "RPA Demo"
+        "default_title": "RPA Browser"
     },
     "background": {
         "service_worker": "entry/sw.js",
