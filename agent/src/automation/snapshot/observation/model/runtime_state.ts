@@ -112,7 +112,7 @@ const toRuntimeStateMap = (rows: unknown): RuntimeStateMap => {
             tag: stringValue(rowRecord.tag),
             type: stringValue(rowRecord.type),
             role: stringValue(rowRecord.role),
-            value: stringValue(rowRecord.value),
+            value: editableStringValue(rowRecord.value),
             checked: stringValue(rowRecord.checked),
             selected: stringValue(rowRecord.selected),
             ariaChecked: stringValue(rowRecord.ariaChecked),
@@ -127,7 +127,7 @@ const toRuntimeStateMap = (rows: unknown): RuntimeStateMap => {
             ariaValueText: stringValue(rowRecord.ariaValueText),
             ariaLabelledBy: stringValue(rowRecord.ariaLabelledBy),
             ariaDescribedBy: stringValue(rowRecord.ariaDescribedBy),
-            contentEditableText: stringValue(rowRecord.contentEditableText),
+            contentEditableText: editableStringValue(rowRecord.contentEditableText),
         };
     }
     return map;
@@ -137,6 +137,11 @@ const stringValue = (value: unknown): string | undefined => {
     if (typeof value !== 'string') {return undefined;}
     const normalized = value.trim();
     return normalized || undefined;
+};
+
+const editableStringValue = (value: unknown): string | undefined => {
+    if (typeof value !== 'string') {return undefined;}
+    return value;
 };
 
 const errorMessage = (error: unknown): string => {
@@ -172,6 +177,10 @@ const RUNTIME_STATE_COLLECTOR_SCRIPT = `(runId) => {
   const normalize = (value) => {
     const text = value == null ? '' : String(value).trim();
     return text || undefined;
+  };
+  const editableValue = (value) => {
+    if (value == null) return undefined;
+    return String(value);
   };
   const bool = (value) => value ? 'true' : 'false';
   const safeGetAttr = (element, name) => {
@@ -308,7 +317,7 @@ const RUNTIME_STATE_COLLECTOR_SCRIPT = `(runId) => {
       const comboValue = isComboLike
         ? (ariaValueText || popupSelectedText || ownValue || ownText)
         : undefined;
-      const contentEditableText = isContentEditable ? normalize(element.textContent) : undefined;
+      const contentEditableText = isContentEditable ? editableValue(element.textContent) : undefined;
       const optionSelected = tag === 'option' ? bool(!!element.selected) : undefined;
       const selectedState = optionSelected
         || selectedText
@@ -320,7 +329,7 @@ const RUNTIME_STATE_COLLECTOR_SCRIPT = `(runId) => {
         type: tag === 'input' ? normalize(element.type) : undefined,
         role,
         value: tag === 'input' || tag === 'textarea' || tag === 'select'
-          ? normalize(element.value)
+          ? editableValue(element.value)
           : isComboLike
             ? comboValue
             : isContentEditable

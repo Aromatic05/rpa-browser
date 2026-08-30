@@ -111,6 +111,26 @@ test('fill with explicit nodeId can produce a physical restore-value compensatio
     });
 });
 
+test('physical compensation restores an initially-empty editable field with an empty fill value', async () => {
+    const view = withRuntimeValue(await createView(), 'buyer-input', '');
+    const plan = planPhysicalCompensation(effectEntry(view, {
+        stepName: 'browser.fill',
+        args: {nodeId: 'buyer-input', value: 'new value'},
+        reversibility: 'reversible',
+    }));
+
+    assert.deepEqual(plan, {
+        status: 'available',
+        semanticRisk: 'reversible',
+        capability: 'restore_value',
+        effectSequence: 1,
+        operation: {
+            name: 'browser.fill',
+            args: {nodeId: 'buyer-input', value: ''},
+        },
+    });
+});
+
 test('explicit irreversible semantics block physical compensation even for a fill with a recoverable value', async () => {
     const view = withRuntimeValue(await createView(), 'buyer-input', 'old value');
     const entry = effectEntry(view, {
