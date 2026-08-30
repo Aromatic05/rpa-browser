@@ -17,6 +17,7 @@ import {
     runDslSource,
     type RunDslContext,
     type RunDslSourceResult,
+    type StepExecutionPort,
 } from '../../../automation/dsl/runtime';
 import type {ComputeEvalScope} from '../../../program/compute/evaluate';
 import type {ComputeExpr} from '../../../program/compute/types';
@@ -28,6 +29,7 @@ import {diffWorldViews, isEmptyWorldViewDiff} from '../../worldview/diff';
 import {isSameWorldView} from '../../worldview/revision';
 import {diffDebugEffect} from '../effects/diff';
 import {createDebugEffectJournal} from '../effects/journal';
+import {proveTransactionLocalWorldLineage, worldConflictStepResult} from '../effects/lineage';
 import {createDebugQuerySession} from '../query/session';
 import type {DebugQuerySession} from '../query/contracts';
 import {createDebugValueProvenanceStore} from '../provenance/store';
@@ -303,6 +305,26 @@ export const createDslDebugExecutionSession = (
         onValue: (event) => {provenance.record(event);},
         onProgram: (event) => {programs.set(event.programId, buildDebugProgramView(event));},
     };
+    const rawStepExecutionPort = options.context.stepExecutionPort;
+    const stepExecutionPort: StepExecutionPort | undefined = rawStepExecutionPort
+        ? {
+            execute: async (step, precondition) => {
+                if (precondition) {
+                    const pinned = await options.worldViewSource.pin();
+                    const retained = journal.list().slice(transactionEffectStartSequence);
+                    const verification = proveTransactionLocalWorldLineage(precondition.revision, pinned, retained);
+                    if (!verification.ok) {
+                        return worldConflictStepResult(step, precondition, pinned.revision);
+                    }
+                }
+                return await rawStepExecutionPort.execute(step, precondition);
+            },
+        }
+        : undefined;
+    const runContext: Omit<RunDslContext, 'debugPort'> = {
+        ...options.context,
+        ...(stepExecutionPort ? {stepExecutionPort} : {}),
+    };
     let completion!: Promise<RunDslSourceResult>;
     let active: ActivePause | null = null;
     const resetController = (forceStep: boolean): void => {
@@ -316,7 +338,7 @@ export const createDslDebugExecutionSession = (
     ): void => {
         resetController(forceStep);
         completion = runDslSource(options.source, {
-            ...options.context,
+            ...runContext,
             ...(resume ? {resume} : {}),
             debugPort,
         });
@@ -398,7 +420,7 @@ export const createDslDebugExecutionSession = (
     ): RunDslContext => {
         if (programId === 'main') {
             return {
-                ...options.context,
+                ...runContext,
                 input: structuredClone(scope.input),
                 ...(scope.failure ? {failure: structuredClone(scope.failure)} : {failure: undefined}),
                 checkpointCallStack: [],
@@ -415,9 +437,9 @@ export const createDslDebugExecutionSession = (
         const checkpointId = programId.slice(prefix.length);
         const body = options.context.checkpointProvider?.getCheckpointBody?.(checkpointId);
         if (!body) {throw new Error(`checkpoint body unavailable: ${checkpointId}`);}
-        const parentResolveResolver = options.context.resolveResolver;
+        const parentResolveResolver = runContext.resolveResolver;
         return {
-            ...options.context,
+            ...runContext,
             input: structuredClone(scope.input),
             ...(scope.failure ? {failure: structuredClone(scope.failure)} : {failure: undefined}),
             resolveResolver: {

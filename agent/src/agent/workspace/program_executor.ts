@@ -5,7 +5,6 @@ import {
 import {materializeReferencedCheckpointRuntimeSnapshot} from '../../automation/runner/checkpoint';
 import {
     compileDslSource,
-    type ExpectedWorldPrecondition,
     type StepExecutionPort,
 } from '../../automation/dsl/runtime';
 import {createCredentialResolvingStepExecutor} from '../../automation/dsl/runtime/credentials';
@@ -157,34 +156,8 @@ export const createWorkspaceProgramExecutor = (
             resolveResolver: runtime.resolveResolver,
         });
     const executeWithCredentials = createCredentialResolvingStepExecutor({resolver, execute: executeStep});
-    const worldConflict = (
-        step: Parameters<typeof executeStepWithRuntimeContracts>[0],
-        precondition: ExpectedWorldPrecondition,
-        actual: {pageEpoch: string; captureRevision: number},
-    ) => ({
-        stepId: step.id,
-        ok: false as const,
-        error: {
-            code: 'ERR_AGENT_WORLD_CONFLICT' as const,
-            message: 'workspace world moved past the expected observation revision; refusing to mutate',
-            details: {
-                expected: {...precondition.revision},
-                actual: {...actual},
-            },
-        },
-    });
     const stepExecutionPort: StepExecutionPort = {
-        execute: async (step, precondition) => {
-            if (precondition) {
-                const pinned = await worldViewSource.pin();
-                const actual = pinned.revision;
-                if (actual.pageEpoch !== precondition.revision.pageEpoch
-                    || actual.captureRevision !== precondition.revision.captureRevision) {
-                    return worldConflict(step, precondition, actual);
-                }
-            }
-            return await executeWithCredentials(step, precondition);
-        },
+        execute: async (step, precondition) => executeWithCredentials(step, precondition),
     };
     const compensationPort = {
         execute: executeStep,
