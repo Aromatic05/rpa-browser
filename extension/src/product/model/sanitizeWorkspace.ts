@@ -33,6 +33,33 @@ import {
 } from './guards.js';
 import { sanitizeTaskView } from './sanitize.js';
 
+const RESERVATION_OWNER: Record<string, WorkspaceProductView['reservation']> = {
+    none: 'idle',
+    task: 'task',
+    standalone_teach: 'teach',
+    standalone_annotate: 'annotate',
+    playback: 'playback',
+};
+
+/**
+ * The real backend workspace projection carries the reservation as
+ * `{ owner, ownerTaskId?, humanControl }`. Accept both that shape and the
+ * flattened enumeration; `none` maps to `idle`. Unknown owners settle to the
+ * neutral idle baseline and never fabricate an active activity.
+ */
+const sanitizeReservation = (raw: unknown): WorkspaceProductView['reservation'] => {
+    if (typeof raw === 'string') {
+        return isReservation(raw) ? raw : 'idle';
+    }
+    if (isRecord(raw)) {
+        const owner = asString(raw.owner);
+        if (owner && owner in RESERVATION_OWNER) {
+            return RESERVATION_OWNER[owner];
+        }
+    }
+    return 'idle';
+};
+
 const sanitizeTeachReview = (raw: unknown): TeachView['review'] | undefined => {
     if (!isRecord(raw)) {
         return undefined;
@@ -246,7 +273,7 @@ export const sanitizeWorkspaceView = (raw: unknown): WorkspaceProductView => {
     const activeTask = sanitizeTaskView(record.activeTask);
     return {
         workspace: asNonEmptyString(record.workspace) ?? '',
-        reservation: isReservation(record.reservation) ? record.reservation : 'idle',
+        reservation: sanitizeReservation(record.reservation),
         connection: isConnection(record.connection) ? record.connection : 'connected',
         activeTask: activeTask ?? undefined,
         authoring,

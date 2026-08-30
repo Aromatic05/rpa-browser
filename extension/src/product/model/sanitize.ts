@@ -39,71 +39,98 @@ export const deriveTitle = (prompt: string): string => {
     return `${firstLine.slice(0, 64)}…`;
 };
 
+const fallbackGuidanceSummary = (mode: GuidanceMode): string => {
+    if (mode === 'manual') {
+        return 'Manual control returned';
+    }
+    if (mode === 'teach') {
+        return 'Teaching finished';
+    }
+    return 'Annotation finished';
+};
+
+const activitySummaryOf = (kind: string | undefined, item: Record<string, unknown>): string | undefined =>
+    asNonEmptyString(item.summary)
+    ?? (kind === 'task_created'
+        ? asNonEmptyString(item.promptSummary)
+        : kind === 'interaction_requested'
+          ? asNonEmptyString(item.headline)
+          : kind === 'interaction_resolved'
+            ? asNonEmptyString(item.decisionSummary)
+            : kind === 'human_guidance_started'
+              ? asNonEmptyString(item.purpose)
+              : undefined);
+
+/**
+ * Sanitize one backend activity event into the typed `ActivityEvent`. Accepts
+ * the real `/agent/product` event field names (`promptSummary`, `headline`,
+ * `decisionSummary`, `purpose`) plus the generic `summary` field, so the
+ * backend event stream maps 1:1 without fabricating anything.
+ */
+export const sanitizeActivityEvent = (raw: unknown): ActivityEvent | null => {
+    if (!isRecord(raw)) {
+        return null;
+    }
+    const kind = asString(raw.kind);
+    const at = asNumber(raw.at) ?? 0;
+    if (kind === 'phase_changed' && isPhase(raw.phase)) {
+        return { kind: 'phase_changed', phase: raw.phase, at };
+    }
+    if (kind === 'human_guidance_started' && isGuidanceMode(raw.mode)) {
+        const summary = activitySummaryOf(kind, raw);
+        if (!summary) {
+            return null;
+        }
+        return { kind: 'human_guidance_started', mode: raw.mode, summary, at };
+    }
+    if (kind === 'human_guidance_completed' && isGuidanceMode(raw.mode)) {
+        const summary = activitySummaryOf(kind, raw) ?? fallbackGuidanceSummary(raw.mode);
+        return { kind: 'human_guidance_completed', mode: raw.mode, summary, at };
+    }
+    if (kind === 'effect_applied') {
+        const status = raw.status;
+        const summary = asNonEmptyString(raw.summary);
+        if ((status === 'ok' || status === 'succeeded' || status === 'failed') && summary) {
+            return { kind: 'effect_applied', summary, status: status === 'failed' ? 'failed' : 'ok', at };
+        }
+        return null;
+    }
+    if (kind === 'task_terminated' && isOutcome(raw.outcome)) {
+        return { kind: 'task_terminated', outcome: raw.outcome, at };
+    }
+    if (kind === 'report_ready') {
+        return { kind: 'report_ready', at };
+    }
+    if (kind === 'world_conflict') {
+        const expected = asNonEmptyString(raw.expected);
+        const actual = asNonEmptyString(raw.actual);
+        const summary =
+            asNonEmptyString(raw.summary)
+            ?? (expected && actual ? `${expected} → observed ${actual}` : undefined);
+        if (!summary) {
+            return null;
+        }
+        return { kind: 'world_conflict', summary, at };
+    }
+const summary = activitySummaryOf(kind, raw);
+    if (!summary) {
+        return null;
+    }
+    if (kind === 'task_created' || kind === 'interaction_requested' || kind === 'interaction_resolved') {
+        return { kind, summary, at };
+    }
+    return { kind: 'activity', summary, at };
+};
+
 const sanitizeTimeline = (raw: unknown): ActivityEvent[] => {
     if (!Array.isArray(raw)) {
         return [];
     }
     const events: ActivityEvent[] = [];
     for (const item of raw) {
-        if (!isRecord(item)) {
-            continue;
-        }
-        const kind = asString(item.kind);
-        const at = asNumber(item.at) ?? 0;
-        if (kind === 'phase_changed' && isPhase(item.phase)) {
-            events.push({ kind: 'phase_changed', phase: item.phase, at });
-            continue;
-        }
-        if (kind === 'human_guidance_started' && isGuidanceMode(item.mode)) {
-            const summary = asNonEmptyString(item.summary);
-            if (summary) {
-                events.push({ kind: 'human_guidance_started', mode: item.mode, summary, at });
-            }
-            continue;
-        }
-        if (kind === 'human_guidance_completed' && isGuidanceMode(item.mode)) {
-            const summary = asNonEmptyString(item.summary);
-            if (summary) {
-                events.push({ kind: 'human_guidance_completed', mode: item.mode, summary, at });
-            }
-            continue;
-        }
-        if (kind === 'effect_applied') {
-            const status = item.status;
-            const summary = asNonEmptyString(item.summary);
-            if ((status === 'ok' || status === 'failed') && summary) {
-                events.push({ kind: 'effect_applied', summary, status, at });
-            }
-            continue;
-        }
-        if (kind === 'task_terminated' && isOutcome(item.outcome)) {
-            events.push({ kind: 'task_terminated', outcome: item.outcome, at });
-            continue;
-        }
-        if (kind === 'report_ready') {
-            events.push({ kind: 'report_ready', at });
-            continue;
-        }
-        const summary =
-            kind === 'task_created' ||
-            kind === 'activity' ||
-            kind === 'interaction_requested' ||
-            kind === 'interaction_resolved' ||
-            kind === 'world_conflict'
-                ? asNonEmptyString(item.summary)
-                : undefined;
-        if (!summary) {
-            continue;
-        }
-        if (
-            kind === 'task_created' ||
-            kind === 'interaction_requested' ||
-            kind === 'interaction_resolved' ||
-            kind === 'world_conflict'
-        ) {
-            events.push({ kind, summary, at });
-        } else {
-            events.push({ kind: 'activity', summary, at });
+        const sanitized = sanitizeActivityEvent(item);
+        if (sanitized) {
+            events.push(sanitized);
         }
     }
     return events;
@@ -120,6 +147,10 @@ const sanitizeSchema = (raw: unknown): ClarificationSchema | null => {
     }
     const allowed = Array.isArray(raw.allowed)
         ? raw.allowed.flatMap((item) => {
+              if (typeof item === 'string') {
+                  const value = asNonEmptyString(item);
+                  return value ? [{ value, label: value }] : [];
+              }
               if (!isRecord(item)) {
                   return [];
               }
@@ -179,7 +210,7 @@ const sanitizeInteraction = (raw: unknown): InteractionRequest | null => {
         return null;
     }
     if (kind === 'approval') {
-        const effectName = asNonEmptyString(raw.effectName);
+        const effectName = asNonEmptyString(raw.effectName) ?? asNonEmptyString(raw.actionName);
         if (!effectName) {
             return null;
         }
@@ -188,7 +219,7 @@ const sanitizeInteraction = (raw: unknown): InteractionRequest | null => {
             interactionToken,
             effectName,
             risk: asString(raw.risk) ?? '',
-            evidence: asString(raw.evidence),
+            evidence: asString(raw.evidence) ?? asString(raw.summary),
             details: asStringArray(raw.details),
         };
     }
@@ -229,6 +260,7 @@ const sanitizeInteraction = (raw: unknown): InteractionRequest | null => {
             reason,
             scope,
             guidanceModes,
+            stage: raw.stage === 'active' ? 'active' : raw.stage === 'offered' ? 'offered' : undefined,
             activeMode: isGuidanceMode(raw.activeMode) ? raw.activeMode : undefined,
         };
     }
@@ -245,7 +277,7 @@ const sanitizeResult = (raw: unknown): TaskResultView | undefined => {
     }
     return {
         outcome,
-        output: asString(raw.output),
+        output: asString(raw.output) ?? asString(raw.summary),
         errorMessage: asString(raw.errorMessage),
         effectsCount: asNumber(raw.effectsCount) ?? 0,
         reportAvailable: asBoolean(raw.reportAvailable) ?? false,

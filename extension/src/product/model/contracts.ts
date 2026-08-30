@@ -107,6 +107,8 @@ export type InteractionRequest =
           reason: string;
           scope: 'workspace' | 'tab';
           guidanceModes: GuidanceMode[];
+          /** Backend-declared stage; `active` means human control was taken. */
+          stage?: 'offered' | 'active';
           activeMode?: GuidanceMode;
       };
 

@@ -265,8 +265,9 @@ const renderTakeoverCard = (ctx: SurfaceContext, interaction: Extract<Interactio
         );
     }
     cardBody.push(modesRow);
-    if (interaction.activeMode) {
-        cardBody.push(renderTakeoverActive(ctx, interaction.activeMode));
+    const activeMode = interaction.activeMode ?? (interaction.stage === 'active' ? 'manual' : undefined);
+    if (activeMode) {
+        cardBody.push(renderTakeoverActive(ctx, activeMode));
     }
     const cardNode = cardBase('takeover', cardBody);
     cardNode.append(stopButton(ctx));

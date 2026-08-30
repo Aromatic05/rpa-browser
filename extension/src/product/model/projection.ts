@@ -12,10 +12,10 @@ import type {
     TaskPhase,
     WorkspaceProductView,
 } from './contracts.js';
-import { deriveTitle } from './sanitize.js';
+import { deriveTitle, sanitizeActivityEvent } from './sanitize.js';
 import { sanitizeWorkspaceView } from './sanitizeWorkspace.js';
 
-export { deriveTitle, sanitizeWorkspaceView };
+export { deriveTitle, sanitizeActivityEvent, sanitizeWorkspaceView };
 
 /** Coarse relative time label used by the timeline and history lists. */
 export const relativeTimeLabel = (at: number, now: number): string => {

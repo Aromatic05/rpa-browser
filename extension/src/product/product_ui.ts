@@ -12,6 +12,7 @@ export {
     isTerminalStatus,
     phaseLabel,
     relativeTimeLabel,
+    sanitizeActivityEvent,
     sanitizeWorkspaceView,
     validateClarificationValue,
 } from './model/projection.js';
