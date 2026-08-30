@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unnecessary-condition -- Page-evaluated runtime-state payloads are untrusted and require defensive shape checks. */
+import {SENSITIVE_CAPTURE_VALUE_PLACEHOLDER} from './sensitive_values';
 import type {
     Frame,
     Page } from 'playwright'; import type { ObservationSourceStatus,
@@ -182,6 +183,17 @@ const RUNTIME_STATE_COLLECTOR_SCRIPT = `(runId) => {
     if (value == null) return undefined;
     return String(value);
   };
+  const REDACTED = '${SENSITIVE_CAPTURE_VALUE_PLACEHOLDER}';
+  const SENSITIVE_HINT = /(password|passwd|pwd|secret|token|api.?key|credential|private.?key|otp|one.?time.?code)/i;
+  const isSensitiveControl = (element, tag) => {
+    const type = tag === 'input' ? (normalize(element.type) || '').toLowerCase() : '';
+    if (type === 'password' || type === 'hidden') return true;
+    const autocomplete = (normalize(safeGetAttr(element, 'autocomplete')) || '').toLowerCase();
+    if (autocomplete.split(/\s+/).some((token) => ['current-password', 'new-password', 'one-time-code'].includes(token))) return true;
+    return ['name', 'id', 'aria-label', 'autocomplete']
+      .map((name) => normalize(safeGetAttr(element, name)) || '')
+      .some((value) => SENSITIVE_HINT.test(value));
+  };
   const bool = (value) => value ? 'true' : 'false';
   const safeGetAttr = (element, name) => {
     try { return element.getAttribute(name); } catch { return null; }
@@ -302,6 +314,7 @@ const RUNTIME_STATE_COLLECTOR_SCRIPT = `(runId) => {
       const stateId = tagForCapture(element);
       if (!stateId) continue;
       const tag = (normalize(element.tagName) || '').toLowerCase();
+      const sensitiveControl = isSensitiveControl(element, tag);
       const role = (normalize(safeGetAttr(element, 'role')) || '').toLowerCase() || undefined;
       const isContentEditable = !!element.isContentEditable;
       const isComboLike = role === 'combobox' || role === 'listbox';
@@ -328,13 +341,15 @@ const RUNTIME_STATE_COLLECTOR_SCRIPT = `(runId) => {
         tag,
         type: tag === 'input' ? normalize(element.type) : undefined,
         role,
-        value: tag === 'input' || tag === 'textarea' || tag === 'select'
-          ? editableValue(element.value)
-          : isComboLike
-            ? comboValue
-            : isContentEditable
-              ? contentEditableText
-              : undefined,
+        value: sensitiveControl
+          ? REDACTED
+          : tag === 'input' || tag === 'textarea' || tag === 'select'
+            ? editableValue(element.value)
+            : isComboLike
+              ? comboValue
+              : isContentEditable
+                ? contentEditableText
+                : undefined,
         checked: tag === 'input' ? bool(!!element.checked) : undefined,
         selected: selectedState,
         ariaChecked: pickAria(element, 'ariaChecked', 'aria-checked'),
@@ -345,11 +360,11 @@ const RUNTIME_STATE_COLLECTOR_SCRIPT = `(runId) => {
         readonly: bool(!!element.readOnly),
         invalid: pickAria(element, 'ariaInvalid', 'aria-invalid'),
         focused: bool(documentForRoot.activeElement === element),
-        popupSelectedText,
-        ariaValueText,
+        popupSelectedText: sensitiveControl && popupSelectedText !== undefined ? REDACTED : popupSelectedText,
+        ariaValueText: sensitiveControl && ariaValueText !== undefined ? REDACTED : ariaValueText,
         ariaLabelledBy: normalize(safeGetAttr(element, 'aria-labelledby')),
         ariaDescribedBy: normalize(safeGetAttr(element, 'aria-describedby')),
-        contentEditableText,
+        contentEditableText: sensitiveControl && contentEditableText !== undefined ? REDACTED : contentEditableText,
       });
     }
 

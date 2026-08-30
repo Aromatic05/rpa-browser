@@ -7,6 +7,11 @@ import {
     RUNTIME_STATE_ATTRIBUTE,
 } from '../model/runtime_state';
 import { analyzePageObservation } from '../analysis/build';
+import {
+    isSensitiveCapturedControl,
+    redactSensitiveCaptureValues,
+    SENSITIVE_CAPTURE_VALUE_PLACEHOLDER,
+} from '../model/sensitive_values';
 import { buildPageObservation } from '../model/build';
 import { ObservationIdentityTracker } from '../model/identity';
 import type {
@@ -66,6 +71,7 @@ type DomSnapshotCaptureResult = {
 type CdpAccessibilityNode = {
     nodeId: string;
     backendDOMNodeId?: number;
+    childIds?: string[];
     ignored?: boolean;
     role?: { value?: unknown };
     name?: { value?: unknown };
@@ -121,12 +127,21 @@ export const captureRawPage = async (
     });
 
     const backendNodeIdByMarker = await captureBackendNodeIds(page, diagnostics);
-    const accessibilityCapture = await captureAccessibility(page, diagnostics);
     const { scopes, nodes, domStatus, geometryStatus } = assembleFrames(
         capturedFrames,
         backendNodeIdByMarker,
         diagnostics,
     );
+    const sensitiveBackendNodeIds = new Set(nodes
+        .filter((node) => isSensitiveCapturedControl(node))
+        .map((node) => node.backendNodeId)
+        .filter((backendNodeId): backendNodeId is string => Boolean(backendNodeId)));
+    const accessibilityCapture = await captureAccessibility(page, diagnostics, sensitiveBackendNodeIds);
+    const privacy = redactSensitiveCaptureValues({
+        nodes,
+        runtimeState,
+        accessibility: accessibilityCapture.records,
+    });
 
     const capture: RawPageCapture = {
         identity,
@@ -155,9 +170,9 @@ export const captureRawPage = async (
                     geometry: geometryStatus,
                 },
         })),
-        nodes,
-        accessibility: accessibilityCapture.records,
-        runtimeState,
+        nodes: privacy.nodes,
+        accessibility: privacy.accessibility,
+        runtimeState: privacy.runtimeState,
         diagnostics,
     };
 
@@ -483,6 +498,7 @@ const readSnapshotAttribute = (
 const captureAccessibility = async (
     page: Page,
     diagnostics: AnalysisDiagnostic[],
+    sensitiveBackendNodeIds: ReadonlySet<string> = new Set(),
 ): Promise<{ records: AccessibilityRecord[]; status: RawPageCapture['completeness']['a11y'] }> => {
     const cdp = await page.context().newCDPSession(page);
     try {
@@ -490,8 +506,10 @@ const captureAccessibility = async (
         const result = await cdp.send('Accessibility.getFullAXTree') as {
             nodes?: CdpAccessibilityNode[];
         };
+        const nodes = result.nodes ?? [];
+        const sensitive = sensitiveAccessibilityNodes(nodes, sensitiveBackendNodeIds);
         return {
-            records: (result.nodes ?? []).map(toAccessibilityRecord),
+            records: nodes.map((node) => toAccessibilityRecord(node, sensitive.get(node.nodeId))),
             status: 'complete',
         };
     } catch (error) {
@@ -506,7 +524,35 @@ const captureAccessibility = async (
     }
 };
 
-const toAccessibilityRecord = (node: CdpAccessibilityNode): AccessibilityRecord => {
+const sensitiveAccessibilityNodes = (
+    nodes: readonly CdpAccessibilityNode[],
+    sensitiveBackendNodeIds: ReadonlySet<string>,
+): ReadonlyMap<string, 'root' | 'descendant'> => {
+    const byId = new Map(nodes.map((node) => [node.nodeId, node]));
+    const modes = new Map<string, 'root' | 'descendant'>();
+    const queue: string[] = [];
+    for (const node of nodes) {
+        const backendNodeId = typeof node.backendDOMNodeId === 'number'
+            ? String(node.backendDOMNodeId)
+            : undefined;
+        if (!backendNodeId || !sensitiveBackendNodeIds.has(backendNodeId)) {continue;}
+        modes.set(node.nodeId, 'root');
+        queue.push(...(node.childIds ?? []));
+    }
+    while (queue.length > 0) {
+        const nodeId = queue.shift()!;
+        if (modes.has(nodeId)) {continue;}
+        modes.set(nodeId, 'descendant');
+        const node = byId.get(nodeId);
+        if (node) {queue.push(...(node.childIds ?? []));}
+    }
+    return modes;
+};
+
+const toAccessibilityRecord = (
+    node: CdpAccessibilityNode,
+    sensitiveMode?: 'root' | 'descendant',
+): AccessibilityRecord => {
     const properties = new Map(
         (node.properties ?? [])
             .filter((property) => property.name)
@@ -518,9 +564,15 @@ const toAccessibilityRecord = (node: CdpAccessibilityNode): AccessibilityRecord 
             ? String(node.backendDOMNodeId)
             : undefined,
         role: normalizeUnknown(node.role?.value),
-        name: normalizeUnknown(node.name?.value),
-        description: normalizeUnknown(node.description?.value),
-        value: normalizeUnknown(node.value?.value),
+        name: sensitiveMode === 'descendant'
+            ? SENSITIVE_CAPTURE_VALUE_PLACEHOLDER
+            : normalizeUnknown(node.name?.value),
+        description: sensitiveMode === 'descendant'
+            ? SENSITIVE_CAPTURE_VALUE_PLACEHOLDER
+            : normalizeUnknown(node.description?.value),
+        value: sensitiveMode
+            ? SENSITIVE_CAPTURE_VALUE_PLACEHOLDER
+            : normalizeUnknown(node.value?.value),
         checked: properties.get('checked'),
         selected: properties.get('selected'),
         expanded: properties.get('expanded'),
