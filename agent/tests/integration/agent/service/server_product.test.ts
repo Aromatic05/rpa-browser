@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {createPortAllocator} from '../../../../src/automation/runtime/service/ports';
 import {createAgentHttpServer} from '../../../../src/agent/service/server';
 import {createSessionManager} from '../../../../src/agent/service/session/manager';
+import {createProductController} from '../../../../src/agent/product';
 import {encodeInteractionToken} from '../../../../src/agent/product/token';
 import type {AgentRunResult} from '../../../../src/agent/execution/types';
 
@@ -61,12 +62,11 @@ const makeHarness = async (options: {defaults?: boolean; library?: boolean} = {}
         now: () => 1000,
         interactionTtlMs: 5000,
     });
-    const server = await createAgentHttpServer({
+    const product = createProductController({
         manager,
-        workspaceName: 'agent-server-product',
-        port,
-        ...(options.defaults ? {productDefaults: {provider: 'p', model: 'm'}} : {}),
-        ...(options.library ? {productLibrary: async () => [{
+        workspace: 'agent-server-product',
+        ...(options.defaults ? {defaults: {provider: 'p', model: 'm'}} : {}),
+        ...(options.library ? {library: async () => [{
             kind: 'procedure' as const,
             name: '查询订单',
             title: '查询订单',
@@ -87,6 +87,12 @@ const makeHarness = async (options: {defaults?: boolean; library?: boolean} = {}
                 modelLoadSeam: false,
             },
         }]} : {}),
+    });
+    const server = await createAgentHttpServer({
+        manager,
+        product,
+        workspaceName: 'agent-server-product',
+        port,
     });
     return {
         baseUrl: `http://127.0.0.1:${String(port)}`,

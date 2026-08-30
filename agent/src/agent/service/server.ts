@@ -6,9 +6,7 @@ import {
     InteractionValidationError,
 } from '../interaction';
 import {SessionCancelledError, ActivityConflictError, type SessionManager} from './session/manager';
-import type {AgentExecutionMode} from '../execution/types';
-import {createProductController, ProductCommandError} from '../product';
-import type {LibraryAssetSummary} from '../library/contracts';
+import {ProductCommandError, type ProductController} from '../product';
 import type {AgentServiceEndpoint, AgentServiceSecurity} from './security/contracts';
 import {authorizeAgentRequest} from './security/guard';
 import type {Principal} from '../../security/context';
@@ -114,6 +112,10 @@ const parseProductRoute = (pathname: string, productPath: string): ProductRoute 
 
 export type AgentHttpServerOptions = {
     manager: SessionManager;
+    /** The single service-owned ProductController. The HTTP product routes are a
+     *  thin adapter over this exact controller so events/read cursors stay
+     *  coherent with the `agent.product` Action plane. */
+    product: ProductController;
     workspaceName: string;
     port: number;
     host?: string;
@@ -121,12 +123,6 @@ export type AgentHttpServerOptions = {
     healthPath?: string;
     log?: (...args: unknown[]) => void;
     security?: AgentServiceSecurity;
-    /** Default provider/model/executionMode for the product task composer (the
-     *  product surface is provider-agnostic and uses product defaults). */
-    productDefaults?: Readonly<{provider: string; model: string; executionMode?: AgentExecutionMode}>;
-    /** Real committed Library summaries for the bounded product Library
-     *  projection. When absent, `/agent/product/library` reports unavailable. */
-    productLibrary?: () => Promise<ReadonlyArray<LibraryAssetSummary>>;
 };
 
 export const createAgentHttpServer = async (
@@ -138,12 +134,7 @@ export const createAgentHttpServer = async (
     const sessionsPath = `${agentPath}/sessions`;
     const productPath = `${agentPath}/product`;
     const security = options.security;
-    const product = createProductController({
-        manager: options.manager,
-        workspace: options.workspaceName,
-        ...(options.productDefaults === undefined ? {} : {defaults: options.productDefaults}),
-        ...(options.productLibrary === undefined ? {} : {library: options.productLibrary}),
-    });
+    const product = options.product;
 
     const writeJsonSafe = (res: http.ServerResponse, status: number, payload: unknown): void => {
         const sanitized = security ? security.redactionPolicy.redact(payload).value : payload;

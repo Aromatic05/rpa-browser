@@ -7,8 +7,9 @@ import type {
     WorkspaceServiceStatusResult,
     WorkspaceServiceStopResult,
 } from '../../automation/runtime/service/types';
-import type {AgentRunRequest, AgentRunResult, AgentRunner} from '../execution/types';
+import type {AgentExecutionMode, AgentRunRequest, AgentRunResult, AgentRunner} from '../execution/types';
 import type {LibraryAssetSummary} from '../library/contracts';
+import {createProductController, type ProductController} from '../product';
 import {createAgentHttpServer} from './server';
 import {createSessionManager, type SessionManager} from './session/manager';
 import {createFileSystemSessionStorage} from './session/storage';
@@ -20,6 +21,9 @@ import type {AgentServiceSecurityOptions} from './security/contracts';
 export type WorkspaceAgentService = WorkspaceService & {
     run: (request: AgentRunRequest) => Promise<AgentRunResult>;
     sessions: SessionManager;
+    /** The one ProductController this service owns; the HTTP server and the
+     *  `agent.product` Action plane both operate on this exact instance. */
+    product: ProductController;
 };
 
 export type WorkspaceAgentServiceDeps = {
@@ -56,6 +60,13 @@ export type WorkspaceAgentServiceDeps = {
      *  (`GET /agent/product/library`). When absent the projection is
      *  explicitly unavailable rather than fabricated. */
     productLibrary?: () => Promise<ReadonlyArray<LibraryAssetSummary>>;
+    /** Default provider/model/executionMode for the product task composer. The
+     *  product surface is provider-agnostic and resolves a started task from
+     *  these workspace-owned defaults. Supplied by workspace/factory.ts from the
+     *  existing `config.agent.model` provider/model (composition-owned single
+     *  config); when unconfigured the Product start surface truthfully errors
+     *  with ERR_BAD_ARGS rather than fabricating a model choice. */
+    productDefaults?: Readonly<{provider: string; model: string; executionMode?: AgentExecutionMode}>;
 };
 
 export const createWorkspaceAgentService = (deps: WorkspaceAgentServiceDeps): WorkspaceAgentService => {
@@ -77,12 +88,19 @@ export const createWorkspaceAgentService = (deps: WorkspaceAgentServiceDeps): Wo
     if (deps.retention) {
         sessions.prune(deps.retention);
     }
+    const product = createProductController({
+        manager: sessions,
+        workspace: deps.workspaceName,
+        ...(deps.productDefaults === undefined ? {} : {defaults: deps.productDefaults}),
+        ...(deps.productLibrary === undefined ? {} : {library: deps.productLibrary}),
+    });
 
     return {
         name: 'agent',
         workspaceName: deps.workspaceName,
         run: (request) => sessions.run(request),
         sessions,
+        product,
         async start(): Promise<WorkspaceServiceStartResult> {
             if (status === 'running' && port !== null) {
                 return {serviceName: 'agent', workspaceName: deps.workspaceName, port, status};
@@ -99,6 +117,7 @@ export const createWorkspaceAgentService = (deps: WorkspaceAgentServiceDeps): Wo
                 }
                 const server = await createAgentHttpServer({
                     manager: sessions,
+                    product,
                     workspaceName: deps.workspaceName,
                     port,
                     host: deps.host,
@@ -106,7 +125,6 @@ export const createWorkspaceAgentService = (deps: WorkspaceAgentServiceDeps): Wo
                     healthPath: deps.healthPath,
                     log: deps.log,
                     security: security ?? undefined,
-                    ...(deps.productLibrary === undefined ? {} : {productLibrary: deps.productLibrary}),
                 });
                 stopServer = server.stop;
                 status = 'running';

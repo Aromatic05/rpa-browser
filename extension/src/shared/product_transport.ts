@@ -1,16 +1,16 @@
 /**
- * Product backend transport — the only place in the product pipeline that knows
- * the raw `/agent/product` HTTP routes and their error mapping. The controller
- * and every UI component consume only the typed `ProductBackendClient`; the SW
- * proxy executes the same client over `fetch`, and the content side proxies it
- * over a runtime message so neither layer hard-codes the HTTP surface.
+ * Product backend transport — the typed product command surface shared by the
+ * product UI (content side) and the SW. The ordinary product path runs over
+ * the trusted workspace WebSocket as ONE `agent.product` Action; the SW never
+ * reads service base URLs from chrome.storage and no token crosses into the
+ * page. `createProductHttpClient` remains only as a direct/external utility
+ * for tests and tooling that speak the `/agent/product` HTTP surface.
  *
- * Route authority: agent/src/agent/service/server.ts (`/agent/product`).
+ * Route authority: agent/src/agent/service/server.ts (`/agent/product`) and
+ * agent/src/agent/service/control.ts (`agent.product` Action dispatch).
  */
 
 import { MSG } from './protocol.js';
-
-export const PRODUCT_BASE_URL_KEY = 'rpaProductBaseUrl';
 
 export type BackendTaskView = Record<string, unknown>;
 export type BackendWorkspaceView = Record<string, unknown>;
@@ -286,16 +286,6 @@ export type ProductMessageReply =
     | { ok: true; data?: unknown }
     | { ok: false; error: ProductMessageError };
 
-export const productErrorMessageShape = (error: unknown): ProductMessageError => {
-    if (error instanceof ProductTransportError) {
-        return { code: error.code, message: error.message, status: error.status, detailCode: error.detailCode };
-    }
-    return {
-        code: 'unreachable',
-        message: error instanceof Error ? error.message : String(error),
-    };
-};
-
 /** Content-side client: proxies each product call to the SW which holds the
  *  CORS-free HTTP fetch against the configured product service. */
 export const createProductMessageClient = (): ProductBackendClient => {
@@ -343,9 +333,48 @@ export const createProductMessageClient = (): ProductBackendClient => {
     };
 };
 
-/** SW-side read of the configured product service base URL (extension-owned). */
-export const readProductBaseUrl = async (): Promise<string> => {
-    const stored = await chrome.storage.local.get(PRODUCT_BASE_URL_KEY);
-    const value: unknown = stored[PRODUCT_BASE_URL_KEY];
-    return typeof value === 'string' ? value.trim() : '';
+/** Action-plane classification of an `agent.product` reply from the SW's
+ *  trusted WebSocket; the UI keeps consuming only ProductMessageReply. */
+export type ProductActionReplyLike = Readonly<{
+    v: number;
+    type: string;
+    payload?: unknown;
+    replyTo?: string;
+}>;
+
+const ACTION_ERROR_CODE_TO_TRANSPORT: Record<string, ProductTransportErrorCode> = {
+    ERR_STALE: 'stale',
+    ERR_INTERACTION_CONCURRENCY: 'stale',
+    ERR_NOT_FOUND: 'not_found',
+    ERR_WORKSPACE_SNAPSHOT_NOT_FOUND: 'not_found',
+    ERR_CONFLICT: 'conflict',
+    ERR_ACTIVITY_CONFLICT: 'conflict',
+    ERR_BAD_STATE: 'conflict',
+    ERR_BAD_ARGS: 'bad_args',
+    ERR_UNSUPPORTED: 'bad_args',
+    ERR_TIMEOUT: 'unreachable',
+    ERR_CLOSED: 'unreachable',
+    ERR_CONNECT: 'unreachable',
+    ERR_RECONNECT: 'unreachable',
+};
+
+export const productReplyFromAction = (reply: ProductActionReplyLike): ProductMessageReply => {
+    if (reply.type.endsWith('.result')) {
+        return { ok: true, data: reply.payload };
+    }
+    const record = isRecord(reply.payload) ? reply.payload : {};
+    const code = typeof record.code === 'string' ? record.code : 'ERR_INTERNAL';
+    const message = typeof record.message === 'string' && record.message.trim().length > 0
+        ? record.message
+        : `product action failed: ${code}`;
+    const details = isRecord(record.details) ? record.details : undefined;
+    const detailCode = typeof details?.productCode === 'string' ? details.productCode : code;
+    return {
+        ok: false,
+        error: {
+            code: ACTION_ERROR_CODE_TO_TRANSPORT[code] ?? 'http',
+            message,
+            detailCode,
+        },
+    };
 };

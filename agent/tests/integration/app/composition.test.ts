@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import {mkdtempSync, rmSync, writeFileSync, readFileSync} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -7,6 +8,8 @@ import {loadRunnerConfig} from '../../../src/platform/config/loader';
 import {defaultAgentConfig} from '../../../src/platform/config/defaults';
 import {createCredentialRef} from '../../../src/security/credentials';
 import {composeWorkspaceAgentDependencies} from '../../../src/app/entrypoints/composition';
+import type {WorkspaceAgentService} from '../../../src/agent/service/runtime';
+import {buildAgentFactoryDeps, createFactoryRunStepsDeps} from '../../helpers/agent_factory_harness';
 
 const withRunnerFile = async (json: unknown, run: (configPath: string) => Promise<void>): Promise<void> => {
     const directory = mkdtempSync(path.join(os.tmpdir(), 'agent-composition-'));
@@ -257,5 +260,71 @@ test('agent and mcp entrypoints share one composition strategy', async () => {
         assert.deepEqual(mcp.auth, agent.auth);
         assert.deepEqual(mcp.governance, agent.governance);
         assert.equal(mcp.interaction, agent.interaction);
+    });
+});
+
+test('composition wires config.agent.model into the single product controller defaults of the composed factory', async () => {
+    await withRunnerFile({
+        agent: {
+            model: {
+                provider: 'openai',
+                model: 'gpt-4.1',
+                baseUrl: 'https://api.example.test/v1',
+                apiKeyRef: 'env:TEST_PRODUCT_DEFAULTS_KEY',
+            },
+        },
+    }, async (configPath) => {
+        const config = loadRunnerConfig({configPath});
+        const composed = await composeWorkspaceAgentDependencies(config, {env: {TEST_PRODUCT_DEFAULTS_KEY: 'api-key-value'}});
+        const binding = composed.agentFactory(buildAgentFactoryDeps({
+            workspaceName: `composition-product-${crypto.randomUUID()}`,
+            runStepsDeps: createFactoryRunStepsDeps(config),
+            runnerConfig: config,
+            portBegin: 27700,
+        }));
+        const service = binding.service as unknown as WorkspaceAgentService;
+        const started = await service.start();
+        try {
+            const response = await fetch(`http://127.0.0.1:${String(started.port)}/agent/product/tasks`, {
+                method: 'POST',
+                headers: {'content-type': 'application/json'},
+                body: JSON.stringify({prompt: 'look up the order'}),
+            });
+            assert.equal(response.status, 202, 'prompt-only product start uses the composed config.agent.model');
+            const view = await response.json() as {taskId: string};
+            const session = service.sessions.list().find((entry) => entry.sessionId === view.taskId);
+            assert.ok(session);
+            assert.equal(session.request.provider, 'openai');
+            assert.equal(session.request.model, 'gpt-4.1');
+        } finally {
+            await service.stop();
+        }
+    });
+});
+
+test('an all-empty model config composes a factory whose product start truthfully errors with no second config', async () => {
+    await withRunnerFile({}, async (configPath) => {
+        const config = loadRunnerConfig({configPath});
+        const composed = await composeWorkspaceAgentDependencies(config, {env: {}});
+        const workspaceName = `composition-product-empty-${crypto.randomUUID()}`;
+        const binding = composed.agentFactory(buildAgentFactoryDeps({
+            workspaceName,
+            runStepsDeps: createFactoryRunStepsDeps(config),
+            runnerConfig: config,
+        }));
+        await assert.rejects(
+            () => binding.control.handle({
+                action: {
+                    v: 1,
+                    id: crypto.randomUUID(),
+                    type: 'agent.product',
+                    workspaceName,
+                    payload: {verb: 'startTask', prompt: 'look up the order'},
+                },
+                workspace: {} as never,
+                workspaceRegistry: {} as never,
+            }),
+            /defaults are not configured/,
+        );
     });
 });

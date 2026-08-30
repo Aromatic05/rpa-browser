@@ -269,6 +269,30 @@ test('agent session report endpoint returns the persisted run-report', async () 
     }
 });
 
+test('workspace agent service owns one product controller wired to its productDefaults', async () => {
+    const service = createWorkspaceAgentService({
+        workspaceName: 'agent-service-product-defaults',
+        portAllocator: createPortAllocator(23800),
+        runner: {run: async () => result},
+        productDefaults: {provider: 'test', model: 'model'},
+    });
+    const started = await service.start();
+    try {
+        const task = await fetch(`http://127.0.0.1:${String(started.port)}/agent/product/tasks`, {
+            method: 'POST',
+            headers: {'content-type': 'application/json'},
+            body: JSON.stringify({prompt: 'hello'}),
+        });
+        assert.equal(task.status, 202, 'HTTP product routes resolve provider/model from the service productDefaults');
+        const view = await task.json() as {taskId: string};
+        const serviceView = service.product.taskView(view.taskId);
+        assert.ok(serviceView, 'the HTTP server reads through the exact controller the service exposes');
+        assert.equal(serviceView.taskId, view.taskId);
+    } finally {
+        await service.stop();
+    }
+});
+
 test('agent session prune endpoint applies retention policy', async () => {
     const dataDir = tempDir();
     try {

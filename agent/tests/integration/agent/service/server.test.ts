@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {createPortAllocator} from '../../../../src/automation/runtime/service/ports';
 import {createAgentHttpServer} from '../../../../src/agent/service/server';
 import {createSessionManager} from '../../../../src/agent/service/session/manager';
+import {createProductController} from '../../../../src/agent/product';
 import type {AgentRunResult} from '../../../../src/agent/execution/types';
 
 const baseTrace = {
@@ -61,6 +62,7 @@ const startHarness = async (result: AgentRunResult | null = null): Promise<Harne
     });
     const server = await createAgentHttpServer({
         manager,
+        product: createProductController({manager, workspace: 'agent-server-test'}),
         workspaceName: 'agent-server-test',
         port,
     });

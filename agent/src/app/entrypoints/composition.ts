@@ -137,6 +137,12 @@ export const composeWorkspaceAgentDependencies = async (
 
     const agentFactory = createWorkspaceAgentFactory({
         modelRuntime,
+        // The product composer uses the SAME config.agent.model identity; an
+        // all-empty model config truthfully leaves the Product start surface
+        // unconfigured instead of inventing a second source of defaults.
+        ...(modelDefaults.provider.length > 0 && modelDefaults.model.length > 0
+            ? {productDefaults: {provider: modelDefaults.provider, model: modelDefaults.model}}
+            : {}),
         governancePolicy: governance,
         credentialResolver,
         dataDir,
