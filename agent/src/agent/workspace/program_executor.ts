@@ -2,7 +2,8 @@ import {
     executeStepWithRuntimeContracts,
     type RunStepsDeps,
 } from '../../automation/runner/run_steps';
-import {materializeReferencedCheckpointRuntimeSnapshot} from '../../automation/runner/checkpoint';
+import {materializeReferencedCheckpointRuntimeSnapshot, isAutomaticRecoveryCheckpoint} from '../../automation/runner/checkpoint';
+import type {Checkpoint} from '../../automation/runner/checkpoint/types';
 import {
     compileDslSource,
     type StepExecutionPort,
@@ -21,6 +22,8 @@ import type {
 } from '../debug/execution/contracts';
 import {createWorkspaceWorldViewSource} from '../worldview/workspace';
 import type {WorldViewSource} from '../worldview/contracts';
+import {tryRetainedRecovery} from '../debug/recovery/retained_recovery';
+import type {RetainedRecoverySummary} from '../debug/recovery/types';
 import type {
     AgentProgram,
     AgentProgramExecutionStart,
@@ -78,6 +81,16 @@ const normalizeFailure = (error: unknown): DslDebugTerminalFailure => {
     });
 };
 
+const listRecoveryCheckpoints = (
+    provider: {listCheckpoints?: () => Checkpoint[]},
+): Checkpoint[] => {
+    try {
+        return provider.listCheckpoints?.() ?? [];
+    } catch {
+        return [];
+    }
+};
+
 const lockedDebugSession = (
     session: DslDebugExecutionSession,
     runWorkspaceExecution: CreateWorkspaceProgramExecutorOptions['runWorkspaceExecution'],
@@ -113,13 +126,14 @@ const summary = (
     program: AgentProgram,
     session: DslDebugExecutionSession,
     status: AgentProgramExecutionSummary['status'],
-    options: Readonly<{text?: string; error?: AgentProgramExecutionSummary['error']}> = {},
+    options: Readonly<{text?: string; error?: AgentProgramExecutionSummary['error']; recovery?: RetainedRecoverySummary}> = {},
 ): AgentProgramExecutionSummary => ({
     source: program.source,
     input: structuredClone(program.input),
     status,
     ...(options.text ? {text: options.text} : {}),
     ...(options.error ? {error: options.error} : {}),
+    ...(options.recovery ? {recovery: options.recovery} : {}),
     effects: effectSummaries(session),
 });
 
@@ -130,9 +144,22 @@ export const createWorkspaceProgramExecutor = (
     const checkpointProvider = workspace.checkpoint.getProvider(workspace.workflow);
     let runtime: ReturnType<typeof materializeReferencedCheckpointRuntimeSnapshot>;
     try {
+        const allCheckpoints = listRecoveryCheckpoints(checkpointProvider);
+        const recoveryCheckpoints = allCheckpoints.filter(isAutomaticRecoveryCheckpoint);
+        const checkpointStepResolves = Object.fromEntries(recoveryCheckpoints.map((checkpoint) => [
+            checkpoint.id,
+            checkpointProvider.getCheckpointResolves?.(checkpoint.id) ?? {},
+        ]));
+        const checkpointBodies = Object.fromEntries(recoveryCheckpoints.flatMap((checkpoint) => {
+            const body = checkpointProvider.getCheckpointBody?.(checkpoint.id);
+            return body ? [[checkpoint.id, body.source] as const] : [];
+        }));
         runtime = materializeReferencedCheckpointRuntimeSnapshot({
             sources: [program.source],
             checkpointProvider,
+            checkpoints: allCheckpoints,
+            checkpointStepResolves,
+            checkpointBodies,
             workflow: workspace.workflow,
             entityRulesProvider: workspace.entityRules.getProvider(workspace.workflow),
         });
@@ -209,6 +236,55 @@ export const createWorkspaceProgramExecutor = (
                         ...(initial.failure.details === undefined ? {} : {details: initial.failure.details}),
                     },
                 }),
+            };
+        }
+        const retainedRecovery = initial.pause.reason === 'failure'
+            ? await tryRetainedRecovery({session, pause: initial.pause, runtime})
+            : {status: 'none' as const};
+        if (retainedRecovery.status === 'recovered_with_retry') {
+            const advance = retainedRecovery.advance;
+            if (advance.status === 'completed') {
+                return {
+                    summary: summary(program, session, 'completed', {
+                        text: JSON.stringify(advance.output),
+                        recovery: retainedRecovery.summary,
+                    }),
+                };
+            }
+            if (advance.status === 'failed') {
+                return {
+                    summary: summary(program, session, 'failed', {
+                        text: advance.failure.message,
+                        error: {code: advance.failure.code, message: advance.failure.message},
+                        recovery: retainedRecovery.summary,
+                    }),
+                };
+            }
+            if (advance.status === 'aborted') {
+                return {
+                    summary: summary(program, session, 'aborted', {
+                        text: 'program execution was aborted',
+                        recovery: retainedRecovery.summary,
+                    }),
+                };
+            }
+            if (advance.status === 'conflict') {
+                return {
+                    summary: summary(program, session, 'paused', {recovery: retainedRecovery.summary}),
+                    debug: {session: lockedDebugSession(session, options.runWorkspaceExecution), pause: retainedRecovery.pause},
+                };
+            }
+            return {
+                summary: summary(program, session, 'paused', {recovery: retainedRecovery.summary}),
+                debug: {session: lockedDebugSession(session, options.runWorkspaceExecution), pause: advance.pause},
+            };
+        }
+        if (retainedRecovery.status === 'recovered'
+            || retainedRecovery.status === 'recovery_failed'
+            || retainedRecovery.status === 'needs_approval') {
+            return {
+                summary: summary(program, session, 'paused', {recovery: retainedRecovery.summary}),
+                debug: {session: lockedDebugSession(session, options.runWorkspaceExecution), pause: retainedRecovery.pause},
             };
         }
         return {

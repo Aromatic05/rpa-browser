@@ -7,7 +7,8 @@ import type {
     DslScopeSnapshot,
     DslStatementLocation,
 } from '../../../automation/dsl/debug/contracts';
-import type {StepName} from '../../../automation/runner/steps/types';
+import type {StepName, StepResult} from '../../../automation/runner/steps/types';
+import type {CheckpointRuntimeSnapshot} from '../../../automation/runner/checkpoint/runtime_snapshot';
 import type {ComputeExpr} from '../../../program/compute/types';
 import type {QueryIR} from '../../../program/query/contracts';
 import type {DslStmt} from '../../../program/dsl/ast/types';
@@ -122,6 +123,35 @@ export type DslDebugRewindPlanResult =
         target: Readonly<{programId: string; path: string; executions: number}>;
     }>;
 
+/**
+ * Retained-agent recovery of a human-taught Workflow Recovery checkpoint. The
+ * recovery runs inside the SAME retained transaction using the same journaled
+ * StepExecutionPort; a second Program/runSteps transaction is never started.
+ * Selection and execution share the automation runner checkpoint recovery
+ * service, so matcher priority/maxAttempts/trigger/entity-rules semantics match
+ * the ordinary runner.
+ */
+export type DslDebugRecoveryRunOptions = Readonly<{
+    runtime: CheckpointRuntimeSnapshot;
+    checkpointMaxAttempts?: number;
+}>;
+
+export type DslDebugRecoveryRunResult =
+    | Readonly<{status: 'no_recovery'}>
+    | Readonly<{
+        status: 'recovered';
+        checkpointId: string;
+        checkpointName?: string;
+        retried: boolean;
+        advance?: DslDebugAdvanceResult;
+    }>
+    | Readonly<{status: 'failed'; checkpointId?: string; result?: StepResult}>
+    | Readonly<{
+        status: 'needs_approval';
+        checkpointId: string;
+        barrier: Extract<PausedDslDebugExecution, {reason: 'barrier'}>;
+    }>;
+
 
 export type DslDebugCommitResult =
     | Readonly<{
@@ -231,6 +261,10 @@ export type DslDebugPatchStatementResult =
 
 export type DslDebugExecutionSession = {
     waitForPause: () => Promise<PausedDslDebugExecution>;
+    runRecovery: (
+        continuationId: string,
+        options: DslDebugRecoveryRunOptions,
+    ) => Promise<DslDebugRecoveryRunResult>;
     query: (continuationId: string, ir: QueryIR) => DebugQueryReadResult;
     compute: (
         continuationId: string,

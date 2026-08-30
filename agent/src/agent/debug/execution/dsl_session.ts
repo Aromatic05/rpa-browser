@@ -7,12 +7,20 @@ import type {
     DslDebugPort,
     DslEffectDescriptor,
     DslExecutionFrameSnapshot,
+    DslFailureDescriptor,
     DslScopeSnapshot,
     DslStatementLocation,
     DslValueProvenanceEvent,
     PausedDslExecution,
 } from '../../../automation/dsl/debug/contracts';
 import {DslDebugAbortError} from '../../../automation/dsl/debug/errors';
+import {runCheckpointRecovery, selectRecovery, enterRecovery, isAutomaticRecoveryCheckpoint, entityExistsInPageSessionEntities, textVisibleInPageSession} from '../../../automation/runner/checkpoint/recovery';
+import type {RecoveryFailureContext, RecoveryWorldProbe, RunCheckpointRecoveryOutcome} from '../../../automation/runner/checkpoint/recovery/types';
+import type {Checkpoint} from '../../../automation/runner/checkpoint/types';
+import {classifyBrowserOperation} from '../../../automation/runner/steps/effects';
+import {injectStepResolve} from '../../../automation/runner/step_resolve';
+import type {StepResolve, StepResult, StepUnion} from '../../../automation/runner/steps/types';
+import {UNKNOWN_EFFECT_SEMANTICS} from '../../../program/effects/declaration';
 import {
     runDslSource,
     type RunDslContext,
@@ -59,10 +67,14 @@ import type {
     DslDebugPatchProgramResult,
     DslDebugUnpatchProgramResult,
     DslDebugRecomputeEffectResult,
+    DslDebugRecoveryRunOptions,
+    DslDebugRecoveryRunResult,
     DslDebugRewindPlanResult,
     DslDebugRewindResult,
     PausedDslDebugExecution,
 } from './contracts';
+import {aggregateEffectRisk, classifyFailure, executedEffectsSince} from '../recovery/semantics';
+import {normalizeStepEntityRulesControl} from '../../../automation/snapshot/rules/model';
 import {rebindLogicalEffectTarget} from './rebind_effect';
 
 export type CreateDslDebugExecutionSessionOptions = {
@@ -80,6 +92,17 @@ type ActivePause = {
     effectResolvedAt?: WorldViewDescriptor;
     automaticSavepointId?: string;
     rollbackSavepointId?: string;
+};
+
+type PendingRecoveryRun = {
+    checkpoint: Checkpoint;
+    retryOriginal: boolean;
+    safeToRetryOriginal: boolean;
+    failurePause: Extract<PausedDslExecution, {reason: 'failure'}>;
+    failureContinuationId: string;
+    controller: ReturnType<typeof createDslDebugController>;
+    completion: Promise<RunCheckpointRecoveryOutcome>;
+    barrierContinuationId: string;
 };
 
 export const createDslDebugExecutionSession = (
@@ -101,6 +124,11 @@ export const createDslDebugExecutionSession = (
     let transaction: DebugTransaction | null = null;
     let transactionEffectStartSequence = 0;
     let latestEffectRollbackSavepointId: string | undefined;
+    /** Per-checkpoint recovery attempt counts keyed by failure point, durable
+     *  across recovery re-entries inside one retained task (maxAttempts). */
+    const recoveryAttemptsByPoint = new Map<string, Record<string, number>>();
+    /** In-flight recovery body paused at an irreversible approval barrier. */
+    let pendingRecovery: PendingRecoveryRun | null = null;
     const initializeTransaction = (view: WorldView): DebugTransaction => {
         if (!transaction) {
             transaction = createDebugTransaction(view);
@@ -491,8 +519,8 @@ export const createDslDebugExecutionSession = (
         }));
     };
 
-    const startExecutionSavepoint = (saved: DebugExecutionSavepoint): void => {
-        resetController(true);
+    const startExecutionSavepoint = (saved: DebugExecutionSavepoint, forceStep = true): void => {
+        resetController(forceStep);
         completion = runProgramFromSavedState({
             programId: saved.location.programId,
             scope: saved.scope,
@@ -534,7 +562,14 @@ export const createDslDebugExecutionSession = (
     const release = (continuationId: string, mode: 'continue' | 'step' | 'abort'): void => {
         requireActive(continuationId);
         active = null;
-        if (mode === 'abort') {controller.abort(continuationId); return;}
+        if (mode === 'abort') {
+            if (pendingRecovery) {
+                try {pendingRecovery.controller.abort(pendingRecovery.barrierContinuationId);} catch { /* ignore */ }
+                pendingRecovery = null;
+            }
+            controller.abort(continuationId);
+            return;
+        }
         if (mode === 'step') {controller.step(continuationId); return;}
         controller.continue(continuationId);
     };
@@ -1024,6 +1059,19 @@ export const createDslDebugExecutionSession = (
         continuationId: string,
         mode: 'continue' | 'step' | 'abort',
     ): Promise<DslDebugAdvanceResult> => {
+        if (pendingRecovery?.barrierContinuationId === continuationId) {
+            if (mode !== 'abort') {
+                throw new Error(`DSL recovery barrier requires approval via debug.cross_barrier: ${continuationId}`);
+            }
+            const failureLocation = pendingRecovery.failurePause.location;
+            try {pendingRecovery.controller.abort(continuationId);} catch { /* ignore */ }
+            pendingRecovery = null;
+            const mainFailure = active;
+            if (mainFailure) {
+                return Object.freeze({status: 'paused' as const, pause: exposePause(mainFailure)});
+            }
+            return Object.freeze({status: 'aborted' as const, at: {reason: 'barrier' as const, location: failureLocation}});
+        }
         const current = requireActive(continuationId);
         if (mode !== 'abort') {
             const stale = recomputeRequired(current);
@@ -1065,6 +1113,9 @@ export const createDslDebugExecutionSession = (
     };
 
     const crossBarrier = async (continuationId: string): Promise<DslDebugAdvanceResult> => {
+        if (pendingRecovery?.barrierContinuationId === continuationId) {
+            return await resumeRecoveryAfterApproval(continuationId);
+        }
         const current = requireActive(continuationId);
         if (current.pause.reason !== 'barrier') {
             throw new Error(`DSL debug continuation is not paused at a commit barrier: ${continuationId}`);
@@ -1321,8 +1372,425 @@ export const createDslDebugExecutionSession = (
             : Object.freeze({status: 'no_savepoint' as const, target: planTarget, candidates: Object.freeze([])});
     };
 
+    const describeRecoveryEffect = (step: StepUnion): DslEffectDescriptor => Object.freeze({
+        stepId: step.id,
+        stepName: step.name,
+        args: structuredClone(step.args),
+        semantics: UNKNOWN_EFFECT_SEMANTICS,
+    });
+
+    const failureCodeOf = (failure: DslFailureDescriptor): string =>
+    failure.kind === 'invariant' ? 'invariant' : failure.code;
+
+const failureContextOf = (current: ActivePause): RecoveryFailureContext => {
+        if (current.pause.reason !== 'failure') {
+            throw new Error('recovery failure context requires a failure pause');
+        }
+        const failure = current.pause.failure;
+        const stepFailure = failure.kind === 'step' ? failure : undefined;
+        return {
+            runId: current.pause.continuationId,
+            workspaceName: options.context.workspaceName,
+            stepId: stepFailure?.stepId ?? current.pause.location.path,
+            stepName: stepFailure?.stepName ?? 'invariant',
+            args: stepFailure?.args,
+            error: {
+                code: failure.code,
+                message: failure.message,
+                ...(failure.details === undefined ? {} : {details: structuredClone(failure.details)}),
+            },
+            currentUrl: current.debug.world.pageUrl,
+        };
+    };
+
+    const recoveryWorldProbeOf = (current: ActivePause): RecoveryWorldProbe => ({
+        currentUrl: async () => current.debug.world.pageUrl,
+        textVisible: async (needle: string) => await textVisibleInPageSession(current.view.entry, needle),
+        entityExists: async (args, entityRules) => {
+            try {
+                const control = normalizeStepEntityRulesControl(entityRules);
+                if (control.selection === 'explicit' && control.profiles) {
+                    const available = new Set(Object.keys(current.view.entry.semanticBindingsByProfile));
+                    if (!control.profiles.every((profile) => available.has(profile))) {
+                        return false;
+                    }
+                    const selectedBindings = Object.fromEntries(
+                        control.profiles.map((profile) => [
+                            profile,
+                            current.view.entry.semanticBindingsByProfile[profile],
+                        ]),
+                    );
+                    return await entityExistsInPageSessionEntities(
+                        Object.freeze({
+                            ...current.view.entry,
+                            semanticBindingsByProfile: Object.freeze(selectedBindings),
+                        }),
+                        args,
+                    );
+                }
+                return await entityExistsInPageSessionEntities(current.view.entry, args);
+            } catch {
+                return false;
+            }
+        },
+    });
+
+    const canRetryOriginalSafely = (
+        failure: DslFailureDescriptor,
+        anchorEffectSequence: number | undefined,
+    ): boolean => {
+        if (classifyFailure(failure) !== 'read') {return false;}
+        const risk = aggregateEffectRisk(anchorEffectSequence !== undefined
+            ? executedEffectsSince(journal.list(), anchorEffectSequence)
+            : []);
+        return risk === 'none' || risk === 'reversible';
+    };
+
+    const driveRecovery = async (
+        recoveryCompletion: Promise<RunCheckpointRecoveryOutcome>,
+        recoveryController: ReturnType<typeof createDslDebugController>,
+    ): Promise<
+        | {kind: 'done'; outcome: RunCheckpointRecoveryOutcome}
+        | {kind: 'barrier'; pause: Extract<PausedDslExecution, {reason: 'barrier'}>}
+    > => {
+        const result = await Promise.race([
+            recoveryCompletion.then((outcome) => ({kind: 'done' as const, outcome})),
+            recoveryController.waitForPause().then((pause) => ({
+                kind: 'barrier' as const,
+                pause: pause as Extract<PausedDslExecution, {reason: 'barrier'}>,
+            })),
+        ]);
+        return result;
+    };
+
+    const exposeRecoveryBarrier = async (
+        pause: Extract<PausedDslExecution, {reason: 'barrier'}>,
+    ): Promise<Extract<PausedDslDebugExecution, {reason: 'barrier'}>> => {
+        const world = describeWorldView(await options.worldViewSource.pin());
+        const rollbackAnchor = latestEffectRollbackSavepointId
+            ? requireTransaction().readSavepoint(latestEffectRollbackSavepointId)?.savepoint
+            : undefined;
+        return Object.freeze({
+            continuationId: pause.continuationId,
+            reason: 'barrier' as const,
+            location: pause.location,
+            scope: pause.scope,
+            effect: pause.effect,
+            world,
+            ...(rollbackAnchor ? {rollbackAnchor} : {}),
+        });
+    };
+
+    const nextRecoveryResumeLocation = (
+        saved: DebugExecutionSavepoint,
+    ): DslStatementLocation | null => {
+        const checkpointIndex = lastCheckpointFrameIndex(saved.frames);
+        const localFrames = checkpointIndex >= 0
+            ? saved.frames.slice(checkpointIndex + 1)
+            : saved.frames;
+        const currentFrame = localFrames.at(-1);
+        const blockPath = currentFrame?.kind === 'if'
+            ? `${currentFrame.statementPath}.${currentFrame.branch}`
+            : currentFrame?.kind === 'for'
+                ? `${currentFrame.statementPath}.body`
+                : 'body';
+        const prefix = `${blockPath}.`;
+        if (!saved.location.path.startsWith(prefix)) {return null;}
+        const indexText = saved.location.path.slice(prefix.length);
+        if (!/^\d+$/u.test(indexText)) {return null;}
+        return Object.freeze({
+            ...saved.location,
+            path: `${blockPath}.${Number(indexText) + 1}`,
+        });
+    };
+
+    const replayAfterRecovery = async (
+        continuationId: string,
+        mode: 'retry' | 'skip',
+    ): Promise<DslDebugAdvanceResult | null> => {
+        const savepointId = active?.automaticSavepointId;
+        if (!savepointId) {return null;}
+        const savedRuntime = executionSavepoints.get(savepointId);
+        if (savedRuntime?.state.reason !== 'statement') {return null;}
+        const saved = savedRuntime.state;
+        if (!isRewindableStatementLocation(saved.location, saved.frames)) {return null;}
+
+        const resumeLocation = mode === 'skip'
+            ? nextRecoveryResumeLocation(saved)
+            : saved.location;
+        if (!resumeLocation) {return null;}
+
+        const oldCompletion = completion;
+        active = null;
+        controller.abort(continuationId);
+        try {
+            await oldCompletion;
+        } catch (error) {
+            if (!(error instanceof DslDebugAbortError)) {throw error;}
+        }
+        pendingEffectOverrides.clear();
+        startExecutionSavepoint(Object.freeze({
+            ...saved,
+            location: resumeLocation,
+        }), mode === 'retry');
+        return await Promise.race([
+            waitForPause().then(async (pause) => {
+                if (pause.reason === 'failure') {
+                    const activeFailure = active;
+                    if (!activeFailure) {throw new Error('recovery failure pause lost its active continuation');}
+                    return Object.freeze({
+                        status: 'paused' as const,
+                        pause: exposePause(activeFailure),
+                    });
+                }
+                if (mode === 'skip') {
+                    return Object.freeze({status: 'paused' as const, pause});
+                }
+                if (pause.reason !== 'statement'
+                    || pause.location.programId !== saved.location.programId
+                    || pause.location.path !== resumeLocation.path) {
+                    throw new Error(`recovery resume at unexpected DSL location: ${pause.location.programId}/${pause.location.path}`);
+                }
+                return await advance(pause.continuationId, 'continue');
+            }),
+            completion.then(
+                (result) => Object.freeze({status: 'completed' as const, output: structuredClone(result.scope.output)}),
+                (error) => error instanceof DslDebugAbortError
+                    ? Object.freeze({status: 'aborted' as const, at: {reason: saved.reason, location: saved.location}})
+                    : Object.freeze({status: 'failed' as const, failure: normalizeTerminalFailure(error)}),
+            ),
+        ]);
+    };
+
+    const finalizeRecoveryOutcome = async (
+        outcome: RunCheckpointRecoveryOutcome,
+        ctx: {
+            checkpoint: Checkpoint;
+            retryOriginal: boolean;
+            safeToRetryOriginal: boolean;
+            failureContinuationId: string;
+        },
+    ): Promise<DslDebugRecoveryRunResult> => {
+        if (!outcome.active || !outcome.runResult?.ok) {
+            return Object.freeze({status: 'failed' as const, checkpointId: ctx.checkpoint.id});
+        }
+        if (ctx.retryOriginal) {
+            if (ctx.safeToRetryOriginal) {
+                const advanceResult = await replayAfterRecovery(ctx.failureContinuationId, 'retry');
+                if (advanceResult) {
+                    return Object.freeze({
+                        status: 'recovered' as const,
+                        checkpointId: ctx.checkpoint.id,
+                        ...(ctx.checkpoint.name ? {checkpointName: ctx.checkpoint.name} : {}),
+                        retried: true,
+                        advance: advanceResult,
+                    });
+                }
+            }
+        } else {
+            const advanceResult = await replayAfterRecovery(ctx.failureContinuationId, 'skip');
+            if (advanceResult) {
+                return Object.freeze({
+                    status: 'recovered' as const,
+                    checkpointId: ctx.checkpoint.id,
+                    ...(ctx.checkpoint.name ? {checkpointName: ctx.checkpoint.name} : {}),
+                    retried: false,
+                    advance: advanceResult,
+                });
+            }
+        }
+        return Object.freeze({
+            status: 'recovered' as const,
+            checkpointId: ctx.checkpoint.id,
+            ...(ctx.checkpoint.name ? {checkpointName: ctx.checkpoint.name} : {}),
+            retried: false,
+        });
+    };
+
+    const advanceResultFromRecovery = (outcome: DslDebugRecoveryRunResult): DslDebugAdvanceResult => {
+        if (outcome.status === 'recovered' && outcome.advance) {return outcome.advance;}
+        if (outcome.status === 'recovered' && active) {
+            return Object.freeze({status: 'paused' as const, pause: exposePause(active)});
+        }
+        return Object.freeze({
+            status: 'failed' as const,
+            failure: Object.freeze({code: 'ERR_RECOVERY_FAILED', message: 'retained recovery failed after approval'}),
+        });
+    };
+
+    const resumeRecoveryAfterApproval = async (continuationId: string): Promise<DslDebugAdvanceResult> => {
+        const recovery = pendingRecovery;
+        if (recovery?.barrierContinuationId !== continuationId) {
+            throw new Error(`DSL recovery continuation is not paused at a recovery barrier: ${continuationId}`);
+        }
+        recovery.controller.crossBarrier(continuationId);
+        const driven = await driveRecovery(recovery.completion, recovery.controller);
+        if (driven.kind === 'barrier') {
+            recovery.barrierContinuationId = driven.pause.continuationId;
+            return Object.freeze({
+                status: 'paused' as const,
+                pause: await exposeRecoveryBarrier(driven.pause),
+            });
+        }
+        pendingRecovery = null;
+        const outcome = await finalizeRecoveryOutcome(driven.outcome, recovery);
+        return advanceResultFromRecovery(outcome);
+    };
+
+    const runRecovery = async (
+        continuationId: string,
+        recovery: DslDebugRecoveryRunOptions,
+    ): Promise<DslDebugRecoveryRunResult> => {
+        const current = requireActive(continuationId);
+        if (current.pause.reason !== 'failure' || !stepExecutionPort) {
+            return Object.freeze({status: 'failed' as const});
+        }
+        const pause = current.pause;
+        const failureContext = failureContextOf(current);
+
+        if (!enterRecovery({
+            checkpointEnabled: true,
+            inCheckpointFlow: pause.location.programId !== 'main',
+            errorCode: pause.failure.code,
+        }).entered) {
+            return Object.freeze({status: 'no_recovery' as const});
+        }
+
+        const checkpoints = recovery.runtime.provider.listCheckpoints
+            ? recovery.runtime.provider.listCheckpoints().filter(isAutomaticRecoveryCheckpoint)
+            : [];
+        const failureKey = `${pause.location.programId}@${pause.location.path}#${failureCodeOf(pause.failure)}`;
+        const attempts = recoveryAttemptsByPoint.get(failureKey) ?? {};
+        const selection = await selectRecovery({
+            checkpoints,
+            failure: failureContext,
+            checkpointEnabled: true,
+            checkpointAttempt: 0,
+            checkpointAttempts: attempts,
+            checkpointMaxAttempts: recovery.checkpointMaxAttempts ?? Number.MAX_SAFE_INTEGER,
+            world: recoveryWorldProbeOf(current),
+        });
+        if (selection.status === 'no_match') {
+            return Object.freeze({status: 'no_recovery' as const});
+        }
+        attempts[selection.checkpoint.id] = (attempts[selection.checkpoint.id] ?? 0) + 1;
+        recoveryAttemptsByPoint.set(failureKey, attempts);
+
+        const anchorEffectSequence = (() => {
+            const anchorId = current.rollbackSavepointId ?? current.automaticSavepointId;
+            return anchorId ? requireTransaction().readSavepoint(anchorId)?.savepoint.effectSequence : undefined;
+        })();
+        const safeToRetryOriginal = canRetryOriginalSafely(pause.failure, anchorEffectSequence);
+        const retryOriginal = selection.checkpoint.policy?.retryOriginal !== false;
+
+        const executeStep = async (step: StepUnion, stepResolves?: Record<string, StepResolve>): Promise<StepResult> => {
+            const injected = stepResolves ? injectStepResolve(step, stepResolves) : {ok: true as const, step};
+            if (!injected.ok) {
+                return {stepId: step.id, ok: false, error: injected.error};
+            }
+            const runtimeStep = injected.step;
+            let effect: DslEffectDescriptor | undefined;
+            if (classifyBrowserOperation(runtimeStep.name, runtimeStep.args) === 'effect') {
+                effect = describeRecoveryEffect(runtimeStep);
+                const worldBefore = await options.worldViewSource.pin();
+                ensureEffectRollbackAnchor(pause.location, worldBefore);
+                journal.begin(Object.freeze({location: pause.location, scope: pause.scope, effect}), worldBefore);
+            }
+            const result = await stepExecutionPort.execute(runtimeStep, undefined);
+            if (effect) {
+                const worldAfter = await options.worldViewSource.pin();
+                journal.finish(Object.freeze({
+                    location: pause.location,
+                    effect,
+                    outcome: result.ok
+                        ? Object.freeze({status: 'succeeded' as const})
+                        : Object.freeze({
+                            status: 'failed' as const,
+                            error: Object.freeze({
+                                code: result.error?.code || 'ERR_DSL_STEP_FAILED',
+                                message: result.error?.message || `DSL step failed: ${effect.stepName}`,
+                                ...(result.error?.details === undefined
+                                    ? {}
+                                    : {details: structuredClone(result.error.details)}),
+                            }),
+                        }),
+                }), worldAfter);
+            }
+            return result;
+        };
+
+        const recoveryController = createDslDebugController({
+            initialMode: 'continue',
+            barrierOn: ['unknown', 'compensatable', 'irreversible'],
+            barrierResumeMode: 'continue',
+        });
+        const recoveryDebugPort: DslDebugPort = {
+            beforeStatement: () => undefined,
+            beforeEffect: (event) => recoveryController.port.beforeEffect?.(event),
+        };
+
+        const completion: Promise<RunCheckpointRecoveryOutcome> = (async () => {
+            try {
+                return await runCheckpointRecovery({
+                    checkpoint: selection.checkpoint,
+                    runtime: recovery.runtime,
+                    failure: failureContext,
+                    executeStep,
+                    debugPort: recoveryDebugPort,
+                    workspaceName: options.context.workspaceName,
+                    deps: options.context.deps,
+                    attempt: selection.attempt,
+                    checkpointMaxAttempts: recovery.checkpointMaxAttempts ?? Number.MAX_SAFE_INTEGER,
+                });
+            } catch (error) {
+                return Object.freeze({
+                    active: false as const,
+                    stopReason: 'checkpoint_step_failed' as const,
+                    runResult: {
+                        stepId: failureContext.stepId,
+                        ok: false,
+                        error: {
+                            code: error instanceof Error && 'code' in error
+                                ? String((error as {code: unknown}).code)
+                                : 'ERR_RECOVERY_FAILED',
+                            message: error instanceof Error ? error.message : String(error),
+                        },
+                    },
+                    meta: {checkpointBodyFailure: true, bodyError: error},
+                });
+            }
+        })();
+
+        const driven = await driveRecovery(completion, recoveryController);
+        if (driven.kind === 'barrier') {
+            pendingRecovery = {
+                checkpoint: selection.checkpoint,
+                retryOriginal,
+                safeToRetryOriginal,
+                failurePause: pause,
+                failureContinuationId: continuationId,
+                controller: recoveryController,
+                completion,
+                barrierContinuationId: driven.pause.continuationId,
+            };
+            return Object.freeze({
+                status: 'needs_approval' as const,
+                checkpointId: selection.checkpoint.id,
+                barrier: await exposeRecoveryBarrier(driven.pause),
+            });
+        }
+
+        return await finalizeRecoveryOutcome(driven.outcome, {
+            checkpoint: selection.checkpoint,
+            retryOriginal,
+            safeToRetryOriginal,
+            failureContinuationId: continuationId,
+        });
+    };
+
     return {
         waitForPause,
+        runRecovery,
         query: (continuationId: string, ir: QueryIR) =>
             requireActive(continuationId).debug.query(ir),
         compute: (
