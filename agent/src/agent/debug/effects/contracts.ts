@@ -18,6 +18,10 @@ export type DebugEffectJournalEntry = Readonly<{
     worldAfter: WorldView;
 }>;
 
+export type DebugEffectJournalState = Readonly<{
+    entries: readonly DebugEffectJournalEntry[];
+}>;
+
 export type DebugEffectDiffResult =
     | Readonly<{
         ok: true;
@@ -44,4 +48,5 @@ export type DebugEffectJournal = {
     finish: (event: DslAfterEffectEvent, worldAfter: WorldView) => void;
     list: () => readonly DebugEffectRecord[];
     read: (sequence: number) => DebugEffectJournalEntry | null;
+    exportState: () => DebugEffectJournalState;
 };

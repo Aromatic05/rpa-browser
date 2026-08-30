@@ -1,9 +1,11 @@
 import type {DslAfterStatementEvent} from '../../../automation/dsl/debug/contracts';
 import type {DebugStatementExecutionRecord, DebugStatementHistoryStore} from './contracts';
 
-export const createDebugStatementHistoryStore = (): DebugStatementHistoryStore => {
-    const records: DebugStatementExecutionRecord[] = [];
-    let sequence = 0;
+export const createDebugStatementHistoryStore = (
+    seed: readonly DebugStatementExecutionRecord[] = [],
+): DebugStatementHistoryStore => {
+    const records: DebugStatementExecutionRecord[] = Array.from(structuredClone(seed));
+    let sequence = records.at(-1)?.sequence ?? 0;
 
     return Object.freeze({
         record: (event: DslAfterStatementEvent) => {
@@ -26,5 +28,6 @@ export const createDebugStatementHistoryStore = (): DebugStatementHistoryStore =
             while (records.length > 0 && records.at(-1)!.sequence > targetSequence) {records.pop();}
             sequence = targetSequence;
         },
+        exportState: () => Object.freeze(structuredClone(records)),
     });
 };

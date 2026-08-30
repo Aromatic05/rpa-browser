@@ -23,4 +23,5 @@ export type DebugStatementHistoryStore = Readonly<{
     record: (event: DslAfterStatementEvent) => void;
     list: (programId?: string) => readonly DebugStatementExecutionRecord[];
     truncate: (sequence: number) => void;
+    exportState: () => readonly DebugStatementExecutionRecord[];
 }>;

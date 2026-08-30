@@ -22,6 +22,7 @@ import {injectStepResolve} from '../../../automation/runner/step_resolve';
 import type {StepResolve, StepResult, StepUnion} from '../../../automation/runner/steps/types';
 import {UNKNOWN_EFFECT_SEMANTICS} from '../../../program/effects/declaration';
 import {
+    compileDslSource,
     runDslSource,
     type RunDslContext,
     type RunDslSourceResult,
@@ -76,6 +77,12 @@ import type {
 import {aggregateEffectRisk, classifyFailure, executedEffectsSince} from '../recovery/semantics';
 import {normalizeStepEntityRulesControl} from '../../../automation/snapshot/rules/model';
 import {rebindLogicalEffectTarget} from './rebind_effect';
+import {
+    PROGRAM_EXECUTION_IMAGE_SCHEMA,
+    PROGRAM_EXECUTION_IMAGE_VERSION,
+    type ProgramExecutionImage,
+} from '../../continuation/contracts';
+import {jsonRoundTripProgramExecutionImage} from '../../continuation/image';
 
 export type CreateDslDebugExecutionSessionOptions = {
     source: string;
@@ -83,6 +90,7 @@ export type CreateDslDebugExecutionSessionOptions = {
     worldViewSource: WorldViewSource;
     compensationPort?: DebugCompensationPort;
     debug?: CreateDslDebugControllerOptions;
+    restore?: Readonly<{image: ProgramExecutionImage; liveView: WorldView}>;
 };
 
 type ActivePause = {
@@ -109,10 +117,14 @@ export const createDslDebugExecutionSession = (
     options: CreateDslDebugExecutionSessionOptions,
 ): DslDebugExecutionSession => {
     let controller: ReturnType<typeof createDslDebugController>;
-    const journal = createDebugEffectJournal();
+    const restored = options.restore?.image;
+    const journal = createDebugEffectJournal(restored?.journal);
     const provenance = createDebugValueProvenanceStore();
-    const statementHistory = createDebugStatementHistoryStore();
-    const programs = new Map<string, DebugProgramView>();
+    if (restored) {provenance.restore(restored.provenance);}
+    const statementHistory = createDebugStatementHistoryStore(restored?.statementHistory);
+    const programs = new Map<string, DebugProgramView>(
+        restored?.programs.map((program) => [program.programId, structuredClone(program)]) ?? [],
+    );
     const programPatches = createDebugProgramPatchStore();
     const pendingEffectOverrides = new Map<string, DslEffectDescriptor>();
     const executionSavepoints = new Map<string, Readonly<{
@@ -120,22 +132,35 @@ export const createDslDebugExecutionSession = (
         provenance: readonly DslValueProvenanceEvent[];
         origin: 'automatic' | 'explicit';
     }>>();
-    let currentStatementEvent: DslBeforeStatementEvent | null = null;
+    let currentStatementEvent: DslBeforeStatementEvent | null = restored?.active.statementEvent ?? null;
     let transaction: DebugTransaction | null = null;
-    let transactionEffectStartSequence = 0;
-    let latestEffectRollbackSavepointId: string | undefined;
+    let transactionEffectStartSequence = restored?.transactionEffectStartSequence ?? 0;
+    let latestEffectRollbackSavepointId: string | undefined = restored?.latestEffectRollbackSavepointId;
     /** Per-checkpoint recovery attempt counts keyed by failure point, durable
      *  across recovery re-entries inside one retained task (maxAttempts). */
-    const recoveryAttemptsByPoint = new Map<string, Record<string, number>>();
+    const recoveryAttemptsByPoint = new Map<string, Record<string, number>>(
+        Object.entries(restored?.recoveryAttempts ?? {}).map(([failurePoint, attempts]) => [
+            failurePoint,
+            structuredClone(attempts),
+        ]),
+    );
     /** In-flight recovery body paused at an irreversible approval barrier. */
     let pendingRecovery: PendingRecoveryRun | null = null;
     const initializeTransaction = (view: WorldView): DebugTransaction => {
         if (!transaction) {
-            transaction = createDebugTransaction(view);
-            transactionEffectStartSequence = journal.list().length;
+            transaction = createDebugTransaction(
+                restored?.transaction.baseline ?? view,
+                restored?.transaction,
+            );
+            if (!restored) {transactionEffectStartSequence = journal.list().length;}
         }
         return transaction;
     };
+    if (restored) {
+        for (const saved of restored.executionSavepoints) {
+            executionSavepoints.set(saved.state.savepoint.id, structuredClone(saved));
+        }
+    }
     const ensureTransaction = async (): Promise<DebugTransaction> => {
         return initializeTransaction(await options.worldViewSource.pin());
     };
@@ -355,9 +380,9 @@ export const createDslDebugExecutionSession = (
     };
     let completion!: Promise<RunDslSourceResult>;
     let active: ActivePause | null = null;
-    const resetController = (forceStep: boolean): void => {
+    const resetController = (forceStep: boolean, override?: CreateDslDebugControllerOptions): void => {
         controller = createDslDebugController(
-            forceStep ? {...options.debug, initialMode: 'step'} : options.debug,
+            forceStep ? {...options.debug, initialMode: 'step'} : (override ?? options.debug),
         );
     };
     const startExecution = (
@@ -528,7 +553,31 @@ export const createDslDebugExecutionSession = (
             frames: saved.frames,
         });
     };
-    startExecution(options.context.resume);
+    let restoredAwaitingApproval = Boolean(restored);
+    if (restored) {
+        initializeTransaction(options.restore!.liveView);
+        const saved = restored.active;
+        const pause: PausedDslExecution = Object.freeze({
+            continuationId: saved.continuationId,
+            reason: 'barrier' as const,
+            location: structuredClone(saved.location),
+            scope: structuredClone(saved.scope),
+            effect: structuredClone(saved.effect),
+        });
+        const debug = createDebugQuerySession(options.restore!.liveView);
+        active = {
+            pause,
+            view: options.restore!.liveView,
+            debug,
+            ...(saved.effectResolvedAt ? {effectResolvedAt: saved.effectResolvedAt} : {}),
+            ...(saved.automaticSavepointId ? {automaticSavepointId: saved.automaticSavepointId} : {}),
+            ...(saved.rollbackSavepointId ? {rollbackSavepointId: saved.rollbackSavepointId} : {}),
+        };
+        resetController(false);
+        completion = new Promise<RunDslSourceResult>(() => undefined);
+    } else {
+        startExecution(options.context.resume);
+    }
 
     const requireActive = (continuationId: string): ActivePause => {
         if (active?.pause.continuationId !== continuationId) {
@@ -575,6 +624,10 @@ export const createDslDebugExecutionSession = (
     };
 
     const waitForPause = async (): Promise<PausedDslDebugExecution> => {
+        if (active && restoredAwaitingApproval) {
+            restoredAwaitingApproval = false;
+            return exposePause(active);
+        }
         if (active) {throw new Error('DSL debug execution is already paused');}
         const pause = await controller.waitForPause();
         const view = await options.worldViewSource.pin();
@@ -1128,6 +1181,37 @@ export const createDslDebugExecutionSession = (
                 status: 'conflict' as const,
                 conflict: Object.freeze({expected: current.debug.world, actual}),
             });
+        }
+        if (restoredAwaitingApproval || restored?.active.continuationId === continuationId) {
+            restoredAwaitingApproval = false;
+            active = null;
+            const saved = restored!.active;
+            const barrierOn = new Set(options.debug?.barrierOn ?? restored!.debug.barrierOn ?? []);
+            barrierOn.add(saved.effect.semantics.reversibility);
+            resetController(false, {
+                ...restored!.debug,
+                initialMode: 'continue',
+                barrierOn: [...barrierOn],
+                barrierResumeMode: 'continue',
+            });
+            completion = runProgramFromSavedState({
+                programId: saved.location.programId,
+                scope: saved.scope,
+                location: saved.location,
+                frames: saved.frames,
+            });
+            const driven = await Promise.race([
+                waitForPause().then((pause) => ({status: 'paused' as const, pause})),
+                completion.then((result) => ({status: 'completed' as const, output: structuredClone(result.scope.output)}), (error) => ({status: 'failed' as const, failure: normalizeTerminalFailure(error)})),
+            ]);
+            if (driven.status !== 'paused' || driven.pause.reason !== 'barrier') {
+                return driven as DslDebugAdvanceResult;
+            }
+            const equivalent = sameBarrierEffect(saved, driven.pause);
+            if (!equivalent) {
+                return Object.freeze({status: 'barrier' as const, pause: driven.pause as Extract<PausedDslDebugExecution, {reason: 'barrier'}>});
+            }
+            return await crossBarrier(driven.pause.continuationId);
         }
         active = null;
         controller.crossBarrier(continuationId);
@@ -1831,6 +1915,109 @@ const failureContextOf = (current: ActivePause): RecoveryFailureContext => {
             );
         },
         auditEffects: () => journal.list(),
+        exportProgramExecutionImage: () => {
+            const current = active;
+            if (!current || current.pause.reason !== 'barrier' || pendingRecovery) {
+                return Object.freeze({ok: false as const, error: Object.freeze({
+                    code: 'ERR_CONTINUATION_UNSUPPORTED' as const,
+                    message: 'only an ordinary retained Program barrier can be exported',
+                })});
+            }
+            if (current.pause.location.programId !== 'main'
+                || current.pause.location.callStack.length > 0) {
+                return Object.freeze({ok: false as const, error: Object.freeze({
+                    code: 'ERR_CONTINUATION_UNSUPPORTED' as const,
+                    message: 'v1 durable continuation supports only a main Program barrier',
+                })});
+            }
+            const nonMainPatches = programPatches.list().filter((patch) => patch.programId !== 'main');
+            if (nonMainPatches.length > 0) {
+                return Object.freeze({ok: false as const, error: Object.freeze({
+                    code: 'ERR_CONTINUATION_UNSUPPORTED' as const,
+                    message: 'v1 durable continuation cannot preserve non-main Program patches',
+                })});
+            }
+            const event = currentStatementEvent;
+            if (!event || !isSameProgramPoint(event.location, current.pause.location)) {
+                return Object.freeze({ok: false as const, error: Object.freeze({
+                    code: 'ERR_CONTINUATION_UNSUPPORTED' as const,
+                    message: 'barrier statement frames are unavailable',
+                })});
+            }
+            let mainSource: string;
+            try {
+                const mainProgram = programs.get('main');
+                if (!mainProgram) {throw new Error('main DSL debug program is unavailable');}
+                mainSource = materializeDebugProgramSource(mainProgram, programPatches.list('main'));
+            } catch (error) {
+                return Object.freeze({ok: false as const, error: Object.freeze({
+                    code: 'ERR_CONTINUATION_UNSUPPORTED' as const,
+                    message: error instanceof Error ? error.message : String(error),
+                })});
+            }
+            let durablePrograms: DebugProgramView[];
+            try {
+                const compiledMain = compileDslSource(
+                    mainSource,
+                    options.context.entityRulesResolver,
+                    options.context.resolveResolver,
+                    {allowFailureRoot: options.context.failure !== undefined},
+                );
+                const mainView = buildDebugProgramView(Object.freeze({
+                    programId: 'main',
+                    source: mainSource,
+                    program: structuredClone(compiledMain.program),
+                    sourceMap: structuredClone(compiledMain.sourceMap),
+                }));
+                durablePrograms = [
+                    mainView,
+                    ...[...programs.values()]
+                        .filter((program) => program.programId !== 'main')
+                        .map((program) => structuredClone(program)),
+                ];
+            } catch (error) {
+                return Object.freeze({ok: false as const, error: Object.freeze({
+                    code: 'ERR_CONTINUATION_UNSUPPORTED' as const,
+                    message: `materialized Program cannot be compiled for durable continuation: ${error instanceof Error ? error.message : String(error)}`,
+                })});
+            }
+            const image = {
+                schema: PROGRAM_EXECUTION_IMAGE_SCHEMA,
+                version: PROGRAM_EXECUTION_IMAGE_VERSION,
+                mainSource,
+                debug: structuredClone(options.debug ?? {}),
+                active: {
+                    continuationId: current.pause.continuationId,
+                    location: structuredClone(current.pause.location),
+                    scope: structuredClone(current.pause.scope),
+                    frames: structuredClone(event.frames),
+                    statementEvent: structuredClone(event),
+                    effect: structuredClone(current.pause.effect),
+                    view: structuredClone(current.view),
+                    ...(current.effectResolvedAt ? {effectResolvedAt: structuredClone(current.effectResolvedAt)} : {}),
+                    ...(current.automaticSavepointId ? {automaticSavepointId: current.automaticSavepointId} : {}),
+                    ...(current.rollbackSavepointId ? {rollbackSavepointId: current.rollbackSavepointId} : {}),
+                },
+                journal: journal.exportState(),
+                transaction: requireTransaction().exportState(),
+                transactionEffectStartSequence,
+                recoveryAttempts: Object.freeze(Object.fromEntries(
+                    [...recoveryAttemptsByPoint.entries()].map(([failurePoint, attempts]) => [
+                        failurePoint,
+                        Object.freeze(structuredClone(attempts)),
+                    ]),
+                )),
+                ...(latestEffectRollbackSavepointId ? {latestEffectRollbackSavepointId} : {}),
+                executionSavepoints: [...executionSavepoints.values()].map((value) => structuredClone(value)),
+                provenance: provenance.snapshot(),
+                statementHistory: statementHistory.exportState(),
+                programs: durablePrograms,
+            } as ProgramExecutionImage;
+            const roundTrip = jsonRoundTripProgramExecutionImage(image);
+            return roundTrip.ok
+                ? Object.freeze({ok: true as const, image: roundTrip.image})
+                : Object.freeze({ok: false as const, error: roundTrip.error});
+        },
         effects: (continuationId: string) => {
             requireActive(continuationId);
             return journal.list();
@@ -1916,4 +2103,27 @@ const normalizeTerminalFailure = (error: unknown) => {
         code: 'ERR_DSL_RUNTIME',
         message: typeof error === 'string' ? error : 'DSL execution failed',
     });
+};
+
+const sameBarrierEffect = (
+    saved: {location: DslStatementLocation; effect: DslEffectDescriptor},
+    actual: Extract<PausedDslDebugExecution, {reason: 'barrier'}>,
+): boolean => {
+    const location = (value: DslStatementLocation) => ({
+        programId: value.programId,
+        path: value.path,
+        kind: value.kind,
+        loops: value.loops,
+        callStack: value.callStack,
+    });
+    const effect = (value: DslEffectDescriptor) => ({
+        stepName: value.stepName,
+        args: value.args,
+        semantics: value.semantics,
+        logicalTarget: value.logicalTarget,
+    });
+    try {
+        return JSON.stringify(location(saved.location)) === JSON.stringify(location(actual.location))
+            && JSON.stringify(effect(saved.effect)) === JSON.stringify(effect(actual.effect));
+    } catch {return false;}
 };

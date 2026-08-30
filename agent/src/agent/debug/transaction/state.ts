@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import {describeWorldView} from '../../worldview/descriptor';
 import type {WorldView} from '../../worldview/contracts';
-import type {DebugSavepoint, DebugTransaction} from './contracts';
+import type {DebugSavepoint, DebugTransaction, DebugTransactionState} from './contracts';
 
 const assertEffectPosition = (value: number): void => {
     if (!Number.isInteger(value) || value < 0) {
@@ -9,9 +9,14 @@ const assertEffectPosition = (value: number): void => {
     }
 };
 
-export const createDebugTransaction = (baseline: WorldView): DebugTransaction => {
-    const id = crypto.randomUUID();
-    const savepoints: Array<{savepoint: DebugSavepoint; world: WorldView; visible: boolean}> = [];
+export const createDebugTransaction = (
+    baseline: WorldView,
+    seed?: DebugTransactionState,
+): DebugTransaction => {
+    const id = seed?.id ?? crypto.randomUUID();
+    const savepoints: Array<{savepoint: DebugSavepoint; world: WorldView; visible: boolean}> = seed
+        ? Array.from(structuredClone(seed.savepoints))
+        : [];
 
     const createSavepoint = (
         world: WorldView,
@@ -69,5 +74,10 @@ export const createDebugTransaction = (baseline: WorldView): DebugTransaction =>
                 savepoints: Object.freeze(savepoints.filter((entry) => entry.visible).map((entry) => entry.savepoint)),
             });
         },
+        exportState: () => Object.freeze({
+            id,
+            baseline: structuredClone(baseline),
+            savepoints: structuredClone(savepoints),
+        }),
     };
 };
