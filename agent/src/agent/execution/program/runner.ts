@@ -45,6 +45,8 @@ import {createProgramSaveTool, SAVE_PROGRAM_TOOL} from './save_tool';
 import type {AgentProgramLibrary} from './library';
 import {createProgramLibraryTools, LIST_PROGRAMS_TOOL, LOAD_PROGRAM_TOOL} from './library_tools';
 import {PROGRAM_DSL_AUTHORING_GUIDE} from './authoring';
+import {createKnowledgeTools, KNOWLEDGE_CATALOG_TOOL, KNOWLEDGE_INSPECT_TOOL} from '../knowledge';
+import type {KnowledgeSeamDeps} from '../knowledge';
 import type {
     AgentControlInput,
     AgentRunContinuation,
@@ -66,6 +68,9 @@ export const PROGRAM_FIRST_SYSTEM_PROMPT = [
     'Never claim a mutation succeeded unless the retained program reports completed and the resulting browser state is verified when practical.',
     `Program source is never persisted automatically. If and only if the user explicitly asks to save or publish the completed Program, use ${SAVE_PROGRAM_TOOL} after completion.`,
     `Use ${LIST_PROGRAMS_TOOL} and ${LOAD_PROGRAM_TOOL} to inspect persisted workspace DSL Programs. To edit one, load its source and artifactRevision, submit the edited source through ${EXECUTE_PROGRAM_TOOL}, verify it, then use ${SAVE_PROGRAM_TOOL} with the loaded artifactRevision only when the user explicitly requested overwrite/publish.`,
+    `Prefer the workspace knowledge assets over raw selector guessing. Call ${KNOWLEDGE_CATALOG_TOOL} (read-only, explicit) to discover healthy Procedures and Page Knowledge assets relevant to the task before authoring. Then, for the assets you will reference, call ${KNOWLEDGE_INSPECT_TOOL} to read a Procedure input/output signature and its dependencies, requesting the DSL body only when you actually need to understand the implementation by passing includeBody: true, or to read a Page Knowledge sanitized entity schema.`,
+    'Reference discovered assets directly in a SMALL top-level DSL: import a Page Knowledge profile with `use entity_rules "PROFILE" as alias`, call a Procedure with `use checkpoint "PROCEDURE" with { key: input.value }`, and keep concrete values in the structured program input. Never inline an inspected Procedure body or re-derive clone logic from it: reference it by its stable id.',
+    'Do not guess businessTags, entity keys, field keys or action intents; take them exactly from an inspected Page Knowledge schema. Recovery applies automatically at runtime and Demonstration is replay-only: never load or replay them from the model.',
     PROGRAM_DSL_AUTHORING_GUIDE,
 ].join(' ');
 
@@ -87,6 +92,7 @@ export type CreateProgramFirstAgentRunnerOptions = {
     executeProgram: AgentProgramExecutor;
     programLibrary?: AgentProgramLibrary;
     saveProgram?: AgentProgramSaver;
+    knowledge?: KnowledgeSeamDeps;
     modelRuntime?: AgentModelRuntime;
     readWorldRevision?: () => AgentWorldRevision | null | Promise<AgentWorldRevision | null>;
     governancePolicy?: GovernancePolicy;
@@ -242,7 +248,7 @@ const tryValidateInteractionRequest = (
 
 const classifyProgramToolCall = (name: string, args: unknown) => {
     if (name === EXECUTE_PROGRAM_TOOL || name === SAVE_PROGRAM_TOOL || name === REQUEST_INTERACTION_TOOL) {return 'control' as const;}
-    if (name === LIST_PROGRAMS_TOOL || name === LOAD_PROGRAM_TOOL) {return 'read' as const;}
+    if (name === LIST_PROGRAMS_TOOL || name === LOAD_PROGRAM_TOOL || name === KNOWLEDGE_CATALOG_TOOL || name === KNOWLEDGE_INSPECT_TOOL) {return 'read' as const;}
     if (name.startsWith('debug.')) {return classifyPausedDslDebugToolCall(name);}
     return classifyAgentToolCall(name, args);
 };
@@ -630,6 +636,7 @@ const prepareProgramContext = (
     execution: ProgramExecutionToolController,
     planningTools: readonly AgentTool[],
     terminalTools: readonly AgentTool[],
+    knowledgeTools: readonly AgentTool[],
     request: AgentRunRequest,
     recovery: () => RecoveryContext,
 ) => ({context}: Parameters<NonNullable<Parameters<typeof createReactAgentRunner>[0]['prepareNextTurnWithContext']>>[0]) => {
@@ -638,7 +645,7 @@ const prepareProgramContext = (
         return {
             context: {
                 ...context,
-                tools: [...debugTools, requestInteractionTool],
+                tools: [...debugTools, ...knowledgeTools, requestInteractionTool],
                 systemPrompt: controlSystemPrompt(execution, request, recovery),
             },
         };
@@ -678,8 +685,11 @@ export const createProgramFirstAgentRunner = (
         const libraryTools = options.programLibrary
             ? createProgramLibraryTools(options.programLibrary)
             : [];
-        const planningTools = [...options.readTools, ...libraryTools, execution.tool, requestInteractionTool];
-        const terminalTools = [...options.readTools, ...libraryTools, ...(save ? [save.tool] : []), requestInteractionTool];
+        const knowledgeTools = options.knowledge
+            ? createKnowledgeTools(options.knowledge)
+            : [];
+        const planningTools = [...options.readTools, ...libraryTools, ...knowledgeTools, execution.tool, requestInteractionTool];
+        const terminalTools = [...options.readTools, ...libraryTools, ...knowledgeTools, ...(save ? [save.tool] : []), requestInteractionTool];
 
         const recoveryContext = (): RecoveryContext => ({
             budget: budgetStore,
@@ -757,6 +767,7 @@ export const createProgramFirstAgentRunner = (
                     execution,
                     planningTools,
                     terminalTools,
+                    knowledgeTools,
                     request,
                     recoveryContext,
                 ),
@@ -779,6 +790,7 @@ export const createProgramFirstAgentRunner = (
                 execution,
                 planningTools,
                 terminalTools,
+                knowledgeTools,
                 request,
                 recoveryContext,
             ),

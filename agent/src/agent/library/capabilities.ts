@@ -15,13 +15,13 @@ export const capabilitiesFor = (kind: LibraryAssetKind): AssetCapabilities => {
         return Object.freeze({...EMPTY, agentDiscovery: true});
     }
     if (kind === 'procedure') {
-        return Object.freeze({...EMPTY, callableFromDsl: true});
+        return Object.freeze({...EMPTY, callableFromDsl: true, agentDiscovery: true, modelLoadSeam: true});
     }
     if (kind === 'recovery') {
-        return Object.freeze({...EMPTY, runnerRecovery: true});
+        return Object.freeze({...EMPTY, agentDiscovery: true, runnerRecovery: true});
     }
     if (kind === 'demonstration') {
-        return Object.freeze({...EMPTY, replayable: true});
+        return Object.freeze({...EMPTY, agentDiscovery: true, replayable: true});
     }
-    return Object.freeze({...EMPTY, runtimeApplied: true});
+    return Object.freeze({...EMPTY, runtimeApplied: true, agentDiscovery: true, modelLoadSeam: true});
 };
