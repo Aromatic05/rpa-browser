@@ -1,16 +1,20 @@
 import type {AgentExecutionMode, AgentRunRequest} from '../execution/types';
-import type {InteractionRecord} from '../interaction/contracts';
+import type {GuidanceMode, InteractionRecord} from '../interaction/contracts';
+import type {LibraryAssetSummary} from '../library/contracts';
 import type {SessionManager} from '../service/session/manager';
 import {promptSummaryFrom, projectAgentTaskView} from './projection';
 import {createProductEventLog, type ProductEventSink} from './events';
+import {librarySummaryFrom} from './library';
 import {decodeInteractionToken} from './token';
 import type {
     AgentTaskView,
     ProductAnswerInput,
     ProductApproveInput,
+    ProductBeginAuthoringInput,
     ProductBeginGuidanceInput,
     ProductChooseRecoveryInput,
     ProductDenyInput,
+    ProductEndAuthoringInput,
     ProductEventsResponse,
     ProductReturnControlInput,
     ProductStartTaskInput,
@@ -20,6 +24,20 @@ import type {
 } from './types';
 
 export const PRODUCT_USER_ACTOR = 'product-user';
+
+const ASSET_REF_KINDS = new Set(['procedure', 'recovery', 'demonstration', 'page_knowledge', 'automation']);
+
+/** Parses the bounded `kind:name` saved-asset reference the extension supplies
+ *  on return-control. Anything unknown degrades to a coarse, still-sanitized
+ *  `asset` kind; raw payloads never pass through. */
+const parseSavedReference = (savedReference: string): {kind: string; name?: string} => {
+    const separator = savedReference.indexOf(':');
+    if (separator <= 0) {return {kind: 'asset'};}
+    const kind = savedReference.slice(0, separator);
+    const name = savedReference.slice(separator + 1).trim();
+    if (!ASSET_REF_KINDS.has(kind) || name.length === 0 || name.length > 120) {return {kind: 'asset'};}
+    return {kind, name};
+};
 
 export class ProductCommandError extends Error {
     readonly code: string;
@@ -34,7 +52,9 @@ export type ProductControllerOptions = Readonly<{
     manager: SessionManager;
     workspace: string;
     defaults?: Readonly<{provider: string; model: string; executionMode?: AgentExecutionMode}>;
-    library?: () => WorkspaceLibrarySummary;
+    /** Real committed Library summaries; projected through the bounded product
+     *  adapter. When absent, the Library endpoint truthfully reports unavailable. */
+    library?: () => Promise<ReadonlyArray<LibraryAssetSummary>>;
     now?: () => number;
 }>;
 
@@ -55,6 +75,9 @@ export type ProductController = Readonly<{
     chooseRecoveryTask: (input: ProductChooseRecoveryInput) => Promise<AgentTaskView | null>;
     beginGuidanceTask: (input: ProductBeginGuidanceInput) => AgentTaskView | null;
     returnControlTask: (input: ProductReturnControlInput) => Promise<AgentTaskView | null>;
+    beginAuthoring: (input: ProductBeginAuthoringInput) => WorkspaceProductView;
+    endAuthoring: (input: ProductEndAuthoringInput) => WorkspaceProductView;
+    librarySummary: () => Promise<WorkspaceLibrarySummary | null>;
     events: (taskId: string, afterSeq: number) => ProductEventsResponse;
 }>;
 
@@ -80,6 +103,23 @@ const resolvedDecisionSummary = (record: {kind: string; decision: InteractionRec
     if (decision?.kind === 'expire') {return 'Expired';}
     return 'Resolved';
 };
+
+const guidanceCompletedEvent = (
+    mode: GuidanceMode,
+    savedReference: string | undefined,
+): Parameters<ProductEventSink['append']>[1] => {
+    if (savedReference === undefined) {return {kind: 'human_guidance_completed', mode};}
+    const parsed = parseSavedReference(savedReference);
+    return {
+        kind: 'human_guidance_completed',
+        mode,
+        savedAssetKind: parsed.kind,
+        ...(parsed.name === undefined ? {} : {savedAssetRef: parsed.name}),
+    };
+};
+
+const isStandaloneOwner = (owner: string): boolean =>
+    owner === 'standalone_teach' || owner === 'standalone_annotate';
 
 export const createProductController = (options: ProductControllerOptions): ProductController => {
     const manager = options.manager;
@@ -110,6 +150,23 @@ export const createProductController = (options: ProductControllerOptions): Prod
         return created;
     };
 
+    const appendGuidanceStarted = (
+        taskId: string,
+        record: {payload: InteractionRecord['payload']},
+    ): void => {
+        const reservationNow = manager.activityReservation();
+        const activeMode: GuidanceMode = reservationNow.owner === 'task'
+            && reservationNow.ownerTaskId === taskId
+            && reservationNow.humanControl !== 'none'
+            ? reservationNow.humanControl
+            : 'manual';
+        events.append(taskId, {
+            kind: 'human_guidance_started',
+            mode: activeMode,
+            purpose: record.payload.kind === 'takeover' ? record.payload.reason : 'human guidance',
+        });
+    };
+
     const sync = (): void => {
         manager.expireStale();
         manager.sweepOrphans();
@@ -137,6 +194,9 @@ export const createProductController = (options: ProductControllerOptions): Prod
                             deadlineAt: record.deadlineAt,
                         });
                         if (record.kind === 'takeover') {
+                            if (record.stage === 'active') {
+                                appendGuidanceStarted(taskId, record);
+                            }
                             tracker.guidance.set(record.id, record.stage === 'active' ? 'active' : 'offered');
                         }
                     } else {
@@ -147,17 +207,20 @@ export const createProductController = (options: ProductControllerOptions): Prod
                             deadlineAt: record.deadlineAt,
                         });
                         if (record.decision?.kind === 'returnControl') {
-                            events.append(taskId, {kind: 'human_guidance_started', mode: 'manual', purpose: 'human guidance'});
+                            events.append(taskId, {
+                                kind: 'human_guidance_started',
+                                mode: record.decision.mode,
+                                purpose: 'human guidance',
+                            });
                             events.append(taskId, {
                                 kind: 'interaction_resolved',
                                 interactionKind: record.kind,
                                 decisionSummary: resolvedDecisionSummary(record),
                             });
-                            events.append(taskId, {
-                                kind: 'human_guidance_completed',
-                                mode: record.decision.mode,
-                                ...(record.decision.savedReference === undefined ? {} : {savedAssetKind: 'asset'}),
-                            });
+                            events.append(taskId, guidanceCompletedEvent(
+                                record.decision.mode,
+                                record.decision.savedReference,
+                            ));
                         } else {
                             events.append(taskId, {
                                 kind: 'interaction_resolved',
@@ -172,11 +235,7 @@ export const createProductController = (options: ProductControllerOptions): Prod
                         && record.stage === 'active'
                         && tracker.guidance.get(record.id) !== 'active'
                     ) {
-                        events.append(taskId, {
-                            kind: 'human_guidance_started',
-                            mode: 'manual',
-                            purpose: record.payload.kind === 'takeover' ? record.payload.reason : 'human guidance',
-                        });
+                        appendGuidanceStarted(taskId, record);
                         tracker.guidance.set(record.id, 'active');
                     }
                 } else if (previous !== record.status) {
@@ -186,11 +245,10 @@ export const createProductController = (options: ProductControllerOptions): Prod
                             interactionKind: record.kind,
                             decisionSummary: resolvedDecisionSummary(record),
                         });
-                        events.append(taskId, {
-                            kind: 'human_guidance_completed',
-                            mode: record.decision.mode,
-                            ...(record.decision.savedReference === undefined ? {} : {savedAssetKind: 'asset'}),
-                        });
+                        events.append(taskId, guidanceCompletedEvent(
+                            record.decision.mode,
+                            record.decision.savedReference,
+                        ));
                     } else {
                         events.append(taskId, {
                             kind: 'interaction_resolved',
@@ -268,24 +326,26 @@ export const createProductController = (options: ProductControllerOptions): Prod
         };
     };
 
+    const workspaceView = (): WorkspaceProductView => {
+        sync();
+        const reservation = manager.activityReservation();
+        const activeView = reservation.owner === 'task' && reservation.ownerTaskId !== undefined
+            ? viewFor(reservation.ownerTaskId)
+            : undefined;
+        return Object.freeze({
+            workspace: options.workspace,
+            reservation: {
+                owner: reservation.owner,
+                ...(reservation.ownerTaskId === undefined ? {} : {ownerTaskId: reservation.ownerTaskId}),
+                ...(reservation.teachKind === undefined ? {} : {teachKind: reservation.teachKind}),
+                humanControl: reservation.humanControl,
+            },
+            ...(activeView ? {activeTask: activeView} : {}),
+        });
+    };
+
     return {
-        workspaceView: () => {
-            sync();
-            const reservation = manager.activityReservation();
-            const activeView = reservation.owner === 'task' && reservation.ownerTaskId !== undefined
-                ? viewFor(reservation.ownerTaskId)
-                : undefined;
-            return Object.freeze({
-                workspace: options.workspace,
-                reservation: {
-                    owner: reservation.owner,
-                    ...(reservation.ownerTaskId === undefined ? {} : {ownerTaskId: reservation.ownerTaskId}),
-                    humanControl: reservation.humanControl,
-                },
-                ...(activeView ? {activeTask: activeView} : {}),
-                ...(options.library ? {librarySummary: options.library()} : {}),
-            });
-        },
+        workspaceView,
         startTask: (input) => {
             if (input.prompt.trim().length === 0) {
                 throw new ProductCommandError('ERR_BAD_ARGS', 'prompt must not be empty');
@@ -376,6 +436,36 @@ export const createProductController = (options: ProductControllerOptions): Prod
             if (!decided) {return null;}
             sync();
             return viewFor(input.taskId);
+        },
+        beginAuthoring: (input) => {
+            const owner = input.activity === 'teach'
+                ? {kind: 'standalone_teach' as const, teachKind: input.teachKind}
+                : {kind: 'standalone_annotate' as const};
+            const acquired = manager.activityAcquire(owner);
+            if (!acquired.ok) {
+                throw new ProductCommandError(
+                    'ERR_ACTIVITY_CONFLICT',
+                    'the workspace is already owned by another activity; standalone authoring was not started',
+                );
+            }
+            return workspaceView();
+        },
+        endAuthoring: () => {
+            const current = manager.activityReservation();
+            if (isStandaloneOwner(current.owner)) {
+                // Reservation release matches on the owner kind; the recorded
+                // teachKind is descriptive, not an ownership identity. A
+                // Task-owned reservation is never released through here.
+                const owner = current.owner === 'standalone_teach'
+                    ? {kind: 'standalone_teach' as const, teachKind: 'demonstration' as const}
+                    : {kind: 'standalone_annotate' as const};
+                manager.activityRelease(owner);
+            }
+            return workspaceView();
+        },
+        librarySummary: async () => {
+            if (!options.library) {return null;}
+            return librarySummaryFrom(await options.library());
         },
         events: (taskId, afterSeq) => {
             sync();

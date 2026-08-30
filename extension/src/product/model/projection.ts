@@ -13,9 +13,10 @@ import type {
     WorkspaceProductView,
 } from './contracts.js';
 import { deriveTitle, sanitizeActivityEvent } from './sanitize.js';
-import { sanitizeWorkspaceView } from './sanitizeWorkspace.js';
+import { sanitizeReservationTeachKind, sanitizeReservationValue, sanitizeWorkspaceView } from './sanitizeWorkspace.js';
 
 export { deriveTitle, sanitizeActivityEvent, sanitizeWorkspaceView };
+export { sanitizeReservationValue, sanitizeReservationTeachKind };
 
 /** Coarse relative time label used by the timeline and history lists. */
 export const relativeTimeLabel = (at: number, now: number): string => {

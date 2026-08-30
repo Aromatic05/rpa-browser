@@ -24,6 +24,7 @@ import {
     isRecoveryKind,
     isRecord,
     isStatus,
+    isTeachKind,
 } from './guards.js';
 
 /** First non-empty line of the prompt, truncated to 64 chars with a trailing ellipsis (spec §5). */
@@ -47,6 +48,24 @@ const fallbackGuidanceSummary = (mode: GuidanceMode): string => {
         return 'Teaching finished';
     }
     return 'Annotation finished';
+};
+
+const ASSET_LABELS: Record<string, string> = {
+    procedure: 'Procedure',
+    recovery: 'Recovery',
+    demonstration: 'Demonstration',
+    page_knowledge: 'Page Knowledge',
+    automation: 'Automation',
+    asset: 'an asset',
+};
+
+const guidanceCompletedSummary = (base: string, kind?: string, ref?: string): string => {
+    if (!kind) {
+        return base;
+    }
+    const label = ASSET_LABELS[kind] ?? 'an asset';
+    const sanitizedRef = ref && ref.length <= 120 && !/[[\]{}<>`"'\\]/u.test(ref) ? ref : undefined;
+    return sanitizedRef ? `${base} · saved ${label} “${sanitizedRef}”` : `${base} · saved ${label}`;
 };
 
 const activitySummaryOf = (kind: string | undefined, item: Record<string, unknown>): string | undefined =>
@@ -84,8 +103,17 @@ export const sanitizeActivityEvent = (raw: unknown): ActivityEvent | null => {
         return { kind: 'human_guidance_started', mode: raw.mode, summary, at };
     }
     if (kind === 'human_guidance_completed' && isGuidanceMode(raw.mode)) {
-        const summary = activitySummaryOf(kind, raw) ?? fallbackGuidanceSummary(raw.mode);
-        return { kind: 'human_guidance_completed', mode: raw.mode, summary, at };
+        const base = activitySummaryOf(kind, raw) ?? fallbackGuidanceSummary(raw.mode);
+        const assetKind = asNonEmptyString(raw.savedAssetKind);
+        const assetRef = asNonEmptyString(raw.savedAssetRef);
+        return {
+            kind: 'human_guidance_completed',
+            mode: raw.mode,
+            summary: guidanceCompletedSummary(base, assetKind, assetRef),
+            ...(assetKind ? { savedAssetKind: assetKind } : {}),
+            ...(assetRef ? { savedAssetRef: assetRef } : {}),
+            at,
+        };
     }
     if (kind === 'effect_applied') {
         const status = raw.status;
@@ -262,6 +290,7 @@ const sanitizeInteraction = (raw: unknown): InteractionRequest | null => {
             guidanceModes,
             stage: raw.stage === 'active' ? 'active' : raw.stage === 'offered' ? 'offered' : undefined,
             activeMode: isGuidanceMode(raw.activeMode) ? raw.activeMode : undefined,
+            teachKind: isTeachKind(raw.teachKind) ? raw.teachKind : undefined,
         };
     }
     return null;

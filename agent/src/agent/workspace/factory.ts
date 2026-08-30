@@ -11,6 +11,7 @@ import type {CredentialResolver} from '../../security/credentials';
 import {createAgentControl} from '../service/control';
 import {createWorkspaceAgentService} from '../service/runtime';
 import type {AgentServiceSecurityOptions} from '../service/security/contracts';
+import {createWorkspaceLibrary} from '../library';
 import {
     createWorkspaceAgentReadTools,
     createWorkspaceAgentTools,
@@ -77,6 +78,10 @@ export const createWorkspaceAgentFactory = (
         program: programRunner,
         defaultMode: 'program',
     });
+    const workspaceLibrary = createWorkspaceLibrary({
+        workspaceName: deps.workspaceName,
+        deps: deps.runStepsDeps,
+    });
     const service = createWorkspaceAgentService({
         workspaceName: deps.workspaceName,
         portAllocator: deps.portAllocator,
@@ -89,6 +94,7 @@ export const createWorkspaceAgentFactory = (
         fixedPort: options.service && options.service.port > 0 ? options.service.port : undefined,
         retention: options.retention,
         interaction: options.interaction,
+        productLibrary: () => workspaceLibrary.list(),
         log: (...args) => { getLogger('infra').info('[RPA:agent]', ...args); },
     });
     return {

@@ -7,12 +7,14 @@ import type {
     AutomationSummary,
     BusinessArea,
     DemonstrationSummary,
+    LibraryHealth,
     LibrarySummary,
     PageKnowledgeSummary,
     ProcedureSummary,
     RecoverySummary,
     StartError,
     TaskHistoryEntry,
+    TeachKind,
     TeachView,
     WorkspaceProductView,
 } from './contracts.js';
@@ -24,6 +26,7 @@ import {
     asStringArray,
     isAnnotateStage,
     isConnection,
+    isLibraryHealth,
     isOutcome,
     isRecord,
     isReservation,
@@ -47,7 +50,7 @@ const RESERVATION_OWNER: Record<string, WorkspaceProductView['reservation']> = {
  * flattened enumeration; `none` maps to `idle`. Unknown owners settle to the
  * neutral idle baseline and never fabricate an active activity.
  */
-const sanitizeReservation = (raw: unknown): WorkspaceProductView['reservation'] => {
+export const sanitizeReservationValue = (raw: unknown): WorkspaceProductView['reservation'] => {
     if (typeof raw === 'string') {
         return isReservation(raw) ? raw : 'idle';
     }
@@ -58,6 +61,13 @@ const sanitizeReservation = (raw: unknown): WorkspaceProductView['reservation'] 
         }
     }
     return 'idle';
+};
+
+export const sanitizeReservationTeachKind = (raw: unknown): TeachKind | undefined => {
+    if (isRecord(raw) && isTeachKind(raw.teachKind)) {
+        return raw.teachKind;
+    }
+    return undefined;
 };
 
 const sanitizeTeachReview = (raw: unknown): TeachView['review'] | undefined => {
@@ -88,7 +98,12 @@ const sanitizeBusinessAreas = (raw: unknown): BusinessArea[] => {
         if (!profileName || !label) {
             return [];
         }
-        return [{ profileName, label, entityCount: asNumber(item.entityCount) ?? 0 }];
+        return [{
+            profileName,
+            label,
+            entityCount: asNumber(item.entityCount) ?? 0,
+            selector: asNonEmptyString(item.selector),
+        }];
     });
 };
 
@@ -108,6 +123,7 @@ const sanitizeTeachView = (raw: unknown): TeachView | undefined => {
         businessAreas: sanitizeBusinessAreas(raw.businessAreas),
         selectedBusinessArea: asNonEmptyString(raw.selectedBusinessArea),
         unsavedAsset: asBoolean(raw.unsavedAsset) ?? false,
+        interrupted: asBoolean(raw.interrupted),
         review: sanitizeTeachReview(raw.review),
     };
 };
@@ -120,7 +136,8 @@ const sanitizeSavedSummary = (raw: unknown): AnnotateView['savedSummary'] | unde
     if (!profileName) {
         return undefined;
     }
-    return { profileName, entityCount: asNumber(raw.entityCount) ?? 0 };
+    const entityCount = asNumber(raw.entityCount);
+    return { profileName, ...(entityCount === undefined ? {} : { entityCount }) };
 };
 
 const sanitizeAnnotateView = (raw: unknown): AnnotateView | undefined => {
@@ -129,6 +146,7 @@ const sanitizeAnnotateView = (raw: unknown): AnnotateView | undefined => {
     }
     return {
         active: asBoolean(raw.active) ?? false,
+        canvasOpen: asBoolean(raw.canvasOpen) ?? false,
         stage: isAnnotateStage(raw.stage) ? raw.stage : undefined,
         dirty: asBoolean(raw.dirty) ?? false,
         savedSummary: sanitizeSavedSummary(raw.savedSummary),
@@ -147,6 +165,9 @@ const sanitizeAuthoring = (raw: unknown): WorkspaceProductView['authoring'] => {
     return { ...(teach ? { teach } : {}), ...(annotate ? { annotate } : {}) };
 };
 
+const sanitizeHealth = (raw: unknown): LibraryHealth | undefined =>
+    isLibraryHealth(raw) ? raw : undefined;
+
 const sanitizeAutomations = (raw: unknown): AutomationSummary[] => {
     if (!Array.isArray(raw)) {
         return [];
@@ -159,11 +180,11 @@ const sanitizeAutomations = (raw: unknown): AutomationSummary[] => {
         if (!name) {
             return [];
         }
-        return [{ name, description: asString(item.description), status: asString(item.status) }];
+        return [{ name, description: asString(item.description), status: asString(item.status), health: sanitizeHealth(item.health) }];
     });
 };
 
-const sanitizeNames = (raw: unknown): string[] => {
+const sanitizeNames = (raw: unknown): Array<{ name: string; health?: LibraryHealth }> => {
     if (!Array.isArray(raw)) {
         return [];
     }
@@ -172,13 +193,17 @@ const sanitizeNames = (raw: unknown): string[] => {
             return [];
         }
         const name = asNonEmptyString(item.name);
-        return name ? [name] : [];
+        if (!name) {
+            return [];
+        }
+        const health = sanitizeHealth(item.health);
+        return [{ name, ...(health ? { health } : {}) }];
     });
 };
 
-const sanitizeProcedures = (raw: unknown): ProcedureSummary[] => sanitizeNames(raw).map((name) => ({ name }));
+const sanitizeProcedures = (raw: unknown): ProcedureSummary[] => sanitizeNames(raw);
 
-const sanitizeRecoveries = (raw: unknown): RecoverySummary[] => sanitizeNames(raw).map((name) => ({ name }));
+const sanitizeRecoveries = (raw: unknown): RecoverySummary[] => sanitizeNames(raw);
 
 const sanitizeDemonstrations = (raw: unknown): DemonstrationSummary[] => {
     if (!Array.isArray(raw)) {
@@ -192,7 +217,7 @@ const sanitizeDemonstrations = (raw: unknown): DemonstrationSummary[] => {
         if (!name) {
             return [];
         }
-        return [{ name, stepCount: asNumber(item.stepCount) ?? 0 }];
+        return [{ name, stepCount: asNumber(item.stepCount) ?? 0, health: sanitizeHealth(item.health) }];
     });
 };
 
@@ -216,6 +241,7 @@ const sanitizePageKnowledge = (raw: unknown): PageKnowledgeSummary[] => {
                 pageKind: asString(item.pageKind),
                 urlPattern: asString(item.urlPattern),
                 entityCount: asNumber(item.entityCount) ?? 0,
+                health: sanitizeHealth(item.health),
             },
         ];
     });
@@ -273,11 +299,13 @@ export const sanitizeWorkspaceView = (raw: unknown): WorkspaceProductView => {
     const activeTask = sanitizeTaskView(record.activeTask);
     return {
         workspace: asNonEmptyString(record.workspace) ?? '',
-        reservation: sanitizeReservation(record.reservation),
+        reservation: sanitizeReservationValue(record.reservation),
+        reservationTeachKind: sanitizeReservationTeachKind(record.reservation),
         connection: isConnection(record.connection) ? record.connection : 'connected',
         activeTask: activeTask ?? undefined,
         authoring,
         librarySummary: sanitizeLibrary(record.librarySummary),
+        libraryUnavailable: asBoolean(record.libraryUnavailable) ?? undefined,
         history: sanitizeHistory(record.history),
         startError: sanitizeStartError(record.startError),
         reconnectAttempts: asNumber(record.reconnectAttempts),

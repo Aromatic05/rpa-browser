@@ -6,6 +6,7 @@
 import type {
     AnnotateStage,
     GuidanceMode,
+    LibraryHealth,
     RecoveryOption,
     StartErrorKind,
     TeachKind,
@@ -92,6 +93,10 @@ export const isTeachPhase = (value: unknown): value is TeachPhase =>
 const ANNOTATE_STAGES: ReadonlyArray<AnnotateStage> = ['scope', 'recognize', 'review', 'edit'];
 export const isAnnotateStage = (value: unknown): value is AnnotateStage =>
     typeof value === 'string' && ANNOTATE_STAGES.some((stage) => stage === value);
+
+const LIBRARY_HEALTHS: ReadonlyArray<LibraryHealth> = ['ready', 'needs_review', 'broken', 'unknown'];
+export const isLibraryHealth = (value: unknown): value is LibraryHealth =>
+    typeof value === 'string' && LIBRARY_HEALTHS.some((health) => health === value);
 
 const START_ERROR_KINDS: ReadonlyArray<StartErrorKind> = ['service', 'auth', 'workspace'];
 export const isStartErrorKind = (value: unknown): value is StartErrorKind =>

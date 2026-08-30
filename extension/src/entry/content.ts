@@ -191,18 +191,31 @@ const loadAnnotatorSessionController = (() => {
     };
 })();
 
+type ProductAuthoringNoticeShape = {
+    type: string;
+    ok: boolean;
+    payload?: Record<string, unknown>;
+    reply?: Record<string, unknown>;
+};
+
+type ProductMountHandleShape = {
+    refresh: () => Promise<void>;
+    onPageChanged: () => void;
+    setWorkspace: (workspaceName: string) => void;
+    unmount: () => void;
+    noteAuthoringAction: (notice: ProductAuthoringNoticeShape) => void;
+    noteAnnotateCanvas: (open: boolean) => void;
+};
+
 type ProductMountExports = {
     mountProductFromContent: (opts: {
         workspaceName: string;
         now?: () => number;
         dispatchAction: (type: string, payload?: Record<string, unknown>) => Promise<unknown>;
-        openAnnotator?: (profileName?: string) => void;
-    }) => {
-        refresh: () => Promise<void>;
-        onPageChanged: () => void;
-        setWorkspace: (workspaceName: string) => void;
-        unmount: () => void;
-    };
+        openAnnotator?: (profileName?: string) => Promise<boolean> | boolean;
+        closeAnnotator?: () => void;
+        previewCheckpointEntityRule?: (selection: EntityRuleSelection | null) => void | Promise<void>;
+    }) => ProductMountHandleShape;
 };
 
 const loadProductMount = (() => {
@@ -415,6 +428,30 @@ const isProductDevMode = async (): Promise<boolean> => {
         };
 
         let annotatorSessions: AnnotatorSessionController | null = null;
+        let productHandleRef: ProductMountHandleShape | null = null;
+        const notifyAnnotatorAction = (
+            type: string,
+            payload: Record<string, unknown> | undefined,
+            reply: unknown,
+        ): void => {
+            if (!type.startsWith('entity_rules.annotator.')) {return;}
+            const action = isRecord(reply) ? reply : null;
+            const failed = Boolean(action && typeof action.type === 'string' && action.type.endsWith('.failed'));
+            productHandleRef?.noteAuthoringAction({
+                type,
+                ok: !failed,
+                ...(payload ? {payload} : {}),
+                ...(action && isRecord(action.payload) ? {reply: action.payload} : {}),
+            });
+        };
+        const dispatchAnnotatorObserved = async (
+            type: string,
+            payload?: Record<string, unknown>,
+        ): Promise<unknown> => {
+            const reply = await dispatchAnnotator(type, payload);
+            notifyAnnotatorAction(type, payload, reply);
+            return reply;
+        };
 
         const ensureAnnotatorHandle = async (): Promise<AnnotatorHandle | null> => {
             if (annotatorHandle) {return annotatorHandle;}
@@ -429,7 +466,7 @@ const isProductDevMode = async (): Promise<boolean> => {
                         onRedo: () => undefined,
                         onCheck: () => undefined,
                         onSave: () => undefined,
-                        dispatch: (type, payload) => dispatchAnnotator(type, payload),
+                        dispatch: (type, payload) => dispatchAnnotatorObserved(type, payload),
                         onDebugState: (detail) => uiHandle?.setAnnotatorDebugState(detail),
                     },
                     document,
@@ -443,13 +480,14 @@ const isProductDevMode = async (): Promise<boolean> => {
         const {createAnnotatorSessionController} = await loadAnnotatorSessionController();
         const annotatorSessionController = createAnnotatorSessionController({
             ensureHandle: ensureAnnotatorHandle,
-            open: async (payload) => await dispatchAnnotator(
+            open: async (payload) => await dispatchAnnotatorObserved(
                 'entity_rules.annotator.open',
                 {annotatorProtocol: 'canvas-v1', ...payload},
             ) as ActionShape,
             pageUrl: () => location.href,
             onEditorActiveChange: (active) => {
                 setAnnotatorLauncherVisible(!active);
+                productHandleRef?.noteAnnotateCanvas(active);
             },
             onError: (owner, error) => {
                 console.error(`[rpa] annotator session failed (${owner}):`, error);
@@ -504,10 +542,15 @@ const isProductDevMode = async (): Promise<boolean> => {
             const productHandle = mountProductFromContent({
                 workspaceName,
                 dispatchAction: (type, payload) => dispatchAnnotator(type, payload),
-                openAnnotator: (profileName) => {
-                    void annotatorSessionController.openEditor(profileName);
+                openAnnotator: (profileName) => annotatorSessionController.openEditor(profileName),
+                closeAnnotator: () => {
+                    annotatorSessionController.close('editor');
+                },
+                previewCheckpointEntityRule: (selection) => {
+                    void annotatorSessionController.previewCheckpoint(selection);
                 },
             });
+            productHandleRef = productHandle;
             uiHandle = {
                 scheduleRefresh: () => {
                     void productHandle.refresh();

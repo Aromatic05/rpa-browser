@@ -294,7 +294,7 @@ export const mountProductUI = (opts: ProductUIOptions): ProductUIHandle => {
         const dot = el('span', 'rpa-launcher-dot');
         const waiting = interactionWaitingKind(state.view);
         const teaching = state.view.authoring?.teach?.phase === 'recording';
-        const annotating = state.view.authoring?.annotate?.active === true;
+        const annotating = state.view.authoring?.annotate?.canvasOpen === true;
         let ariaLabel = 'Open Agent';
         if (state.view.connection === 'disconnected') {
             dot.classList.add('rpa-launcher-dot--disconnected');

@@ -227,7 +227,7 @@ export const libraryView = (reservation: WorkspaceProductView['reservation'] = '
     ...(reservation === 'task' ? { activeTask: runningTask() } : {}),
     librarySummary: {
         automations: [{ name: 'Submit weekly report', description: 'Generates and sends the weekly report.' }],
-        procedures: [{ name: 'Ensure login' }],
+        procedures: [{ name: 'Ensure login', health: 'needs_review' }],
         recoveries: [{ name: 'Renew session' }],
         demonstrations: [{ name: 'New vendor onboarding', stepCount: 12 }],
         pageKnowledge: [
