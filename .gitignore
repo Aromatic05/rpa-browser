@@ -17,8 +17,9 @@ agent/playwright-report
 agent/.rpa
 agent/.artifacts
 agent/.runner-dist
+agent/.dist
 agent/.runner-hot
-agent/src/record/capture/payload.bundle.js*
+agent/src/automation/recording/capture/payload.bundle.js*
 .idea/
 
 # local snapshot harvesting datasets (too large for git)

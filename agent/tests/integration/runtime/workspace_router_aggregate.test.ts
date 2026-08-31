@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { createWorkspaceHarness } from '../../helpers/workspace_harness';
-import { createWorkflowOnFs } from '../../../src/workflow';
+import { createWorkflowOnFs } from '../../../src/automation/workflow';
 
 const action = (type: string, extra: Record<string, unknown> = {}) => ({ v: 1 as const, id: crypto.randomUUID(), type, ...extra });
 
@@ -295,7 +295,7 @@ test('RuntimeWorkspace does not have serviceLifecycle', () => {
 
 test('workspace.ts has no null as unknown', () => {
     const src = fs.readFileSync(
-        path.resolve(process.cwd(), 'src/runtime/workspace/workspace.ts'),
+        path.resolve(process.cwd(), 'src/automation/runtime/workspace/workspace.ts'),
         'utf-8',
     );
     assert.equal(src.includes('null as unknown'), false);
@@ -303,7 +303,7 @@ test('workspace.ts has no null as unknown', () => {
 
 test('workspace.ts has no mcp router backfill', () => {
     const src = fs.readFileSync(
-        path.resolve(process.cwd(), 'src/runtime/workspace/workspace.ts'),
+        path.resolve(process.cwd(), 'src/automation/runtime/workspace/workspace.ts'),
         'utf-8',
     );
     assert.equal(src.includes('workspace.mcp ='), false);

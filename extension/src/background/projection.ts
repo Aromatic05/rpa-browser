@@ -1,6 +1,6 @@
 import type { Action } from '../shared/types.js';
 import { ACTION_TYPES } from '../actions/action_types.js';
-import type { RouterState } from '../background/state.js';
+import type { RouterState } from './state.js';
 
 export const projectInboundAction = (action: Action, state: RouterState, onRefresh: () => void): void => {
     if (action.type === ACTION_TYPES.WORKSPACE_SYNC) {return;}

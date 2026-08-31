@@ -6,12 +6,12 @@ import os from 'node:os';
 import test from 'node:test';
 import net from 'node:net';
 
-import {startActionWsClient} from '../../../src/actions/ws_client';
-import {readBrowserProfileOwner} from '../../../src/runtime/browser/cdp_launcher';
+import {startActionWsClient} from '../../../src/automation/runtime/actions/ws_client';
+import {readBrowserProfileOwner} from '../../../src/automation/runtime/browser/cdp_launcher';
 import {
-    buildStartExtensionUrl,
+    buildStartPageUrl,
     resolveInteractiveStartUrl,
-} from '../../../src/runtime/browser/browser_session';
+} from '../../../src/automation/runtime/browser/browser_session';
 
 const reservePort = async (): Promise<number> => await new Promise((resolve, reject) => {
     const server = net.createServer();
@@ -28,7 +28,7 @@ const reservePort = async (): Promise<number> => await new Promise((resolve, rej
     });
 });
 
-test('workspace browser starts through the dedicated start extension', async () => {
+test('workspace browser starts through the main extension newtab surface', async () => {
     const port = await reservePort();
     const server = startActionWsClient({
         port,
@@ -46,7 +46,7 @@ test('workspace browser starts through the dedicated start extension', async () 
         assert.match(response.headers.get('content-type') ?? '', /text\/html/);
         assert.match(await response.text(), /data-rpa-start-page/);
         assert.equal(
-            buildStartExtensionUrl('workspace-a', port),
+            buildStartPageUrl('workspace-a', port),
             `chrome://newtab/?rpaWorkspaceName=workspace-a&rpaWsPort=${String(port)}`,
         );
         assert.equal(

@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {executeBrowserSnapshot} from '../../../../src/runner/steps/executors/snapshot';
-import {executeBrowserGetContent} from '../../../../src/runner/steps/executors/get_content';
-import type {Step} from '../../../../src/runner/steps/types';
+import {executeBrowserSnapshot} from '../../../../src/automation/runner/steps/executors/snapshot';
+import {executeBrowserGetContent} from '../../../../src/automation/runner/steps/executors/get_content';
+import type {Step} from '../../../../src/automation/runner/steps/types';
 import {completeRunStepsDeps} from '../../../helpers/run_steps_workspace';
 import {createV2BusinessPage} from '../../../helpers/v2_business_page';
-import type {PageSnapshotCapture} from '../../../../src/snapshot';
+import type {PageSnapshotCapture} from '../../../../src/automation/snapshot';
 
 const createFixture = async () => {
     const url = {value: 'https://example.test/orders'};

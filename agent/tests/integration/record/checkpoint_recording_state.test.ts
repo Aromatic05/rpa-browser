@@ -9,8 +9,8 @@ import {
     getWorkspaceUnsavedRecordingBundle,
     resetWorkspaceUnsavedRecording,
     startCheckpointRecording,
-} from '../../../src/record/recording';
-import type {StepUnion} from '../../../src/runner/steps/types';
+} from '../../../src/automation/recording/recording';
+import type {StepUnion} from '../../../src/automation/runner/steps/types';
 
 const snapshotPort = {
     markDirty: () => undefined,
@@ -55,9 +55,9 @@ test('canceling checkpoint recording removes only its isolated buffer', () => {
     assert.deepEqual(getWorkspaceUnsavedRecordingBundle(state, 'ws-1').steps.map((step) => step.id), ['ordinary']);
 });
 
-import {createRecordControl} from '../../../src/record/control';
-import type {Action} from '../../../src/actions/action_protocol';
-import type {WorkflowArtifact, WorkflowCheckpoint, WorkflowEntityRules} from '../../../src/workflow';
+import {createRecordControl} from '../../../src/automation/recording/control';
+import type {Action} from '../../../src/interface/actions/action_protocol';
+import type {WorkflowArtifact, WorkflowCheckpoint, WorkflowEntityRules} from '../../../src/automation/workflow';
 
 const checkpointSaveAction = (payload: Record<string, unknown>): Action => ({
     v: 1,

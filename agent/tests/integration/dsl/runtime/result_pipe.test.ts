@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createResultPipe, pushResultPipe, readResultPipe, waitForResultPipe } from '../../../../src/runner/run_steps';
+import { createResultPipe, pushResultPipe, readResultPipe, waitForResultPipe } from '../../../../src/automation/runner/run_steps';
 
 test('waitForResultPipe resolves after push', async () => {
     const pipe = createResultPipe();

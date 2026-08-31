@@ -103,7 +103,16 @@ const selectedAnnotation = computed((): CanvasAnnotationDraft | null => {
         }
         for (const columnAction of entity.columns.flatMap((column) => column.actions)) {
             if (columnAction.id === props.selectedAnnotationId) {
-                return {id: columnAction.id, type: 'action', name: columnAction.text, businessKey: columnAction.actionIntent, target: columnAction.target, origin: columnAction.origin, disposition: columnAction.disposition};
+                return {
+                    id: columnAction.id,
+                    type: 'action',
+                    name: columnAction.text,
+                    businessKey: columnAction.actionIntent,
+                    target: columnAction.target,
+                    origin: columnAction.origin,
+                    disposition: columnAction.disposition,
+                    ...(columnAction.effect ? {effect: {...columnAction.effect}} : {}),
+                };
             }
         }
         if (props.selectedAnnotationId === paginationPageVisualId(entity.id) && entity.pagination) {

@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createDslControl } from '../../../src/dsl/control';
-import { ActionError, toFailedAction } from '../../../src/actions/results';
-import { DslValidationError } from '../../../src/dsl/diagnostics';
+import { createDslControl } from '../../../src/automation/dsl/control';
+import { ActionError, toFailedAction } from '../../../src/interface/actions/results';
+import { DslValidationError } from '../../../src/program/dsl/diagnostics';
 import { completeRunStepsDeps } from '../../helpers/run_steps_workspace';
-import type { StepUnion } from '../../../src/runner/steps/types';
-import type { EntityRuleExportIndex } from '../../../src/workflow';
+import type { StepUnion } from '../../../src/automation/runner/steps/types';
+import type { EntityRuleExportIndex } from '../../../src/automation/workflow';
 
 const exportIndex: EntityRuleExportIndex = {
     profileName: 'orders',
@@ -34,7 +34,26 @@ const createEntityRulesProvider = () => ({
     availability: 'ready' as const,
     workflowName: 'ws-dsl-control',
     listProfiles: () => ['orders'],
-    getProfile: () => ({} as any),
+    getProfile: (name: string) => name === 'orders' ? ({
+        kind: 'entity_rules',
+        name,
+        page: {kind: 'table'},
+        match: {version: 2, rules: [
+            {ruleId: 'root', source: 'region', expect: 'unique', match: {kind: 'table'}},
+            {ruleId: 'edit', source: 'node', expect: 'one_or_more', within: 'root', match: {textContains: 'Edit'}},
+        ]},
+        annotation: {version: 2, bindings: [
+            {
+                ruleId: 'root',
+                entityKey: 'orderList',
+                businessTag: 'orders',
+                entityKind: 'table',
+                primaryKey: {fieldKey: 'orderNo', columns: ['orderNo'], source: 'annotation'},
+                columns: [{fieldKey: 'orderNo', name: 'orderNo', kind: 'text'}],
+            },
+            {ruleId: 'edit', actionIntent: 'edit', actionRole: 'row', columnFieldKey: 'operation'},
+        ]},
+    }) : null,
     resolveExports: (profileName: string) => profileName === 'orders'
         ? {profileName, index: exportIndex, diagnostics: []}
         : {
@@ -67,6 +86,7 @@ const createInput = (
         },
         checkpoint: {getProvider: () => options.checkpointProvider ?? ({getCheckpoint: () => null})},
         entityRules: {getProvider: () => createEntityRulesProvider()},
+        browserSession: {start: async () => undefined},
     } as any;
     return (type: string, payload?: Record<string, unknown>) => ({
         action: {
@@ -205,6 +225,7 @@ test('dsl.run freezes the referenced procedure graph before executing earlier DS
             getCheckpointBody: () => ({source: body, stepResolves: {}}),
             listCheckpoints: () => [],
         })},
+        browserSession: {start: async () => undefined},
     } as any;
     const deps = completeRunStepsDeps({
         config: {} as any,

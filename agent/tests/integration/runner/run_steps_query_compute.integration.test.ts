@@ -7,10 +7,10 @@ import {
     createStepsQueue,
     readResultPipe,
     runSteps,
-} from '../../../src/runner/run_steps';
-import {executeBrowserCompute} from '../../../src/runner/steps/executors/compute';
-import {executeBrowserQuery} from '../../../src/runner/steps/executors/query';
-import type {StepUnion} from '../../../src/runner/steps/types';
+} from '../../../src/automation/runner/run_steps';
+import {executeBrowserCompute} from '../../../src/automation/runner/steps/executors/compute';
+import {executeBrowserQuery} from '../../../src/automation/runner/steps/executors/query';
+import type {StepUnion} from '../../../src/automation/runner/steps/types';
 import {completeRunStepsDeps} from '../../helpers/run_steps_workspace';
 import {createV2BusinessPage} from '../../helpers/v2_business_page';
 

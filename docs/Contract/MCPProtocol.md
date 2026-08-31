@@ -2,7 +2,7 @@
 
 ## 概述
 
-MCP 是面向外部程序与 AI 工具调用的 HTTP JSON-RPC 协议层，对应实现在 `agent/src/mcp/server.ts`、`agent/src/mcp_main.ts`、`agent/src/mcp/tool_registry.ts`。MCP 的职责是把工具调用转换成受控的 browser Step 执行，不直接替代 Action 协议或 Control RPC。
+MCP 是面向外部程序与 AI 工具调用的 HTTP JSON-RPC 协议层，对应实现在 `agent/src/interface/mcp/server.ts`、`agent/src/app/entrypoints/mcp.ts`、`agent/src/interface/mcp/tool_registry.ts`。MCP 的职责是把工具调用转换成受控的 browser Step 执行，不直接替代 Action 协议或 Control RPC。
 
 ## 协议入口
 
@@ -103,7 +103,7 @@ AI 不能绕过 MCP 直接调用内部运行时对象。
 
 ## 与 ActionProtocol 的区别
 
-- Action：extension/start_extension/UI 与 agent 的会话协议，强调 `workspaceName/replyTo`。
+- Action：extension（content/newtab）UI 与 agent 的会话协议，强调 `workspaceName/replyTo`。
 - MCP：面向外部工具调用，强调 schema 与工具可发现。
 
 两者共享同一执行内核，但协议层完全不同。

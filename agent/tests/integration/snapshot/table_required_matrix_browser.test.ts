@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {chromium, type Page} from 'playwright';
-import {captureTableSnapshot, type TableComponent, type TableSnapshot} from '../../../src/snapshot';
+import {captureTableSnapshot, type TableComponent, type TableSnapshot} from '../../../src/automation/snapshot';
 
 const capture = async (page: Page, body: string): Promise<TableSnapshot> => {
     await page.setContent(`<!doctype html><html><body>${body}</body></html>`);

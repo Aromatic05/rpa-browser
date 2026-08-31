@@ -1,14 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
-import { classifyActionRoute, isControlAction, isWorkspaceAction } from '../../../src/actions/classify';
+import { classifyActionRoute, isControlAction, isWorkspaceAction } from '../../../src/interface/actions/classify';
 import {
     REQUEST_ACTION_TYPES,
     classifyActionType,
     isRequestActionType,
-} from '../../../src/actions/action_types';
+} from '../../../src/interface/actions/action_types';
 import { createWorkspaceHarness } from '../../helpers/workspace_harness';
-import type { Action } from '../../../src/actions/action_protocol';
+import type { Action } from '../../../src/interface/actions/action_protocol';
 
 const stubAction = (type: string, opts?: { workspaceName?: string; payload?: Record<string, unknown> }): Action => ({
     v: 1,

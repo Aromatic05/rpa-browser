@@ -4,9 +4,10 @@
 
 - `bindingName` 由 extension background 使用 `crypto.randomUUID()` 本地生成，不依赖 agent。
 - extension background 通过 `pushBindingNameToTab` 将 binding name 写入 tab。
-- content 与 start_extension **禁止**直接发送 `tab.opened`。
+- content 与新标签页 **禁止**直接发送 `tab.opened`。
 - `tab.opened` 的唯一发送入口：**extension background**。
-- 页面侧（content/start_extension）只能通过 `RPA_ENSURE_BOUND_TOKEN` 申请已绑定 token。
+- content 只能通过 `RPA_ENSURE_BOUND_TOKEN` 申请 background 已绑定的 token。
+- 主扩展的新标签页通过本地 WS 查询 background 已发布到 agent 的 tab，再发送 `tab.report/tab.ping`；不得自行创建生命周期绑定。
 
 ## 2. 运行时对象
 
@@ -29,6 +30,8 @@
 - 绑定相关：`tab.opened`
 - 生命周期：`tab.report`、`tab.ping`、`tab.activated`、`tab.closed`、`tab.reassign`
 - workspace：`workspace.list`、`workspace.create`、`workspace.setActive`
+
+新标签页是同一主扩展内的独立页面 surface，使用 `chrome.storage.local` 中的 session 配置直接连接本地 WS。它只查询或报告 background 已发布的 tab，不发送 `tab.init/tab.opened`。
 
 ## 4. 绑定流程（硬规则）
 
@@ -65,7 +68,7 @@
 ```mermaid
 flowchart LR
   subgraph PAGE["Page Context"]
-    C["content/start_extension"]
+    C["content/新标签页"]
   end
 
   subgraph BG["Extension Background"]
@@ -80,11 +83,12 @@ flowchart LR
     H["RuntimeWorkspace / router"]
   end
 
-  C -- "RPA_ENSURE_BOUND_TOKEN" --> R
+  C -- "content: RPA_ENSURE_BOUND_TOKEN" --> R
   R --> L
   L -- "RPA_GET_TOKEN / RPA_SET_TOKEN" --> C
   L -- "tab.opened / workspace.list" --> W
-  C -- "ACTION(tab.ping/report/workflow.*)" --> R
+  C -- "content: ACTION(tab.ping/report/workflow.*)" --> R
+  C -- "newtab: tab.list/report/ping/workflow.* via local WS" --> W
   R -- "scoped ACTION" --> W
   W --> P
   W --> H
@@ -142,14 +146,14 @@ flowchart TD
 - `src/background/action.ts`
 - `src/content/token_bridge.ts`
 - `src/entry/content.ts`
-- start_extension
-- `src/entry/newtab.ts`
+- 主扩展新标签页
+- `src/start/newtab.ts`
 - agent
-- `src/index.ts`
-- `src/runtime/workspace/workspace.ts`
-- `src/runtime/workspace/tabs.ts`
-- `src/runtime/workspace/router.ts`
-- `src/runtime/browser/page_registry.ts`
+- `src/app/entrypoints/agent.ts`
+- `src/automation/runtime/workspace/workspace.ts`
+- `src/automation/runtime/workspace/tabs.ts`
+- `src/automation/runtime/workspace/router.ts`
+- `src/automation/runtime/browser/page_registry.ts`
 
 ## 10. 当前运行时边界
 

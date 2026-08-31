@@ -3,6 +3,10 @@ import type { Action } from '../shared/types.js';
 import { ACTION_TYPES } from '../actions/action_types.js';
 import { MSG } from '../shared/protocol.js';
 import type { WsClient } from '../actions/ws_client.js';
+import {
+    productReplyFromAction,
+    type ProductRequest,
+} from '../shared/product_transport.js';
 import { createRouterState, type RouterState } from './state.js';
 import { createLifecycleRuntime } from './life.js';
 import { dispatchActionRequest } from '../actions/dispatcher.js';
@@ -49,6 +53,7 @@ type TypedRuntimeMessage = {
     operation?: unknown;
     key?: unknown;
     value?: unknown;
+    request?: unknown;
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -317,6 +322,34 @@ export const createCmdRouter = (options: CmdRouterOptions): CmdRouter => {
                 sendResponse({ ok: false, error: 'not bound' });
             })().catch((error: unknown) => {
                 sendResponse({ ok: false, error: error instanceof Error ? error.message : String(error) });
+            });
+            return true;
+        }
+
+        if (typedMessage.type === MSG.PRODUCT) {
+            (async () => {
+                const request = typedMessage.request as ProductRequest | undefined;
+                if (!request || typeof request !== 'object' || typeof request.verb !== 'string') {
+                    sendResponse({ ok: false, error: { code: 'bad_args', message: 'invalid product request' } });
+                    return;
+                }
+                const reply = await options.wsClient.sendAction({
+                    v: 1,
+                    id: crypto.randomUUID(),
+                    type: ACTION_TYPES.AGENT_PRODUCT,
+                    workspaceName: options.sessionWorkspaceName,
+                    payload: request,
+                    at: Date.now(),
+                });
+                sendResponse(productReplyFromAction(reply));
+            })().catch((error: unknown) => {
+                sendResponse({
+                    ok: false,
+                    error: {
+                        code: 'unreachable',
+                        message: error instanceof Error ? error.message : String(error),
+                    },
+                });
             });
             return true;
         }

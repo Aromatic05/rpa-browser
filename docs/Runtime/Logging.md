@@ -2,7 +2,7 @@
 
 ## 概述
 
-日志系统位于 `agent/src/logging/logger.ts`，用于统一 Action、record、trace、step、entity、dsl 六类日志输出，并支持 console/file 双通道。
+日志系统位于 `agent/src/platform/logging/logger.ts`，用于统一 Action、record、trace、step、entity、dsl 六类日志输出，并支持 console/file 双通道。
 
 ## 日志类别
 
@@ -81,7 +81,7 @@
 
 ### tab.opened.defer_claim
 
-该事件在 `agent/src/index.ts`，表示 `tab.opened` 到达时 workspace 尚未可直接 claim，进入延迟认领重试流程。需检查窗口映射与 token 绑定先后顺序。
+该事件在 `agent/src/app/entrypoints/agent.ts`，表示 `tab.opened` 到达时 workspace 尚未可直接 claim，进入延迟认领重试流程。需检查窗口映射与 token 绑定先后顺序。
 
 ### checkpoint 失败
 

@@ -1,15 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createRunnerControl} from '../../../src/runner/control';
-import {setRunStepsDeps, type RunStepsDeps, type RunStepsExecutionContext} from '../../../src/runner/run_steps';
-import type {StepResolve, StepResult, StepUnion} from '../../../src/runner/steps/types';
-import type {Checkpoint} from '../../../src/runner/checkpoint';
-import type {Action} from '../../../src/actions/action_protocol';
-import {ActionError, ERROR_CODES} from '../../../src/actions/results';
-import {getRunnerConfig} from '../../../src/config';
+import {createRunnerControl} from '../../../src/automation/runner/control';
+import {setRunStepsDeps, type RunStepsDeps, type RunStepsExecutionContext} from '../../../src/automation/runner/run_steps';
+import type {StepResolve, StepResult, StepUnion} from '../../../src/automation/runner/steps/types';
+import type {Checkpoint} from '../../../src/automation/runner/checkpoint';
+import type {Action} from '../../../src/interface/actions/action_protocol';
+import {ActionError, ERROR_CODES} from '../../../src/interface/actions/results';
+import {getRunnerConfig} from '../../../src/platform/config';
 import {completeRunStepsDeps} from '../../helpers/run_steps_workspace';
-import {executeBrowserCheckpoint} from '../../../src/runner/steps/executors/checkpoint';
-import type {ExecutorFn} from '../../../src/runner/steps/executors';
+import {executeBrowserCheckpoint} from '../../../src/automation/runner/steps/executors/checkpoint';
+import type {ExecutorFn} from '../../../src/automation/runner/steps/executors';
 
 const action = (type: string, payload: Record<string, unknown>): Action => ({
     v: 1,

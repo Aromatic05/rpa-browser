@@ -4,7 +4,7 @@
         "noEmit": true
     },
     "include": [
-        "src/snapshot/**/*.ts",
+        "src/automation/snapshot/**/*.ts",
         "tests/integration/snapshot/**/*.ts",
         "scripts/snapshot_v2_stage1_baseline.ts",
         "scripts/snapshot_v2_stage2_baseline.ts",

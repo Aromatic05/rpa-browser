@@ -1,13 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { BrowserContext, Page } from 'playwright';
-import { createWorkspaceToolHandlers } from '../../../src/mcp/tool_handlers';
-import { createWorkspaceTabs } from '../../../src/runtime/workspace/tabs';
-import type { RuntimeWorkspace } from '../../../src/runtime/workspace/workspace';
-import { runWorkspaceExecution } from '../../../src/runtime/workspace/execution_coordinator';
-import type { StepUnion } from '../../../src/runner/steps/types';
+import { createWorkspaceToolHandlers } from '../../../src/automation/runtime/mcp/tool_handlers';
+import { createWorkspaceTabs } from '../../../src/automation/runtime/workspace/tabs';
+import type { RuntimeWorkspace } from '../../../src/automation/runtime/workspace/workspace';
+import { runWorkspaceExecution } from '../../../src/automation/runtime/workspace/execution_coordinator';
+import type { StepUnion } from '../../../src/automation/runner/steps/types';
 import { completeRunStepsDeps } from '../../helpers/run_steps_workspace';
-import {ActionError, ERROR_CODES} from '../../../src/actions/results';
+import {ActionError, ERROR_CODES} from '../../../src/interface/actions/results';
 
 const createStubPage = (url = 'about:blank'): Page => ({
     url: () => url,

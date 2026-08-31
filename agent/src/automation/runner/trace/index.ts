@@ -1,0 +1,12 @@
+/**
+ * Trace 模块入口：统一导出 types/sinks/hooks/traceCall。
+ */
+
+export type * from './types';
+export * from './sink';
+export * from './hooks';
+export * from './trace_call';
+export * from './redact';
+export * from './a11y';
+export * from './dom';
+export * from './tools';

@@ -1,17 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseDsl } from '../../../src/dsl/parser';
+import { parseDsl } from '../../../src/program/dsl/parser';
 import {
     createDslEntityRulesResolver,
     linkDsl,
     type DslEntityRulesProfile,
     type DslEntityRulesResolver,
     type DslResolveResolver,
-} from '../../../src/dsl/link';
-import { runDslSource, validateDslSource } from '../../../src/dsl/runtime';
-import { createWorkspaceEntityRulesProvider } from '../../../src/snapshot/rules/runtime';
-import type { RunStepsDeps } from '../../../src/runner/run_steps';
-import type { BrowserQueryResult, StepUnion } from '../../../src/runner/steps/types';
+} from '../../../src/automation/dsl/link';
+import { runDslSource, validateDslSource } from '../../../src/automation/dsl/runtime';
+import { createWorkspaceEntityRulesProvider } from '../../../src/automation/snapshot/rules/runtime';
+import type { RunStepsDeps } from '../../../src/automation/runner/run_steps';
+import type { BrowserQueryResult, StepUnion } from '../../../src/automation/runner/steps/types';
 import { completeRunStepsDeps } from '../../helpers/run_steps_workspace';
 
 const profile: DslEntityRulesProfile = {
@@ -257,7 +257,24 @@ test('runDslSource uses strict explicit profile steps and runtime input for row 
             availability: 'ready',
             workflowName: 'ws',
             listProfiles: () => ['order-page'],
-            getProfile: () => ({} as any),
+            getProfile: (name) => name === 'order-page' ? ({
+                kind: 'entity_rules',
+                name,
+                page: {kind: 'table'},
+                match: {version: 2, rules: [
+                    {ruleId: 'root', source: 'region', expect: 'unique', match: {kind: 'table'}},
+                ]},
+                annotation: {version: 2, bindings: [
+                    {
+                        ruleId: 'root',
+                        entityKey: 'orderList',
+                        businessTag: 'order.list',
+                        entityKind: 'table',
+                        primaryKey: {fieldKey: 'orderNo', columns: ['orderNo'], source: 'annotation'},
+                        columns: [{fieldKey: 'orderNo', name: 'orderNo', kind: 'text'}],
+                    },
+                ]},
+            } as any) : null,
             resolveExports: () => ({profileName: 'order-page', index: null, diagnostics: []}),
         }),
         pluginHost: {getExecutors: () => ({
@@ -299,4 +316,60 @@ test('runDslSource uses strict explicit profile steps and runtime input for row 
             entityRules: {selection: 'explicit', profiles: ['order-page'], strict: true},
         },
     ]);
+});
+
+test('linkDsl carries explicit entity-rule effect semantics onto linked actions', () => {
+    const semanticProfile: DslEntityRulesProfile = {
+        profileName: 'semantic-order-page',
+        entities: [{
+            entityKey: 'orderForm',
+            businessTag: 'order.form',
+            kind: 'form',
+            fields: [{
+                fieldKey: 'buyer',
+                targetKind: 'form.field',
+                effect: {reversibility: 'reversible'},
+            }],
+            actions: [{
+                actionIntent: 'submit',
+                targetKind: 'form.action',
+                effect: {reversibility: 'irreversible'},
+            }],
+            columns: [],
+            rowActions: [],
+            supportedQueries: ['form.fields'],
+        }],
+    };
+    const semanticResolver: DslEntityRulesResolver = {
+        resolveProfile: (name) => name === semanticProfile.profileName
+            ? {profile: semanticProfile, diagnostics: []}
+            : {profile: null, diagnostics: []},
+    };
+    const linked = linkDsl(parseDsl(`
+use entity_rules "semantic-order-page" as order
+fill order.orderForm.buyer with input.buyer
+click order.orderForm.submit
+`), semanticResolver);
+
+    assert.deepEqual(linked.diagnostics, []);
+    assert.deepEqual((linked.program.body[0] as any).effect, {
+        reversibility: 'reversible',
+        source: {
+            kind: 'entity_rules',
+            profileName: 'semantic-order-page',
+            entityKey: 'orderForm',
+            memberKind: 'field',
+            member: 'buyer',
+        },
+    });
+    assert.deepEqual((linked.program.body[1] as any).effect, {
+        reversibility: 'irreversible',
+        source: {
+            kind: 'entity_rules',
+            profileName: 'semantic-order-page',
+            entityKey: 'orderForm',
+            memberKind: 'action',
+            member: 'submit',
+        },
+    });
 });

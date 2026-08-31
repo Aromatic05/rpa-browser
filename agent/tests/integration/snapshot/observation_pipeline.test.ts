@@ -4,7 +4,7 @@ import {
     analyzePageObservation,
     buildPageObservation,
     type RawPageCapture,
-} from '../../../src/snapshot';
+} from '../../../src/automation/snapshot';
 
 const rawCapture = (): RawPageCapture => ({
     identity: {

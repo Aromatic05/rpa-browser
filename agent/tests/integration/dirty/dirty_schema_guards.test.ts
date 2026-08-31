@@ -7,10 +7,10 @@ import {
     browserCloseTabInputSchema,
     browserSwitchTabInputSchema,
     toolInputJsonSchemas,
-} from '../../../src/mcp/schemas';
-import type { RecordingManifest } from '../../../src/record/recording';
-import type { RecordingTabManifest } from '../../../src/record/recording';
-import type { RecordedStepEnhancement } from '../../../src/record/types';
+} from '../../../src/interface/mcp/schemas';
+import type { RecordingManifest } from '../../../src/automation/recording/recording';
+import type { RecordingTabManifest } from '../../../src/automation/recording/recording';
+import type { RecordedStepEnhancement } from '../../../src/automation/recording/types';
 
 type ExpectTrue<T extends true> = T;
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -64,8 +64,8 @@ test('mcp tool schemas expose single tabName fields', () => {
 });
 
 test('guards avoid duplicate legacy address checks', () => {
-    const dispatcherText = fs.readFileSync(path.join(ROOT, 'src/actions/dispatcher.ts'), 'utf8');
-    const indexText = fs.readFileSync(path.join(ROOT, 'src/index.ts'), 'utf8');
+    const dispatcherText = fs.readFileSync(path.join(ROOT, 'src/automation/runtime/actions/dispatcher.ts'), 'utf8');
+    const indexText = fs.readFileSync(path.join(ROOT, 'src/app/entrypoints/agent.ts'), 'utf8');
 
     assert.equal(dispatcherText.includes("'tabName' in payload"), false);
     assert.equal(indexText.includes("'workspaceName' in rec"), false);

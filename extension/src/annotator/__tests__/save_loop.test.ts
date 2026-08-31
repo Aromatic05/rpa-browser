@@ -317,3 +317,84 @@ test('runSaveLoop explains artifact revision conflicts without clearing the draf
     assert.equal(next.dirty, true);
     assert.equal(next.error, '保存失败：规则已被其他编辑器修改。请重新打开规则并合并更改。');
 });
+
+test('runSaveLoop sends member action safety with the draft and keeps it on reopen', async () => {
+    const safetyDraft: CanvasDraft = {
+        ...makeDraft('profile-a'),
+        entities: [{
+            id: 'e0',
+            source: 'region',
+            kind: 'table',
+            name: '订单列表',
+            businessTag: 'orders.table',
+            target: {kind: 'table', nameContains: '订单列表'},
+            annotations: [
+                {id: 'refresh', type: 'action', name: '刷新', businessKey: 'refresh', target: {}, origin: 'confirmed', disposition: 'active', effect: {reversibility: 'reversible'}},
+                {id: 'submit', type: 'action', name: '提交', businessKey: 'submit', target: {}, origin: 'confirmed', disposition: 'active', effect: {reversibility: 'irreversible'}},
+            ],
+            columns: [],
+            origin: 'confirmed',
+        }],
+    };
+    const sent: Array<{canvasDraft: unknown}> = [];
+    const client = mockClient({
+        save: async (payload) => {
+            sent.push({canvasDraft: payload.canvasDraft});
+            return {profileName: 'profile-a', artifactRevision: 'rev-002', saved: true};
+        },
+    });
+    const next = await runSaveLoop(draftEdited(openState(), safetyDraft), client);
+    assert.equal(next.error, null);
+    assert.equal(next.dirty, false);
+    assert.deepEqual(sent[0]?.canvasDraft, safetyDraft);
+    assert.equal((sent[0]?.canvasDraft as CanvasDraft).entities[0].annotations[0].effect?.reversibility, 'reversible');
+    assert.equal((sent[0]?.canvasDraft as CanvasDraft).entities[0].annotations[1].effect?.reversibility, 'irreversible');
+});
+
+test('openLoaded preserves per-member action safety from an existing artifact draft', () => {
+    const reopened = openLoaded(initialState(), makeOpenResult({
+        canvasDraft: {
+            ...makeDraft('profile-a'),
+            entities: [{
+                id: 'e0',
+                source: 'region',
+                kind: 'table',
+                name: '订单列表',
+                businessTag: 'orders.table',
+                target: {kind: 'table', nameContains: '订单列表'},
+                annotations: [
+                    {id: 'refresh', type: 'action', name: '刷新', businessKey: 'refresh', target: {}, origin: 'confirmed', disposition: 'active', effect: {reversibility: 'reversible'}},
+                    {id: 'export', type: 'action', name: '导出', businessKey: 'export', target: {}, origin: 'confirmed', disposition: 'active', effect: {reversibility: 'compensatable'}},
+                ],
+                columns: [],
+                origin: 'confirmed',
+            }],
+        },
+    }));
+    const refresh = reopened.canvasDraft?.entities[0].annotations.find((item) => item.id === 'refresh');
+    const exportAction = reopened.canvasDraft?.entities[0].annotations.find((item) => item.id === 'export');
+    assert.deepEqual(refresh?.effect, {reversibility: 'reversible'});
+    assert.deepEqual(exportAction?.effect, {reversibility: 'compensatable'});
+});
+
+test('legacy drafts without member safety reopen as absent effect', () => {
+    const reopened = openLoaded(initialState(), makeOpenResult({
+        canvasDraft: {
+            ...makeDraft('profile-a'),
+            entities: [{
+                id: 'e0',
+                source: 'region',
+                kind: 'table',
+                name: '订单列表',
+                businessTag: 'orders.table',
+                target: {kind: 'table', nameContains: '订单列表'},
+                annotations: [
+                    {id: 'submit', type: 'action', name: '提交', businessKey: 'submit', target: {}, origin: 'confirmed', disposition: 'active'},
+                ],
+                columns: [],
+                origin: 'confirmed',
+            }],
+        },
+    }));
+    assert.equal(reopened.canvasDraft?.entities[0].annotations[0].effect, undefined);
+});

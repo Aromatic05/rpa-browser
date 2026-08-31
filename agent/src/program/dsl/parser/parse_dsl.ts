@@ -1,0 +1,605 @@
+import YAML from 'yaml';
+import type { CheckpointStmt, DslExpr, DslImport, DslProgram, DslStmt, EntityReference, LetStmt, QueryExpr, RefExpr, ResolveReference } from '../ast/types';
+import { DslParseError } from '../diagnostics/errors';
+import type {DslParsedDocument, DslSourceLocation} from './source_map';
+import {parseComputeExpression} from './compute';
+
+type ParsedLine = {
+    line: number;
+    indent: number;
+    content: string;
+};
+
+export const parseDsl = (source: string): DslProgram => parseDslDocument(source).program;
+
+export const parseDslDocument = (source: string): DslParsedDocument => {
+    const lines = tokenizeDsl(source);
+    const imports = parseImports(lines);
+    const sourceMap: Record<string, DslSourceLocation> = {};
+    const parsed = parseBlock(
+        lines,
+        imports.length,
+        0,
+        { allowElse: false },
+        new Set(imports.filter((item) => item.kind === 'entity_rules').map((item) => item.alias)),
+        new Set(imports.filter((item) => item.kind === 'resolves').map((item) => item.alias)),
+        'body',
+        sourceMap,
+    );
+    if (parsed.nextIndex !== lines.length) {
+        throw new DslParseError('unexpected trailing DSL content');
+    }
+    return {
+        program: {imports, body: parsed.body},
+        sourceMap: Object.freeze({...sourceMap}),
+    };
+};
+
+const parseImports = (lines: ParsedLine[]): DslImport[] => {
+    const imports: DslImport[] = [];
+    const aliases = new Set<string>();
+    for (const line of lines) {
+        if (!line.content.startsWith('use entity_rules ') && !line.content.startsWith('use resolves ')) {break;}
+        if (line.indent !== 0) {
+            throw new DslParseError('imports must be top-level declarations');
+        }
+        const match = line.content.match(/^use\s+(entity_rules|resolves)\s+"([A-Za-z0-9][A-Za-z0-9._-]*)"\s+as\s+([A-Za-z_][A-Za-z0-9_]*)$/);
+        if (!match) {
+            throw new DslParseError(`invalid import: ${line.content}`);
+        }
+        if (aliases.has(match[3])) {
+            throw new DslParseError(`duplicate import alias: ${match[3]}`);
+        }
+        aliases.add(match[3]);
+        imports.push(match[1] === 'entity_rules'
+            ? {kind: 'entity_rules', profileName: match[2], alias: match[3]}
+            : {kind: 'resolves', bundleName: match[2], alias: match[3]});
+    }
+    return imports;
+};
+
+const tokenizeDsl = (source: string): ParsedLine[] => {
+    const rawLines = source
+        .split(/\r?\n/)
+        .map((rawLine, index) => ({line: index + 1, content: rawLine.replace(/\s+$/, '')}))
+        .filter((item) => item.content.trim().length > 0);
+    const baseIndent = rawLines.reduce((min, item) => {
+        const indent = item.content.length - item.content.trimStart().length;
+        return Math.min(min, indent);
+    }, Number.POSITIVE_INFINITY);
+
+    return rawLines.map((item) => {
+            if (item.content.includes('\t')) {
+                throw new DslParseError('tabs are not supported in DSL indentation');
+            }
+            const indent = item.content.length - item.content.trimStart().length - (Number.isFinite(baseIndent) ? baseIndent : 0);
+            if (indent % 2 !== 0) {
+                throw new DslParseError(`invalid DSL indentation: ${item.content}`);
+            }
+            return {
+                line: item.line,
+                indent,
+                content: item.content.trimStart(),
+            };
+        });
+};
+
+const parseBlock = (
+    lines: ParsedLine[],
+    startIndex: number,
+    indent: number,
+    opts: { allowElse: boolean },
+    entityAliases: ReadonlySet<string>,
+    resolveAliases: ReadonlySet<string>,
+    blockPath: string,
+    sourceMap: Record<string, DslSourceLocation>,
+): { body: DslStmt[]; nextIndex: number } => {
+    const body: DslStmt[] = [];
+    let index = startIndex;
+
+    while (index < lines.length) {
+        const line = lines[index];
+        if (line.indent < indent) {
+            break;
+        }
+        if (line.indent > indent) {
+            throw new DslParseError(`invalid DSL indentation: ${line.content}`);
+        }
+        if (line.content === 'else:') {
+            if (opts.allowElse) {
+                break;
+            }
+            throw new DslParseError('else without matching if');
+        }
+
+        const stmtPath = `${blockPath}.${body.length}`;
+        if (line.content.startsWith('if ')) {
+            const parsedIf = parseIfStmt(
+                lines,
+                index,
+                indent,
+                entityAliases,
+                resolveAliases,
+                stmtPath,
+                sourceMap,
+            );
+            body.push(parsedIf.stmt);
+            index = parsedIf.nextIndex;
+            continue;
+        }
+
+        if (line.content.startsWith('for ')) {
+            const parsedFor = parseForStmt(
+                lines,
+                index,
+                indent,
+                entityAliases,
+                resolveAliases,
+                stmtPath,
+                sourceMap,
+            );
+            body.push(parsedFor.stmt);
+            index = parsedFor.nextIndex;
+            continue;
+        }
+
+        const collected = collectStatement(lines, index, indent);
+        body.push(parseStatement(collected.statement, entityAliases, resolveAliases));
+        sourceMap[stmtPath] = sourceLocation(lines[index], lines[collected.nextIndex - 1]);
+        index = collected.nextIndex;
+    }
+
+    return { body, nextIndex: index };
+};
+
+const parseIfStmt = (
+    lines: ParsedLine[],
+    startIndex: number,
+    indent: number,
+    entityAliases: ReadonlySet<string>,
+    resolveAliases: ReadonlySet<string>,
+    path: string,
+    sourceMap: Record<string, DslSourceLocation>,
+): { stmt: DslStmt; nextIndex: number } => {
+    const header = lines[startIndex].content;
+    if (!header.endsWith(':')) {
+        throw new DslParseError(`if statement must end with ":": ${header}`);
+    }
+    const conditionSource = header.slice(3, -1).trim();
+    if (!conditionSource) {
+        throw new DslParseError(`invalid if statement: ${header}`);
+    }
+
+    sourceMap[path] = sourceLocation(lines[startIndex], lines[startIndex]);
+    const thenBlock = parseBlock(
+        lines,
+        startIndex + 1,
+        indent + 2,
+        {allowElse: true},
+        entityAliases,
+        resolveAliases,
+        `${path}.then`,
+        sourceMap,
+    );
+    let nextIndex = thenBlock.nextIndex;
+    let elseBody: DslStmt[] | undefined;
+
+    if (nextIndex < lines.length && lines[nextIndex].indent === indent && lines[nextIndex].content === 'else:') {
+        const elseBlock = parseBlock(
+            lines,
+            nextIndex + 1,
+            indent + 2,
+            {allowElse: false},
+            entityAliases,
+            resolveAliases,
+            `${path}.else`,
+            sourceMap,
+        );
+        elseBody = elseBlock.body;
+        nextIndex = elseBlock.nextIndex;
+    }
+
+    return {
+        stmt: {
+            kind: 'if',
+            condition: parseExpression(conditionSource),
+            then: thenBlock.body,
+            else: elseBody,
+        },
+        nextIndex,
+    };
+};
+
+const parseForStmt = (
+    lines: ParsedLine[],
+    startIndex: number,
+    indent: number,
+    entityAliases: ReadonlySet<string>,
+    resolveAliases: ReadonlySet<string>,
+    path: string,
+    sourceMap: Record<string, DslSourceLocation>,
+): { stmt: DslStmt; nextIndex: number } => {
+    const header = lines[startIndex].content;
+    if (!header.endsWith(':')) {
+        throw new DslParseError(`for statement must end with ":": ${header}`);
+    }
+    const match = header.slice(0, -1).match(/^for\s+([A-Za-z_][A-Za-z0-9_]*)\s+in\s+(.+)$/);
+    if (!match) {
+        throw new DslParseError(`invalid for statement: ${header}`);
+    }
+
+    sourceMap[path] = sourceLocation(lines[startIndex], lines[startIndex]);
+    const bodyBlock = parseBlock(
+        lines,
+        startIndex + 1,
+        indent + 2,
+        {allowElse: false},
+        entityAliases,
+        resolveAliases,
+        `${path}.body`,
+        sourceMap,
+    );
+    return {
+        stmt: {
+            kind: 'for',
+            item: match[1],
+            iterable: parseExpression(match[2].trim()),
+            body: bodyBlock.body,
+        },
+        nextIndex: bodyBlock.nextIndex,
+    };
+};
+
+const collectStatement = (
+    lines: ParsedLine[],
+    startIndex: number,
+    indent: number,
+): { statement: string; nextIndex: number } => {
+    const statementLines: string[] = [];
+    let index = startIndex;
+    let depth = 0;
+
+    while (index < lines.length) {
+        const line = lines[index];
+        if (statementLines.length > 0 && depth === 0 && line.indent <= indent) {
+            break;
+        }
+        if (statementLines.length > 0 && depth === 0 && line.indent > indent) {
+            throw new DslParseError(`invalid DSL indentation: ${line.content}`);
+        }
+
+        statementLines.push(line.content);
+        depth += countChar(line.content, '{');
+        depth -= countChar(line.content, '}');
+        if (depth < 0) {
+            throw new DslParseError('unbalanced braces in DSL source');
+        }
+        index += 1;
+
+        if (depth === 0) {
+            break;
+        }
+    }
+
+    if (depth !== 0) {
+        throw new DslParseError('unterminated DSL statement');
+    }
+
+    return {
+        statement: statementLines.join('\n'),
+        nextIndex: index,
+    };
+};
+
+const sourceLocation = (start: ParsedLine, end: ParsedLine): DslSourceLocation => Object.freeze({
+    line: start.line,
+    column: start.indent + 1,
+    endLine: end.line,
+    endColumn: end.indent + end.content.length + 1,
+});
+
+const parseStatement = (
+    statement: string,
+    entityAliases: ReadonlySet<string>,
+    resolveAliases: ReadonlySet<string>,
+): DslStmt => {
+    if (statement.startsWith('output ')) {
+        const match = statement.match(/^output\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*([\s\S]+)$/);
+        if (!match) {throw new DslParseError(`invalid output statement: ${statement}`);}
+        return {kind: 'output', name: match[1], expr: parseExpression(match[2].trim())};
+    }
+    if (statement.startsWith('ensure ')) {
+        const condition = parseExpression(statement.slice('ensure '.length).trim());
+        if (condition.kind !== 'ref' && condition.kind !== 'compute') {
+            throw new DslParseError('ensure requires a ref or compute expression');
+        }
+        return {kind: 'ensure', condition};
+    }
+    const checkpointLet = statement.match(/^let\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(use\s+checkpoint\s+[\s\S]+)$/);
+    if (checkpointLet) {
+        return {...parseCheckpoint(checkpointLet[2]), bind: checkpointLet[1]};
+    }
+    if (statement.startsWith('let ')) {
+        return parseLet(statement, entityAliases);
+    }
+    if (statement.startsWith('fill table ')) {
+        const match = statement.match(/^fill\s+table\s+"([^"]+)"\s+filter\s+"([^"]+)"\s+with\s+([A-Za-z0-9_.]+)$/);
+        if (!match) {
+            throw new DslParseError(`invalid fill table statement: ${statement}`);
+        }
+        return {
+            kind: 'table_act',
+            action: 'fill',
+            businessTag: match[1],
+            target: {
+                kind: 'filter',
+                fieldKey: match[2],
+            },
+            value: toRef(match[3]),
+        };
+    }
+    if (statement.startsWith('click table ')) {
+        if (/\s+with\s+/.test(statement)) {
+            throw new DslParseError(`invalid click table statement: ${statement}`);
+        }
+        const match = statement.match(/^click\s+table\s+"([^"]+)"\s+action\s+"([^"]+)"$/);
+        if (!match) {
+            throw new DslParseError(`invalid click table statement: ${statement}`);
+        }
+        return {
+            kind: 'table_act',
+            action: 'click',
+            businessTag: match[1],
+            target: {
+                kind: 'action',
+                actionIntent: match[2],
+            },
+        };
+    }
+    if (statement.startsWith('fill form ')) {
+        const match = statement.match(/^fill\s+form\s+"([^"]+)"\s+field\s+"([^"]+)"\s+with\s+([A-Za-z0-9_.]+)$/);
+        if (!match) {
+            throw new DslParseError(`invalid fill form statement: ${statement}`);
+        }
+        return {
+            kind: 'form_act',
+            action: 'fill',
+            businessTag: match[1],
+            target: {
+                kind: 'field',
+                fieldKey: match[2],
+            },
+            value: toRef(match[3]),
+        };
+    }
+    if (statement.startsWith('click form ')) {
+        const withMatch = statement.match(/\s+with\s+/);
+        if (withMatch) {
+            throw new DslParseError(`invalid click form statement: ${statement}`);
+        }
+        const match = statement.match(/^click\s+form\s+"([^"]+)"\s+action\s+"([^"]+)"$/);
+        if (!match) {
+            throw new DslParseError(`invalid click form statement: ${statement}`);
+        }
+        return {
+            kind: 'form_act',
+            action: 'click',
+            businessTag: match[1],
+            target: {
+                kind: 'action',
+                actionIntent: match[2],
+            },
+        };
+    }
+    if (statement.startsWith('fill ') || statement.startsWith('type ') || statement.startsWith('select ')) {
+        const match = statement.match(/^(fill|type|select)\s+([A-Za-z0-9_.]+)\s+with\s+([A-Za-z0-9_.]+)$/);
+        if (!match) {
+            throw new DslParseError(`invalid action statement: ${statement}`);
+        }
+        const entityReference = parseEntityReference(match[2], entityAliases);
+        if (entityReference) {
+            return {kind: 'entity_act', action: match[1] as 'fill' | 'type' | 'select', target: entityReference, value: toRef(match[3])};
+        }
+        const resolveReference = parseResolveReference(match[2], resolveAliases);
+        if (resolveReference) {
+            return {kind: 'resolve_act', action: match[1] as 'fill' | 'type' | 'select', target: resolveReference, value: toRef(match[3])};
+        }
+        return {
+            kind: 'act',
+            action: match[1] as 'fill' | 'type' | 'select',
+            target: toRef(match[2]),
+            value: toRef(match[3]),
+        };
+    }
+    if (statement.startsWith('click ')) {
+        const match = statement.match(/^click\s+(\S+)$/);
+        if (!match) {
+            throw new DslParseError(`invalid click statement: ${statement}`);
+        }
+        const entityReference = parseEntityReference(match[1], entityAliases);
+        if (entityReference) {
+            return {kind: 'entity_act', action: 'click', target: entityReference};
+        }
+        const resolveReference = parseResolveReference(match[1], resolveAliases);
+        if (resolveReference) {
+            return {kind: 'resolve_act', action: 'click', target: resolveReference};
+        }
+        return {
+            kind: 'act',
+            action: 'click',
+            target: toRef(match[1]),
+        };
+    }
+    if (statement.startsWith('wait ')) {
+        const match = statement.match(/^wait\s+(\d+)$/);
+        if (!match) {
+            throw new DslParseError(`invalid wait statement: ${statement}`);
+        }
+        return {
+            kind: 'act',
+            action: 'wait',
+            durationMs: Number(match[1]),
+        };
+    }
+    if (statement === 'snapshot') {
+        return {
+            kind: 'act',
+            action: 'snapshot',
+        };
+    }
+    if (statement.startsWith('use checkpoint ')) {
+        return parseCheckpoint(statement);
+    }
+    throw new DslParseError(`unsupported DSL statement: ${statement}`);
+};
+
+const parseLet = (statement: string, entityAliases: ReadonlySet<string>): LetStmt => {
+    const computeMatch = statement.match(/^let\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*compute\s+([\s\S]+)$/);
+    if (computeMatch) {
+        return {
+            kind: 'let',
+            name: computeMatch[1],
+            expr: {kind: 'compute', expr: parseComputeExpression(computeMatch[2])},
+        };
+    }
+    const entityQuery = statement.match(/^let\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*query\s+([A-Za-z0-9_.()]+)$/);
+    if (entityQuery) {
+        const reference = parseEntityReference(entityQuery[2], entityAliases);
+        if (reference) {
+            return {kind: 'let', name: entityQuery[1], expr: {kind: 'entity_query', reference}};
+        }
+    }
+    const sugarMatch = statement.match(
+        /^let\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*query\s+(table|form)\s+"([^"]+)"\s+([A-Za-z_][A-Za-z0-9_]*)$/,
+    );
+    if (sugarMatch) {
+        const [, name, target, businessTag, op] = sugarMatch;
+        if (target === 'table') {
+            if (!['currentRows', 'rowCount', 'hasNextPage', 'nextPageTarget'].includes(op)) {
+                throw new DslParseError(`invalid table query op: ${op}`);
+            }
+            return {
+                kind: 'let',
+                name,
+                expr: {
+                    kind: 'querySugar',
+                    target: 'table',
+                    businessTag,
+                    op: op as 'currentRows' | 'rowCount' | 'hasNextPage' | 'nextPageTarget',
+                },
+            };
+        }
+        if (!['fields', 'actions'].includes(op)) {
+            throw new DslParseError(`invalid form query op: ${op}`);
+        }
+        return {
+            kind: 'let',
+            name,
+            expr: {
+                kind: 'querySugar',
+                target: 'form',
+                businessTag,
+                op: op as 'fields' | 'actions',
+            },
+        };
+    }
+
+    const match = statement.match(
+        /^let\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*query\s+(entity(?:\.target)?)\s+"([^"]+)"\s+([\s\S]+)$/,
+    );
+    if (!match) {
+        throw new DslParseError(`invalid let statement: ${statement}`);
+    }
+
+    const expr: QueryExpr = {
+        kind: 'query',
+        op: match[2] as QueryExpr['op'],
+        businessTag: match[3],
+        payload: parseObjectLiteral(match[4]),
+    };
+
+    return {
+        kind: 'let',
+        name: match[1],
+        expr,
+    };
+};
+
+const parseEntityReference = (source: string, entityAliases: ReadonlySet<string>): EntityReference | null => {
+    const direct = source.match(/^([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)$/);
+    if (direct && entityAliases.has(direct[1])) {
+        return {kind: 'entity_ref', alias: direct[1], entityKey: direct[2], member: direct[3]};
+    }
+    const row = source.match(/^([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)\.row\(([A-Za-z0-9_.]+)\)(?:\.([A-Za-z_][A-Za-z0-9_]*))?$/);
+    if (row && entityAliases.has(row[1])) {
+        return {kind: 'entity_ref', alias: row[1], entityKey: row[2], member: row[4] || 'row', rowValue: toRef(row[3])};
+    }
+    return null;
+};
+
+const parseResolveReference = (source: string, resolveAliases: ReadonlySet<string>): ResolveReference | null => {
+    const match = source.match(/^([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*)$/);
+    if (!match || !resolveAliases.has(match[1])) {return null;}
+    return {kind: 'resolve_ref', alias: match[1], symbol: match[2]};
+};
+
+
+const parseCheckpoint = (statement: string): CheckpointStmt => {
+    const match = statement.match(/^use\s+checkpoint\s+"([^"]+)"(?:\s+with\s+([\s\S]+))?$/);
+    if (!match) {
+        throw new DslParseError(`invalid checkpoint statement: ${statement}`);
+    }
+
+    return {
+        kind: 'checkpoint',
+        id: match[1],
+        input: match[2] ? parseDslObjectRefs(match[2]) : undefined,
+    };
+};
+
+const parseDslObjectRefs = (source: string): Record<string, RefExpr> => {
+    const parsed = parseObjectLiteral(source);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new DslParseError('checkpoint input must be an object literal');
+    }
+
+    return Object.fromEntries(
+        Object.entries(parsed as Record<string, unknown>).map(([key, value]) => {
+            if (typeof value !== 'string') {
+                throw new DslParseError(`checkpoint input "${key}" must be a reference path`);
+            }
+            return [key, toRef(value)];
+        }),
+    );
+};
+
+const parseObjectLiteral = (source: string): unknown => {
+    try {
+        const trimmed = source.trim();
+        if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+            return YAML.parse(trimmed.slice(1, -1));
+        }
+        return YAML.parse(trimmed);
+    } catch (error) {
+        throw new DslParseError(`invalid object literal: ${error instanceof Error ? error.message : String(error)}`);
+    }
+};
+
+const parseExpression = (source: string): DslExpr => {
+    const trimmed = source.trim();
+    if (!trimmed) {throw new DslParseError('DSL expression is required');}
+    if (trimmed.startsWith('compute ')) {
+        return {kind: 'compute', expr: parseComputeExpression(trimmed.slice('compute '.length))};
+    }
+    if (!/^[A-Za-z_][A-Za-z0-9_.]*$/.test(trimmed)) {
+        throw new DslParseError(`invalid DSL expression: ${source}`);
+    }
+    return toRef(trimmed);
+};
+
+const toRef = (value: string): RefExpr => ({
+    kind: 'ref',
+    ref: value,
+});
+
+const countChar = (source: string, char: string): number => source.split(char).length - 1;

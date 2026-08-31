@@ -13,7 +13,7 @@ import {
     measureFormFixture,
     validateFormFixtureTruth,
     type ObservationFixture,
-} from '../../../src/snapshot';
+} from '../../../src/automation/snapshot';
 
 const buildSnapshot = (capture: ObservationFixture['capture']) => {
     const observation = buildPageObservation(capture);

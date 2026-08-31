@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import {mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { defaultRunnerConfig } from '../../../src/config/defaults';
-import {loadRunnerConfig} from '../../../src/config/loader';
+import { defaultRunnerConfig } from '../../../src/platform/config/defaults';
+import {loadRunnerConfig} from '../../../src/platform/config/loader';
 
 // 样例目标：确保核心默认配置可读且包含关键治理开关。
 test('default runner config exposes stable governance defaults', () => {

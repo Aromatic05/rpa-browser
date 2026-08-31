@@ -25,26 +25,22 @@ const run = (args) => new Promise((resolve, reject) => {
 });
 
 await run(['--filter', './extension', 'build']);
-await run(['--filter', './start_extension', 'build']);
 
 const stampDir = path.join(root, '.dev');
 const versionsDir = path.join(stampDir, 'extensions');
 const versionDir = path.join(versionsDir, buildId);
 const mainExtensionPath = path.join(versionDir, 'main');
-const startExtensionPath = path.join(versionDir, 'start');
 const stampPath = path.join(stampDir, 'extension-build.json');
 const tempPath = `${stampPath}.${process.pid}.tmp`;
 
 await rm(versionDir, {recursive: true, force: true});
 await mkdir(versionDir, {recursive: true});
 await cp(path.join(root, 'extension', 'dist'), mainExtensionPath, {recursive: true});
-await cp(path.join(root, 'start_extension', 'dist'), startExtensionPath, {recursive: true});
 
 const buildInfo = {
     buildId,
     builtAt: new Date().toISOString(),
     mainExtensionPath,
-    startExtensionPath,
 };
 await mkdir(stampDir, {recursive: true});
 await writeFile(tempPath, `${JSON.stringify(buildInfo, null, 2)}\n`, 'utf8');

@@ -1,15 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
-import { createMcpControl } from '../../../src/mcp/control';
-import { createPortAllocator } from '../../../src/runtime/service/ports';
-import { createWorkspaceToolHandlers } from '../../../src/mcp/tool_handlers';
-import { createWorkspaceTabs } from '../../../src/runtime/workspace/tabs';
-import type { RuntimeWorkspace } from '../../../src/runtime/workspace/workspace';
-import type { WorkspaceRegistry } from '../../../src/runtime/workspace/registry';
-import type { WorkspaceService } from '../../../src/runtime/service/types';
-import type { Action } from '../../../src/actions/action_protocol';
-import type { Workflow } from '../../../src/workflow';
+import { createMcpControl } from '../../../src/automation/runtime/mcp/control';
+import { createPortAllocator } from '../../../src/automation/runtime/service/ports';
+import { createWorkspaceToolHandlers } from '../../../src/automation/runtime/mcp/tool_handlers';
+import { createWorkspaceTabs } from '../../../src/automation/runtime/workspace/tabs';
+import type { RuntimeWorkspace } from '../../../src/automation/runtime/workspace/workspace';
+import type { WorkspaceRegistry } from '../../../src/automation/runtime/workspace/registry';
+import type { WorkspaceService } from '../../../src/automation/runtime/service/types';
+import type { Action } from '../../../src/interface/actions/action_protocol';
+import type { Workflow } from '../../../src/automation/workflow';
 
 const stubWorkflow = (name: string) => ({ name }) as Workflow;
 

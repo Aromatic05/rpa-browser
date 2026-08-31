@@ -9,9 +9,9 @@ const readAgent = (relativePath: string) => fs.readFileSync(path.join(agentRoot,
 const readRepository = (relativePath: string) => fs.readFileSync(path.join(repositoryRoot, relativePath), 'utf8');
 
 test('workspace runtime owns browser session boundaries', () => {
-    const workspaceSrc = readAgent('src/runtime/workspace/workspace.ts');
-    const registrySrc = readAgent('src/runtime/workspace/registry.ts');
-    const indexSrc = readAgent('src/index.ts');
+    const workspaceSrc = readAgent('src/automation/runtime/workspace/workspace.ts');
+    const registrySrc = readAgent('src/automation/runtime/workspace/registry.ts');
+    const indexSrc = readAgent('src/app/entrypoints/agent.ts');
 
     assert.match(workspaceSrc, /browserSession: WorkspaceBrowserSession/);
     assert.match(registrySrc, /userDataRoot/);
@@ -21,15 +21,15 @@ test('workspace runtime owns browser session boundaries', () => {
 });
 
 test('setActive actions are forwarded through workspace browser session', () => {
-    const workspaceGatewaySrc = readAgent('src/actions/workspace_gateway.ts');
-    const controlPlaneSrc = readAgent('src/runtime/control_plane.ts');
+    const workspaceGatewaySrc = readAgent('src/automation/runtime/actions/workspace_gateway.ts');
+    const controlPlaneSrc = readAgent('src/automation/runtime/control_plane.ts');
 
     assert.match(workspaceGatewaySrc, /action\.type === 'tab\.setActive'[\s\S]*workspace\.browserSession\.emit\(action\)/);
     assert.match(controlPlaneSrc, /case 'workspace\.setActive'[\s\S]*target\.browserSession\.emit\(action\)/);
 });
 
 test('extension session uses profile websocket config without bootstrap reset', () => {
-    const wsClientSrc = readAgent('src/actions/ws_client.ts');
+    const wsClientSrc = readAgent('src/automation/runtime/actions/ws_client.ts');
     const cmdRouterSrc = readRepository('extension/src/background/cmd_router.ts');
     const lifeSrc = readRepository('extension/src/background/life.ts');
 

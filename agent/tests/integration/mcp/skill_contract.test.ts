@@ -5,7 +5,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 const agentDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
-const skill = fs.readFileSync(path.join(agentDirectory, 'src/mcp/SKILL.md'), 'utf8');
+const skill = fs.readFileSync(path.join(agentDirectory, 'src/interface/mcp/SKILL.md'), 'utf8');
 
 test('MCP skill documents Snapshot V2 modes and canonical action targeting', () => {
     for (const mode of ['overview', 'interaction', 'annotation', 'debug', 'full']) {

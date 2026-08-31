@@ -154,7 +154,7 @@ observation  p50  0.121 ms  p95  0.171 ms
 
 已经成立：
 
-- `agent/src/snapshot/` 内部唯一 V2 capture/observation/analysis API；
+- `agent/src/automation/snapshot/` 内部唯一 V2 capture/observation/analysis API；
 - 不可变 canonical observation；
 - exact joins、scope-local relations、实际 activity、scope geometry；
 - candidate-local quotient 与强化 invariant；

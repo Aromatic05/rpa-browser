@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createDslScope, getDslValue, setDslValue } from '../../../../src/dsl/runtime';
-import { DslRuntimeError } from '../../../../src/dsl/diagnostics/errors';
+import { createDslScope, getDslValue, setDslValue } from '../../../../src/automation/dsl/runtime';
+import { DslRuntimeError } from '../../../../src/program/dsl/diagnostics/errors';
 
 test('createDslScope initializes input vars and output containers', () => {
     const scope = createDslScope({ user: { name: 'alice' } });

@@ -1,0 +1,107 @@
+/**
+ * traceCall：统一包装 Trace 操作，负责写入 start/end 事件并返回 ToolResult。
+ *
+ * 说明：
+ * - 仅在 Trace 层做最小错误映射（超时/未知）
+ * - 不抛异常，统一返回 ToolResult
+ * - start/end 事件写入所有 sinks，并触发 hooks
+ */
+
+import type { TraceContext, TraceOpName, ToolError, ToolResult, TraceEvent } from './types';
+import { createRedactionPolicy } from '../../../security/redaction';
+import { redactToolError, redactTraceEvent } from './redact';
+
+const DEFAULT_REDACTION = createRedactionPolicy();
+
+export type TraceCallMeta = {
+    op: TraceOpName;
+    args?: unknown;
+};
+
+export const traceCall = async <T>(
+    ctx: TraceContext,
+    meta: TraceCallMeta,
+    run: () => Promise<T>,
+): Promise<ToolResult<T>> => {
+    const policy = ctx.redact ?? DEFAULT_REDACTION;
+    const startTs = Date.now();
+    const startEvent: TraceEvent = {
+        type: 'op.start',
+        ts: startTs,
+        op: meta.op,
+        tags: ctx.tags,
+        args: meta.args,
+    };
+    const redactedStartEvent = redactTraceEvent(startEvent, policy);
+    await ctx.hooks.beforeOp?.(redactedStartEvent);
+    await Promise.all(ctx.sinks.map((sink) => sink.write(redactedStartEvent)));
+
+    try {
+        const data = await run();
+        const endEvent: TraceEvent = {
+            type: 'op.end',
+            ts: Date.now(),
+            op: meta.op,
+            ok: true,
+            durationMs: Date.now() - startTs,
+            tags: ctx.tags,
+            args: meta.args,
+            result: data,
+        };
+        const redactedEndEvent = redactTraceEvent(endEvent, policy);
+        await Promise.all(ctx.sinks.map((sink) => sink.write(redactedEndEvent)));
+        await ctx.hooks.afterOp?.(redactedEndEvent);
+        return { ok: true, data };
+    } catch (error) {
+        const mapped = mapTraceError(error);
+        const endEvent: TraceEvent = {
+            type: 'op.end',
+            ts: Date.now(),
+            op: meta.op,
+            ok: false,
+            durationMs: Date.now() - startTs,
+            tags: ctx.tags,
+            args: meta.args,
+            error: mapped,
+        };
+        const redactedEndEvent = redactTraceEvent(endEvent, policy);
+        await Promise.all(ctx.sinks.map((sink) => sink.write(redactedEndEvent)));
+        await ctx.hooks.afterOp?.(redactedEndEvent);
+        await ctx.hooks.onError?.(redactedEndEvent, redactToolError(mapped, policy));
+        return { ok: false, error: mapped };
+    }
+};
+
+const mapTraceError = (error: unknown): ToolError => {
+    if (isToolErrorLike(error)) {
+        return error;
+    }
+    if (error instanceof Error) {
+        if (error.name === 'TimeoutError' || /timeout/i.test(error.message)) {
+            return { code: 'ERR_TIMEOUT', message: 'timeout', phase: 'trace' };
+        }
+        if (isBadArgsError(error.message)) {
+            return { code: 'ERR_BAD_ARGS', message: error.message || 'bad args', phase: 'trace' };
+        }
+        if (isAmbiguousError(error.message)) {
+            return { code: 'ERR_AMBIGUOUS', message: 'ambiguous', phase: 'trace' };
+        }
+        return { code: 'ERR_UNKNOWN', message: error.message || 'unknown', phase: 'trace' };
+    }
+    return { code: 'ERR_UNKNOWN', message: 'unknown', phase: 'trace', details: error };
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === 'object' && value !== null;
+
+const isToolErrorLike = (error: unknown): error is ToolError =>
+    isRecord(error)
+    && typeof error.code === 'string'
+    && typeof error.message === 'string'
+    && error.phase === 'trace';
+
+const isAmbiguousError = (message: string): boolean =>
+    /strict mode|multiple elements|ambiguous|matches\\s+\\d+\\s+elements/i.test(message);
+
+const isBadArgsError = (message: string): boolean =>
+    /cannot be filled|not editable|not an? (input|textarea|select)|missing required/i.test(message);

@@ -1,5 +1,5 @@
 import { chromium } from 'playwright';
-import { ConsoleSink, MemorySink, createTraceTools } from '../src/runner/trace';
+import { ConsoleSink, MemorySink, createTraceTools } from '../src/automation/runner/trace';
 
 const START_URL = process.env.RPA_START_URL || 'https://example.com';
 

@@ -10,7 +10,7 @@ import {
   buildSnapshotProjection,
   captureControlSnapshot,
   PageSnapshotSessionStore,
-} from '../../../src/snapshot';
+} from '../../../src/automation/snapshot';
 
 type SnapshotRequest = {url?: string; mode?: 'overview' | 'interaction' | 'annotation' | 'debug' | 'full'};
 type CaptureEnvelope = {

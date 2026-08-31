@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import YAML from 'yaml';
-import { createCheckpointCodec } from '../../../src/workflow/checkpoint';
+import { createCheckpointCodec } from '../../../src/automation/workflow/checkpoint';
 
 const withWorkflowRoot = (run: (root: string) => void): void => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'rpa-checkpoint-body-'));

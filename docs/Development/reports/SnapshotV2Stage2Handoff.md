@@ -8,7 +8,7 @@
 - 当前实现：尚未提交，保留在既有迁移工作区中
 - 下一阶段：Stage 3 可以依赖本阶段冻结的 `ControlIndex`、`RelationIndex` 和 `LocatorIndex`
 
-Stage 2 不恢复 `agent/src/runner/steps/executors/snapshot/`，不建立 V1/V2 bridge，也不把仓库整体 typecheck 作为本阶段门槛。`capture_resolve`、query、record、checkpoint 等剩余消费者按后续阶段迁移。
+Stage 2 不恢复 `agent/src/automation/runner/steps/executors/snapshot/`，不建立 V1/V2 bridge，也不把仓库整体 typecheck 作为本阶段门槛。`capture_resolve`、query、record、checkpoint 等剩余消费者按后续阶段迁移。
 
 ## 冻结 contracts
 

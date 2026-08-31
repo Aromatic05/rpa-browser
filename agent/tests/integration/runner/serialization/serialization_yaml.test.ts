@@ -11,7 +11,7 @@ import {
     validateCheckpointFileForSerialization,
     validateStepFileForSerialization,
     validateStepResolveFileForSerialization,
-} from '../../../../src/runner/serialization/types';
+} from '../../../../src/automation/runner/serialization/types';
 
 const examplesDir = path.resolve(process.cwd(), 'tests/fixtures/checkpoints');
 

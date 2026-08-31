@@ -1,16 +1,19 @@
 import type { Page } from 'playwright';
-import { createWorkspaceRegistry } from '../../src/runtime/workspace/registry';
-import { createRecordingState, type RecordingState } from '../../src/record/recording';
-import {createRecordingSnapshotPort} from '../../src/record/pipeline/snapshot';
-import {SnapshotProjectionBaselineStore} from '../../src/runner/session';
-import {PageSnapshotSessionStore} from '../../src/snapshot';
-import type { RunStepsDeps } from '../../src/runner/run_steps';
-import { getRunnerConfig } from '../../src/config';
-import type { Action } from '../../src/actions/action_protocol';
-import { createPortAllocator } from '../../src/runtime/service/ports';
-import { createExecutionBindings } from '../../src/runtime/execution/bindings';
-import type { PageRegistry } from '../../src/runtime/browser/page_registry';
-import type { WorkspaceBrowserSession } from '../../src/runtime/browser/browser_session';
+import { createWorkspaceRegistry } from '../../src/automation/runtime/workspace/registry';
+import { createRecordingState, type RecordingState } from '../../src/automation/recording/recording';
+import {createRecordingSnapshotPort} from '../../src/automation/recording/pipeline/snapshot';
+import {SnapshotProjectionBaselineStore} from '../../src/automation/runner/session';
+import {PageSnapshotSessionStore} from '../../src/automation/snapshot';
+import type { PageSnapshotSessionPort } from '../../src/automation/snapshot/session';
+import type { RunStepsDeps } from '../../src/automation/runner/run_steps';
+import { getRunnerConfig } from '../../src/platform/config';
+import type { Action } from '../../src/interface/actions/action_protocol';
+import { createPortAllocator } from '../../src/automation/runtime/service/ports';
+import { createExecutionBindings } from '../../src/automation/runtime/execution/bindings';
+import type { PageRegistry } from '../../src/automation/runtime/browser/page_registry';
+import type { WorkspaceBrowserSession } from '../../src/automation/runtime/browser/browser_session';
+import type { AgentModelRuntime } from '../../src/agent/model/runtime';
+import {createWorkspaceAgentFactory, type WorkspaceAgentFactoryOptions} from '../../src/agent/workspace/factory';
 
 export type WorkspaceHarnessOptions = {
     recordingState?: RecordingState;
@@ -18,6 +21,10 @@ export type WorkspaceHarnessOptions = {
     emit?: (action: Action) => void;
     runStepsDeps?: RunStepsDeps;
     pageRegistry?: PageRegistry;
+    agentModelRuntime?: AgentModelRuntime;
+    agentFactoryOptions?: WorkspaceAgentFactoryOptions;
+    pluginHost?: RunStepsDeps['pluginHost'];
+    onPageMutation?: (page: Page, pageSession: PageSnapshotSessionPort<Page>) => void;
 };
 
 export const createWorkspaceHarness = (options: WorkspaceHarnessOptions = {}) => {
@@ -51,17 +58,23 @@ export const createWorkspaceHarness = (options: WorkspaceHarnessOptions = {}) =>
         createPendingBindingClaim: () => undefined,
         claimPendingBinding: async () => false,
     };
-    const runtime = createExecutionBindings({ pageRegistry: testPageRegistry });
+    const pageSession = new PageSnapshotSessionStore();
+    const runtime = createExecutionBindings({
+        pageRegistry: testPageRegistry,
+        onPageMutation: options.onPageMutation
+            ? (page) => options.onPageMutation!(page, pageSession)
+            : undefined,
+    });
     const runStepsDeps = options.runStepsDeps || ({
         runtime,
-        pageSession: new PageSnapshotSessionStore(),
+        pageSession,
         snapshotProjection: new SnapshotProjectionBaselineStore(),
         resolveWorkspace: () => {
             throw new Error('resolveWorkspace is not configured in test helper');
         },
         stepSinks: [],
         config: getRunnerConfig(),
-        pluginHost: {
+        pluginHost: options.pluginHost ?? {
             getExecutors: () => ({}),
         },
         dispatchAction: async (action: Action) => ({
@@ -87,6 +100,10 @@ export const createWorkspaceHarness = (options: WorkspaceHarnessOptions = {}) =>
         runnerConfig: getRunnerConfig(),
         portAllocator: createPortAllocator(20000),
         dispatchAction: runStepsDeps.dispatchAction,
+        agentFactory: createWorkspaceAgentFactory({
+            modelRuntime: options.agentModelRuntime,
+            ...options.agentFactoryOptions,
+        }),
         createBrowserSession: (sessionOptions): WorkspaceBrowserSession => {
             const session: WorkspaceBrowserSession = {
                 workspaceName: sessionOptions.workspaceName,

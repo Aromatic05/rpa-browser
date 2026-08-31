@@ -2,7 +2,7 @@
 
 ## 概述
 
-本文档定义 workflow artifact 的目录、字段、落盘与兼容规则。该契约对应 `agent/src/workflow/*`、`agent/src/actions/workflow.ts`、`agent/src/record/persistence.ts` 的当前实现。
+本文档定义 workflow artifact 的目录、字段、落盘与兼容规则。该契约对应 `agent/src/automation/workflow/*`、`agent/src/interface/actions/workflow.ts`、`agent/src/automation/recording/persistence.ts` 的当前实现。
 
 ## 规范
 
@@ -10,7 +10,7 @@
 
 - 全局根路径：`agent/.artifacts/`
 - workflow 根路径：`agent/.artifacts/workflows/<scene>/`
-- scene 与 workspace 映射：`workspaceName = workflow:<scene>`
+- workflow 与 workspace 一一对应：`workspaceName = workflowName`
 
 ### 2. workflow 目录结构
 
@@ -70,11 +70,11 @@ agent/.artifacts/workflows/<scene>/
 - `restoreOnly`：仅恢复。
 - `expectedTabs` 当前只校验活动页 URL（`main` 优先，否则第一项）。
 
-### 5. records 规则
+### 5. recordings 规则
 
-- 主写路径：`records/<recording-name>/`
+- 主写路径：`recordings/<recording-name>/`
 - 默认录制名：`recording-YYYYMMDD-HHmmss`
-- `workflow.record.save` 当前默认 `includeStepResolve: false`
+- `record.save` 当前默认 `includeStepResolve: false`
 
 `steps.yaml` 是 core steps，`step_resolve.yaml` 是 sidecar；不得混写运行时字段。
 
@@ -134,7 +134,7 @@ workspace:
 
 ```yaml
 version: 1
-workspaceName: workflow:order_scene
+workspaceName: order_scene
 tabs:
   - tabName: tab-1
     title: Entity Rules
@@ -143,7 +143,7 @@ tabs:
 
 ## 限制
 
-- `workflow.record.save` 当前不会自动写 `step_resolve.yaml`。
+- `record.save` 在 `includeStepResolve` 未显式开启时不会写 `step_resolve.yaml`。
 - `expectedTabs` 当前不做多 tab 全量校验。
 - `records[]`、`checkpoints[]` 在 manifest 中声明后会严格检查目标文件存在。
 

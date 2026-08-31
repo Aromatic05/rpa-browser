@@ -2,7 +2,7 @@
 
 ## 概述
 
-Step 是 agent 内部统一执行单元，服务于 MCP、DSL、record/play、control-rpc。对应 `agent/src/runner/steps/types.ts` 与 `agent/src/runner/run_steps*.ts`。
+Step 是 agent 内部统一执行单元，服务于 MCP、DSL、record/play、control-rpc。对应 `agent/src/automation/runner/steps/types.ts` 与 `agent/src/automation/runner/run_steps*.ts`。
 
 ## 规范
 

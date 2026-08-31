@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type {BrowserContext, Page} from 'playwright';
-import {createPageRegistry} from '../../../src/runtime/browser/page_registry';
+import {createPageRegistry} from '../../../src/automation/runtime/browser/page_registry';
 
 type MutablePage = Page & {setUrl: (url: string) => void};
 

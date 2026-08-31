@@ -9,13 +9,13 @@ import {
     runStepList,
     runSteps,
     setRunStepsDeps,
-} from '../../../../src/runner/run_steps';
-import { loadRunnerConfig } from '../../../../src/config/loader';
+} from '../../../../src/automation/runner/run_steps';
+import { loadRunnerConfig } from '../../../../src/platform/config/loader';
 import { completeRunStepsDeps } from '../../../helpers/run_steps_workspace';
-import type { Checkpoint } from '../../../../src/runner/checkpoint';
-import type { RunStepsDeps } from '../../../../src/runner/run_steps';
-import type { StepResolve, StepUnion } from '../../../../src/runner/steps/types';
-import {executeBrowserCheckpoint} from '../../../../src/runner/steps/executors/checkpoint';
+import type { Checkpoint } from '../../../../src/automation/runner/checkpoint';
+import type { RunStepsDeps } from '../../../../src/automation/runner/run_steps';
+import type { StepResolve, StepUnion } from '../../../../src/automation/runner/steps/types';
+import {executeBrowserCheckpoint} from '../../../../src/automation/runner/steps/executors/checkpoint';
 
 const createRuntime = () => ({
     ensureActivePage: async () => ({
@@ -374,7 +374,22 @@ test('runSteps snapshots imports for queued procedure calls without parsing unre
         },
     });
     deps.resolveEntityRulesProvider = () => ({
-        workflowName: 'ws-1', availability: 'ready', listProfiles: () => ['orders'], getProfile: (name: string) => name === 'orders' ? {} as any : null,
+        workflowName: 'ws-1',
+        availability: 'ready',
+        listProfiles: () => ['orders'],
+        getProfile: (name: string) => name === 'orders' ? ({
+            kind: 'entity_rules',
+            name: 'orders',
+            page: {kind: 'form'},
+            match: {version: 2, rules: [
+                {ruleId: 'root', source: 'region', expect: 'unique', match: {kind: 'form'}},
+                {ruleId: 'query', source: 'node', expect: 'unique', within: 'root', match: {idEquals: 'query'}},
+            ]},
+            annotation: {version: 2, bindings: [
+                {ruleId: 'root', entityKey: 'ordersQuery', businessTag: 'orders.query', entityKind: 'form'},
+                {ruleId: 'query', actionIntent: 'query', actionRole: 'form'},
+            ]},
+        } as any) : null,
         resolveExports: (name: string) => name === 'orders' ? {
             index: {
                 profileName: 'orders',

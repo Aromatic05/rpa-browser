@@ -11,7 +11,7 @@ const readAgentFile = async (relativePath: string) => await fs.readFile(path.joi
 const readRepoFile = async (relativePath: string) => await fs.readFile(path.join(repoRoot, relativePath), 'utf-8');
 
 test('StepName guard', async () => {
-    const source = await readAgentFile('src/runner/steps/types.ts');
+    const source = await readAgentFile('src/automation/runner/steps/types.ts');
 
     for (const forbidden of [
         'browser.query_entity',
@@ -32,7 +32,7 @@ test('StepName guard', async () => {
 });
 
 test('action entity target guard', async () => {
-    const source = await readAgentFile('src/runner/steps/types.ts');
+    const source = await readAgentFile('src/automation/runner/steps/types.ts');
 
     assert.equal(source.includes('entityTarget'), false);
     assert.match(source, /'browser\.click':\s*\{/);
@@ -80,10 +80,10 @@ test('artifacts guard', async () => {
 });
 
 test('query naming guard', async () => {
-    const stepTypesSource = await readAgentFile('src/runner/steps/types.ts');
-    const mcpSchemaSource = await readAgentFile('src/mcp/schemas.ts');
+    const queryContractSource = await readAgentFile('src/program/query/contracts.ts');
+    const mcpSchemaSource = await readAgentFile('src/interface/mcp/schemas.ts');
 
-    for (const source of [stepTypesSource, mcpSchemaSource]) {
+    for (const source of [queryContractSource, mcpSchemaSource]) {
         assert.equal(source.includes('table.hasNextPage'), true);
         assert.equal(source.includes('table.nextPageTarget'), true);
         assert.equal(source.includes('table.has_next_page'), false);
@@ -92,7 +92,7 @@ test('query naming guard', async () => {
 });
 
 test('checkpoint matching consumes V2 PageSession entities', async () => {
-    const source = await readAgentFile('src/runner/checkpoint/match.ts');
+    const source = await readAgentFile('src/automation/runner/checkpoint/match.ts');
     for (const forbidden of ['executors/snapshot/core', 'executors/snapshot/pipeline', 'finalEntityView']) {
         assert.equal(source.includes(forbidden), false, `checkpoint match must not use ${forbidden}`);
     }
@@ -101,9 +101,9 @@ test('checkpoint matching consumes V2 PageSession entities', async () => {
 });
 
 test('serialization guard', async () => {
-    const stepTypesSource = await readAgentFile('src/runner/steps/types.ts');
-    const captureResolveSource = await readAgentFile('src/runner/steps/executors/capture_resolve.ts');
-    const serializationSource = await readAgentFile('src/runner/serialization/types.ts');
+    const stepTypesSource = await readAgentFile('src/automation/runner/steps/types.ts');
+    const captureResolveSource = await readAgentFile('src/automation/runner/steps/executors/capture_resolve.ts');
+    const serializationSource = await readAgentFile('src/automation/runner/serialization/types.ts');
     const serializationTestSource = await readAgentFile('tests/integration/runner/serialization/serialization_yaml.test.ts');
 
     assert.equal(stepTypesSource.includes('export type Target'), false);
@@ -134,7 +134,7 @@ test('serialization guard', async () => {
         assert.equal(dragBlock.includes(required), true, `drag_and_drop missing ${required}`);
     }
 
-    await assert.rejects(fs.access(path.join(agentRoot, 'src/runner/steps/helpers/resolve_target.ts')));
+    await assert.rejects(fs.access(path.join(agentRoot, 'src/automation/runner/steps/helpers/resolve_target.ts')));
     for (const forbidden of ['ruleEntityOverlay', 'businessEntityOverlay', 'executors/snapshot/core']) {
         assert.equal(captureResolveSource.includes(forbidden), false, `capture_resolve must not use ${forbidden}`);
     }

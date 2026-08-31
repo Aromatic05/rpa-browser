@@ -5,7 +5,7 @@ import {
     captureControlSnapshot,
     executeSelectOptionOnPage,
     resolveControlRef,
-} from '../../../src/snapshot';
+} from '../../../src/automation/snapshot';
 
 const findControlByDomId = async (page: import('playwright').Page, id: string) => {
     const snapshot = await captureControlSnapshot(page);

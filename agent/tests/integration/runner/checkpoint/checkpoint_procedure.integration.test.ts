@@ -7,13 +7,13 @@ import {
     createStepsQueue,
     readResultPipe,
     runSteps,
-} from '../../../../src/runner/run_steps';
-import type { Checkpoint } from '../../../../src/runner/checkpoint';
-import type { CheckpointAction } from '../../../../src/runner/checkpoint/types';
-import { executeBrowserCheckpoint } from '../../../../src/runner/steps/executors/checkpoint';
-import { executeBrowserCompute } from '../../../../src/runner/steps/executors/compute';
-import { executeBrowserQuery } from '../../../../src/runner/steps/executors/query';
-import type { StepUnion } from '../../../../src/runner/steps/types';
+} from '../../../../src/automation/runner/run_steps';
+import type { Checkpoint } from '../../../../src/automation/runner/checkpoint';
+import type { CheckpointAction } from '../../../../src/automation/runner/checkpoint/types';
+import { executeBrowserCheckpoint } from '../../../../src/automation/runner/steps/executors/checkpoint';
+import { executeBrowserCompute } from '../../../../src/automation/runner/steps/executors/compute';
+import { executeBrowserQuery } from '../../../../src/automation/runner/steps/executors/query';
+import type { StepUnion } from '../../../../src/automation/runner/steps/types';
 import {
     buildControlSnapshot,
     buildFormSnapshot,
@@ -24,7 +24,7 @@ import {
     type PageSnapshotCapture,
     type RawCapturedNode,
     type RawPageCapture,
-} from '../../../../src/snapshot';
+} from '../../../../src/automation/snapshot';
 import { completeRunStepsDeps } from '../../../helpers/run_steps_workspace';
 
 const active = () => ({hiddenByStyle: false, inert: false, selfHasBox: true, rendered: true});

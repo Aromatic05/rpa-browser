@@ -7,6 +7,7 @@ export default tseslint.config(
     ignores: [
       "**/node_modules/**",
       "**/dist/**",
+      "**/.dist/**",
       "**/build/**",
       "**/coverage/**",
       "**/.runner-dist/**",
@@ -25,8 +26,8 @@ export default tseslint.config(
       "agent/scripts/**",
       "agent/debug/snapshot-viewer/**",
       "agent/src/demo/**",
-      "agent/src/runner/demo/**",
-      "agent/src/runner/trace/demo/**",
+      "agent/src/automation/runner/demo/**",
+      "agent/src/automation/runner/trace/demo/**",
       // Restored pre-V2 Vue annotator is verified by vue-tsc and its original component suite.
       // Keep its source unchanged instead of rewriting the historical interaction implementation
       // to satisfy rules introduced after the files were accidentally removed.
@@ -180,11 +181,10 @@ export default tseslint.config(
     extends: [tseslint.configs.disableTypeChecked]
   },
 
-  // browser extension / start page runtime globals
+  // browser extension runtime globals
   {
     files: [
-      "extension/**/*.{ts,tsx,js,jsx,mjs,cjs}",
-      "start_extension/**/*.{ts,tsx,js,jsx,mjs,cjs}"
+      "extension/**/*.{ts,tsx,js,jsx,mjs,cjs}"
     ],
     languageOptions: {
       globals: {
@@ -242,7 +242,7 @@ export default tseslint.config(
   // TypeScript narrows several defensive runtime checks as unnecessary, but they are
   // required at this external protocol boundary.
   {
-    files: ["agent/src/runner/annotator/legacy.ts"],
+    files: ["agent/src/automation/runner/annotator/legacy.ts"],
     rules: {
       "@typescript-eslint/no-unnecessary-condition": "off"
     }
@@ -250,7 +250,7 @@ export default tseslint.config(
 
   // agent runtime uses async-compatible handler signatures and rich string interpolation
   {
-    files: ["agent/src/actions/**/*.{ts,tsx}"],
+    files: ["agent/src/interface/actions/**/*.{ts,tsx}"],
     rules: {
       "@typescript-eslint/require-await": "off"
     }

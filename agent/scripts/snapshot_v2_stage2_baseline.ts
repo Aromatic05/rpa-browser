@@ -12,7 +12,7 @@ import {
     type ControlKind,
     type ControlSnapshot,
     type ObservationFixture,
-} from '../src/snapshot';
+} from '../src/automation/snapshot';
 
 const agentDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const repositoryDirectory = path.resolve(agentDirectory, '..');

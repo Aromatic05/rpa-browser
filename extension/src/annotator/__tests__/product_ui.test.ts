@@ -10,10 +10,13 @@ import {
     summarizeEntityDraft,
     candidateDisplayName,
     businessObjectAddOptions,
+    businessEffectChoices,
     listEntityBusinessObjects,
     businessFieldBindingOptions,
     businessColumnKindOptions,
+    normalizeBusinessEffect,
     recognitionGuideMessage,
+    showsBusinessEffectEditor,
 } from '../state/product_ui.js';
 import type {AnnotationBox} from '../layout/annotation_boxes.js';
 import type {CanvasEntityDraft, PickCandidate} from '../types.js';
@@ -288,4 +291,38 @@ test('resolveCheckIssueRecovery routes broken objects to direct reselection', ()
         kind: 'item', entityId: 'e0', annotationId: 'e0_pgpage',
     });
     assert.equal(resolveCheckIssueRecovery([draftEntity], issue('c1')), null);
+});
+
+test('businessEffectChoices exposes plain-language safety choices keyed by internal reversibility', () => {
+    const choices = businessEffectChoices();
+    assert.deepEqual(choices.map((choice) => choice.value), [
+        'unknown',
+        'reversible',
+        'compensatable',
+        'irreversible',
+    ]);
+    assert.equal(choices[0].label, '不确定');
+    assert.equal(choices[0].value, 'unknown');
+    assert.match(choices[3].hint || '', /人工确认/);
+    assert.equal(new Set(choices.map((choice) => choice.label)).size, choices.length);
+});
+
+test('normalizeBusinessEffect treats absent and legacy members as unknown', () => {
+    assert.equal(normalizeBusinessEffect(undefined), 'unknown');
+    assert.equal(normalizeBusinessEffect({reversibility: 'reversible'}), 'reversible');
+    assert.equal(normalizeBusinessEffect({reversibility: 'irreversible'}), 'irreversible');
+});
+
+test('showsBusinessEffectEditor scopes safety to mutating actions and form fields', () => {
+    const table = entity();
+    const form = {...table, kind: 'form' as const};
+    assert.equal(showsBusinessEffectEditor(table, 'action'), true);
+    assert.equal(showsBusinessEffectEditor(table, 'row_action'), true);
+    assert.equal(showsBusinessEffectEditor(table, 'field'), false);
+    assert.equal(showsBusinessEffectEditor(form, 'action'), true);
+    assert.equal(showsBusinessEffectEditor(form, 'row_action'), true);
+    assert.equal(showsBusinessEffectEditor(form, 'field'), true);
+    assert.equal(showsBusinessEffectEditor({...table, kind: 'dialog'}, 'field'), false);
+    assert.equal(showsBusinessEffectEditor({...table, kind: 'panel'}, 'field'), false);
+    assert.equal(showsBusinessEffectEditor(null, 'action'), false);
 });

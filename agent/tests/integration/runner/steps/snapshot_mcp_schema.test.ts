@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { browserBatchInputSchema, browserSnapshotInputSchema, toolInputJsonSchemas } from '../../../../src/mcp/schemas';
+import { browserBatchInputSchema, browserSnapshotInputSchema, toolInputJsonSchemas } from '../../../../src/interface/mcp/schemas';
 
 test('browser.snapshot MCP schema accepts scoped diff args', () => {
     const parsed = browserSnapshotInputSchema.safeParse({

@@ -36,7 +36,7 @@ const lockIsInitializing = async (lockDir) => {
     }
 };
 
-export const acquireInstanceLock = async ({lockDir, pid = process.pid} = {}) => {
+export const acquireInstanceLock = async ({lockDir, pid = process.pid, runtimeName = 'RPA development runtime'} = {}) => {
     if (!lockDir) {throw new Error('development runtime lock directory is required');}
     await mkdir(path.dirname(lockDir), {recursive: true});
 
@@ -48,10 +48,10 @@ export const acquireInstanceLock = async ({lockDir, pid = process.pid} = {}) => 
             const owner = await readLockOwner(lockDir);
             if (owner && isProcessAlive(owner.pid)) {
                 const started = owner.startedAt ? `, started ${owner.startedAt}` : '';
-                throw new Error(`RPA development runtime is already running (pid ${owner.pid}${started})`, {cause: error});
+                throw new Error(`${runtimeName} is already running (pid ${owner.pid}${started})`, {cause: error});
             }
             if (!owner && await lockIsInitializing(lockDir)) {
-                throw new Error('RPA development runtime is already starting; lock owner is not available yet', {cause: error});
+                throw new Error(`${runtimeName} is already starting; lock owner is not available yet`, {cause: error});
             }
             await rm(lockDir, {recursive: true, force: true});
             continue;
@@ -84,14 +84,15 @@ export const acquireInstanceLock = async ({lockDir, pid = process.pid} = {}) => 
         return {lockDir, pid, release};
     }
 
-    throw new Error(`failed to acquire development runtime instance lock: ${lockDir}`);
+    throw new Error(`failed to acquire ${runtimeName} instance lock: ${lockDir}`);
 };
 
 const managedProcessDetached = new WeakMap();
 
 export const spawnManagedProcess = (command, args, options = {}) => {
     const detached = options.detached ?? process.platform !== 'win32';
-    const {detached: _ignoredDetached, ...spawnOptions} = options;
+    const spawnOptions = {...options};
+    delete spawnOptions.detached;
     const child = spawn(command, args, {
         ...spawnOptions,
         detached,

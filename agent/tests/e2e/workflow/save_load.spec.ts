@@ -3,9 +3,9 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import YAML from 'yaml';
-import { sendControlEval } from '../../../src/control/client';
-import type { Action } from '../../../src/actions/action_protocol';
-import type { StepUnion } from '../../../src/runner/steps/types';
+import { sendControlEval } from '../../../src/interface/control/client';
+import type { Action } from '../../../src/interface/actions/action_protocol';
+import type { StepUnion } from '../../../src/automation/runner/steps/types';
 import { dispatch, runStep, startAgent } from '../../helpers/e2e_multitab_helper';
 import { startFixtureServer } from '../../helpers/server';
 
@@ -102,12 +102,13 @@ const openFixtureTab = async (endpoint: string, workspaceName: string, pageUrl: 
   return tabName;
 };
 
-const workflowStepsPath = (workflowName: string) =>
-  path.resolve(process.cwd(), '.artifacts', 'workflows', workflowName, 'recordings', 'main', 'steps.yaml');
+const workflowStepsPath = (workflowRoot: string, workflowName: string) =>
+  path.resolve(workflowRoot, workflowName, 'recordings', 'main', 'steps.yaml');
 
 let endpoint = '';
 let baseURL = '';
 let closeAgent = async () => {};
+let workflowRoot = '';
 let closeFixtureServer = async () => {};
 const cleanupPaths: string[] = [];
 
@@ -118,6 +119,7 @@ test.beforeEach(async () => {
 
   const agent = await startAgent();
   endpoint = agent.endpoint;
+  workflowRoot = agent.workflowRoot;
   closeAgent = agent.close;
 });
 
@@ -137,8 +139,8 @@ test('saves and loads workflows across multiple workspaces without recording lea
   const recordingName = 'main';
   const pageUrl = `${baseURL}/workflow/customer_intake.html`;
 
-  cleanupPaths.push(path.resolve(process.cwd(), '.artifacts', 'workflows', workflowNameA));
-  cleanupPaths.push(path.resolve(process.cwd(), '.artifacts', 'workflows', workflowNameB));
+  cleanupPaths.push(path.resolve(workflowRoot, workflowNameA));
+  cleanupPaths.push(path.resolve(workflowRoot, workflowNameB));
 
   const createA = await dispatch(endpoint, actControl('workspace.create', { workspaceName: workspaceA }));
   expect(createA.type).toBe('workspace.create.result');
@@ -208,8 +210,8 @@ test('saves and loads workflows across multiple workspaces without recording lea
   const recSaveB = await dispatch(endpoint, actWorkspace('record.save', workspaceB, { recordingName }));
   expect(recSaveB.type).toBe('record.save.result');
 
-  const alphaStepsPath = workflowStepsPath(workflowNameA);
-  const betaStepsPath = workflowStepsPath(workflowNameB);
+  const alphaStepsPath = workflowStepsPath(workflowRoot, workflowNameA);
+  const betaStepsPath = workflowStepsPath(workflowRoot, workflowNameB);
 
   const alphaYaml = await fs.readFile(alphaStepsPath, 'utf8');
   const betaYaml = await fs.readFile(betaStepsPath, 'utf8');
@@ -244,8 +246,8 @@ test('saves and loads workflows across multiple workspaces without recording lea
   expect(alphaYaml).not.toContain('scope:');
   expect(betaYaml).not.toContain('scope:');
 
-  const alphaRecordingDir = path.resolve(process.cwd(), '.artifacts', 'workflows', workflowNameA, 'recordings');
-  const betaRecordingDir = path.resolve(process.cwd(), '.artifacts', 'workflows', workflowNameB, 'recordings');
+  const alphaRecordingDir = path.resolve(workflowRoot, workflowNameA, 'recordings');
+  const betaRecordingDir = path.resolve(workflowRoot, workflowNameB, 'recordings');
   const alphaRecordings = await fs.readdir(alphaRecordingDir);
   const betaRecordings = await fs.readdir(betaRecordingDir);
   expect(alphaRecordings).toContain('main');

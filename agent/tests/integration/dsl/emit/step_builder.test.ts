@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildClickStep, buildFillStep, buildQueryStep, buildSelectStep, buildSnapshotStep, buildTypeStep } from '../../../../src/dsl/emit';
+import { buildClickStep, buildFillStep, buildQueryStep, buildSelectStep, buildSnapshotStep, buildTypeStep } from '../../../../src/automation/dsl/emit';
 
 test('step_builder maps DSL statements to browser steps', () => {
     const query = buildQueryStep({

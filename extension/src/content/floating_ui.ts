@@ -3,6 +3,18 @@ import { preparePanelAction, pushPanelLog, type PanelLogEntry } from './panel_ac
 import {mountCheckpointRecorderUI} from './checkpoint_recorder_ui.js';
 import {mountEntityRulesBrowserUI} from './entity_rules_browser_ui.js';
 import type {EntityRuleSelection} from '../../../shared/entity-rules-contract/index.js';
+import {
+    AGENT_APPROVAL_ACTOR,
+    buildAgentSessionView,
+    normalizeAgentInteraction,
+    normalizeAgentSession,
+    normalizeAgentSessionReport,
+    sanitizeForDisplay,
+    type AgentInteraction,
+    type AgentSessionReportViewState,
+    type AgentSessionSummary,
+    type AgentSessionViewStatus,
+} from './agent_session_ui.js';
 
 export type FloatingUIOptions = {
     tabName: string;
@@ -29,7 +41,10 @@ export type FloatingUIHandle = {
 type WorkspaceItem = { workspaceName: string; activeTabName?: string; tabCount: number };
 type TabItem = { tabName: string; url: string; title: string; active: boolean };
 
-type ViewKey = 'Conn' | 'WS' | 'Tabs' | 'Rec' | 'Play' | 'Flow' | 'ER' | 'Log';
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+    typeof value === 'object' && value !== null && !Array.isArray(value);
+
+type ViewKey = 'Conn' | 'WS' | 'Tabs' | 'Rec' | 'Play' | 'Flow' | 'ER' | 'Agent' | 'Log';
 const UUIDorUnsafe = (): string => {
     if (typeof globalThis.crypto.randomUUID === 'function') {
         return globalThis.crypto.randomUUID();
@@ -71,8 +86,30 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         dslRaw: '{}',
         checkpointRaw: '{}',
         annotatorDebug: null as unknown,
+        agentSessions: [] as AgentSessionSummary[],
+        agentStatus: {kind: 'idle'} as AgentSessionViewStatus,
+        agentSelectedSessionId: null as string | null,
+        agentReport: null as AgentSessionReportViewState | null,
+        agentPendingCancels: new Set<string>(),
+        agentListInFlight: false,
+        agentReportInFlight: false,
+        agentInteractions: [] as AgentInteraction[],
+        agentInteractionsSessionId: null as string | null,
+        agentInteractionsInFlight: false,
+        agentInteractionsRequestSessionId: null as string | null,
+        agentInteractionsQueuedSessionId: null as string | null,
+        agentInteractionError: null as {kind: 'decision' | 'list'; message: string} | null,
+        agentPendingDecisions: new Set<string>(),
+        agentDenyReasons: {} as Record<string, string>,
+        agentInputs: {
+            prompt: '',
+            provider: '',
+            model: '',
+            executionMode: '',
+        },
     };
     let pageWorkspaceName = opts.workspaceName;
+    let agentSessionPollTimer: ReturnType<typeof setTimeout> | null = null;
 
     const host = document.createElement('div');
     host.id = ROOT_ID;
@@ -111,6 +148,10 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
       .footer pre { margin:0; max-height:120px; overflow:auto; white-space:pre-wrap; font-size:11px; }
       .log-list { display:flex; flex-direction:column; gap:6px; }
       .log-item { font-size:11px; border:1px solid #e2e8f0; border-radius:6px; padding:6px; }
+      .log-item .selectable { cursor:pointer; }
+      .log-item .selectable:hover { color:#1d4ed8; }
+      .agent-error { color:#b91c1c; font-weight:600; }
+      button:disabled { opacity:.55; cursor:default; }
       .debug-json { margin:0; max-height:300px; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; font:11px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace; color:#0f172a; }
     `;
 
@@ -145,7 +186,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     });
 
     const setOutput = (value: unknown) => {
-        state.lastReply = JSON.stringify(value, null, 2);
+        state.lastReply = JSON.stringify(sanitizeForDisplay(value), null, 2);
         out.textContent = state.lastReply;
     };
 
@@ -226,6 +267,67 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     const refreshRecordings = async () => {
         await sendPanelAction('record.list', {});
     };
+    const refreshAgentSessions = async () => {
+        await sendPanelAction('agent.sessions.list', {});
+    };
+    const clearAgentPoll = () => {
+        if (agentSessionPollTimer !== null) {
+            clearTimeout(agentSessionPollTimer);
+            agentSessionPollTimer = null;
+        }
+    };
+    const ensureAgentPoll = () => {
+        if (agentSessionPollTimer !== null) {return;}
+        if (!state.agentSessions.some((session) => session.state === 'running')) {return;}
+        agentSessionPollTimer = setTimeout(() => {
+            agentSessionPollTimer = null;
+            void refreshAgentSessions();
+        }, 2500);
+    };
+
+    const refreshAgentInteractions = async (sessionId: string) => {
+        if (state.agentInteractionsInFlight) {
+            if (state.agentInteractionsRequestSessionId !== sessionId) {
+                state.agentInteractionsQueuedSessionId = sessionId;
+            }
+            return;
+        }
+        state.agentInteractionsInFlight = true;
+        state.agentInteractionsRequestSessionId = sessionId;
+        state.agentInteractionsSessionId = sessionId;
+        if (state.activeView === 'Agent') {renderActiveView();}
+        try {
+            await sendPanelAction('agent.interactions.list', {sessionId});
+        } finally {
+            state.agentInteractionsInFlight = false;
+            state.agentInteractionsRequestSessionId = null;
+            const queued = state.agentInteractionsQueuedSessionId;
+            state.agentInteractionsQueuedSessionId = null;
+            if (queued) {
+                void refreshAgentInteractions(queued);
+            }
+        }
+    };
+
+    const maybeLoadSelectedPausedInteractions = () => {
+        const selected = state.agentSelectedSessionId;
+        const selectedSession = selected
+            ? state.agentSessions.find((session) => session.sessionId === selected)
+            : undefined;
+        if (selectedSession?.state === 'paused') {
+            void refreshAgentInteractions(selectedSession.sessionId);
+            return;
+        }
+        if (!selected) {
+            const paused = [...state.agentSessions]
+                .filter((session) => session.state === 'paused')
+                .sort((a, b) => b.createdAt - a.createdAt);
+            if (paused.length > 0) {
+                state.agentSelectedSessionId = paused[0].sessionId;
+                void refreshAgentInteractions(paused[0].sessionId);
+            }
+        }
+    };
 
     const parseJsonOrErr = (raw: string): Record<string, unknown> | null => {
         try {
@@ -245,7 +347,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         const keys = ['play.started', 'play.step.started', 'play.step.finished', 'play.progress', 'play.completed', 'play.failed', 'play.canceled'];
         if (!keys.includes(action.type)) {return;}
         const payload = (action.payload && typeof action.payload === 'object') ? action.payload as Record<string, unknown> : {};
-        const summary = `${action.type} ${JSON.stringify(payload).slice(0, 120)}`;
+        const summary = `${action.type} ${JSON.stringify(sanitizeForDisplay(payload)).slice(0, 120)}`;
         state.playEvents = [...state.playEvents, summary].slice(-20);
     };
 
@@ -284,6 +386,121 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
             state.unsavedStepCount = typeof unsaved.stepCount === 'number' && Number.isFinite(unsaved.stepCount)
                 ? unsaved.stepCount
                 : 0;
+        }
+        if (Array.isArray(payload.sessions)) {
+            const incoming = payload.sessions.flatMap((item) => {
+                const normalized = normalizeAgentSession(item);
+                return normalized ? [normalized] : [];
+            });
+            const previous = state.agentSessions;
+            state.agentSessions = incoming.map((session) => {
+                const existing = previous.find((item) => item.sessionId === session.sessionId);
+                if (existing && existing.endedAt !== null && session.state === 'running') {
+                    return existing;
+                }
+                return session;
+            });
+            state.agentStatus = {kind: 'idle'};
+            state.agentListInFlight = false;
+            maybeLoadSelectedPausedInteractions();
+        }
+        const snapshot = normalizeAgentSession(payload);
+        if (!Array.isArray(payload.sessions) && snapshot) {
+            const existing = state.agentSessions.find((session) => session.sessionId === snapshot.sessionId);
+            const accepted = existing && existing.endedAt !== null && snapshot.state === 'running' ? existing : snapshot;
+            state.agentSessions = [
+                ...state.agentSessions.filter((session) => session.sessionId !== accepted.sessionId),
+                accepted,
+            ];
+            if (requestType === 'agent.sessions.cancel') {
+                state.agentPendingCancels.delete(snapshot.sessionId);
+            }
+            maybeLoadSelectedPausedInteractions();
+        }
+        if (requestType === 'agent.sessions.list' && !Array.isArray(payload.sessions)) {
+            state.agentListInFlight = false;
+            state.agentStatus = {kind: 'idle'};
+        }
+        if (requestType === 'agent.sessions.report') {
+            const sessionId = typeof payload.sessionId === 'string' ? payload.sessionId : state.agentSelectedSessionId ?? '';
+            state.agentSelectedSessionId = sessionId || state.agentSelectedSessionId;
+            if (action.type.endsWith('.failed')) {
+                state.agentReport = {sessionId, status: 'missing'};
+            } else {
+                const report = normalizeAgentSessionReport(payload.report);
+                state.agentReport = report
+                    ? {sessionId, status: 'loaded', report}
+                    : {sessionId, status: 'missing'};
+            }
+            state.agentReportInFlight = false;
+            state.agentStatus = {kind: 'idle'};
+        }
+        if (requestType === 'agent.interactions.list') {
+            const sessionId = typeof payload.sessionId === 'string' && payload.sessionId
+                ? payload.sessionId
+                : (state.agentInteractionsRequestSessionId ?? state.agentInteractionsSessionId ?? '');
+            if (action.type.endsWith('.failed')) {
+                const message = isRecord(payload) && typeof payload.message === 'string'
+                    ? payload.message
+                    : action.type;
+                state.agentInteractions = [];
+                state.agentInteractionsSessionId = sessionId || null;
+                state.agentInteractionError = {kind: 'list', message: `interactions unavailable: ${message}`};
+            } else {
+                state.agentInteractions = (Array.isArray(payload.interactions) ? payload.interactions : [])
+                    .flatMap((item) => {
+                        const normalized = normalizeAgentInteraction(item);
+                        return normalized ? [normalized] : [];
+                    });
+                state.agentInteractionsSessionId = sessionId || null;
+                if (state.agentInteractionError?.kind === 'list') {
+                    state.agentInteractionError = null;
+                }
+            }
+            state.agentInteractionsInFlight = false;
+            state.agentInteractionsRequestSessionId = null;
+        }
+        if (requestType === 'agent.interactions.approve' || requestType === 'agent.interactions.deny') {
+            if (action.type.endsWith('.failed')) {
+                const message = isRecord(payload) && typeof payload.message === 'string'
+                    ? payload.message
+                    : action.type;
+                state.agentInteractionError = {kind: 'decision', message};
+                void refreshAgentSessions();
+                const boundSessionId = state.agentInteractionsSessionId ?? state.agentSelectedSessionId;
+                if (boundSessionId) {
+                    void refreshAgentInteractions(boundSessionId);
+                }
+            } else {
+                state.agentInteractionError = null;
+                const sessionRaw = isRecord(payload.session) ? payload.session : null;
+                const snapshot = sessionRaw ? normalizeAgentSession(sessionRaw) : null;
+                if (snapshot) {
+                    const existing = state.agentSessions.find((session) => session.sessionId === snapshot.sessionId);
+                    const accepted = existing && existing.endedAt !== null && snapshot.state === 'running' ? existing : snapshot;
+                    state.agentSessions = [
+                        ...state.agentSessions.filter((session) => session.sessionId !== accepted.sessionId),
+                        accepted,
+                    ];
+                }
+                void refreshAgentSessions();
+                if (state.agentSelectedSessionId === snapshot?.sessionId) {
+                    void refreshAgentInteractions(snapshot.sessionId);
+                }
+            }
+        }
+        if (action.type.endsWith('.failed')) {
+            const message = isRecord(payload) && typeof payload.message === 'string'
+                ? payload.message
+                : action.type;
+            if (
+                requestType === 'agent.sessions.list'
+                || requestType === 'agent.sessions.start'
+                || requestType === 'agent.sessions.cancel'
+            ) {
+                state.agentListInFlight = false;
+                state.agentStatus = {kind: 'error', message};
+            }
         }
         if (requestType === 'workspace.setActive' && !action.type.endsWith('.failed')) {
             const workspaceName = typeof payload.workspaceName === 'string' ? payload.workspaceName : '';
@@ -609,6 +826,177 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         return root;
     };
 
+    const renderAgent = () => {
+        const reportSession = async (sessionId: string) => {
+            if (state.agentReportInFlight) {return;}
+            state.agentSelectedSessionId = sessionId;
+            state.agentReportInFlight = true;
+            if (state.activeView === 'Agent') {renderActiveView();}
+            try {
+                await sendPanelAction('agent.sessions.report', {sessionId});
+            } finally {
+                state.agentReportInFlight = false;
+                state.agentStatus = {kind: 'idle'};
+            }
+        };
+        const handlers = {
+            start: async () => {
+                if (state.agentStatus.kind === 'loading' && state.agentStatus.loading === 'start') {return;}
+                const inputs = state.agentInputs;
+                const payload: Record<string, unknown> = {
+                    prompt: inputs.prompt.trim(),
+                    provider: inputs.provider.trim(),
+                    model: inputs.model.trim(),
+                };
+                if (inputs.executionMode) {payload.executionMode = inputs.executionMode;}
+                state.agentStatus = {kind: 'loading', loading: 'start'};
+                state.agentSelectedSessionId = null;
+                state.agentReport = null;
+                renderActiveView();
+                try {
+                    await sendPanelAction('agent.sessions.start', payload);
+                } finally {
+                    state.agentStatus = {kind: 'idle'};
+                    if (state.activeView === 'Agent') {renderActiveView();}
+                }
+            },
+            list: async () => {
+                if (state.agentListInFlight) {return;}
+                state.agentListInFlight = true;
+                state.agentStatus = {kind: 'loading', loading: 'list'};
+                renderActiveView();
+                try {
+                    await refreshAgentSessions();
+                } finally {
+                    state.agentListInFlight = false;
+                    state.agentStatus = {kind: 'idle'};
+                }
+            },
+            status: async (sessionId: string) => {
+                await sendPanelAction('agent.sessions.status', {sessionId});
+            },
+            cancel: async (sessionId: string) => {
+                if (state.agentPendingCancels.has(sessionId)) {return;}
+                state.agentPendingCancels = new Set([...state.agentPendingCancels, sessionId]);
+                renderActiveView();
+                try {
+                    await sendPanelAction('agent.sessions.cancel', {sessionId});
+                } finally {
+                    const next = new Set(state.agentPendingCancels);
+                    next.delete(sessionId);
+                    state.agentPendingCancels = next;
+                    state.agentStatus = {kind: 'idle'};
+                }
+            },
+            select: async (sessionId: string) => {
+                state.agentSelectedSessionId = sessionId;
+                const session = state.agentSessions.find((item) => item.sessionId === sessionId);
+                if (session?.state === 'paused') {
+                    state.agentReport = null;
+                    state.agentInteractionError = null;
+                    await refreshAgentInteractions(sessionId);
+                    if (state.activeView === 'Agent') {renderActiveView();}
+                    return;
+                }
+                state.agentInteractions = [];
+                state.agentInteractionsSessionId = null;
+                state.agentInteractionError = null;
+                if (session?.reportAvailable) {
+                    await reportSession(sessionId);
+                } else {
+                    state.agentReport = null;
+                    if (state.activeView === 'Agent') {renderActiveView();}
+                }
+            },
+            report: reportSession,
+            approve: async (input: {sessionId: string; interactionId: string; revision: number}) => {
+                if (state.agentPendingDecisions.has(input.interactionId)) {return;}
+                state.agentPendingDecisions = new Set([...state.agentPendingDecisions, input.interactionId]);
+                state.agentInteractionError = null;
+                if (state.activeView === 'Agent') {renderActiveView();}
+                try {
+                    await sendPanelAction('agent.interactions.approve', {
+                        sessionId: input.sessionId,
+                        interactionId: input.interactionId,
+                        revision: input.revision,
+                        approvedBy: AGENT_APPROVAL_ACTOR,
+                    });
+                } finally {
+                    const next = new Set(state.agentPendingDecisions);
+                    next.delete(input.interactionId);
+                    state.agentPendingDecisions = next;
+                    if (state.activeView === 'Agent') {renderActiveView();}
+                }
+            },
+            deny: async (input: {sessionId: string; interactionId: string; revision: number; reason: string}) => {
+                if (state.agentPendingDecisions.has(input.interactionId)) {return;}
+                state.agentPendingDecisions = new Set([...state.agentPendingDecisions, input.interactionId]);
+                state.agentInteractionError = null;
+                if (state.activeView === 'Agent') {renderActiveView();}
+                try {
+                    await sendPanelAction('agent.interactions.deny', {
+                        sessionId: input.sessionId,
+                        interactionId: input.interactionId,
+                        revision: input.revision,
+                        deniedBy: AGENT_APPROVAL_ACTOR,
+                        reason: input.reason.trim(),
+                    });
+                } finally {
+                    const next = new Set(state.agentPendingDecisions);
+                    next.delete(input.interactionId);
+                    state.agentPendingDecisions = next;
+                    if (state.activeView === 'Agent') {renderActiveView();}
+                }
+            },
+            prune: async (maxCount: number) => {
+                await sendPanelAction('agent.sessions.prune', {maxCount});
+                await refreshAgentSessions();
+            },
+            clear: () => {
+                state.agentSessions = [];
+                state.agentStatus = {kind: 'idle'};
+                state.agentSelectedSessionId = null;
+                state.agentReport = null;
+                state.agentPendingCancels = new Set();
+                state.agentListInFlight = false;
+                state.agentReportInFlight = false;
+                state.agentInteractions = [];
+                state.agentInteractionsSessionId = null;
+                state.agentInteractionsInFlight = false;
+                state.agentInteractionsRequestSessionId = null;
+                state.agentInteractionsQueuedSessionId = null;
+                state.agentInteractionError = null;
+                state.agentPendingDecisions = new Set();
+                state.agentDenyReasons = {};
+                renderActiveView();
+            },
+        };
+        const root = buildAgentSessionView({
+            sessions: state.agentSessions,
+            inputs: state.agentInputs,
+            onInputsChange: (patch) => {
+                state.agentInputs = {...state.agentInputs, ...patch};
+            },
+            handlers,
+            report: state.agentReport,
+            status: state.agentStatus,
+            selectedSessionId: state.agentSelectedSessionId,
+            pendingCancelSessionIds: state.agentPendingCancels,
+            pruneMaxCount: 20,
+            interactions: state.agentInteractions,
+            interactionsSessionId: state.agentInteractionsSessionId,
+            interactionsLoading: state.agentInteractionsInFlight,
+            pendingDecisionInteractionIds: state.agentPendingDecisions,
+            denyReasons: state.agentDenyReasons,
+            onDenyReasonChange: (interactionId: string, reason: string) => {
+                state.agentDenyReasons = {...state.agentDenyReasons, [interactionId]: reason};
+            },
+            interactionError: state.agentInteractionError?.message ?? null,
+        });
+        ensureAgentPoll();
+        return root;
+    };
+
     const renderLog = () => {
         const root = document.createElement('div');
         const box = document.createElement('div');
@@ -630,7 +1018,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         state.logs.slice().reverse().forEach((item) => {
             const el = document.createElement('div');
             el.className = 'log-item';
-            const p = (item.action.payload && typeof item.action.payload === 'object') ? JSON.stringify(item.action.payload).slice(0, 100) : '';
+            const p = (item.action.payload && typeof item.action.payload === 'object') ? JSON.stringify(sanitizeForDisplay(item.action.payload)).slice(0, 100) : '';
             el.textContent = `[${item.kind}] ${item.action.type} ws=${item.action.workspaceName ?? '-'} replyTo=${item.action.replyTo ?? '-'} payload=${p}`;
             list.appendChild(el);
         });
@@ -648,10 +1036,11 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         if (state.activeView === 'Play') {body.appendChild(renderPlay());}
         if (state.activeView === 'Flow') {body.appendChild(renderFlow());}
         if (state.activeView === 'ER') {body.appendChild(renderEntityRules());}
+        if (state.activeView === 'Agent') {body.appendChild(renderAgent());}
         if (state.activeView === 'Log') {body.appendChild(renderLog());}
     };
 
-    const views: ViewKey[] = ['Conn', 'WS', 'Tabs', 'Rec', 'Play', 'Flow', 'ER', 'Log'];
+    const views: ViewKey[] = ['Conn', 'WS', 'Tabs', 'Rec', 'Play', 'Flow', 'ER', 'Agent', 'Log'];
     views.forEach((name) => {
         const btn = document.createElement('button');
         btn.textContent = name;
@@ -675,6 +1064,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
     void refreshWorkspaces();
     void refreshTabs();
     void refreshRecordings();
+    void refreshAgentSessions();
     renderActiveView();
 
     let refreshPending = false;
@@ -693,6 +1083,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         unmount: () => {
             entityRulesBrowser.unmount();
             checkpointRecorder.unmount();
+            clearAgentPoll();
             host.remove();
         },
         scheduleRefresh,

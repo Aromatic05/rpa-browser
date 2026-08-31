@@ -4,11 +4,12 @@
     "private": true,
     "type": "module",
     "scripts": {
-        "build": "tsc -p tsconfig.json && vite build --config vite.sw.config.ts && vite build && node build.mjs",
-        "typecheck": "tsc -p tsconfig.json --noEmit && vue-tsc --noEmit -p tsconfig.annotator.json",
-        "test": "pnpm build && node src/__tests__/cmd_router.test.mjs && node src/__tests__/action_flow.test.mjs && node src/__tests__/action_resolution.test.mjs && node src/__tests__/annotator_flow.test.mjs && node src/__tests__/import_boundary.test.mjs && node src/__tests__/content_workspace_address.test.mjs && node src/__tests__/annotator_bundle.test.mjs && pnpm test:content",
+        "build": "tsc -p tsconfig.json && vite build --config vite.sw.config.ts && vite build --config vite.product.config.ts && vite build && node build.mjs",
+        "typecheck": "tsc -p tsconfig.json --noEmit && vue-tsc --noEmit -p tsconfig.annotator.json && tsc -p tsconfig.product.json --noEmit",
+        "test": "pnpm build && node src/__tests__/cmd_router.test.mjs && node src/__tests__/action_flow.test.mjs && node src/__tests__/action_resolution.test.mjs && node src/__tests__/annotator_flow.test.mjs && node src/__tests__/import_boundary.test.mjs && node src/__tests__/content_workspace_address.test.mjs && node src/__tests__/annotator_bundle.test.mjs && pnpm test:content && pnpm test:product",
         "test:annotator": "node --import tsx --test \"src/annotator/__tests__/*.test.ts\"",
-        "test:content": "node --import tsx --test \"src/content/__tests__/*.test.ts\""
+        "test:content": "node --import tsx --test \"src/content/__tests__/*.test.ts\"",
+        "test:product": "node --import tsx --test \"src/product/__tests__/*.test.ts\""
     },
     "devDependencies": {
         "@types/chrome": "^0.0.279",

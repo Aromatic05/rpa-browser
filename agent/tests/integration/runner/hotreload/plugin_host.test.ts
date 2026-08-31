@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { RunnerPluginHost } from '../../../../src/runner/hotreload/plugin_host';
+import { RunnerPluginHost } from '../../../../src/automation/runner/hotreload/plugin_host';
 
 const ENTRY_SOURCE = `
 import { value } from './dep.ts';

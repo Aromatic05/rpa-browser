@@ -2,11 +2,12 @@ import { spawn } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
-import { sendControlEval } from '../../src/control/client';
-import type { StepUnion } from '../../src/runner/steps/types';
-import type { Action } from '../../src/actions/action_protocol';
+import { sendControlEval } from '../../src/interface/control/client';
+import type { StepUnion } from '../../src/automation/runner/steps/types';
+import type { Action } from '../../src/interface/actions/action_protocol';
+import {e2eRuntimePortEnv} from './e2e_runtime_env';
 
-export type AgentHandle = { endpoint: string; close: () => Promise<void> };
+export type AgentHandle = { endpoint: string; workflowRoot: string; close: () => Promise<void> };
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 const envHeaded = () => process.env.RPA_E2E_HEADED === '1';
@@ -37,7 +38,7 @@ export const startAgent = async (opts?: { headed?: boolean; workflowFixtureDir?:
 
   const proc = spawn('pnpm', [headed ? 'dev' : 'dev:headless'], {
     cwd: path.resolve(process.cwd()),
-    env: { ...process.env, RPA_CONTROL_EVAL: '1', RPA_CONTROL_ENDPOINT: endpoint, RPA_USER_DATA_DIR: userDataDir, RPA_WORKFLOW_ROOT: workflowRoot },
+    env: { ...process.env, ...e2eRuntimePortEnv(), RPA_CONTROL_EVAL: '1', RPA_CONTROL_ENDPOINT: endpoint, RPA_USER_DATA_DIR: userDataDir, RPA_WORKFLOW_ROOT: workflowRoot },
     stdio: 'pipe',
   });
 
@@ -48,7 +49,7 @@ export const startAgent = async (opts?: { headed?: boolean; workflowFixtureDir?:
     while (Date.now() < dl) {
       if (proc.exitCode !== null) throw new Error(`agent exited: ${proc.exitCode} ${stderr}`);
       try {
-        const r = await sendControlEval({ source: 'return { ready: !!ctx?.workspaceRegistry && !!ctx?.dispatch && !!ctx?.runStep };', timeoutMs: 2000 }, { endpoint, timeoutMs: 2000 });
+        const r = await sendControlEval({ source: 'const w = ctx?.resolveWorkspace?.("default"); return { ready: !!ctx?.dispatch && !!ctx?.runStep && w?.browserSession?.status === "running" && w?.tabs?.listTabs?.().length > 0 };', timeoutMs: 2000 }, { endpoint, timeoutMs: 2000 });
         if (r.ok && (r.result as { ready?: boolean })?.ready) return;
       } catch {}
       await sleep(100);
@@ -60,6 +61,7 @@ export const startAgent = async (opts?: { headed?: boolean; workflowFixtureDir?:
 
   return {
     endpoint,
+    workflowRoot,
     close: async () => {
       try {
         if (!proc.killed) { proc.kill('SIGTERM'); await new Promise<void>((r) => { const t = setTimeout(r, 2000); proc.once('exit', () => { clearTimeout(t); r(); }); }); }

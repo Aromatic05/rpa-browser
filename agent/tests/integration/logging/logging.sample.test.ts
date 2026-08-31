@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { defaultRunnerConfig } from '../../../src/config/defaults';
-import { getLogger, initLogger, resolveLogPath } from '../../../src/logging/logger';
+import { defaultRunnerConfig } from '../../../src/platform/config/defaults';
+import { getLogger, initLogger, resolveLogPath } from '../../../src/platform/logging/logger';
 
 // 样例目标：验证 infra.error 会落盘为 JSONL（同步写入分支）。
 test('infra error logger writes JSONL file to configured path', () => {

@@ -51,9 +51,9 @@ pnpm test
 
 1. 准备 `agent/.artifacts/workflows/<scene>/workflow.yaml`。
 2. 调用 `workflow.open`，确认 workspace 和 tab 绑定。
-3. 调用 `workflow.dsl.get/save/test` 验证开发态读写和执行。
+3. 调用 `dsl.get/save/test` 验证 DSL 读写与校验，并用 `dsl.run` 验证执行。
 4. 使用普通 Step/Checkpoint 路径验证同一 runtime contract。
-5. 按需执行 `record.start/stop + workflow.record.save` 验证录制落盘。
+5. 按需执行 `record.start/stop + record.save` 验证录制落盘。
 
 发布运行和发布构建不属于日常开发门禁，未经明确授权不得执行。
 

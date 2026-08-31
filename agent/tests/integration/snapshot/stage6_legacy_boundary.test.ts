@@ -9,16 +9,15 @@ const repositoryDirectory = path.resolve(agentDirectory, '..');
 const productionRoots = [
     path.join(agentDirectory, 'src'),
     path.join(repositoryDirectory, 'extension/src'),
-    path.join(repositoryDirectory, 'start_extension/src'),
     path.join(repositoryDirectory, 'shared'),
 ];
 
 const forbiddenPaths = [
-    'agent/src/runner/steps/executors/snapshot',
-    'agent/src/runner/steps/executors/entity_context.ts',
-    'agent/src/runner/steps/helpers/resolve_target.ts',
-    'agent/src/runner/steps/resolve_builder.ts',
-    'agent/src/runner/trace/runtime/getRuntimeStateMap.ts',
+    'agent/src/automation/runner/steps/executors/snapshot',
+    'agent/src/automation/runner/steps/executors/entity_context.ts',
+    'agent/src/automation/runner/steps/helpers/resolve_target.ts',
+    'agent/src/automation/runner/steps/resolve_builder.ts',
+    'agent/src/automation/runner/trace/runtime/getRuntimeStateMap.ts',
 ];
 
 const forbiddenProductionTokens = [

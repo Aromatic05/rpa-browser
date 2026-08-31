@@ -763,7 +763,7 @@ type ProjectionCorrelationKey = {
 目录只在对应阶段创建，不提前制造空壳。
 
 ```text
-agent/src/snapshot/
+agent/src/automation/snapshot/
 ├── capture/
 ├── observation/
 │   ├── model.ts
@@ -858,7 +858,7 @@ capture
 
 迁移期间必须满足：
 
-- `agent/src/snapshot/` 不导入归档 V1 snapshot/entity-rule 类型或实现。
+- `agent/src/automation/snapshot/` 不导入归档 V1 snapshot/entity-rule 类型或实现。
 - 尚未迁移的 runner、record、select-option、checkpoint、DSL 和协议调用方暂时保留。
 - 只有在对应 V2 capability、query、projection 和 locator 已完成真实验收后，才迁移该调用方。
 - 不通过 stub、空结果或旧 shape adapter 让未完成链路表面通过。
@@ -1116,14 +1116,14 @@ session refresh -> remap/stale/diff
 3. 建立 scope-local IDREF、typed relations、activity consistency、frame transform 和 locator scope path。
 4. 建立 CandidateEvidence、candidate-local quotient 与 InvariantValidator，验证 endpoint、orphan、环和 canonical 完整性。
 5. 建立 observation replay benchmark 和 baseline report，记录 decision、local work set、timing 与固定/live 输入来源。
-6. 发布 `agent/src/snapshot/` 内部唯一 V2 事实层 API；不建立 V1-compatible tree bridge。该项不等于仓库生产入口切换，生产切换门槛仍必须单独满足。
+6. 发布 `agent/src/automation/snapshot/` 内部唯一 V2 事实层 API；不建立 V1-compatible tree bridge。该项不等于仓库生产入口切换，生产切换门槛仍必须单独满足。
 
 ### 8.6 交付物
 
-- `agent/src/snapshot/observation/`：model、analysis、capture、replay 四个同层次模块。
-- `agent/src/snapshot/indexes/`：relation、locator、ownership 三个索引模块。
-- `agent/src/snapshot/components/`：shared、control、form 组件模块。
-- `agent/src/snapshot/rules/`：model、matching、runtime 规则模块；阶段 1 不实现规则业务逻辑。
+- `agent/src/automation/snapshot/observation/`：model、analysis、capture、replay 四个同层次模块。
+- `agent/src/automation/snapshot/indexes/`：relation、locator、ownership 三个索引模块。
+- `agent/src/automation/snapshot/components/`：shared、control、form 组件模块。
+- `agent/src/automation/snapshot/rules/`：model、matching、runtime 规则模块；阶段 1 不实现规则业务逻辑。
 - CandidateEvidence、StructuralQuotient 和 InvariantValidator 基础模块。
 - raw capture fixtures 与固定版本元数据。
 - observation replay helper。

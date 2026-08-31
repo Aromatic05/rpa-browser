@@ -9,7 +9,7 @@ import {
     validateFormComponentIndex,
     type RawCapturedNode,
     type RawPageCapture,
-} from '../../../src/snapshot';
+} from '../../../src/automation/snapshot';
 
 const active = () => ({ hiddenByStyle: false, inert: false, selfHasBox: true, rendered: true });
 

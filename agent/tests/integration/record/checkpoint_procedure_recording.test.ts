@@ -6,16 +6,16 @@ import path from 'node:path';
 import {
     buildRecordedCheckpoint,
     checkpointEntityRuleOptions,
-} from '../../../src/record/checkpoint_recording';
-import {ActionError, ERROR_CODES} from '../../../src/actions/results';
-import {runDslSource} from '../../../src/dsl/runtime';
-import {runCheckpointDslBody} from '../../../src/runner/checkpoint/dsl_body';
-import {createDslEntityRulesResolver} from '../../../src/dsl/link';
-import {createWorkspaceEntityRulesProvider} from '../../../src/snapshot/rules/runtime';
-import {createWorkflowCheckpointProvider} from '../../../src/workflow/checkpoint';
-import {createCheckpointCodec} from '../../../src/workflow/checkpoint';
-import type {StepUnion} from '../../../src/runner/steps/types';
-import type {WorkflowArtifact, WorkflowEntityRules} from '../../../src/workflow';
+} from '../../../src/automation/recording/checkpoint_recording';
+import {ActionError, ERROR_CODES} from '../../../src/interface/actions/results';
+import {runDslSource} from '../../../src/automation/dsl/runtime';
+import {runCheckpointDslBody} from '../../../src/automation/runner/checkpoint/dsl_body';
+import {createDslEntityRulesResolver} from '../../../src/automation/dsl/link';
+import {createWorkspaceEntityRulesProvider} from '../../../src/automation/snapshot/rules/runtime';
+import {createWorkflowCheckpointProvider} from '../../../src/automation/workflow/checkpoint';
+import {createCheckpointCodec} from '../../../src/automation/workflow/checkpoint';
+import type {StepUnion} from '../../../src/automation/runner/steps/types';
+import type {WorkflowArtifact, WorkflowEntityRules} from '../../../src/automation/workflow';
 
 const entityRule: WorkflowEntityRules = {
     kind: 'entity_rules',

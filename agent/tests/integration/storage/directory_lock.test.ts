@@ -9,7 +9,7 @@ import {
     observeStaleDirectoryLockSync,
     reclaimObservedDirectoryLock,
     reclaimObservedDirectoryLockSync,
-} from '../../../src/storage/directory_lock';
+} from '../../../src/platform/storage/directory_lock';
 
 const deadPid = 2_147_483_647;
 

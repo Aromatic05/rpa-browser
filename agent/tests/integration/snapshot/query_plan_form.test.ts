@@ -10,8 +10,8 @@ import {
     executeEntityRuleQueryPlan,
     type RawCapturedNode,
     type RawPageCapture,
-} from '../../../src/snapshot';
-import type { EntityRuleMatchRecord } from '../../../src/workflow';
+} from '../../../src/automation/snapshot';
+import type { EntityRuleMatchRecord } from '../../../src/automation/workflow';
 
 const node = (
     captureId: string,

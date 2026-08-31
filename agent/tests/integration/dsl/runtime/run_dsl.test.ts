@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeDsl, parseDsl, runDsl, runDslSource } from '../../../../src/dsl';
-import { runCheckpointDslBody } from '../../../../src/runner/checkpoint/dsl_body';
-import { DslRuntimeError, DslValidationError } from '../../../../src/dsl/diagnostics/errors';
-import type { DslCheckpointProvider } from '../../../../src/dsl/emit';
-import type { RunStepsDeps } from '../../../../src/runner/run_steps';
-import type { Checkpoint } from '../../../../src/runner/checkpoint';
-import type { StepResolve, StepUnion } from '../../../../src/runner/steps/types';
+import { normalizeDsl, parseDsl, runDsl, runDslSource } from '../../../../src/automation/dsl';
+import { runCheckpointDslBody } from '../../../../src/automation/runner/checkpoint/dsl_body';
+import { DslRuntimeError, DslValidationError } from '../../../../src/program/dsl/diagnostics/errors';
+import type { DslCheckpointProvider } from '../../../../src/automation/dsl/emit';
+import type { RunStepsDeps } from '../../../../src/automation/runner/run_steps';
+import type { Checkpoint } from '../../../../src/automation/runner/checkpoint';
+import type { StepResolve, StepUnion } from '../../../../src/automation/runner/steps/types';
 import { completeRunStepsDeps } from '../../../helpers/run_steps_workspace';
 
 type StubCall = {

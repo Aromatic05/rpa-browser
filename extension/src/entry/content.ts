@@ -191,6 +191,53 @@ const loadAnnotatorSessionController = (() => {
     };
 })();
 
+type ProductAuthoringNoticeShape = {
+    type: string;
+    ok: boolean;
+    payload?: Record<string, unknown>;
+    reply?: Record<string, unknown>;
+};
+
+type ProductMountHandleShape = {
+    refresh: () => Promise<void>;
+    onPageChanged: () => void;
+    setWorkspace: (workspaceName: string) => void;
+    unmount: () => void;
+    noteAuthoringAction: (notice: ProductAuthoringNoticeShape) => void;
+    noteAnnotateCanvas: (open: boolean) => void;
+};
+
+type ProductMountExports = {
+    mountProductFromContent: (opts: {
+        workspaceName: string;
+        now?: () => number;
+        dispatchAction: (type: string, payload?: Record<string, unknown>) => Promise<unknown>;
+        openAnnotator?: (profileName?: string) => Promise<boolean> | boolean;
+        closeAnnotator?: () => void;
+        previewCheckpointEntityRule?: (selection: EntityRuleSelection | null) => void | Promise<void>;
+    }) => ProductMountHandleShape;
+};
+
+const loadProductMount = (() => {
+    let cached: Promise<ProductMountExports> | null = null;
+    return () => {
+        if (!cached) {
+            const url = chrome.runtime.getURL('content/product_mount.js');
+            cached = import(url) as Promise<ProductMountExports>;
+        }
+        return cached;
+    };
+})();
+
+const isProductDevMode = async (): Promise<boolean> => {
+    try {
+        const stored = await chrome.storage.local.get('rpaProductDevMode');
+        return stored.rpaProductDevMode === true;
+    } catch {
+        return false;
+    }
+};
+
 (() => {
     // 幂等保护：避免重复注入 UI 与监听器
     if (window.top !== window) {return;}
@@ -349,7 +396,6 @@ const loadAnnotatorSessionController = (() => {
     let consumeActionEvent: ((action: ActionShape) => void) | null = null;
     let annotatorHandle: AnnotatorHandle | null = null;
     void (async () => {
-        const { mountFloatingUI } = await loadFloatingUI();
         const { MSG } = await loadProtocol();
         const { tabName, workspaceName } = await ensureToken();
         bindReportOnUrlChange();
@@ -381,6 +427,30 @@ const loadAnnotatorSessionController = (() => {
         };
 
         let annotatorSessions: AnnotatorSessionController | null = null;
+        let productHandleRef: ProductMountHandleShape | null = null;
+        const notifyAnnotatorAction = (
+            type: string,
+            payload: Record<string, unknown> | undefined,
+            reply: unknown,
+        ): void => {
+            if (!type.startsWith('entity_rules.annotator.')) {return;}
+            const action = isRecord(reply) ? reply : null;
+            const failed = Boolean(action && typeof action.type === 'string' && action.type.endsWith('.failed'));
+            productHandleRef?.noteAuthoringAction({
+                type,
+                ok: !failed,
+                ...(payload ? {payload} : {}),
+                ...(action && isRecord(action.payload) ? {reply: action.payload} : {}),
+            });
+        };
+        const dispatchAnnotatorObserved = async (
+            type: string,
+            payload?: Record<string, unknown>,
+        ): Promise<unknown> => {
+            const reply = await dispatchAnnotator(type, payload);
+            notifyAnnotatorAction(type, payload, reply);
+            return reply;
+        };
 
         const ensureAnnotatorHandle = async (): Promise<AnnotatorHandle | null> => {
             if (annotatorHandle) {return annotatorHandle;}
@@ -395,7 +465,7 @@ const loadAnnotatorSessionController = (() => {
                         onRedo: () => undefined,
                         onCheck: () => undefined,
                         onSave: () => undefined,
-                        dispatch: (type, payload) => dispatchAnnotator(type, payload),
+                        dispatch: (type, payload) => dispatchAnnotatorObserved(type, payload),
                         onDebugState: (detail) => uiHandle?.setAnnotatorDebugState(detail),
                     },
                     document,
@@ -409,13 +479,14 @@ const loadAnnotatorSessionController = (() => {
         const {createAnnotatorSessionController} = await loadAnnotatorSessionController();
         const annotatorSessionController = createAnnotatorSessionController({
             ensureHandle: ensureAnnotatorHandle,
-            open: async (payload) => await dispatchAnnotator(
+            open: async (payload) => await dispatchAnnotatorObserved(
                 'entity_rules.annotator.open',
                 {annotatorProtocol: 'canvas-v1', ...payload},
             ) as ActionShape,
             pageUrl: () => location.href,
             onEditorActiveChange: (active) => {
                 setAnnotatorLauncherVisible(!active);
+                productHandleRef?.noteAnnotateCanvas(active);
             },
             onError: (owner, error) => {
                 console.error(`[rpa] annotator session failed (${owner}):`, error);
@@ -423,45 +494,76 @@ const loadAnnotatorSessionController = (() => {
         });
         annotatorSessions = annotatorSessionController;
 
-        uiHandle = mountFloatingUI({
-            tabName,
-            workspaceName,
-            onAction: async (type, payload, scope) => {
-                const { send } = await loadSend();
-                const typedScope = (scope ?? {}) as ActionScopeInput;
-                const normalizedPayload =
-                    type === 'record.event'
-                        ? {
-                              ...(payload ?? {}),
-                              __clientContext: {
-                                  url: location.href,
-                                  title: document.title,
-                                  ts: Date.now(),
-                              },
-                          }
-                        : (payload ?? {});
-                const action = {
-                    v: 1 as const,
-                    id: UUIDorUnsafe(),
-                    type,
-                    workspaceName: typedScope.workspaceName,
-                    payload: normalizedPayload,
-                };
-                return await send.action(action);
-            },
-            onEvent: (handler) => {
-                consumeActionEvent = handler;
-            },
-            onEnterAnnotation: (profileName) => {
-                void annotatorSessionController.openEditor(profileName);
-            },
-            onEntityRulePreview: async (selection) => {
-                return await annotatorSessionController.previewRule(selection);
-            },
-            onCheckpointEntityRulePreview: async (selection) => {
-                return await annotatorSessionController.previewCheckpoint(selection);
-            },
-        });
+        const devMode = await isProductDevMode();
+        if (devMode) {
+            // Legacy debug panel: the old developer surface, explicitly opted in.
+            const { mountFloatingUI } = await loadFloatingUI();
+            uiHandle = mountFloatingUI({
+                tabName,
+                workspaceName,
+                onAction: async (type, payload, scope) => {
+                    const { send } = await loadSend();
+                    const typedScope = (scope ?? {}) as ActionScopeInput;
+                    const normalizedPayload =
+                        type === 'record.event'
+                            ? {
+                                  ...(payload ?? {}),
+                                  __clientContext: {
+                                      url: location.href,
+                                      title: document.title,
+                                      ts: Date.now(),
+                                  },
+                              }
+                            : (payload ?? {});
+                    const action = {
+                        v: 1 as const,
+                        id: UUIDorUnsafe(),
+                        type,
+                        workspaceName: typedScope.workspaceName,
+                        payload: normalizedPayload,
+                    };
+                    return await send.action(action);
+                },
+                onEvent: (handler) => {
+                    consumeActionEvent = handler;
+                },
+                onEnterAnnotation: (profileName) => {
+                    void annotatorSessionController.openEditor(profileName);
+                },
+                onEntityRulePreview: async (selection) => {
+                    return await annotatorSessionController.previewRule(selection);
+                },
+                onCheckpointEntityRulePreview: async (selection) => {
+                    return await annotatorSessionController.previewCheckpoint(selection);
+                },
+            });
+        } else {
+            const { mountProductFromContent } = await loadProductMount();
+            const productHandle = mountProductFromContent({
+                workspaceName,
+                dispatchAction: (type, payload) => dispatchAnnotator(type, payload),
+                openAnnotator: (profileName) => annotatorSessionController.openEditor(profileName),
+                closeAnnotator: () => {
+                    annotatorSessionController.close('editor');
+                },
+                previewCheckpointEntityRule: (selection) => {
+                    void annotatorSessionController.previewCheckpoint(selection);
+                },
+            });
+            productHandleRef = productHandle;
+            uiHandle = {
+                scheduleRefresh: () => {
+                    void productHandle.refresh();
+                },
+                onPageChanged: () => {
+                    productHandle.onPageChanged();
+                },
+                setPageWorkspace: (workspaceName) => {
+                    productHandle.setWorkspace(workspaceName);
+                },
+                setAnnotatorDebugState: () => undefined,
+            };
+        }
         onPageContextChanged = () => {
             annotatorSessionController.close();
             uiHandle?.onPageChanged();

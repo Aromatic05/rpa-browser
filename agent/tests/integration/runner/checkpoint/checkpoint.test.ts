@@ -1,12 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { maybeEnterCheckpoint, maybePickCheckpoint } from '../../../../src/runner/checkpoint/match';
-import { maybeBindCheckpoint } from '../../../../src/runner/checkpoint/bind';
-import { maybeRunCheckpoint } from '../../../../src/runner/checkpoint/run';
-import { foldCheckpointResult } from '../../../../src/runner/checkpoint/fold';
-import type { CheckpointCtx } from '../../../../src/runner/checkpoint/types';
-import type { FailedCtx } from '../../../../src/runner/failed_ctx';
-import type { StepResult, StepUnion } from '../../../../src/runner/steps/types';
+import { maybeEnterCheckpoint, maybePickCheckpoint } from '../../../../src/automation/runner/checkpoint/match';
+import { maybeBindCheckpoint } from '../../../../src/automation/runner/checkpoint/bind';
+import { maybeRunCheckpoint } from '../../../../src/automation/runner/checkpoint/run';
+import { foldCheckpointResult } from '../../../../src/automation/runner/checkpoint/fold';
+import type { CheckpointCtx } from '../../../../src/automation/runner/checkpoint/types';
+import type { FailedCtx } from '../../../../src/automation/runner/failed_ctx';
+import type { StepResult, StepUnion } from '../../../../src/automation/runner/steps/types';
 import { completeRunStepsDeps } from '../../../helpers/run_steps_workspace';
 import { createV2BusinessPage } from '../../../helpers/v2_business_page';
 
@@ -121,7 +121,7 @@ test('maybePickCheckpoint: no candidates', async () => {
 });
 
 test('maybePickCheckpoint: candidates but no match', async () => {
-    const checkpoints: import('../../../../src/runner/checkpoint/types').Checkpoint[] = [
+    const checkpoints: import('../../../../src/automation/runner/checkpoint/types').Checkpoint[] = [
         {
             id: 'cp-1',
             name: 'cp',
@@ -135,7 +135,7 @@ test('maybePickCheckpoint: candidates but no match', async () => {
 });
 
 test('maybePickCheckpoint: single matched checkpoint', async () => {
-    const checkpoints: import('../../../../src/runner/checkpoint/types').Checkpoint[] = [
+    const checkpoints: import('../../../../src/automation/runner/checkpoint/types').Checkpoint[] = [
         {
             id: 'cp-1',
             name: 'cp',
@@ -149,7 +149,7 @@ test('maybePickCheckpoint: single matched checkpoint', async () => {
 });
 
 test('maybePickCheckpoint: priority wins', async () => {
-    const checkpoints: import('../../../../src/runner/checkpoint/types').Checkpoint[] = [
+    const checkpoints: import('../../../../src/automation/runner/checkpoint/types').Checkpoint[] = [
         {
             id: 'cp-low',
             name: 'low',
@@ -170,7 +170,7 @@ test('maybePickCheckpoint: priority wins', async () => {
 });
 
 test('maybePickCheckpoint: checkpoint policy maxAttempts blocks re-entry', async () => {
-    const checkpoints: import('../../../../src/runner/checkpoint/types').Checkpoint[] = [
+    const checkpoints: import('../../../../src/automation/runner/checkpoint/types').Checkpoint[] = [
         {
             id: 'cp-limited',
             name: 'limited',
@@ -196,7 +196,7 @@ test('maybePickCheckpoint: checkpoint policy maxAttempts blocks re-entry', async
 });
 
 test('maybePickCheckpoint: an exhausted candidate does not consume another checkpoint budget', async () => {
-    const checkpoints: import('../../../../src/runner/checkpoint/types').Checkpoint[] = [
+    const checkpoints: import('../../../../src/automation/runner/checkpoint/types').Checkpoint[] = [
         {
             id: 'cp-exhausted',
             priority: 10,
@@ -226,7 +226,7 @@ test('maybePickCheckpoint: an exhausted candidate does not consume another check
 });
 
 test('maybePickCheckpoint: entityExists matches by businessTag', async () => {
-    const checkpoints: import('../../../../src/runner/checkpoint/types').Checkpoint[] = [
+    const checkpoints: import('../../../../src/automation/runner/checkpoint/types').Checkpoint[] = [
         {
             id: 'cp-entity-tag',
             name: 'entity-tag',

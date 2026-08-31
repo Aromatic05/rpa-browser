@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createPortAllocator } from '../../../src/runtime/service/ports';
+import { createPortAllocator } from '../../../src/automation/runtime/service/ports';
 
 test('allocates a port for workspaceName + serviceName', async () => {
     const allocator = createPortAllocator(19000);
@@ -83,4 +83,18 @@ test('listAllocations returns all current allocations', async () => {
     assert.deepEqual(names, ['ws-a/mcp', 'ws-b/mcp']);
     allocator.release('ws-a', 'mcp');
     allocator.release('ws-b', 'mcp');
+});
+
+test('RPA_RUNTIME_PORT_BASE configures the default allocator range', async () => {
+    const previous = process.env.RPA_RUNTIME_PORT_BASE;
+    process.env.RPA_RUNTIME_PORT_BASE = '20600';
+    try {
+        const allocator = createPortAllocator();
+        const port = await allocator.allocate('configured', 'agent');
+        assert.ok(port >= 20600 && port < 21600);
+        allocator.release('configured', 'agent');
+    } finally {
+        if (previous === undefined) {delete process.env.RPA_RUNTIME_PORT_BASE;}
+        else {process.env.RPA_RUNTIME_PORT_BASE = previous;}
+    }
 });

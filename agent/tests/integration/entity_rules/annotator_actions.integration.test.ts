@@ -2,11 +2,19 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import {chromium} from 'playwright';
-import {createRunnerAnnotatorController} from '../../../src/runner/annotator';
-import {createEntityRulesRuntime} from '../../../src/snapshot/rules/runtime';
-import {ActionError, ERROR_CODES} from '../../../src/actions/results';
-import type {Action} from '../../../src/actions/action_protocol';
-import {entityRulesArtifactRevision, type Workflow, type WorkflowArtifact, type WorkflowEntityRules} from '../../../src/workflow';
+import {createRunnerAnnotatorController} from '../../../src/automation/runner/annotator';
+import {createEntityRulesRuntime, createWorkspaceEntityRulesProvider} from '../../../src/automation/snapshot/rules/runtime';
+import {createDslEntityRulesResolver, linkDsl} from '../../../src/automation/dsl/link';
+import {parseDsl} from '../../../src/program/dsl/parser';
+import {ActionError, ERROR_CODES} from '../../../src/interface/actions/results';
+import type {Action} from '../../../src/interface/actions/action_protocol';
+import {
+    buildEntityRuleExportIndex,
+    entityRulesArtifactRevision,
+    type Workflow,
+    type WorkflowArtifact,
+    type WorkflowEntityRules,
+} from '../../../src/automation/workflow';
 import type {
     AnnotatorCheckReply,
     AnnotatorDraft,
@@ -1080,6 +1088,302 @@ test('table module annotation keeps filter controls in the shared business scope
         }, memory.workflow);
         const reopenedDraft = (reopened.reply.payload as {canvasDraft: {entities: Array<{entityKey?: string}>}}).canvasDraft;
         assert.equal(reopenedDraft.entities[0]?.entityKey, 'orders');
+    } finally {
+        await browser.close();
+    }
+});
+
+test('canvas-v1 save persists effect reversibility into V2 bindings export index and DSL link', async () => {
+    const browser = await chromium.launch({headless: true});
+    try {
+        const page = await browser.newPage({viewport: {width: 1200, height: 800}});
+        await page.setContent(`
+          <section class="ant-card-body">
+            <form class="ant-form ant-form-horizontal">
+              <div class="ant-form-item">
+                <label title="订单编号">订单编号</label>
+                <input class="ant-input" placeholder="订单编号">
+              </div>
+              <div class="ant-form-item">
+                <label title="商品名称">商品名称</label>
+                <input class="ant-input" placeholder="商品名称">
+              </div>
+              <button type="button" class="ant-btn ant-btn-primary">查询</button>
+              <button type="button" class="ant-btn">下 载</button>
+            </form>
+            <div class="ant-table-wrapper">
+              <table>
+                <thead><tr><th>订单编号</th><th>商品名称</th><th>操作</th></tr></thead>
+                <tbody>
+                  <tr><td>SO-001</td><td><a href="#product-1">测试商品</a></td><td><a href="#ship-1">确认发货</a></td></tr>
+                  <tr><td>SO-002</td><td><a href="#product-2">另一商品</a></td><td><a href="#ship-2">确认发货</a></td></tr>
+                </tbody>
+              </table>
+              <ul class="ant-pagination"><li title="下一页">下一页</li></ul>
+            </div>
+          </section>
+        `);
+        const deps = completeRunStepsDeps({pluginHost: {} as never}, {workspaceName: 'ws-1', page});
+        const runtime = createEntityRulesRuntime({
+            annotator: createRunnerAnnotatorController({runStepsDeps: deps}),
+        });
+        const memory = createMemoryWorkflow();
+        const header = await page.getByRole('columnheader', {name: '订单编号'}).boundingBox();
+        assert.ok(header);
+
+        const picked = await invokeCanvas(runtime, 'entity_rules.annotator.pick', {
+            purpose: 'entity',
+            fingerprint: {
+                point: {x: header.x + header.width / 2, y: header.y + header.height / 2},
+                selectorCandidates: ['th'],
+                tagName: 'th',
+                classTokens: [],
+                rect: header,
+                ancestors: [],
+            },
+        }, memory.workflow);
+        const candidates = (picked.reply.payload as {candidateChain: Array<{
+            entityRef?: {kind?: string};
+            proposedTargets?: Array<Record<string, unknown>>;
+            text?: string;
+        }>}).candidateChain;
+        const tableCandidate = candidates.find((candidate) => candidate.entityRef?.kind === 'table');
+        assert.ok(tableCandidate?.proposedTargets?.[0]);
+
+        const scopedDraft = {
+            version: 1,
+            profileName: 'orders-module',
+            page: {kind: 'table'},
+            entities: [{
+                id: 'e0',
+                source: 'region',
+                kind: 'table',
+                name: tableCandidate.text || '订单列表',
+                businessTag: 'orders.table',
+                entityKey: 'orders',
+                target: tableCandidate.proposedTargets[0],
+                expect: 'unique',
+                annotations: [],
+                columns: [],
+                origin: 'manual',
+            }],
+            preserved: {},
+        };
+        const recognized = await invokeCanvas(runtime, 'entity_rules.annotator.recognize', {
+            canvasDraft: scopedDraft,
+        }, memory.workflow);
+        const canvasDraft = (recognized.reply.payload as {canvasDraft: {
+            entities: Array<{
+                id: string;
+                name?: string;
+                annotations: Array<{id: string; type: string; name?: string; businessKey: string; target: Record<string, unknown>; effect?: {reversibility: string}}>;
+                columns: Array<{id: string; name?: string; fieldKey: string; actions: Array<{id: string; text?: string; actionIntent: string; target: Record<string, unknown>; effect?: {reversibility: string}}>}>;
+            }>;
+        }}).canvasDraft;
+        const entity = canvasDraft.entities[0];
+        const orderNumber = entity.annotations.find((item) => item.type === 'field' && item.name === '订单编号');
+        const productName = entity.annotations.find((item) => item.type === 'field' && item.name === '商品名称');
+        const search = entity.annotations.find((item) => item.type === 'action' && item.name === '查询');
+        const download = entity.annotations.find((item) => item.type === 'action' && item.name === '下载');
+        assert.ok(orderNumber && productName && search && download);
+        orderNumber.businessKey = 'orderNo';
+        orderNumber.effect = {reversibility: 'reversible'};
+        productName.businessKey = 'productName';
+        search.effect = {reversibility: 'irreversible'};
+        const orderNoColumn = entity.columns.find((column) => column.name === '订单编号');
+        const productNameColumn = entity.columns.find((column) => column.name === '商品名称');
+        const actionColumn = entity.columns.find((column) => column.name === '操作');
+        assert.ok(orderNoColumn && productNameColumn && actionColumn);
+        orderNoColumn.fieldKey = 'orderNo';
+        productNameColumn.fieldKey = 'productName';
+        actionColumn.fieldKey = 'actions';
+        assert.ok(actionColumn.actions[0]);
+        actionColumn.actions[0].effect = {reversibility: 'compensatable'};
+        (entity as {primaryKey?: unknown}).primaryKey = {fieldKey: 'orderNo', columns: ['订单编号']};
+
+        const saved = await invokeCanvas(runtime, 'entity_rules.annotator.save', {
+            canvasDraft,
+            profileName: 'orders-module',
+            expectedRevision: null,
+        }, memory.workflow);
+        assert.equal((saved.reply.payload as {saved: boolean}).saved, true);
+        const persisted = memory.profiles.get('orders-module');
+        assert.ok(persisted);
+
+        assert.deepEqual(persisted.annotation.bindings.find((binding) => binding.fieldKey === 'orderNo')?.effect, {reversibility: 'reversible'});
+        assert.equal(persisted.annotation.bindings.find((binding) => binding.fieldKey === 'productName')?.effect, undefined);
+        assert.deepEqual(persisted.annotation.bindings.find((binding) => binding.actionIntent === 'search')?.effect, {reversibility: 'irreversible'});
+        assert.equal(persisted.annotation.bindings.find((binding) => binding.actionIntent === 'download')?.effect, undefined);
+        assert.deepEqual(persisted.annotation.bindings.find((binding) =>
+            binding.actionIntent === 'confirmShipment' && binding.actionRole === 'row')?.effect, {reversibility: 'compensatable'});
+        const rootBinding = persisted.annotation.bindings.find((binding) => binding.businessTag === 'orders.table');
+        const columnActions = (rootBinding?.columns as Array<{actions?: Array<Record<string, unknown>>}> | undefined)
+            ?.find((column) => (column.actions?.length ?? 0) > 0)?.actions ?? [];
+        assert.deepEqual(columnActions[0]?.effect, {reversibility: 'compensatable'});
+        assert.equal(persisted.annotation.bindings.find((binding) => binding.paginationRole === 'next')?.effect, undefined);
+
+        const reopened = await invokeCanvas(runtime, 'entity_rules.annotator.open', {
+            profileName: 'orders-module',
+        }, memory.workflow);
+        const reopenedCanvas = (reopened.reply.payload as {canvasDraft: {
+            entities: Array<{
+                annotations: Array<{businessKey: string; effect?: {reversibility: string}}>;
+                columns: Array<{actions: Array<{effect?: {reversibility: string}}>}>;
+            }>;
+        }}).canvasDraft;
+        assert.deepEqual(reopenedCanvas.entities[0].annotations.find((item) => item.businessKey === 'orderNo')?.effect, {reversibility: 'reversible'});
+        assert.deepEqual(reopenedCanvas.entities[0].annotations.find((item) => item.businessKey === 'search')?.effect, {reversibility: 'irreversible'});
+        assert.deepEqual(
+            reopenedCanvas.entities[0].columns.flatMap((column) => column.actions)
+                .find((action) => action.effect?.reversibility === 'compensatable')?.effect,
+            {reversibility: 'compensatable'},
+        );
+
+        const exportIndex = buildEntityRuleExportIndex(persisted);
+        assert.equal(exportIndex.diagnostics.length, 0);
+        assert.ok(exportIndex.index);
+        const exported = exportIndex.index.entities[0];
+        assert.equal(exported.entityKey, 'orders');
+        assert.deepEqual(exported.fields.find((item) => item.fieldKey === 'orderNo')?.effect, {reversibility: 'reversible'});
+        assert.equal(exported.fields.find((item) => item.fieldKey === 'productName')?.effect, undefined);
+        assert.deepEqual(exported.actions.find((item) => item.actionIntent === 'search')?.effect, {reversibility: 'irreversible'});
+        assert.equal(exported.actions.find((item) => item.actionIntent === 'download')?.effect, undefined);
+        assert.deepEqual(exported.rowActions.find((item) => item.actionIntent === 'confirmShipment')?.effect, {reversibility: 'compensatable'});
+
+        const resolver = createDslEntityRulesResolver(createWorkspaceEntityRulesProvider(memory.workflow));
+        const linked = linkDsl(parseDsl(`
+use entity_rules "orders-module" as orders
+fill orders.orders.orderNo with input.orderNo
+click orders.orders.search
+click orders.orders.download
+click orders.orders.row(input.orderNo).confirmShipment
+let rows = query orders.orders.currentRows
+`), resolver);
+        assert.deepEqual(linked.diagnostics, []);
+        assert.deepEqual((linked.program.body[0] as {effect?: unknown}).effect, {
+            reversibility: 'reversible',
+            source: {
+                kind: 'entity_rules',
+                profileName: 'orders-module',
+                entityKey: 'orders',
+                memberKind: 'field',
+                member: 'orderNo',
+            },
+        });
+        assert.deepEqual((linked.program.body[1] as {effect?: unknown}).effect, {
+            reversibility: 'irreversible',
+            source: {
+                kind: 'entity_rules',
+                profileName: 'orders-module',
+                entityKey: 'orders',
+                memberKind: 'action',
+                member: 'search',
+            },
+        });
+        assert.equal((linked.program.body[2] as {effect?: unknown}).effect, undefined);
+        assert.deepEqual((linked.program.body[3] as {effect?: unknown}).effect, {
+            reversibility: 'compensatable',
+            source: {
+                kind: 'entity_rules',
+                profileName: 'orders-module',
+                entityKey: 'orders',
+                memberKind: 'rowAction',
+                member: 'confirmShipment',
+            },
+        });
+        assert.equal((linked.program.body[4] as {effect?: unknown}).effect, undefined);
+
+        const firstRevision = (saved.reply.payload as {artifactRevision: string}).artifactRevision;
+        const editorB = structuredClone(canvasDraft);
+        editorB.entities[0].name = 'Editor B';
+        const resaved = await invokeCanvas(runtime, 'entity_rules.annotator.save', {
+            canvasDraft: editorB,
+            profileName: 'orders-module',
+            expectedRevision: firstRevision,
+        }, memory.workflow);
+        const secondRevision = (resaved.reply.payload as {artifactRevision: string}).artifactRevision;
+        assert.notEqual(secondRevision, firstRevision);
+        await assert.rejects(
+            async () => await invokeCanvas(runtime, 'entity_rules.annotator.save', {
+                canvasDraft: editorB,
+                profileName: 'orders-module',
+                expectedRevision: firstRevision,
+            }, memory.workflow),
+            (error: unknown) => error instanceof ActionError && error.code === ERROR_CODES.ERR_CONFLICT,
+        );
+    } finally {
+        await browser.close();
+    }
+});
+
+test('canvas-v1 save rejects invalid effect reversibility through entity-rules validation', async () => {
+    const browser = await chromium.launch({headless: true});
+    try {
+        const page = await browser.newPage({viewport: {width: 900, height: 700}});
+        await page.setContent(`
+          <form id="OrderForm">
+            <label for="Buyer">Buyer</label>
+            <input id="Buyer" name="buyer">
+            <button id="Save" type="submit">Save order</button>
+          </form>
+        `);
+        const deps = completeRunStepsDeps({pluginHost: {} as never}, {workspaceName: 'ws-1', page});
+        const runtime = createEntityRulesRuntime({
+            annotator: createRunnerAnnotatorController({runStepsDeps: deps}),
+        });
+        const memory = createMemoryWorkflow();
+
+        const draft = {
+            version: 1,
+            profileName: 'order-form',
+            page: {kind: 'form'},
+            entities: [{
+                id: 'e0',
+                source: 'region',
+                kind: 'form',
+                name: 'Order form',
+                businessTag: 'order.form',
+                target: {idEquals: 'OrderForm'},
+                expect: 'unique',
+                annotations: [{
+                    id: 'a-submit',
+                    type: 'action',
+                    name: 'Save order',
+                    businessKey: 'submit',
+                    target: {idEquals: 'Save'},
+                    expect: 'unique',
+                    origin: 'manual',
+                    disposition: 'active',
+                    effect: {reversibility: 'probably-safe'},
+                }],
+                columns: [],
+                origin: 'manual',
+            }],
+            preserved: {},
+        };
+        await assert.rejects(
+            () => invokeCanvas(runtime, 'entity_rules.annotator.save', {
+                canvasDraft: draft,
+                profileName: 'order-form',
+                expectedRevision: null,
+            }, memory.workflow),
+            (error: unknown) => error instanceof ActionError
+                && error.code === ERROR_CODES.ERR_BAD_ARGS
+                && /validation/u.test(error.message),
+        );
+        assert.equal(memory.profiles.has('order-form'), false);
+
+        (draft.entities[0].annotations[0] as {effect: {reversibility: string}}).effect = {reversibility: 'reversible'};
+        const saved = await invokeCanvas(runtime, 'entity_rules.annotator.save', {
+            canvasDraft: draft,
+            profileName: 'order-form',
+            expectedRevision: null,
+        }, memory.workflow);
+        assert.equal((saved.reply.payload as {saved: boolean}).saved, true);
+        assert.deepEqual(
+            memory.profiles.get('order-form')?.annotation.bindings.find((binding) => binding.actionIntent === 'submit')?.effect,
+            {reversibility: 'reversible'},
+        );
     } finally {
         await browser.close();
     }

@@ -1,11 +1,11 @@
-import type { Action } from '../../src/actions/action_protocol';
-import type { RunStepsDeps } from '../../src/runner/run_steps';
-import {PageSnapshotSessionStore} from '../../src/snapshot/session';
-import {SnapshotProjectionBaselineStore} from '../../src/runner/session';
-import type { ExecutionBinding } from '../../src/runtime/execution/bindings';
-import type { PageRegistry } from '../../src/runtime/browser/page_registry';
-import type { RuntimeWorkspace } from '../../src/runtime/workspace/workspace';
-import { getRunnerConfig } from '../../src/config';
+import type { Action } from '../../src/interface/actions/action_protocol';
+import type { RunStepsDeps } from '../../src/automation/runner/run_steps';
+import {PageSnapshotSessionStore} from '../../src/automation/snapshot/session';
+import {SnapshotProjectionBaselineStore} from '../../src/automation/runner/session';
+import type { ExecutionBinding } from '../../src/automation/runtime/execution/bindings';
+import type { PageRegistry } from '../../src/automation/runtime/browser/page_registry';
+import type { RuntimeWorkspace } from '../../src/automation/runtime/workspace/workspace';
+import { getRunnerConfig } from '../../src/platform/config';
 
 export type TestExecutionBinding = Omit<Partial<ExecutionBinding>, 'page' | 'pageRegistry' | 'traceTools' | 'traceCtx'> & {
     workspaceName?: string;

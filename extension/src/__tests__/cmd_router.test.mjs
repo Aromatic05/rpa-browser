@@ -691,13 +691,12 @@ await log('router snapshot restores tab identity without reopening existing tabs
     assert.equal(secondSent.some((action) => action.type === ACTION_TYPES.TAB_OPENED), false);
 });
 
-await log('source guard: content avoids legacy tab.init while start_extension owns new-tab binding', async () => {
+await log('source guard: content and newtab avoid legacy lifecycle publication', async () => {
     const contentSrc = fs.readFileSync(new URL('../content/token_bridge.ts', import.meta.url), 'utf8');
     const contentEntrySrc = fs.readFileSync(new URL('../entry/content.ts', import.meta.url), 'utf8');
-    const startSrc = fs.readFileSync(new URL('../../../start_extension/src/entry/newtab.ts', import.meta.url), 'utf8');
-    const startManifest = JSON.parse(
-        fs.readFileSync(new URL('../../../start_extension/manifest.json', import.meta.url), 'utf8'),
-    );
+    const startSrc = fs.readFileSync(new URL('../start/newtab.ts', import.meta.url), 'utf8');
+    const newtabHtml = fs.readFileSync(new URL('../../newtab.html', import.meta.url), 'utf8');
+    const mainManifest = JSON.parse(fs.readFileSync(new URL('../../manifest.json', import.meta.url), 'utf8'));
     assert.equal(contentSrc.includes("type: 'tab.init'"), false);
     assert.equal(contentEntrySrc.includes("searchParams.get('rpaRuntimeBootstrap') === '1'"), true);
     assert.equal(contentEntrySrc.includes("type: 'RPA_RUNTIME_BOOTSTRAP_WAKE'"), true);
@@ -705,6 +704,130 @@ await log('source guard: content avoids legacy tab.init while start_extension ow
     assert.equal(startSrc.includes("sendAction<BoundTokenData>('tab.opened'"), false);
     assert.equal(startSrc.includes("sendAction<RuntimeTabListData>('tab.list'"), true);
     assert.equal(startSrc.includes('chrome.runtime.sendMessage'), false);
-    assert.equal(startManifest.content_security_policy.extension_pages.includes('ws://127.0.0.1:*'), true);
-    assert.equal(startManifest.content_security_policy.extension_pages.includes(':17333'), false);
+    assert.equal(mainManifest.chrome_url_overrides.newtab, 'newtab.html');
+    assert.equal(newtabHtml.includes('src="./start/newtab.js"'), true);
+    assert.equal(mainManifest.content_security_policy.extension_pages.includes('ws://127.0.0.1:*'), true);
+    assert.equal(mainManifest.content_security_policy.extension_pages.includes('ws://localhost:*'), true);
+    assert.equal(mainManifest.content_security_policy.extension_pages.includes(':17333'), false);
+});
+
+await log('MSG.PRODUCT travels as one agent.product Action over the session WS without base-URL config', async () => {
+    globalThis.chrome = createChromeMock();
+    const storageReads = [];
+    const baseGet = globalThis.chrome.storage.local.get;
+    globalThis.chrome.storage.local.get = (keys, cb) => {
+        storageReads.push(JSON.stringify(keys));
+        return baseGet(keys, cb);
+    };
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = () => {
+        throw new Error('the ordinary product path must not perform HTTP');
+    };
+    try {
+        const sent = [];
+        const router = createCmdRouter({
+            sessionWorkspaceName: 'ws-bound',
+            wsClient: {
+                sendAction: async (action) => {
+                    sent.push(action);
+                    return {
+                        v: 1,
+                        id: 'reply-product',
+                        type: `${action.type}.result`,
+                        replyTo: action.id,
+                        payload: {workspace: 'ws-bound', reservation: {owner: 'none', humanControl: 'none'}},
+                    };
+                },
+            },
+            onRefresh: () => undefined,
+        });
+
+        let response;
+        const pending = router.handleMessage(
+            {type: MSG.PRODUCT, request: {verb: 'workspaceView'}},
+            {},
+            (payload) => { response = payload; },
+        );
+        assert.equal(pending, true);
+        await new Promise((resolve) => setTimeout(resolve, 20));
+
+        assert.equal(sent.length, 1, 'one Action per product request');
+        assert.equal(sent[0].type, ACTION_TYPES.AGENT_PRODUCT);
+        assert.equal(sent[0].workspaceName, 'ws-bound');
+        assert.deepEqual(sent[0].payload, {verb: 'workspaceView'});
+        assert.equal(response?.ok, true);
+        assert.deepEqual(response.data, {workspace: 'ws-bound', reservation: {owner: 'none', humanControl: 'none'}});
+        assert.equal(storageReads.length, 0, 'the product path must not touch chrome.storage at all');
+    } finally {
+        globalThis.fetch = originalFetch;
+    }
+});
+
+await log('MSG.PRODUCT converts Action failures preserving stale/not_found/conflict/bad_args classification', async () => {
+    globalThis.chrome = createChromeMock();
+    const cases = [
+        ['ERR_STALE', 'stale', undefined],
+        ['ERR_NOT_FOUND', 'not_found', undefined],
+        ['ERR_CONFLICT', 'conflict', 'ERR_ACTIVITY_CONFLICT'],
+        ['ERR_BAD_ARGS', 'bad_args', undefined],
+        ['ERR_CLOSED', 'unreachable', undefined],
+    ];
+    for (const [code, expected, productCode] of cases) {
+        const router = createCmdRouter({
+            sessionWorkspaceName: 'ws-bound',
+            wsClient: {
+                sendAction: async (action) => ({
+                    v: 1,
+                    id: 'reply-product',
+                    type: `${action.type}.failed`,
+                    replyTo: action.id,
+                    payload: {
+                        code,
+                        message: 'product command failed',
+                        ...(productCode === undefined ? {} : {details: {productCode}}),
+                    },
+                }),
+            },
+            onRefresh: () => undefined,
+        });
+        let response;
+        router.handleMessage(
+            {type: MSG.PRODUCT, request: {verb: 'stopTask', taskId: 'task-1'}},
+            {},
+            (payload) => { response = payload; },
+        );
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        assert.equal(response?.ok, false, `${code} must map to a failed reply`);
+        assert.equal(response.error.code, expected, `${code} maps to ${expected}`);
+        assert.equal(response.error.detailCode, productCode ?? code, 'the original product code is preserved');
+    }
+});
+
+await log('MSG.PRODUCT rejects malformed requests without touching the WS plane', async () => {
+    globalThis.chrome = createChromeMock();
+    const router = createCmdRouter({
+        sessionWorkspaceName: 'ws-bound',
+        wsClient: {
+            sendAction: async () => {
+                throw new Error('ws must not be called for malformed product requests');
+            },
+        },
+        onRefresh: () => undefined,
+    });
+    let response;
+    router.handleMessage({type: MSG.PRODUCT, request: {verb: 42}}, {}, (payload) => { response = payload; });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    assert.equal(response?.ok, false);
+    assert.equal(response.error.code, 'bad_args');
+});
+
+await log('source guard: product normal path has no service base URL configuration left', async () => {
+    const routerSrc = fs.readFileSync(new URL('../background/cmd_router.ts', import.meta.url), 'utf8');
+    const transportSrc = fs.readFileSync(new URL('../shared/product_transport.ts', import.meta.url), 'utf8');
+    assert.equal(routerSrc.includes('rpaProductBaseUrl'), false);
+    assert.equal(routerSrc.includes('readProductBaseUrl'), false);
+    assert.equal(routerSrc.includes('createProductHttpClient'), false);
+    assert.equal(transportSrc.includes('rpaProductBaseUrl'), false);
+    assert.equal(transportSrc.includes('readProductBaseUrl'), false);
+    assert.equal(transportSrc.includes('PRODUCT_BASE_URL_KEY'), false);
 });

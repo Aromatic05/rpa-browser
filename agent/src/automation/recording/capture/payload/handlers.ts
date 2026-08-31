@@ -1,0 +1,277 @@
+import type { DebugTargetFn, EmitFn } from './emitter';
+import {
+    buildA11yHint,
+    buildCandidates,
+    buildRecordedSemanticHint,
+    buildTargetAttrs,
+    buildTargetState,
+    findCheckboxInput,
+    getScopeHint,
+    getValue,
+    isCheckboxOrRadio,
+    isPassword,
+    pickClickTarget,
+    selectorFor,
+} from './utils';
+
+const specialKeys = new Set(['Enter', 'Escape', 'Tab', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
+
+const handledEvents = new WeakSet<Event>();
+
+const markEventHandled = (event: Event) => {
+    if (handledEvents.has(event)) {return true;}
+    handledEvents.add(event);
+    return false;
+};
+
+const inProductControlSurface = (path: EventTarget[]): boolean => {
+    for (const node of path) {
+        if (!(node instanceof HTMLElement)) {continue;}
+        if (node.id === 'rpa-floating-panel' || node.id === 'rpa-product-panel') {return true;}
+        if (node.hasAttribute('data-rpa-snapshot-ignore')) {return true;}
+    }
+    return false;
+};
+
+const eventInProductControlSurface = (event: Event): boolean =>
+    inProductControlSurface(event.composedPath());
+
+export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn): void => {
+    const handleClick = (event: MouseEvent) => {
+        if (markEventHandled(event)) {return;}
+        const path = event.composedPath();
+        let target: EventTarget | null = path[0] || event.target;
+        if (target instanceof Node && target.nodeType === 3) {target = target.parentElement || null;}
+        const element = target instanceof Element ? target : null;
+        if (!element) {return;}
+        if (inProductControlSurface(path)) {return;}
+        if (isCheckboxOrRadio(element) || element.closest('label input[type="checkbox"], label input[type="radio"]')) {return;}
+        const checkboxInput = findCheckboxInput(element);
+        if (checkboxInput) {return;}
+        const interactive = pickClickTarget(element);
+        const selector = selectorFor(interactive);
+        if (selector) {
+            emit({
+                type: 'click',
+                selector,
+                targetHint: interactive.tagName.toLowerCase(),
+                a11yHint: buildA11yHint(interactive),
+                locatorCandidates: buildCandidates(interactive, selector),
+                targetAttrs: buildTargetAttrs(interactive),
+                targetState: buildTargetState(interactive),
+                scopeHint: getScopeHint(interactive),
+                semanticHint: buildRecordedSemanticHint(interactive),
+            });
+            return;
+        }
+        const hintOnly = buildA11yHint(element);
+        if (hintOnly.role || hintOnly.name || hintOnly.text) {
+            emit({
+                type: 'click',
+                targetHint: element.tagName.toLowerCase(),
+                a11yHint: hintOnly,
+                locatorCandidates: buildCandidates(element),
+                scopeHint: getScopeHint(element),
+                semanticHint: buildRecordedSemanticHint(element),
+            });
+            return;
+        }
+        debugTarget('click', element, 'no selector and no a11y hint');
+    };
+
+    document.addEventListener('click', handleClick, true);
+
+    document.addEventListener(
+        'input',
+        (event) => {
+            if (eventInProductControlSurface(event)) {return;}
+            const target = event.composedPath()[0] || event.target;
+            const element = target instanceof Element ? target : null;
+            if (!element) {return;}
+            if (isCheckboxOrRadio(element)) {return;}
+            if (element instanceof HTMLSelectElement) {return;}
+            const selector = selectorFor(element);
+            if (!selector) {return;}
+            const rawSelector = selector.trim();
+            if (!rawSelector) {return;}
+            emit({
+                type: 'input',
+                selector: rawSelector,
+                value: getValue(element),
+                a11yHint: buildA11yHint(element),
+                locatorCandidates: buildCandidates(element, rawSelector),
+                targetAttrs: buildTargetAttrs(element),
+                targetState: buildTargetState(element),
+                scopeHint: getScopeHint(element),
+                semanticHint: buildRecordedSemanticHint(element),
+            });
+        },
+        true,
+    );
+
+    document.addEventListener(
+        'change',
+        (event) => {
+            if (eventInProductControlSurface(event)) {return;}
+            const target = event.composedPath()[0] || event.target;
+            const element = target instanceof Element ? target : null;
+            if (!element) {return;}
+            const selector = selectorFor(element);
+            if (!selector) {return;}
+            const rawSelector = selector.trim();
+            if (!rawSelector) {return;}
+            if (element instanceof HTMLInputElement) {
+                const inputType = (element.type || '').toLowerCase();
+                if (inputType === 'checkbox' || inputType === 'radio') {
+                    emit({
+                        type: 'check',
+                        selector: rawSelector,
+                        checked: element.checked,
+                        inputType,
+                        a11yHint: buildA11yHint(element),
+                        locatorCandidates: buildCandidates(element, rawSelector),
+                        targetAttrs: buildTargetAttrs(element),
+                        targetState: buildTargetState(element),
+                        scopeHint: getScopeHint(element),
+                semanticHint: buildRecordedSemanticHint(element),
+                    });
+                    return;
+                }
+                if (inputType === 'date') {
+                    emit({
+                        type: 'date',
+                        selector: rawSelector,
+                        value: element.value,
+                        a11yHint: buildA11yHint(element),
+                        locatorCandidates: buildCandidates(element, rawSelector),
+                        targetAttrs: buildTargetAttrs(element),
+                        targetState: buildTargetState(element),
+                        scopeHint: getScopeHint(element),
+                semanticHint: buildRecordedSemanticHint(element),
+                    });
+                    return;
+                }
+            }
+            if (element instanceof HTMLSelectElement) {
+                const option = element.selectedOptions[0];
+                emit({
+                type: 'select',
+                    selector: rawSelector,
+                    value: element.value,
+                    label: option.label,
+                    a11yHint: buildA11yHint(element),
+                    locatorCandidates: buildCandidates(element, rawSelector),
+                    targetAttrs: buildTargetAttrs(element),
+                    targetState: buildTargetState(element),
+                    scopeHint: getScopeHint(element),
+                semanticHint: buildRecordedSemanticHint(element),
+                });
+                return;
+            }
+            emit({
+                type: 'change',
+                selector: rawSelector,
+                value: getValue(element),
+                a11yHint: buildA11yHint(element),
+                locatorCandidates: buildCandidates(element, rawSelector),
+                targetAttrs: buildTargetAttrs(element),
+                targetState: buildTargetState(element),
+                scopeHint: getScopeHint(element),
+                semanticHint: buildRecordedSemanticHint(element),
+            });
+        },
+        true,
+    );
+
+    document.addEventListener(
+        'keydown',
+        (event: KeyboardEvent) => {
+            if (!specialKeys.has(event.key)) {return;}
+            if (eventInProductControlSurface(event)) {return;}
+            const target = event.composedPath()[0] || event.target;
+            const element = target instanceof Element ? target : null;
+            const selector = element instanceof Element ? selectorFor(element) : null;
+            emit({
+                type: 'keydown',
+                selector,
+                key: event.key,
+                a11yHint: element instanceof Element ? buildA11yHint(element) : undefined,
+                locatorCandidates: element instanceof Element ? buildCandidates(element, selector || undefined) : undefined,
+                targetAttrs: element instanceof Element ? buildTargetAttrs(element) : undefined,
+                targetState: element instanceof Element ? buildTargetState(element) : undefined,
+                scopeHint: element instanceof Element ? getScopeHint(element) : undefined,
+                semanticHint: element instanceof Element ? buildRecordedSemanticHint(element) : undefined,
+            });
+        },
+        true,
+    );
+
+    document.addEventListener(
+        'paste',
+        (event) => {
+            if (eventInProductControlSurface(event)) {return;}
+            const target = event.composedPath()[0] || event.target;
+            const element = target instanceof Element ? target : null;
+            if (!element) {return;}
+            const selector = selectorFor(element);
+            if (!selector) {return;}
+            const rawSelector = selector.trim();
+            if (!rawSelector) {return;}
+            if (isPassword(element)) {return;}
+            emit({
+                type: 'paste',
+                selector: rawSelector,
+                value: getValue(element),
+                a11yHint: buildA11yHint(element),
+                locatorCandidates: buildCandidates(element, rawSelector),
+                targetAttrs: buildTargetAttrs(element),
+                targetState: buildTargetState(element),
+                scopeHint: getScopeHint(element),
+                semanticHint: buildRecordedSemanticHint(element),
+            });
+        },
+        true,
+    );
+
+    document.addEventListener(
+        'copy',
+        (event) => {
+            if (eventInProductControlSurface(event)) {return;}
+            const target = event.composedPath()[0] || event.target;
+            const element = target instanceof Element ? target : null;
+            if (!element) {return;}
+            const selector = selectorFor(element);
+            if (!selector) {return;}
+            emit({
+                type: 'copy',
+                selector,
+                a11yHint: buildA11yHint(element),
+                locatorCandidates: buildCandidates(element, selector),
+                targetAttrs: buildTargetAttrs(element),
+                targetState: buildTargetState(element),
+                scopeHint: getScopeHint(element),
+                semanticHint: buildRecordedSemanticHint(element),
+            });
+        },
+        true,
+    );
+
+    let scrollTimer: number | null = null;
+    let scrolling = false;
+    const emitScroll = () => {
+        emit({ type: 'scroll', scrollX: window.scrollX, scrollY: window.scrollY });
+    };
+    const onScroll = () => {
+        if (!scrolling) {
+            scrolling = true;
+            emitScroll();
+        }
+        if (scrollTimer) {clearTimeout(scrollTimer);}
+        scrollTimer = window.setTimeout(() => {
+            scrollTimer = null;
+            scrolling = false;
+            emitScroll();
+        }, 300);
+    };
+    window.addEventListener('scroll', onScroll, { capture: true, passive: true });
+};

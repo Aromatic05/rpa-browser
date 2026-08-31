@@ -5,7 +5,7 @@ import {
     buildSnapshotProjection,
     diffSnapshotProjection,
     type PageSnapshotSessionEntry,
-} from '../../../src/snapshot';
+} from '../../../src/automation/snapshot';
 import {createV2BusinessPage} from '../../helpers/v2_business_page';
 
 const createEntry = async (options: {rowCount?: number; withGeometry?: boolean} = {}): Promise<PageSnapshotSessionEntry> => {

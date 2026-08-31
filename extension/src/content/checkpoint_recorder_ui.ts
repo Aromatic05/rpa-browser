@@ -55,6 +55,17 @@ export type CheckpointRecorderUIHandle = {
     setVisible: (visible: boolean) => void;
     onPageChanged: () => void;
     unmount: () => void;
+    /** Product-authoring bridge: opens the setup phase with the given kind
+     *  (and optionally the annotated entity) pre-selected. Additive only; the
+     *  recorder implementation stays in charge of the flow. */
+    begin: (kind: CheckpointKind, entitySelector?: string) => Promise<void>;
+    /** Finish the active recording and show the review editor. */
+    stop: () => Promise<void>;
+    /** Save through the recorder's own review editor (it enforces its name /
+     *  mapping validation and reports failures in the dock). */
+    save: () => Promise<void>;
+    /** Abandon the current activity (setup resets; recording/review cancel). */
+    cancel: () => Promise<void>;
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -946,6 +957,26 @@ export const mountCheckpointRecorderUI = (options: CheckpointRecorderUIOptions):
             } else {
                 void clearEntityPreview();
             }
+        },
+        begin: async (kind, entitySelector) => {
+            if (phase === 'idle') {
+                form.kind = kind;
+                if (entitySelector) {form.entityKey = entitySelector;}
+                await openSetup();
+                return;
+            }
+            setDockVisible(true);
+            render();
+        },
+        stop: async () => {
+            if (phase === 'recording') {await stop();}
+        },
+        save: async () => {
+            if (phase === 'review') {await save();}
+        },
+        cancel: async () => {
+            if (phase === 'setup') {reset(); return;}
+            if (phase === 'recording' || phase === 'review') {await cancel();}
         },
         unmount: () => {
             previewGeneration += 1;

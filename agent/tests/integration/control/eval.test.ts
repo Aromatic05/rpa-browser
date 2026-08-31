@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import type { Action } from '../../../src/actions/action_protocol';
-import { runControlEval, type ControlEvalContextDeps } from '../../../src/control/eval';
-import { parseControlEvalCli } from '../../../src/control_cli';
+import type { Action } from '../../../src/interface/actions/action_protocol';
+import { runControlEval, type ControlEvalContextDeps } from '../../../src/automation/runtime/control/eval';
+import { parseControlEvalCli } from '../../../src/app/entrypoints/control';
 
 const createContext = (): ControlEvalContextDeps => ({
     deps: {} as any,

@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {getRunnerConfig} from '../../../../src/config';
-import {executeBrowserMouse} from '../../../../src/runner/steps/executors/mouse';
-import {normalizeBrowserPressKey} from '../../../../src/runner/steps/executors/press_key';
-import type {Step} from '../../../../src/runner/steps/types';
+import {getRunnerConfig} from '../../../../src/platform/config';
+import {executeBrowserMouse} from '../../../../src/automation/runner/steps/executors/mouse';
+import {normalizeBrowserPressKey} from '../../../../src/automation/runner/steps/executors/press_key';
+import type {Step} from '../../../../src/automation/runner/steps/types';
 import {completeRunStepsDeps} from '../../../helpers/run_steps_workspace';
 
 const createDeps = (traceMouseAction: (args: Record<string, unknown>) => Promise<unknown>) => {

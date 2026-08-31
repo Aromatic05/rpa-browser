@@ -37,7 +37,7 @@ pnpm test:agent:headed
 ## Workflow artifact
 
 1. 载入 workflow，确认 catalog 和 artifact 可读取。
-2. 执行 `workflow.dsl.test`。
+2. 执行 `dsl.test`，并按需要执行 `dsl.run`。
 3. 验证普通 Step、Checkpoint、task.run 和 DSL 使用同一 runtime contract。
 4. 验证 artifact 保存、重新载入和错误诊断。
 

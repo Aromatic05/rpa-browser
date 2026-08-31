@@ -5,15 +5,15 @@ import {
     createEntityRulesRuntime,
     createWorkspaceEntityRulesProvider,
     resolveStepEntityRulesExecution,
-} from '../../../src/snapshot/rules/runtime';
-import type { EntityRuleConfig } from '../../../src/config';
+} from '../../../src/automation/snapshot/rules/runtime';
+import type { EntityRuleConfig } from '../../../src/platform/config';
 import {
     createWorkflowOnFs,
     deleteWorkflowFromFs,
     type Workflow,
     type WorkflowEntityRules,
-} from '../../../src/workflow';
-import {ActionError, ERROR_CODES} from '../../../src/actions/results';
+} from '../../../src/automation/workflow';
+import {ActionError, ERROR_CODES} from '../../../src/interface/actions/results';
 
 const action = (type: string, workspaceName: string, payload?: Record<string, unknown>) => ({
     v: 1 as const,

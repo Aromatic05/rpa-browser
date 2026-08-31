@@ -16,7 +16,7 @@ import {
     type RawCapturedNode,
     type RawPageCapture,
     type SemanticAnnotationRecord,
-} from '../../../src/snapshot';
+} from '../../../src/automation/snapshot';
 
 const active = () => ({hiddenByStyle: false, inert: false, selfHasBox: true, rendered: true});
 

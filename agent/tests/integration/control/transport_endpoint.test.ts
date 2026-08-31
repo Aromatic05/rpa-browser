@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { getDefaultControlEndpoint } from '../../../src/control/transport';
+import { getDefaultControlEndpoint } from '../../../src/interface/control/transport';
 
 const withPlatform = async (platform: NodeJS.Platform, fn: () => void | Promise<void>) => {
     const original = process.platform;

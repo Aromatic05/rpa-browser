@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { getToolSpecs, resolveEnabledToolNames } from '../../../src/mcp/tool_registry';
+import { getToolSpecs, resolveEnabledToolNames } from '../../../src/interface/mcp/tool_registry';
 
 test('resolveEnabledToolNames excludes debug tools by default', () => {
     const enabled = resolveEnabledToolNames({});

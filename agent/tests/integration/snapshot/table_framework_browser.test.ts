@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 import { chromium, type Page } from 'playwright';
-import { captureTableSnapshot } from '../../../src/snapshot';
+import { captureTableSnapshot } from '../../../src/automation/snapshot';
 
 const agentDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const repositoryDirectory = path.resolve(agentDirectory, '..');

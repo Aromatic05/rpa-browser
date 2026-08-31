@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { startAgent, runStep, dispatch } from '../../helpers/e2e_multitab_helper';
 import { startFixtureServer } from '../../helpers/server';
-import type { StepUnion } from '../../../src/runner/steps/types';
+import type { StepUnion } from '../../../src/automation/runner/steps/types';
 
 const st = <T extends StepUnion['name']>(id: string, name: T, args: Extract<StepUnion, { name: T }>['args']): Extract<StepUnion, { name: T }> => ({ id, name, args } as unknown as Extract<StepUnion, { name: T }>);
 const log = (m: string) => console.log(`[e2e-mt][${new Date().toISOString()}] ${m}`);

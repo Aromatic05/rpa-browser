@@ -1,0 +1,420 @@
+import crypto from 'node:crypto';
+import type { Page } from 'playwright';
+import { replyAction } from '../../../interface/actions/action_protocol';
+import { ActionError } from '../../../interface/actions/results';
+import { ERROR_CODES } from '../../../interface/actions/results';
+import type { WorkspaceRouterInput } from './router';
+import type { ControlPlaneResult } from '../control_plane';
+import { isWorkspaceRecordingEnabled, type RecordingState } from '../../recording/recording';
+import { recordTabActivated, recordTabClosed, recordTabCreated } from '../../recording/tab_lifecycle_recorder';
+
+export type TabBindingState = 'unbound' | 'bound' | 'stale';
+
+export type RuntimeTab = {
+    tabId: string;
+    name: string;
+    page: Page | null;
+    binding: TabBindingState;
+    url: string;
+    title: string;
+    createdAt: number;
+    updatedAt: number;
+};
+
+export type WorkspaceTabs = {
+    createTab: (input: { tabName: string; at?: number }) => RuntimeTab;
+    awaitTabPage: (tabName: string, timeoutMs: number) => Promise<Page>;
+    createTabPage: (tabName: string, input?: { startUrl?: string; newWindow?: boolean }) => Promise<Page>;
+    bindPage: (tabName: string, page: Page) => RuntimeTab | null;
+    closeTab: (tabName: string) => Promise<RuntimeTab | null>;
+    listTabs: () => RuntimeTab[];
+    setActiveTab: (tabName: string) => void;
+    getActiveTab: () => RuntimeTab | null;
+    hasTab: (tabName: string) => boolean;
+    getTab: (tabName: string) => RuntimeTab | null;
+    resolveTab: (tabName?: string) => RuntimeTab;
+    updateTab: (tabName: string, patch: Partial<Pick<RuntimeTab, 'url' | 'title' | 'updatedAt'>>) => RuntimeTab | null;
+    reportTab: (tabName: string, input: { url?: string; title?: string; at?: number }) => RuntimeTab | null;
+    pingTab: (tabName: string, input: { url?: string; title?: string; at?: number }) => RuntimeTab | null;
+    reassignTab: (tabName: string, input: { at?: number }) => RuntimeTab;
+};
+
+export type WorkspaceTabsDeps = {
+    awaitPageBinding: (tabName: string, timeoutMs: number) => Promise<Page>;
+    createPageBinding: (tabName: string, input?: { startUrl?: string; newWindow?: boolean }) => Promise<Page>;
+    touchBinding?: (bindingName: string) => void;
+};
+
+const now = () => Date.now();
+
+export const createWorkspaceTabs = (deps: WorkspaceTabsDeps): WorkspaceTabs => {
+    const tabs = new Map<string, RuntimeTab>();
+    let activeTabName: string | null = null;
+
+    const markStale = (tab: RuntimeTab) => {
+        tab.page = null;
+        tab.binding = 'stale';
+        tab.updatedAt = now();
+    };
+
+    const attachPage = (tab: RuntimeTab, page: Page) => {
+        tab.page = page;
+        tab.url = page.url();
+        tab.updatedAt = now();
+        if (page.isClosed()) {
+            markStale(tab);
+            return;
+        }
+        tab.binding = 'bound';
+        if (typeof page.on === 'function') {
+            page.on('close', () => {
+                if (tab.page !== page) {return;}
+                markStale(tab);
+            });
+        }
+    };
+
+    const createTab: WorkspaceTabs['createTab'] = (input) => {
+        if (tabs.has(input.tabName)) {
+            throw new Error(`tab already exists: ${input.tabName}`);
+        }
+        const at = input.at ?? now();
+        const tab: RuntimeTab = {
+            tabId: crypto.randomUUID(),
+            name: input.tabName,
+            page: null,
+            binding: 'unbound',
+            url: '',
+            title: '',
+            createdAt: at,
+            updatedAt: at,
+        };
+        tabs.set(input.tabName, tab);
+        if (!activeTabName) {
+            activeTabName = input.tabName;
+        }
+        return tab;
+    };
+
+    const awaitTabPage: WorkspaceTabs['awaitTabPage'] = async (tabName, timeoutMs) => {
+        const existing = tabs.get(tabName);
+        if (existing?.page && !existing.page.isClosed()) {
+            return existing.page;
+        }
+        if (existing?.page?.isClosed()) {
+            markStale(existing);
+        }
+        const page = await deps.awaitPageBinding(tabName, timeoutMs);
+        if (existing) {
+            attachPage(existing, page);
+        }
+        return page;
+    };
+
+    const createTabPage: WorkspaceTabs['createTabPage'] = async (tabName, input) => {
+        const existing = tabs.get(tabName);
+        if (existing?.page && !existing.page.isClosed()) {
+            return existing.page;
+        }
+        if (existing?.page?.isClosed()) {
+            markStale(existing);
+        }
+        const page = await deps.createPageBinding(tabName, input);
+        if (existing) {
+            attachPage(existing, page);
+        }
+        return page;
+    };
+
+    const bindPage: WorkspaceTabs['bindPage'] = (tabName, page) => {
+        const tab = tabs.get(tabName) || null;
+        if (!tab) { return null; }
+        attachPage(tab, page);
+        return tab;
+    };
+
+    const closeTab: WorkspaceTabs['closeTab'] = async (tabName) => {
+        const tab = tabs.get(tabName) || null;
+        if (!tab) { return null; }
+        if (tab.page && !tab.page.isClosed()) {
+            try {
+                await tab.page.close({ runBeforeUnload: true });
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                throw new Error(`failed to close tab page: ${tabName}: ${message}`, { cause: error });
+            }
+        }
+        tab.page = null;
+        tab.binding = 'unbound';
+        tabs.delete(tabName);
+        if (activeTabName === tabName) {
+            activeTabName = tabs.keys().next().value ?? null;
+        }
+        return tab;
+    };
+
+    const reportTab: WorkspaceTabs['reportTab'] = (tabName, input) => {
+        const tab = tabs.get(tabName) || null;
+        if (!tab) { return null; }
+        if (typeof input.url === 'string') { tab.url = input.url; }
+        if (typeof input.title === 'string') { tab.title = input.title; }
+        tab.updatedAt = input.at ?? now();
+        return tab;
+    };
+
+    const pingTab: WorkspaceTabs['pingTab'] = (tabName, input) => {
+        const tab = tabs.get(tabName) || null;
+        if (!tab) { return null; }
+        if (typeof input.url === 'string') { tab.url = input.url; }
+        if (typeof input.title === 'string') { tab.title = input.title; }
+        tab.updatedAt = input.at ?? now();
+        deps.touchBinding?.(tabName);
+        return tab;
+    };
+
+    const reassignTab: WorkspaceTabs['reassignTab'] = (tabName, _input) => {
+        if (!tabs.has(tabName)) {
+            throw new Error(`tab not found: ${tabName}`);
+        }
+        activeTabName = tabName;
+        return tabs.get(tabName)!;
+    };
+
+    return {
+        createTab,
+        awaitTabPage,
+        createTabPage,
+        bindPage,
+        closeTab,
+        listTabs: () => Array.from(tabs.values()),
+        setActiveTab: (tabName) => {
+            if (!tabs.has(tabName)) {
+                throw new Error(`tab not found: ${tabName}`);
+            }
+            activeTabName = tabName;
+        },
+        getActiveTab: () => (activeTabName ? tabs.get(activeTabName) || null : null),
+        hasTab: (tabName) => tabs.has(tabName),
+        getTab: (tabName) => tabs.get(tabName) || null,
+        resolveTab: (tabName) => {
+            if (tabName) {
+                const tab = tabs.get(tabName);
+                if (!tab) { throw new Error(`tab not found: ${tabName}`); }
+                return tab;
+            }
+            const active = activeTabName ? tabs.get(activeTabName) || null : null;
+            if (!active) { throw new Error('active tab not found'); }
+            return active;
+        },
+        updateTab: (tabName: string, patch: Partial<Pick<RuntimeTab, 'url' | 'title' | 'updatedAt'>>) => {
+            const tab = tabs.get(tabName) || null;
+            if (!tab) { return null; }
+            if (typeof patch.url === 'string') { tab.url = patch.url; }
+            if (typeof patch.title === 'string') { tab.title = patch.title; }
+            tab.updatedAt = patch.updatedAt ?? now();
+            return tab;
+        },
+        reportTab,
+        pingTab,
+        reassignTab,
+    };
+};
+
+export type TabsControl = {
+    handle: (input: WorkspaceRouterInput) => Promise<ControlPlaneResult>;
+};
+
+const requireTabName = (payload: Record<string, unknown>): string => {
+    const tabName = typeof payload.tabName === 'string' ? payload.tabName.trim() : '';
+    if (!tabName) {
+        throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'tabName is required');
+    }
+    return tabName;
+};
+
+export const createTabsControl = (deps: { recordingState: RecordingState; navDedupeWindowMs: number }): TabsControl => ({
+    handle: async (input) => {
+        const { action, workspace } = input;
+        const payload = (action.payload ?? {}) as Record<string, unknown>;
+        const shouldRecordLifecycle = () => workspace.state === 'recording' && isWorkspaceRecordingEnabled(deps.recordingState, workspace.name);
+        const closeViaLifecycle = async (tabName: string, source: string, at?: number) => {
+            const closingTab = workspace.tabs.getTab(tabName);
+            await workspace.tabs.closeTab(tabName);
+            if (shouldRecordLifecycle()) {
+                recordTabClosed(deps.recordingState, {
+                    workspaceName: workspace.name,
+                    tabName,
+                    tabRef: tabName,
+                    urlAtRecord: closingTab?.url || '',
+                    at,
+                    navDedupeWindowMs: deps.navDedupeWindowMs,
+                });
+            }
+            return replyAction(action, { workspaceName: workspace.name, tabName, source, reportedAt: at });
+        };
+
+        switch (action.type) {
+            case 'tab.list': {
+                const active = workspace.tabs.getActiveTab()?.name;
+                return {
+                    reply: replyAction(action, {
+                        workspaceName: workspace.name,
+                        tabs: workspace.tabs.listTabs().map((tab) => ({
+                            tabName: tab.name,
+                            tabId: tab.tabId,
+                            binding: tab.binding,
+                            url: tab.url,
+                            title: tab.title,
+                            active: active === tab.name,
+                            createdAt: tab.createdAt,
+                            updatedAt: tab.updatedAt,
+                        })),
+                    }),
+                    events: [],
+                };
+            }
+
+            case 'tab.setActive': {
+                const tabName = requireTabName(payload);
+                const source = typeof payload.source === 'string' ? payload.source : 'unknown';
+                const at = typeof payload.at === 'number' ? payload.at : undefined;
+                workspace.tabs.setActiveTab(tabName);
+                if (shouldRecordLifecycle()) {
+                    const runtimeTab = workspace.tabs.getTab(tabName);
+                    recordTabActivated(deps.recordingState, {
+                        workspaceName: workspace.name,
+                        tabName,
+                        tabRef: tabName,
+                        urlAtRecord: runtimeTab?.url || '',
+                        at,
+                        navDedupeWindowMs: deps.navDedupeWindowMs,
+                    });
+                }
+                return { reply: replyAction(action, { workspaceName: workspace.name, tabName, source, reportedAt: at }), events: [] };
+            }
+
+            case 'tab.opened': {
+                const chromeTabNo = typeof payload.chromeTabNo === 'number' ? payload.chromeTabNo : null;
+                const windowId = typeof payload.windowId === 'number' ? payload.windowId : null;
+                const source = typeof payload.source === 'string' ? payload.source : 'unknown';
+                const urlHint = typeof payload.urlHint === 'string' ? payload.urlHint : undefined;
+                const openedAt = typeof payload.openedAt === 'number' ? payload.openedAt : undefined;
+
+                const tabName = crypto.randomUUID();
+                workspace.browserSession.pageRegistry.createPendingBindingClaim({
+                    bindingName: tabName,
+                    source,
+                    url: urlHint,
+                    createdAt: openedAt,
+                });
+                return { reply: replyAction(action, { workspaceName: workspace.name, tabName, chromeTabNo, windowId, source, openedAt }, 'tab.bind'), events: [] };
+            }
+
+            case 'tab.report': {
+                const tabName = typeof payload.tabName === 'string' ? payload.tabName : '';
+                const source = typeof payload.source === 'string' ? payload.source : 'unknown';
+                const url = typeof payload.url === 'string' ? payload.url : undefined;
+                const title = typeof payload.title === 'string' ? payload.title : undefined;
+                const at = typeof payload.at === 'number' ? payload.at : undefined;
+                if (!tabName || !workspace.tabs.hasTab(tabName)) {
+                    return { reply: replyAction(action, { source, reportedUrl: url, reportedTitle: title, reportedAt: at, stale: true }), events: [] };
+                }
+                workspace.tabs.reportTab(tabName, { url, title, at });
+                return { reply: replyAction(action, { workspaceName: workspace.name, tabName, source, reportedUrl: url, reportedTitle: title, reportedAt: at }), events: [] };
+            }
+
+            case 'tab.bound': {
+                const tabName = typeof payload.tabName === 'string' ? payload.tabName.trim() : '';
+                const chromeTabNo = typeof payload.chromeTabNo === 'number' ? payload.chromeTabNo : null;
+                const windowId = typeof payload.windowId === 'number' ? payload.windowId : null;
+                const boundAt = typeof payload.boundAt === 'number' ? payload.boundAt : undefined;
+                const url = typeof payload.url === 'string' ? payload.url : '';
+                if (!tabName) {
+                    throw new ActionError(ERROR_CODES.ERR_BAD_ARGS, 'tabName is required');
+                }
+                if (!workspace.tabs.hasTab(tabName)) {
+                    const at = boundAt ?? now();
+                    workspace.tabs.createTab({ tabName, at });
+                    if (shouldRecordLifecycle()) {
+                        recordTabCreated(deps.recordingState, {
+                            workspaceName: workspace.name,
+                            tabName,
+                            tabRef: tabName,
+                            urlAtRecord: url,
+                            at,
+                            navDedupeWindowMs: deps.navDedupeWindowMs,
+                        });
+                    }
+                } else {
+                    workspace.tabs.updateTab(tabName, { updatedAt: boundAt });
+                }
+                await workspace.browserSession.pageRegistry.claimPendingBinding(tabName);
+                return { reply: replyAction(action, { workspaceName: workspace.name, tabName, chromeTabNo, windowId, reportedAt: boundAt }), events: [] };
+            }
+
+            case 'tab.closed': {
+                const tabName = typeof payload.tabName === 'string' ? payload.tabName : '';
+                const source = typeof payload.source === 'string' ? payload.source : 'unknown';
+                const at = typeof payload.at === 'number' ? payload.at : undefined;
+                if (!tabName) {
+                    return { reply: replyAction(action, { source, reportedAt: at }), events: [] };
+                }
+                return { reply: await closeViaLifecycle(tabName, source, at), events: [] };
+            }
+
+            case 'tab.ping': {
+                const tabName = typeof payload.tabName === 'string' ? payload.tabName : '';
+                const source = typeof payload.source === 'string' ? payload.source : 'unknown';
+                const url = typeof payload.url === 'string' ? payload.url : undefined;
+                const title = typeof payload.title === 'string' ? payload.title : undefined;
+                const at = typeof payload.at === 'number' ? payload.at : undefined;
+                if (!tabName || !workspace.tabs.hasTab(tabName)) {
+                    return { reply: replyAction(action, { source, reportedAt: at, stale: true }), events: [] };
+                }
+                workspace.tabs.pingTab(tabName, { url, title, at });
+                return { reply: replyAction(action, { workspaceName: workspace.name, tabName, source, reportedUrl: url, reportedTitle: title, reportedAt: at }), events: [] };
+            }
+
+            case 'tab.reassigned': {
+                const tabName = requireTabName(payload);
+                const source = typeof payload.source === 'string' ? payload.source : 'unknown';
+                const at = typeof payload.at === 'number' ? payload.at : undefined;
+                workspace.tabs.reassignTab(tabName, { at });
+                return {
+                    reply: replyAction(action, {
+                        workspaceName: workspace.name,
+                        tabName,
+                        source,
+                        reportedAt: at,
+                    }),
+                    events: [],
+                };
+            }
+
+            case 'tab.activated': {
+                const tabName = requireTabName(payload);
+                const source = typeof payload.source === 'string' ? payload.source : 'unknown';
+                const url = typeof payload.url === 'string' ? payload.url : '';
+                const at = typeof payload.at === 'number' ? payload.at : undefined;
+                workspace.tabs.setActiveTab(tabName);
+                // Tab layer does not update URL; content-script facts are the
+                // source of truth.  updateTab({url}) is intentionally absent here.
+                if (shouldRecordLifecycle()) {
+                    const runtimeTab = workspace.tabs.getTab(tabName);
+                    recordTabActivated(deps.recordingState, {
+                        workspaceName: workspace.name,
+                        tabName,
+                        tabRef: tabName,
+                        urlAtRecord: runtimeTab?.url || url,
+                        at,
+                        navDedupeWindowMs: deps.navDedupeWindowMs,
+                    });
+                }
+                return { reply: replyAction(action, { workspaceName: workspace.name, tabName, source, reportedAt: at }), events: [] };
+            }
+
+            default:
+                throw new ActionError(ERROR_CODES.ERR_UNSUPPORTED, `unsupported tab action: ${action.type}`);
+        }
+    },
+});

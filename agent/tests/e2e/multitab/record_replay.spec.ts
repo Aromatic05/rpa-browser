@@ -2,9 +2,9 @@ import { test, expect } from '@playwright/test';
 import crypto from 'node:crypto';
 import { startAgent, runStep, dispatch } from '../../helpers/e2e_multitab_helper';
 import { startFixtureServer } from '../../helpers/server';
-import { sendControlEval } from '../../../src/control/client';
-import type { StepUnion } from '../../../src/runner/steps/types';
-import type { Action } from '../../../src/actions/action_protocol';
+import { sendControlEval } from '../../../src/interface/control/client';
+import type { StepUnion } from '../../../src/automation/runner/steps/types';
+import type { Action } from '../../../src/interface/actions/action_protocol';
 
 const st = <T extends StepUnion['name']>(id: string, name: T, args: Extract<StepUnion, { name: T }>['args']): Extract<StepUnion, { name: T }> => ({ id, name, args } as unknown as Extract<StepUnion, { name: T }>);
 const mustOk = (r: { ok: boolean; error?: { code?: string; message?: string } }, label: string) => { expect(r.ok, `${label} failed: ${JSON.stringify(r.error)}`).toBeTruthy(); };
