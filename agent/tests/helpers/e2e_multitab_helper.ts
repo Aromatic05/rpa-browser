@@ -5,6 +5,7 @@ import { promises as fs } from 'node:fs';
 import { sendControlEval } from '../../src/interface/control/client';
 import type { StepUnion } from '../../src/automation/runner/steps/types';
 import type { Action } from '../../src/interface/actions/action_protocol';
+import {e2eRuntimePortEnv} from './e2e_runtime_env';
 
 export type AgentHandle = { endpoint: string; workflowRoot: string; close: () => Promise<void> };
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -37,7 +38,7 @@ export const startAgent = async (opts?: { headed?: boolean; workflowFixtureDir?:
 
   const proc = spawn('pnpm', [headed ? 'dev' : 'dev:headless'], {
     cwd: path.resolve(process.cwd()),
-    env: { ...process.env, RPA_CONTROL_EVAL: '1', RPA_CONTROL_ENDPOINT: endpoint, RPA_USER_DATA_DIR: userDataDir, RPA_WORKFLOW_ROOT: workflowRoot },
+    env: { ...process.env, ...e2eRuntimePortEnv(), RPA_CONTROL_EVAL: '1', RPA_CONTROL_ENDPOINT: endpoint, RPA_USER_DATA_DIR: userDataDir, RPA_WORKFLOW_ROOT: workflowRoot },
     stdio: 'pipe',
   });
 

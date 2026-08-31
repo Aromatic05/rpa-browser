@@ -5,6 +5,7 @@ import path from 'node:path';
 import {promises as fs} from 'node:fs';
 import {sendControlEval} from '../../../src/interface/control/client';
 import {dispatch, runStep} from '../e2e_multitab_helper';
+import {e2eRuntimePortEnv} from '../e2e_runtime_env';
 import type {StepUnion} from '../../../src/automation/runner/steps/types';
 import type {Action} from '../../../src/interface/actions/action_protocol';
 import type {ClosedBetaModelHandle} from './faux_model_server';
@@ -93,6 +94,7 @@ export const startClosedBetaSession = async (
         cwd,
         env: {
             ...process.env,
+            ...e2eRuntimePortEnv(),
             RPA_CONTROL_EVAL: '1',
             RPA_CONTROL_ENDPOINT: endpoint,
             RPA_USER_DATA_DIR: userDataDir,
