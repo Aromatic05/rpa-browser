@@ -218,8 +218,7 @@ test.describe('closed-beta: teach / annotate / demonstration flows', () => {
             ));
 
             const summary = await session.product({verb: 'librarySummary'}) as LibrarySummary;
-            const listed = (summary.procedures ?? []).some((entry) =>
-                entry.meaning === 'cb-procedure' || entry.name === procedure?.checkpointId);
+            const listed = (summary.procedures ?? []).some((entry) => entry.name === 'cb-procedure');
 
             await runCatalogTask(session, session.product);
             const catalogText = teachCatalog.readCatalog();
