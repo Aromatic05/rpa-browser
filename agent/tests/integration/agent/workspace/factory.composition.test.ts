@@ -461,3 +461,61 @@ test('factory retention is applied as an initial prune against durable sessions'
         fs.rmSync(dataDir, {recursive: true, force: true});
     }
 });
+
+test('factory productDefaults drive the single product plane: prompt-only starts use the configured provider/model', async () => {
+    const faux = createFauxAgentModelRuntime();
+    const config = makeConfig();
+    const binding = createWorkspaceAgentFactory({
+        modelRuntime: faux.runtime,
+        productDefaults: {provider: faux.provider, model: faux.model},
+    })(buildAgentFactoryDeps({
+        workspaceName: unique('factory-product-defaults'),
+        runStepsDeps: createFactoryRunStepsDeps(config),
+        runnerConfig: config,
+        portBegin: 26800,
+    }));
+
+    const service = agentService(binding);
+    const started = await service.start();
+    try {
+        const response = await fetch(`http://127.0.0.1:${String(started.port)}/agent/product/tasks`, {
+            method: 'POST',
+            headers: {'content-type': 'application/json'},
+            body: JSON.stringify({prompt: 'download the invoice'}),
+        });
+        assert.equal(response.status, 202, 'the product composer resolves provider/model from factory defaults');
+        const view = await response.json() as {taskId: string};
+        const session = service.sessions.list().find((entry) => entry.sessionId === view.taskId);
+        assert.ok(session);
+        assert.equal(session.request.provider, faux.provider);
+        assert.equal(session.request.model, faux.model);
+    } finally {
+        await service.stop();
+    }
+});
+
+test('a factory without productDefaults leaves the product start surface truthfully failing', async () => {
+    const faux = createFauxAgentModelRuntime();
+    const config = makeConfig();
+    const workspaceName = unique('factory-product-no-defaults');
+    const binding = createWorkspaceAgentFactory({modelRuntime: faux.runtime})(buildAgentFactoryDeps({
+        workspaceName,
+        runStepsDeps: createFactoryRunStepsDeps(config),
+        runnerConfig: config,
+    }));
+
+    await assert.rejects(
+        () => binding.control.handle({
+            action: {
+                v: 1,
+                id: crypto.randomUUID(),
+                type: 'agent.product',
+                workspaceName,
+                payload: {verb: 'startTask', prompt: 'download the invoice'},
+            },
+            workspace: {} as never,
+            workspaceRegistry: {} as never,
+        }),
+        /defaults are not configured/,
+    );
+});

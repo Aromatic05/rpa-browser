@@ -4,10 +4,7 @@ import { ACTION_TYPES } from '../actions/action_types.js';
 import { MSG } from '../shared/protocol.js';
 import type { WsClient } from '../actions/ws_client.js';
 import {
-    createProductHttpClient,
-    dispatchProductRequest,
-    productErrorMessageShape,
-    readProductBaseUrl,
+    productReplyFromAction,
     type ProductRequest,
 } from '../shared/product_transport.js';
 import { createRouterState, type RouterState } from './state.js';
@@ -336,21 +333,15 @@ export const createCmdRouter = (options: CmdRouterOptions): CmdRouter => {
                     sendResponse({ ok: false, error: { code: 'bad_args', message: 'invalid product request' } });
                     return;
                 }
-                const baseUrl = await readProductBaseUrl();
-                if (!baseUrl) {
-                    sendResponse({
-                        ok: false,
-                        error: { code: 'unreachable', message: 'agent product service is not configured' },
-                    });
-                    return;
-                }
-                try {
-                    const client = createProductHttpClient({ baseUrl });
-                    const data = await dispatchProductRequest(client, request);
-                    sendResponse({ ok: true, data });
-                } catch (error) {
-                    sendResponse({ ok: false, error: productErrorMessageShape(error) });
-                }
+                const reply = await options.wsClient.sendAction({
+                    v: 1,
+                    id: crypto.randomUUID(),
+                    type: ACTION_TYPES.AGENT_PRODUCT,
+                    workspaceName: options.sessionWorkspaceName,
+                    payload: request,
+                    at: Date.now(),
+                });
+                sendResponse(productReplyFromAction(reply));
             })().catch((error: unknown) => {
                 sendResponse({
                     ok: false,

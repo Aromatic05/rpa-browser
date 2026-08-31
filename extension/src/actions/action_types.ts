@@ -80,6 +80,7 @@ export const REQUEST_ACTION_TYPES = {
     AGENT_SESSIONS_CANCEL: 'agent.sessions.cancel',
     AGENT_SESSIONS_REPORT: 'agent.sessions.report',
     AGENT_SESSIONS_PRUNE: 'agent.sessions.prune',
+    AGENT_PRODUCT: 'agent.product',
     AGENT_INTERACTIONS_LIST: 'agent.interactions.list',
     AGENT_INTERACTIONS_GET: 'agent.interactions.get',
     AGENT_INTERACTIONS_APPROVE: 'agent.interactions.approve',

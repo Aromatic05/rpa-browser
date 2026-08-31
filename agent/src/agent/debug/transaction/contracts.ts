@@ -18,6 +18,16 @@ export type DebugTransactionSnapshot = Readonly<{
     savepoints: readonly DebugSavepoint[];
 }>;
 
+export type DebugTransactionState = Readonly<{
+    id: string;
+    baseline: WorldView;
+    savepoints: readonly Readonly<{
+        savepoint: DebugSavepoint;
+        world: WorldView;
+        visible: boolean;
+    }>[];
+}>;
+
 export type DebugTransaction = {
     readonly id: string;
     readonly baseline: WorldView;
@@ -27,6 +37,7 @@ export type DebugTransaction = {
     readSavepoint: (id: string) => Readonly<{savepoint: DebugSavepoint; world: WorldView}> | null;
     truncateSavepoints: (id: string) => void;
     snapshot: (current: WorldView, effectCount: number) => DebugTransactionSnapshot;
+    exportState: () => DebugTransactionState;
 };
 
 export type DebugRollbackResult =

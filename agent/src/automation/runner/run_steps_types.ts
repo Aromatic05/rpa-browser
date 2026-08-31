@@ -88,6 +88,7 @@ export type RunStepsDeps = {
 
 export type RunStepsExecutionContext = {
     checkpointProvider?: DslCheckpointProvider;
+    entityRulesProvider?: WorkspaceEntityRulesProvider;
     entityRulesResolver?: DslEntityRulesResolver;
     resolveResolver?: DslResolveResolver;
 };

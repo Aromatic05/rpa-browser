@@ -7,3 +7,4 @@ export * from './build';
 export * from './locator_scope';
 export * from './selector_map';
 export * from './semantic';
+export * from './sensitive_values';

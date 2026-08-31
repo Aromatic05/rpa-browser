@@ -66,7 +66,11 @@ export const worldProbeOf = (failedCtx: FailedCtx): RecoveryWorldProbe => ({
             const {entry} = await ensureFreshPageSession(
                 failedCtx.deps,
                 failedCtx.workspaceName,
-                {explicit: true, entityRules},
+                {
+                    explicit: true,
+                    entityRules,
+                    entityRulesProvider: failedCtx.checkpointRuntime?.entityRulesProvider,
+                },
             );
             const entities = buildPageSessionEntityView(entry).entities;
             const matched = filterPageSessionEntities(entities, {

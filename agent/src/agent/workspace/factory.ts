@@ -4,6 +4,7 @@ import type {WorkspaceAgentFactory} from '../../automation/runtime/workspace/age
 import type {WorkspaceMcpToolDeps} from '../../automation/runtime/mcp/tool_handlers';
 import type {RunStepsDeps} from '../../automation/runner/run_steps';
 import type {KnowledgeEntityRulesPort} from '../execution/knowledge';
+import type {AgentExecutionMode} from '../execution/types';
 import {createReactAgentRunner} from '../execution/react_runner';
 import {createProgramFirstAgentRunner} from '../execution/program/runner';
 import {createAgentExecutionRouter} from '../execution/router';
@@ -33,6 +34,10 @@ export type WorkspaceAgentFactoryOptions = {
     service?: AgentServiceBinding;
     retention?: RetentionPolicy;
     interaction?: InteractionPolicy;
+    /** The single workspace product composer defaults, derived upstream from
+     *  `config.agent.model` only; passed straight to the service's one
+     *  ProductController. Undefined when the model config is empty. */
+    productDefaults?: Readonly<{provider: string; model: string; executionMode?: AgentExecutionMode}>;
 };
 
 /**
@@ -119,6 +124,7 @@ export const createWorkspaceAgentFactory = (
         fixedPort: options.service && options.service.port > 0 ? options.service.port : undefined,
         retention: options.retention,
         interaction: options.interaction,
+        ...(options.productDefaults === undefined ? {} : {productDefaults: options.productDefaults}),
         productLibrary: () => workspaceLibrary.list(),
         log: (...args) => { getLogger('infra').info('[RPA:agent]', ...args); },
     });

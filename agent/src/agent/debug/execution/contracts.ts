@@ -28,6 +28,7 @@ import type {
     DebugSavepoint,
     DebugTransactionSnapshot,
 } from '../transaction/contracts';
+import type {ProgramExecutionImageExportResult} from '../../continuation/contracts';
 
 type PausedDslDebugExecutionBase = Readonly<{
     continuationId: string;
@@ -277,6 +278,7 @@ export type DslDebugExecutionSession = {
     history: (continuationId: string, programId?: string) => DebugExecutionHistory;
     patches: (continuationId: string, programId?: string) => readonly DebugProgramPatch[];
     auditEffects: () => readonly DebugEffectRecord[];
+    exportProgramExecutionImage: () => ProgramExecutionImageExportResult;
     effects: (continuationId: string) => readonly DebugEffectRecord[];
     explain: (continuationId: string, path: string) => DebugValueExplanation;
     recompute: (continuationId: string, path: string) => DebugValueRecomputeResult;

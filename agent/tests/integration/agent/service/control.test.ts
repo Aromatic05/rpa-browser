@@ -6,6 +6,7 @@ import {createAgentControl} from '../../../../src/agent/service/control';
 import type {WorkspaceAgentService} from '../../../../src/agent/service/runtime';
 import {createSessionManager} from '../../../../src/agent/service/session/manager';
 import type {SessionManagerOptions} from '../../../../src/agent/service/session';
+import {createProductController} from '../../../../src/agent/product';
 import type {AgentRunner, AgentRunResult} from '../../../../src/agent/execution/types';
 
 const runResult: AgentRunResult = {
@@ -49,8 +50,10 @@ const flush = (): Promise<void> => new Promise((resolve) => setImmediate(resolve
 const createHarness = (
     runner: AgentRunner = {run: async () => runResult},
     sessionOptions: Partial<SessionManagerOptions> = {},
+    productDefaults?: Readonly<{provider: string; model: string}>,
 ) => {
     let status: 'stopped' | 'running' = 'stopped';
+    const sessions = createSessionManager({runner, ...sessionOptions});
     const service: WorkspaceAgentService = {
         name: 'agent',
         workspaceName: 'ws',
@@ -66,7 +69,12 @@ const createHarness = (
             serviceName: 'agent', workspaceName: 'ws', port: status === 'running' ? 12345 : null, status,
         }),
         run: (request) => service.sessions.run(request),
-        sessions: createSessionManager({runner, ...sessionOptions}),
+        sessions,
+        product: createProductController({
+            manager: sessions,
+            workspace: 'ws',
+            ...(productDefaults === undefined ? {} : {defaults: productDefaults}),
+        }),
     };
     const control = createAgentControl(service);
     const workspace = {name: 'ws', agent: control} as any;
@@ -75,7 +83,7 @@ const createHarness = (
         workspace,
         workspaceRegistry: {} as any,
     });
-    return {control, input};
+    return {control, input, service};
 };
 
 test('agent control delegates service lifecycle', async () => {
@@ -304,4 +312,87 @@ test('agent control deny never cancels and returns the denial through the retain
         )),
         'ERR_BAD_ARGS',
     );
+});
+
+test('agent control operates on the service-owned product controller itself', () => {
+    const {control, service} = createHarness();
+    assert.equal(control.product, service.product);
+});
+
+test('agent.product starts a task from workspace defaults and completes it through the same controller', async () => {
+    let resumeCalls = 0;
+    const {control, input} = createHarness(
+        {run: async () => pausedRunResult(() => {resumeCalls += 1;})},
+        {},
+        {provider: 'p', model: 'm'},
+    );
+    const started = await control.handle(input('agent.product', {verb: 'startTask', prompt: 'fill the form'}));
+    assert.equal(started.reply.type, 'agent.product.result');
+    const taskId = (started.reply.payload as any).taskId;
+    assert.equal(typeof taskId, 'string');
+
+    await flush();
+    const viewed = await control.handle(input('agent.product', {verb: 'taskView', taskId}));
+    const task = viewed.reply.payload as any;
+    assert.equal(task.status, 'waiting_for_user');
+    assert.equal(task.interaction.kind, 'approval');
+
+    const approved = await control.handle(input(
+        'agent.product',
+        {verb: 'approve', taskId, interactionToken: task.interaction.interactionToken},
+    ));
+    assert.equal((approved.reply.payload as any).status, 'completed');
+    assert.equal(resumeCalls, 1, 'the product Action plane takes the same retained execution path');
+});
+
+test('agent.product failures preserve stale/not-found/conflict/bad-args semantics as Action codes', async () => {
+    const {control, input} = createHarness(
+        {run: async () => pausedRunResult()},
+        {},
+        {provider: 'p', model: 'm'},
+    );
+    const started = await control.handle(input('agent.product', {verb: 'startTask', prompt: 'fill'}));
+    const taskId = (started.reply.payload as any).taskId;
+    await flush();
+
+    await actionErrorCode(
+        () => control.handle(input('agent.product', {verb: 'approve', taskId, interactionToken: 'not-a-token'})),
+        'ERR_STALE',
+    );
+    await actionErrorCode(
+        () => control.handle(input('agent.product', {verb: 'taskView', taskId: 'missing'})),
+        'ERR_NOT_FOUND',
+    );
+    await actionErrorCode(
+        () => control.handle(input('agent.product', {verb: 'startTask', prompt: 'steal'})),
+        'ERR_CONFLICT',
+    );
+    await actionErrorCode(
+        () => control.handle(input('agent.product', {verb: 'startTask', prompt: 'x', provider: 'evil'})),
+        'ERR_BAD_ARGS',
+    );
+    await actionErrorCode(
+        () => control.handle(input('agent.product', {verb: 'explode'})),
+        'ERR_BAD_ARGS',
+    );
+    await actionErrorCode(
+        () => control.handle(input('agent.product', {verb: 'events', taskId: 'missing', afterSeq: -1})),
+        'ERR_BAD_ARGS',
+    );
+});
+
+test('agent.product startTask without configured workspace defaults fails as bad args', async () => {
+    const {control, input} = createHarness({run: async () => runResult});
+    await actionErrorCode(
+        () => control.handle(input('agent.product', {verb: 'startTask', prompt: 'fill'})),
+        'ERR_BAD_ARGS',
+    );
+});
+
+test('agent.product authoring commands flow through the same reservation surface', async () => {
+    const {control, input} = createHarness();
+    const began = await control.handle(input('agent.product', {verb: 'beginAuthoring', activity: 'teach', teachKind: 'procedure'}));
+    assert.equal((began.reply.payload as any).reservation.owner, 'standalone_teach');
+    const ended = await control.handle(input('agent.product', {verb: 'endAuthoring', outcome: 'discarded'}));
+    assert.equal((ended.reply.payload as any).reservation.owner, 'none');
 });

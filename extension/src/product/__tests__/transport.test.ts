@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createProductHttpClient, ProductTransportError } from '../../shared/product_transport.js';
+import {
+    createProductHttpClient,
+    productReplyFromAction,
+    ProductTransportError,
+} from '../../shared/product_transport.js';
 import type { ProductBackendClient, ProductRequest } from '../../shared/product_transport.js';
 
 const json = (body: unknown, status = 200): Response =>
@@ -162,4 +166,43 @@ test('dispatchProductRequest forwards every product verb to the backend client',
         await dispatchProductRequest(client, entry.request);
     }
     assert.deepEqual(dispatched, verbs.map((entry) => entry.name));
+});
+
+test('productReplyFromAction converts an agent.product result into a UI reply payload', () => {
+    const reply = productReplyFromAction({
+        v: 1,
+        type: 'agent.product.result',
+        replyTo: 'req-1',
+        payload: { taskId: 'task-1', status: 'running' },
+    });
+    assert.deepEqual(reply, { ok: true, data: { taskId: 'task-1', status: 'running' } });
+});
+
+test('productReplyFromAction preserves stale/not_found/conflict/bad_args classification from Action failures', () => {
+    const cases: Array<[string, string, string | undefined]> = [
+        ['ERR_STALE', 'stale', undefined],
+        ['ERR_NOT_FOUND', 'not_found', undefined],
+        ['ERR_CONFLICT', 'conflict', 'ERR_ACTIVITY_CONFLICT'],
+        ['ERR_BAD_STATE', 'conflict', undefined],
+        ['ERR_BAD_ARGS', 'bad_args', undefined],
+        ['ERR_TIMEOUT', 'unreachable', undefined],
+        ['ERR_WEIRD', 'http', undefined],
+    ];
+    for (const [code, expected, productCode] of cases) {
+        const reply = productReplyFromAction({
+            v: 1,
+            type: 'agent.product.failed',
+            replyTo: 'req-1',
+            payload: {
+                code,
+                message: 'nope',
+                ...(productCode === undefined ? {} : { details: { productCode } }),
+            },
+        });
+        assert.equal(reply.ok, false, `${code} must fail`);
+        if (reply.ok) {continue;}
+        assert.equal(reply.error.code, expected, `${code} classifies as ${expected}`);
+        assert.equal(reply.error.detailCode, productCode ?? code);
+        assert.equal(reply.error.message, 'nope');
+    }
 });

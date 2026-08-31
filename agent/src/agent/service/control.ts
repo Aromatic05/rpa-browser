@@ -1,5 +1,5 @@
 import {replyAction} from '../../interface/actions/action_protocol';
-import {ActionError, ERROR_CODES} from '../../interface/actions/results';
+import {ActionError, ERROR_CODES, type ErrorCode} from '../../interface/actions/results';
 import type {ControlPlaneResult} from '../../automation/runtime/control_plane';
 import type {WorkspaceRouterInput} from '../../automation/runtime/workspace/router';
 import type {
@@ -14,9 +14,14 @@ import {
     InteractionValidationError,
 } from '../interaction';
 import type {AgentRunRequest, AgentRunResult} from '../execution/types';
+import {ActivityConflictError, SessionCancelledError} from './session/manager';
 import type {SessionRetentionPolicy} from './session/store';
 import type {WorkspaceAgentService} from './runtime';
-import {createProductController, type ProductController} from '../product';
+import {
+    dispatchProductCommand,
+    ProductCommandError,
+    type ProductController,
+} from '../product';
 
 export type AgentControl = {
     start: () => Promise<WorkspaceServiceStartResult>;
@@ -55,6 +60,32 @@ const toInteractionActionError = (error: unknown): ActionError => {
     throw error;
 };
 
+const PRODUCT_COMMAND_ACTION_CODES: Record<string, ErrorCode> = {
+    ERR_STALE: ERROR_CODES.ERR_STALE,
+    ERR_ACTIVITY_CONFLICT: ERROR_CODES.ERR_CONFLICT,
+    ERR_BAD_ARGS: ERROR_CODES.ERR_BAD_ARGS,
+    ERR_NOT_FOUND: ERROR_CODES.ERR_NOT_FOUND,
+};
+
+/** Preserves product semantics inside the Action failure envelope: the
+ *  original product code travels in `details` next to the mapped Action code. */
+const toProductActionError = (error: unknown): ActionError => {
+    if (error instanceof ProductCommandError) {
+        return new ActionError(
+            PRODUCT_COMMAND_ACTION_CODES[error.code] ?? ERROR_CODES.ERR_BAD_ARGS,
+            error.message,
+            {productCode: error.code},
+        );
+    }
+    if (error instanceof ActivityConflictError) {
+        return new ActionError(ERROR_CODES.ERR_CONFLICT, error.message, {productCode: error.code});
+    }
+    if (error instanceof SessionCancelledError) {
+        return new ActionError(ERROR_CODES.ERR_BAD_STATE, error.message, {productCode: error.code});
+    }
+    return toInteractionActionError(error);
+};
+
 const parseRetentionPolicy = (payload: unknown): SessionRetentionPolicy => {
     const value = (payload ?? {}) as Record<string, unknown>;
     const policy: SessionRetentionPolicy = {};
@@ -78,10 +109,7 @@ export const createAgentControl = (service: WorkspaceAgentService): AgentControl
     stop: () => service.stop(),
     status: () => service.status(),
     run: (request) => service.run(request),
-    product: createProductController({
-        manager: service.sessions,
-        workspace: service.workspaceName,
-    }),
+    product: service.product,
     handle: async ({action}) => {
         switch (action.type) {
             case 'agent.start': {
@@ -247,6 +275,15 @@ export const createAgentControl = (service: WorkspaceAgentService): AgentControl
                 } catch (error) {
                     if (error instanceof ActionError) {throw error;}
                     throw toInteractionActionError(error);
+                }
+            }
+            case 'agent.product': {
+                try {
+                    const data = await dispatchProductCommand(service.product, action.payload);
+                    return {reply: replyAction(action, data), events: []};
+                } catch (error) {
+                    if (error instanceof ActionError) {throw error;}
+                    throw toProductActionError(error);
                 }
             }
             default:

@@ -4,7 +4,7 @@ import {
     type PageSnapshotSessionEntry,
     type SemanticBusinessBinding,
 } from '../../../snapshot';
-import type {RunStepsDeps} from '../../run_steps';
+import type {RunStepsDeps, RunStepsExecutionContext} from '../../run_steps';
 import {
     buildPageSessionEntityView,
     ensureFreshPageSession,
@@ -18,8 +18,11 @@ export const executeBrowserEntity = async (
     step: Step<'browser.entity'>,
     deps: RunStepsDeps,
     workspaceName: string,
+    runtimeContext?: RunStepsExecutionContext,
 ): Promise<StepResult> => {
-    const context = await ensureFreshPageSession(deps, workspaceName);
+    const context = await ensureFreshPageSession(deps, workspaceName, {
+        entityRulesProvider: runtimeContext?.entityRulesProvider,
+    });
     const page = context.binding.page;
     const args = step.args;
 

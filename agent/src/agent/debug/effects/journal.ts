@@ -1,7 +1,7 @@
 import type {DslBeforeEffectEvent} from '../../../automation/dsl/debug/contracts';
 import {describeWorldView} from '../../worldview/descriptor';
 import type {WorldView} from '../../worldview/contracts';
-import type {DebugEffectJournal, DebugEffectJournalEntry} from './contracts';
+import type {DebugEffectJournal, DebugEffectJournalEntry, DebugEffectJournalState} from './contracts';
 
 type PendingEffect = Readonly<{
     event: DslBeforeEffectEvent;
@@ -9,9 +9,11 @@ type PendingEffect = Readonly<{
     metadata?: Readonly<{compensates?: Readonly<{effectSequence: number}>}>;
 }>;
 
-export const createDebugEffectJournal = (): DebugEffectJournal => {
+export const createDebugEffectJournal = (seed?: DebugEffectJournalState): DebugEffectJournal => {
     const pending = new Map<string, PendingEffect>();
-    const entries: DebugEffectJournalEntry[] = [];
+    const entries: DebugEffectJournalEntry[] = seed
+        ? Array.from(structuredClone(seed.entries))
+        : [];
 
     return {
         begin: (event, worldBefore, metadata) => {
@@ -36,5 +38,6 @@ export const createDebugEffectJournal = (): DebugEffectJournal => {
         },
         list: () => Object.freeze(entries.map((entry) => entry.record)),
         read: (sequence) => entries[sequence - 1] ?? null,
+        exportState: () => Object.freeze({entries: structuredClone(entries)}),
     };
 };

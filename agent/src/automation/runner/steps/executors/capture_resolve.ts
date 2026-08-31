@@ -1,4 +1,4 @@
-import type {RunStepsDeps} from '../../run_steps';
+import type {RunStepsDeps, RunStepsExecutionContext} from '../../run_steps';
 import {
     ensureFreshPageSession,
     buildPageSessionResolve,
@@ -46,6 +46,7 @@ export const executeBrowserCaptureResolve = async (
     step: Step<'browser.capture_resolve'>,
     deps: RunStepsDeps,
     workspaceName: string,
+    context?: RunStepsExecutionContext,
 ): Promise<StepResult> => {
     const args = step.args;
     if (!args.nodeId && !args.selector && !args.text && !args.role && !args.name && !step.resolve) {
@@ -61,7 +62,7 @@ export const executeBrowserCaptureResolve = async (
     const normalizedLimit = normalizeCaptureResolveLimit(args.limit);
     if (!normalizedLimit.ok) {return {stepId: step.id, ok: false, error: normalizedLimit.error};}
 
-    const {entry} = await ensureFreshPageSession(deps, workspaceName);
+    const {entry} = await ensureFreshPageSession(deps, workspaceName, {entityRulesProvider: context?.entityRulesProvider});
     const candidates = findCandidates(entry, step).slice(0, normalizedLimit.value);
     if (candidates.length === 0) {
         return {

@@ -20,6 +20,8 @@ export {
 export type {ProjectAgentTaskViewInput} from './projection';
 export {createProductController, ProductCommandError, PRODUCT_USER_ACTOR} from './controller';
 export type {ProductController, ProductControllerOptions, ProductTaskList} from './controller';
+export {parseProductCommand, dispatchProductCommand} from './command';
+export type {ProductCommand} from './command';
 export {librarySummaryFrom} from './library';
 export type {
     AgentTaskStatus,

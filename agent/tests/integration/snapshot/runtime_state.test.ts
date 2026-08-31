@@ -570,3 +570,38 @@ test('captured empty editable value survives the observation join for physical c
     assert.ok(nodeId);
     assert.equal(observation.runtimeState[nodeId]?.value, '', 'empty value must survive capture -> observation join');
 });
+
+test('runtime collector redacts sensitive control values before they leave the page context', async () => {
+    const root = createElement('HTML');
+    const body = createElement('BODY', {}, root);
+
+    const normal = createElement('INPUT', {type: 'text', name: 'username'}, body);
+    normal.value = 'alice';
+
+    const password = createElement('INPUT', {type: 'password', autocomplete: 'current-password'}, body);
+    password.value = 'password-canary';
+
+    const hidden = createElement('INPUT', {type: 'hidden', name: 'csrfToken'}, body);
+    hidden.value = 'hidden-token-canary';
+
+    const apiKey = createElement('INPUT', {type: 'text', name: 'apiKey'}, body);
+    apiKey.value = 'api-key-canary';
+
+    const otp = createElement('INPUT', {type: 'text', autocomplete: 'one-time-code'}, body);
+    otp.value = '123456';
+
+    const page = createPage(createDocument(root));
+    const map = await collectTaggedRuntimeState(page as never, 'epoch-sensitive-values');
+
+    assert.equal(findRow(map, (row) => row.tag === 'input' && row.type === 'text' && row.value === 'alice')?.value, 'alice');
+    for (const control of [password, hidden, apiKey, otp]) {
+        const stateId = control.getAttribute(RUNTIME_STATE_ATTRIBUTE);
+        assert.ok(stateId);
+        assert.equal(map[stateId!]?.value, '[redacted]');
+    }
+    const serialized = JSON.stringify(map);
+    assert.equal(serialized.includes('password-canary'), false);
+    assert.equal(serialized.includes('hidden-token-canary'), false);
+    assert.equal(serialized.includes('api-key-canary'), false);
+    assert.equal(serialized.includes('123456'), false);
+});
