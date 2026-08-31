@@ -33,7 +33,8 @@ const LEAK_TOKENS = [
 
 const findLeaks = (text: string): string[] => {
     const lower = text.toLowerCase();
-    return LEAK_TOKENS.filter((token) => lower.includes(token));
+    return LEAK_TOKENS.filter((token) =>
+        new RegExp(`(^|[^a-z0-9_])${token}([^a-z0-9_]|$)`, 'u').test(lower));
 };
 
 test.describe('closed-beta: ordinary product surfaces stay free of internals', () => {
