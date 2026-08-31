@@ -31,6 +31,15 @@ const waitFor = async (predicate, timeoutMs = 3000) => {
     assert.fail('condition was not met before timeout');
 };
 
+const readPidFile = async (filePath) => {
+    try {
+        const pid = Number((await readFile(filePath, 'utf8')).trim());
+        return Number.isInteger(pid) && pid > 0 ? pid : null;
+    } catch {
+        return null;
+    }
+};
+
 test('dev:cdp instance lock rejects a second live owner', async () => {
     await withTempDir(async (tempDir) => {
         const lockDir = path.join(tempDir, 'dev-cdp.lock');
@@ -62,57 +71,49 @@ test('dev:cdp instance lock reclaims a stale owner', async () => {
 test('terminating the managed process kills its descendants', {
     skip: process.platform === 'win32',
 }, async () => {
-    const childSource = [
-        "const {spawn} = require('node:child_process');",
-        "const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {stdio: 'ignore'});",
-        'console.log(child.pid);',
-        'setInterval(() => {}, 1000);',
-    ].join('\n');
-    const child = spawnManagedProcess(process.execPath, ['-e', childSource], {
-        stdio: ['ignore', 'pipe', 'inherit'],
-    });
-    const grandchildPid = await new Promise((resolve, reject) => {
-        let output = '';
-        child.stdout.setEncoding('utf8');
-        child.stdout.on('data', (chunk) => {
-            output += chunk;
-            const value = Number(output.trim());
-            if (Number.isInteger(value) && value > 0) {resolve(value);}
-        });
-        child.once('error', reject);
-        child.once('exit', () => reject(new Error('managed process exited before reporting its child pid')));
-    });
+    await withTempDir(async (tempDir) => {
+        const pidFile = path.join(tempDir, 'grandchild.pid');
+        const childSource = [
+            "const {spawn} = require('node:child_process');",
+            "const {writeFileSync} = require('node:fs');",
+            "const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {stdio: 'ignore'});",
+            `writeFileSync(${JSON.stringify(pidFile)}, String(child.pid));`,
+            'setInterval(() => {}, 1000);',
+        ].join('\n');
+        const child = spawnManagedProcess(process.execPath, ['-e', childSource], {stdio: 'ignore'});
+        await waitFor(async () => (await readPidFile(pidFile)) !== null);
+        const grandchildPid = await readPidFile(pidFile);
+        assert.ok(grandchildPid);
 
-    assert.equal(isProcessAlive(child.pid), true);
-    assert.equal(isProcessAlive(grandchildPid), true);
-    await terminateProcessTree(child, {signal: 'SIGINT', killAfterMs: 500});
-    await waitFor(() => !isProcessAlive(child.pid) && !isProcessAlive(grandchildPid));
+        assert.equal(isProcessAlive(child.pid), true);
+        assert.equal(isProcessAlive(grandchildPid), true);
+        await terminateProcessTree(child, {signal: 'SIGINT', killAfterMs: 500});
+        await waitFor(() => !isProcessAlive(child.pid) && !isProcessAlive(grandchildPid));
+    });
 });
 
 test('terminating a managed process still kills descendants after the group leader exits', {
     skip: process.platform === 'win32',
 }, async () => {
-    const childSource = [
-        "const {spawn} = require('node:child_process');",
-        "const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {stdio: 'ignore'});",
-        'child.unref();',
-        'console.log(child.pid);',
-    ].join('\n');
-    const child = spawnManagedProcess(process.execPath, ['-e', childSource], {
-        stdio: ['ignore', 'pipe', 'inherit'],
+    await withTempDir(async (tempDir) => {
+        const pidFile = path.join(tempDir, 'grandchild.pid');
+        const childSource = [
+            "const {spawn} = require('node:child_process');",
+            "const {writeFileSync} = require('node:fs');",
+            "const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {stdio: 'ignore'});",
+            'child.unref();',
+            `writeFileSync(${JSON.stringify(pidFile)}, String(child.pid));`,
+        ].join('\n');
+        const child = spawnManagedProcess(process.execPath, ['-e', childSource], {stdio: 'ignore'});
+        const childExit = child.exitCode !== null
+            ? Promise.resolve()
+            : new Promise((resolve) => child.once('exit', resolve));
+        await waitFor(async () => (await readPidFile(pidFile)) !== null);
+        const grandchildPid = await readPidFile(pidFile);
+        assert.ok(grandchildPid);
+        await childExit;
+        assert.equal(isProcessAlive(grandchildPid), true);
+        await terminateProcessTree(child, {signal: 'SIGTERM', killAfterMs: 500});
+        await waitFor(() => !isProcessAlive(grandchildPid));
     });
-    const grandchildPid = await new Promise((resolve, reject) => {
-        let output = '';
-        child.stdout.setEncoding('utf8');
-        child.stdout.on('data', (chunk) => {
-            output += chunk;
-            const value = Number(output.trim());
-            if (Number.isInteger(value) && value > 0) {resolve(value);}
-        });
-        child.once('error', reject);
-    });
-    await new Promise((resolve) => child.once('exit', resolve));
-    assert.equal(isProcessAlive(grandchildPid), true);
-    await terminateProcessTree(child, {signal: 'SIGTERM', killAfterMs: 500});
-    await waitFor(() => !isProcessAlive(grandchildPid));
 });

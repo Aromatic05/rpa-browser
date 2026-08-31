@@ -101,7 +101,21 @@ export const secretRulesProvider: WorkspaceEntityRulesProvider = {
     availability: 'ready',
     workflowName: 'security-e2e',
     listProfiles: () => ['secret-page'],
-    getProfile: (name) => ({kind: 'entity_rules', name, match: {}, annotation: {}}) as unknown as WorkflowEntityRules,
+    getProfile: (name) => name === 'secret-page' ? ({
+        kind: 'entity_rules',
+        name,
+        page: {kind: 'form'},
+        match: {version: 2, rules: [
+            {ruleId: 'root', source: 'region', expect: 'unique', match: {kind: 'form', idEquals: 'OrdersForm'}},
+            {ruleId: 'secret', source: 'node', expect: 'unique', within: 'root', match: {idEquals: 'Buyer'}},
+            {ruleId: 'submit', source: 'node', expect: 'unique', within: 'root', match: {idEquals: 'Submit'}},
+        ]},
+        annotation: {version: 2, bindings: [
+            {ruleId: 'root', entityKey: 'secretForm', businessTag: 'secret.form', entityKind: 'form'},
+            {ruleId: 'secret', fieldKey: 'secret', effect: {reversibility: 'reversible'}},
+            {ruleId: 'submit', actionIntent: 'submit', effect: {reversibility: 'irreversible'}},
+        ]},
+    }) : null,
     resolveExports: (profileName) => ({
         index: {
             profileName,

@@ -112,13 +112,15 @@ const renderComposer = (root: HTMLElement, ctx: SurfaceContext): void => {
     root.append(sectionTitle('New task'));
 
     const prompt = ctx.ui.composer.trim();
-    const startDisabled = prompt.length === 0 || isMutationDisabled(ctx) || ctx.view.startError !== undefined;
+    const modelReady = ctx.view.modelConfigured !== false;
+    const startDisabled = prompt.length === 0 || !modelReady || isMutationDisabled(ctx) || ctx.view.startError !== undefined;
 
     const textarea = document.createElement('textarea');
     textarea.className = 'rpa-textarea';
     textarea.placeholder = 'Describe what the agent should do…';
     textarea.dataset.rpaProductComposer = 'true';
     textarea.value = ctx.ui.composer;
+    textarea.disabled = !modelReady;
 
     const startRow = el('div', 'rpa-row');
     const startButton = button(
@@ -135,7 +137,10 @@ const renderComposer = (root: HTMLElement, ctx: SurfaceContext): void => {
     startRow.append(startButton);
 
     const canStart = (): boolean =>
-        ctx.ui.composer.trim().length > 0 && !isMutationDisabled(ctx) && ctx.view.startError === undefined;
+        ctx.ui.composer.trim().length > 0
+        && modelReady
+        && !isMutationDisabled(ctx)
+        && ctx.view.startError === undefined;
 
     textarea.addEventListener('input', () => {
         ctx.ui.composer = textarea.value;
@@ -168,7 +173,11 @@ const renderComposer = (root: HTMLElement, ctx: SurfaceContext): void => {
         );
     }
 
-    const helper = prompt.length === 0 ? muted('Describe the task first.') : null;
+    const helper = !modelReady
+        ? muted('Model setup is required before starting tasks. Open a new tab to finish RPA Browser setup.')
+        : prompt.length === 0
+            ? muted('Describe the task first.')
+            : null;
 
     const composerChildren: Array<Node | string> = [textarea, example, chips];
     if (helper) {
@@ -248,10 +257,26 @@ const renderTeachStatus = (root: HTMLElement, ctx: SurfaceContext): void => {
         const summary = review
             ? [hint(review.summary), ...review.stepSummaries.map((line) => muted(line))]
             : [hint('Review the recorded teaching before saving.')];
+        if (teach.teachKind === 'demonstration') {
+            const name = document.createElement('input');
+            name.type = 'text';
+            name.className = 'rpa-input';
+            name.maxLength = 80;
+            name.placeholder = 'Demonstration name';
+            name.value = ctx.ui.demonstrationName;
+            name.dataset.rpaProductField = 'demonstration-name';
+            name.addEventListener('input', () => {
+                ctx.ui.demonstrationName = name.value;
+                ctx.rerender();
+            });
+            summary.push(name);
+        }
         const row = el('div', 'rpa-row');
+        const demonstrationNameMissing = teach.teachKind === 'demonstration'
+            && ctx.ui.demonstrationName.trim().length === 0;
         row.append(
-            button(saveLabel, () => { ctx.commands.saveTeach(); }, 'primary', {
-                disabled: isMutationDisabled(ctx) || (review ? !review.canSave : false),
+            button(saveLabel, () => { ctx.commands.saveTeach(ctx.ui.demonstrationName); }, 'primary', {
+                disabled: isMutationDisabled(ctx) || (review ? !review.canSave : false) || demonstrationNameMissing,
                 dataAction: 'save-teach',
             }),
             button('Discard', () => { ctx.commands.discardTeach(); }, 'danger', { dataAction: 'discard-teach' }),
@@ -292,6 +317,7 @@ export const renderTeachSurface = (root: HTMLElement, ctx: SurfaceContext): void
         radio.addEventListener('change', () => {
             if (radio.checked) {
                 ctx.ui.teachKind = option.value;
+                if (option.value === 'demonstration') {ctx.ui.demonstrationName = '';}
                 ctx.rerender();
             }
         });
@@ -354,6 +380,7 @@ export const renderTeachSurface = (root: HTMLElement, ctx: SurfaceContext): void
             'Start Teaching',
             () => {
                 const area = isStructured && selectedArea.length > 0 ? selectedArea : undefined;
+                if (!isStructured) {ctx.ui.demonstrationName = '';}
                 ctx.commands.startTeach(ctx.ui.teachKind, area);
             },
             'primary',

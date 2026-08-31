@@ -428,22 +428,13 @@ test('Annotate acquires the reservation and opens the existing canvas; observed 
         reply: { profileName: 'orders-page', artifactRevision: 'r7', saved: true },
     });
     await settle();
-    const afterSave = controller.getView().authoring?.annotate;
-    assert.equal(afterSave?.dirty, false);
-    assert.deepEqual(afterSave.savedSummary, { profileName: 'orders-page', entityCount: 3 },
-        'identity comes from the real reply, count from the real canvasDraft');
-    assert.equal(JSON.stringify(afterSave.savedSummary).includes('orders-draft'), false,
-        'the draft profile name never overrides the authoritative saved identity');
-    assert.equal(client.live.some((entry) => entry.name === 'endAuthoring'), false,
-        'saving inside the canvas does not silently end the owned activity');
-
-    controller.commands.closeAnnotate();
-    await settle();
     assert.deepEqual(
         client.live.find((entry) => entry.name === 'endAuthoring')?.args,
         ['saved'],
-        'closing after a real save finishes the activity as saved',
+        'standalone Save and Exit finishes the owned activity immediately',
     );
+    assert.equal(controller.getView().authoring?.annotate, undefined,
+        'the standalone annotate surface leaves authoring after a successful save');
 });
 
 test('a failed annotator open releases the reservation instead of faking an activity', async () => {

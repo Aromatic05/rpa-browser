@@ -101,6 +101,36 @@ test('program-first runner rejects starting a second transaction after execution
     assert.equal(result.text, 'Kept the original transaction.');
 });
 
+test('program-first runner rejects model request failures instead of returning an empty success', async () => {
+    const faux = createFauxCore({provider: 'faux', models: [{id: 'planner'}]});
+    faux.setResponses([
+        fauxAssistantMessage([], {
+            stopReason: 'error',
+            errorMessage: 'connect ECONNREFUSED 127.0.0.1:43179',
+        }),
+    ]);
+    let executed = false;
+    const runner = createProgramFirstAgentRunner({
+        readTools: [],
+        executeProgram: async (program) => {
+            executed = true;
+            return {summary: {...program, status: 'completed', text: 'should not run'}};
+        },
+        modelRuntime: runtime(faux),
+    });
+
+    await assert.rejects(
+        () => runner.run({prompt: 'Summarize this page', provider: 'faux', model: 'planner'}),
+        (error: unknown) => {
+            const failure = error as {code?: string; message?: string};
+            assert.equal(failure.code, 'ERR_AGENT_MODEL_REQUEST_FAILED');
+            assert.match(failure.message ?? '', /ECONNREFUSED/);
+            return true;
+        },
+    );
+    assert.equal(executed, false);
+});
+
 test('program-first runner controls a retained barrier in the same ReAct session', async () => {
     const faux = createFauxCore({provider: 'faux', models: [{id: 'planner'}]});
     faux.setResponses([

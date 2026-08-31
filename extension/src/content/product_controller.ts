@@ -62,9 +62,9 @@ export type ProductAuthoringBridge = {
     readStructuredTeachState: () => Promise<StructuredTeachSnapshot | null>;
     startDemonstration: () => void;
     stopDemonstration: () => void;
-    saveDemonstration: () => void;
+    saveDemonstration: (name: string) => void;
     discardDemonstration: () => void;
-    readDemonstrationState: () => Promise<{status: 'idle' | 'review'; stepCount: number} | null>;
+    readDemonstrationState: () => Promise<{status: 'idle' | 'recording' | 'review'; stepCount: number} | null>;
     openAnnotator: (profileName?: string) => Promise<boolean>;
     closeAnnotator: () => void;
     /** Ends any linked (Task-owned) teach activity without touching the Task
@@ -155,6 +155,7 @@ export const createProductController = (options: ProductControllerOptions): Prod
         running: boolean;
         failures: number;
         inFlight: boolean;
+        refreshPending: boolean;
         authoring: StandaloneAuthoring | null;
         linked: LinkedAuthoring | null;
         library: LibrarySummary | undefined;
@@ -162,6 +163,7 @@ export const createProductController = (options: ProductControllerOptions): Prod
         teachSnapshot: StructuredTeachSnapshot | null;
         teachPreview: boolean;
         demoReview: {stepCount: number} | null;
+        demoStepCount: number;
         automationSave: AutomationSaveState | undefined;
         currentTaskId: string | undefined;
     } = {
@@ -181,6 +183,7 @@ export const createProductController = (options: ProductControllerOptions): Prod
         running: false,
         failures: 0,
         inFlight: false,
+        refreshPending: false,
         authoring: null,
         linked: null,
         library: undefined,
@@ -188,6 +191,7 @@ export const createProductController = (options: ProductControllerOptions): Prod
         teachSnapshot: null,
         teachPreview: false,
         demoReview: null,
+        demoStepCount: 0,
         automationSave: undefined,
         currentTaskId: undefined,
     };
@@ -231,6 +235,7 @@ export const createProductController = (options: ProductControllerOptions): Prod
         state.authoring = null;
         state.teachSnapshot = null;
         state.demoReview = null;
+        state.demoStepCount = 0;
     };
 
     const structuredKind = (kind: TeachKind | undefined): kind is 'procedure' | 'recovery' =>
@@ -292,7 +297,7 @@ export const createProductController = (options: ProductControllerOptions): Prod
             : authoring.recordingConfirmed
                 ? 'recording'
                 : 'setup';
-        const stepCount = state.demoReview?.stepCount ?? 0;
+        const stepCount = state.demoReview?.stepCount ?? state.demoStepCount;
         return {
             teachKind,
             phase,
@@ -369,7 +374,19 @@ export const createProductController = (options: ProductControllerOptions): Prod
     const syncDemonstrationSnapshot = async (authoring: StandaloneAuthoring): Promise<void> => {
         try {
             const demo = (await bridge()?.readDemonstrationState()) ?? null;
+            if (demo?.status === 'recording') {
+                authoring.recordingConfirmed = true;
+                state.demoStepCount = demo.stepCount;
+                state.demoReview = null;
+                return;
+            }
             if (demo?.status === 'review' && demo.stepCount > 0) {
+                state.demoStepCount = demo.stepCount;
+                state.demoReview = { stepCount: demo.stepCount };
+                return;
+            }
+            if (demo?.status === 'review') {
+                state.demoStepCount = demo.stepCount;
                 state.demoReview = { stepCount: demo.stepCount };
                 return;
             }
@@ -377,6 +394,7 @@ export const createProductController = (options: ProductControllerOptions): Prod
                 // The runtime reports nothing recorded (or capture is gone):
                 // truthfully drop back to setup instead of a fake recording.
                 authoring.recordingConfirmed = false;
+                state.demoStepCount = 0;
                 state.demoReview = null;
             }
         } catch {
@@ -420,6 +438,7 @@ export const createProductController = (options: ProductControllerOptions): Prod
         if (type === 'checkpoint.record.start' || type === 'record.start') {
             if (authoring?.activity === 'teach') {
                 authoring.recordingConfirmed = true;
+                if (type === 'record.start') {state.demoStepCount = 0;}
             }
             return;
         }
@@ -431,7 +450,9 @@ export const createProductController = (options: ProductControllerOptions): Prod
         }
         if (type === 'record.stop') {
             if (authoring?.activity === 'teach' && authoring.teachKind === 'demonstration') {
-                state.demoReview = { stepCount: typeof reply?.stepCount === 'number' ? reply.stepCount : 0 };
+                const stepCount = typeof reply?.stepCount === 'number' ? reply.stepCount : state.demoStepCount;
+                state.demoStepCount = stepCount;
+                state.demoReview = { stepCount };
             }
             return;
         }
@@ -523,6 +544,11 @@ export const createProductController = (options: ProductControllerOptions): Prod
                         };
                         authoring.savedReference = `page_knowledge:${savedProfile}`;
                     }
+                    // The standalone canvas action is explicitly “save and
+                    // exit”: once the real save succeeds, release the product
+                    // reservation immediately. Task-linked annotation keeps
+                    // the Task reservation and only returns its saved ref.
+                    void endAuthoringActivity('saved');
                 }
                 if (linked?.mode === 'annotate' && savedProfile) {
                     linked.savedReference = `page_knowledge:${savedProfile}`;
@@ -630,6 +656,7 @@ export const createProductController = (options: ProductControllerOptions): Prod
         const taskId = isRecord(rawActive) && typeof rawActive.taskId === 'string' ? rawActive.taskId : undefined;
         const record = {
             workspace: rawWorkspace.workspace,
+            modelConfigured: rawWorkspace.modelConfigured,
             reservation: rawWorkspace.reservation,
             ...(taskId ? { activeTask: rawActive } : {}),
             history: historyRaw ?? [],
@@ -747,6 +774,7 @@ export const createProductController = (options: ProductControllerOptions): Prod
 
     const syncOnce = async (): Promise<void> => {
         if (state.inFlight) {
+            state.refreshPending = true;
             return;
         }
         state.inFlight = true;
@@ -800,6 +828,10 @@ export const createProductController = (options: ProductControllerOptions): Prod
             }
         } finally {
             state.inFlight = false;
+            if (state.refreshPending) {
+                state.refreshPending = false;
+                void syncOnce();
+            }
         }
     };
 
@@ -1026,7 +1058,7 @@ export const createProductController = (options: ProductControllerOptions): Prod
             }
             void syncOnce();
         },
-        saveTeach: () => {
+        saveTeach: (name) => {
             const authoring = state.authoring;
             if (authoring?.activity !== 'teach') {
                 return;
@@ -1034,7 +1066,9 @@ export const createProductController = (options: ProductControllerOptions): Prod
             if (structuredKind(authoring.teachKind ?? state.teachSnapshot?.kind)) {
                 options.authoring?.saveStructuredTeach();
             } else {
-                options.authoring?.saveDemonstration();
+                const recordingName = name?.trim() ?? '';
+                if (!recordingName) {return;}
+                options.authoring?.saveDemonstration(recordingName);
             }
             void syncOnce();
         },

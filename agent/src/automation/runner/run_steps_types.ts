@@ -100,6 +100,7 @@ export type RunStepsRequest = {
     resultPipe: ResultPipe;
     signalChannel: SignalChannel;
     stepResolves?: Record<string, StepResolve>;
+    entityRuleProfiles?: readonly string[];
     stopOnError?: boolean;
     onCheckpoint?: (checkpoint: Checkpoint) => void | Promise<void>;
     checkpoints?: RunnerCheckpoint[];

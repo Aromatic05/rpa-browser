@@ -16,7 +16,7 @@ export const isSensitiveCapturedControl = (
     node: Pick<RawCapturedNode, 'tag' | 'attributes'>,
 ): boolean => {
     const tag = node.tag.trim().toLowerCase();
-    const attributes = node.attributes;
+    const attributes: Partial<Record<string, string>> = node.attributes;
     const type = (attributes.type ?? '').trim().toLowerCase();
     if (tag === 'input' && SENSITIVE_INPUT_TYPES.has(type)) {return true;}
 

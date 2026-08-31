@@ -10,6 +10,7 @@ import type {
 } from '@earendil-works/pi-agent-core';
 import {createReactAgentSession, REACT_BASELINE_SYSTEM_PROMPT} from '../loop/react';
 import {getDefaultAgentModelRuntime, type AgentModelRuntime} from '../model/runtime';
+import {throwIfAgentModelRequestFailed} from '../model/failure';
 import {classifyAgentToolCall, type AgentToolClassification} from '../tools/policy';
 import {createAgentTraceCollector, type AgentTraceSnapshot, type AgentWorldRevision} from '../trace/collector';
 import {
@@ -231,27 +232,39 @@ export const createReactAgentRunner = (deps: CreateReactAgentRunnerDeps): Govern
             signal: runControl?.signal ?? deps.signal,
         });
         agentRef.current = session.agent;
-        const projectResult = (): GovernedAgentRunResult => ({
-            provider: request.provider,
-            model: request.model,
-            text: lastAssistantText(session.agent.state.messages),
-            trace: trace.snapshot(),
-            ...(outcome.stopReason !== undefined || outcome.pendingApproval !== undefined
-                ? {governance: {...outcome}}
-                : {}),
-            ...(pausedByUser
-                ? {
-                    pausedByUser: true,
-                    continuation: {
-                        resume: async () => {
-                            pausedByUser = false;
-                            await session.agent.continue();
-                            return projectResult();
+        const projectResult = (): GovernedAgentRunResult => {
+            const controlledStop = outcome.stopReason !== undefined
+                || outcome.pendingApproval !== undefined
+                || pausedByUser
+                || runControl?.signal?.aborted === true
+                || deps.signal?.aborted === true;
+            throwIfAgentModelRequestFailed({
+                messages: session.agent.state.messages,
+                stateErrorMessage: session.agent.state.errorMessage,
+                controlledStop,
+            });
+            return {
+                provider: request.provider,
+                model: request.model,
+                text: lastAssistantText(session.agent.state.messages),
+                trace: trace.snapshot(),
+                ...(outcome.stopReason !== undefined || outcome.pendingApproval !== undefined
+                    ? {governance: {...outcome}}
+                    : {}),
+                ...(pausedByUser
+                    ? {
+                        pausedByUser: true,
+                        continuation: {
+                            resume: async () => {
+                                pausedByUser = false;
+                                await session.agent.continue();
+                                return projectResult();
+                            },
                         },
-                    },
-                }
-                : {}),
-        });
+                    }
+                    : {}),
+            };
+        };
         await session.agent.prompt(request.prompt);
         const overflow = accountant.overflow();
         if (overflow) {

@@ -160,8 +160,10 @@ export const createProgramExecutionTool = (options: {
         if (previous && summarizeAttempt(previous).status !== 'invalid') {
             throw new Error('a program execution already started; repair or rollback must remain inside its retained transaction');
         }
-        let executionStart: AgentProgramExecutionStart;
-        executionStart = await options.execute({source: program.source, input: structuredClone(program.input)});
+        const executionStart: AgentProgramExecutionStart = await options.execute({
+            source: program.source,
+            input: structuredClone(program.input),
+        });
         const attempt = retain({
             ...executionStart,
             summary: {...executionStart.summary, input: structuredClone(program.input)},

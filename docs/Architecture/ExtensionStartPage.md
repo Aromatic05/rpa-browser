@@ -12,26 +12,24 @@
 - newtab 与 service worker 共享同一份 `chrome.storage.local` session 配置；
 - session runtime 的重复 `configure(workspaceName, wsPort)` 必须幂等，并重新发布 `rpa.runtime.ready`，不能依赖 storage value 变化事件再次触发。
 
-## Workflow 列表
+## Automation 列表
 
-`workflow.list` 返回启动页需要的最小事实：`workflowName`、`entryDslName`、`runnable`。
+启动页展示的是当前 workspace Product Library 中的 **Automation（saved Program / DSL）**，不是 workflow 目录。列表通过 `agent.product {verb: "librarySummary"}` 读取 `automations[]` 的名称、说明和健康状态。
 
-普通启动页只展示 `runnable=true` 的 Automation。新建但尚未保存 entry DSL 的 workflow（包括全新 `default`）属于内部/草稿状态，不在启动面暴露，也不能通过“打开”产生浏览器副作用。
+workflow/workspace 是运行容器，不是普通用户可见的 Automation 身份。空 workflow、内部 workflow、草稿 workflow 都不会因为目录存在而污染启动页。
 
 ## 按钮与 Action 映射
 
-- 列表刷新 -> `workflow.list`
-- 运行 -> 内部先 `workflow.open` 取得目标 `workspaceName`，再发送 `dsl.run`
+- 列表刷新 -> `agent.product {verb: "librarySummary"}`
+- 运行 -> `dsl.run {dslName: automation.name}`，作用域固定为启动页已绑定的 session workspace
 
-`workflow.open` 是纯 workspace 选择/载入操作：不得启动 BrowserSession、创建 tab 或打开窗口。真正的浏览器启动延迟到 `dsl.run`。
+真正的浏览器启动延迟到 `dsl.run`。浏览 Automation 列表和打开新标签页本身不得启动第二个 BrowserSession、创建业务 tab 或切换 workflow。
 
 录制、Teach、Annotate 属于页面内产品 authoring surface，不由启动页伪造 `workflow.*` action。
 
 ## Scope 与绑定
 
-启动页自身的 `tab.report` / `tab.ping` 使用启动 session 的 `workspaceName`。Automation 运行不能沿用这个 scope 猜目标 workspace：`workflow.open` 返回哪个 `workspaceName`，后续 `dsl.run` 就显式发送到哪个 workspace。
-
-`workflow.open` 的 workspace identity 与 workflow identity 相同；不再使用 `workflow:<scene>` 前缀模型。
+启动页自身的 `tab.report` / `tab.ping` 与 Automation 列表/运行都使用启动 session 已绑定的 `workspaceName`。Automation 是该 workspace 内的 DSL asset，运行时只显式选择 `dslName`，不把 Automation 名称冒充 workspace identity。
 
 ## 与普通 content surface 的区别
 

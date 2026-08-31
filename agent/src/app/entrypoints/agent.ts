@@ -32,6 +32,7 @@ import {PageSnapshotSessionStore} from '../../automation/snapshot/session';
 import {SnapshotProjectionBaselineStore} from '../../automation/runner/session';
 import {createRecordingSnapshotPort} from '../../automation/recording/pipeline/snapshot';
 import {composeWorkspaceAgentDependencies} from './composition';
+import {redactSecretValues} from '../../agent/report/privacy';
 
 const TAB_NAME_KEY = '__rpa_tab_name';
 const TAB_PING_TIMEOUT_MS = 45000;
@@ -213,7 +214,7 @@ const handleAction = async (action: Action) => {
         id: action.id,
         type: action.type,
         workspaceName: action.workspaceName || null,
-        payload: action.payload ?? null,
+        payload: redactSecretValues(action.payload ?? null).value,
         payloadKeys:
             action.payload && typeof action.payload === 'object'
                 ? Object.keys(action.payload)

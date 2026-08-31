@@ -21,7 +21,7 @@ export type SessionStorage = {
     saveMetadata: (metadata: StoredSessionMetadata) => void;
     loadReport: (sessionId: SessionId) => AgentRunReport | null;
     saveReport: (sessionId: SessionId, report: AgentRunReport) => void;
-    loadContinuation: (sessionId: SessionId) => unknown | null;
+    loadContinuation: (sessionId: SessionId) => unknown;
     saveContinuation: (sessionId: SessionId, image: unknown) => void;
     deleteContinuation: (sessionId: SessionId) => void;
     delete: (sessionId: SessionId) => void;
@@ -133,8 +133,12 @@ export const createFileSystemSessionStorage = (
             }
             return raw;
         },
-        saveContinuation: (sessionId, image) => atomicWriteJsonSync(continuationPath(sessionId), image),
-        deleteContinuation: (sessionId) => { try { fs.unlinkSync(continuationPath(sessionId)); } catch {} },
+        saveContinuation: (sessionId, image) => {atomicWriteJsonSync(continuationPath(sessionId), image);},
+        deleteContinuation: (sessionId) => {
+            try {fs.unlinkSync(continuationPath(sessionId));} catch {
+                // ignore missing continuation
+            }
+        },
         delete: (sessionId) => {
             try {
                 fs.unlinkSync(metadataPath(sessionId));

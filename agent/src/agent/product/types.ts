@@ -8,6 +8,7 @@ import type {
     ActivityHumanControl,
     ActivityOwnerKind,
 } from '../service/session/types';
+import type {AgentModelSetupInput, AgentModelSetupStatus} from '../model/settings';
 
 export type AgentTaskStatus =
     | 'draft'
@@ -127,9 +128,13 @@ export type WorkspaceLibrarySummary = Readonly<{
 
 export type WorkspaceProductView = Readonly<{
     workspace: string;
+    modelConfigured: boolean;
     reservation: WorkspaceProductReservationView;
     activeTask?: AgentTaskView;
 }>;
+
+export type ProductModelSetupStatus = AgentModelSetupStatus;
+export type ProductConfigureModelInput = AgentModelSetupInput;
 
 export type ProductEvent =
     | Readonly<{seq: number; taskId: string; at: number; kind: 'task_created'; promptSummary: string; startedAt: number}>

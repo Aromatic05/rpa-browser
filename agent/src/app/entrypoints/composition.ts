@@ -1,9 +1,6 @@
 import path from 'node:path';
-import {
-    createOpenAICompatibleAgentModelRuntimeWithCredential,
-    ModelCredentialError,
-    type AgentModelRuntime,
-} from '../../agent/model/runtime';
+import type {AgentModelRuntime} from '../../agent/model/runtime';
+import {createAgentModelSettings, type AgentModelSettings} from '../../agent/model/settings';
 import {createGovernancePolicy, type GovernancePolicy} from '../../agent/governance';
 import {createWorkspaceAgentFactory} from '../../agent/workspace/factory';
 import type {WorkspaceAgentFactory} from '../../automation/runtime/workspace/agent';
@@ -12,15 +9,14 @@ import {createBearerAuthenticator, CAPABILITIES, createRedactionPolicy} from '..
 import type {CredentialResolver, SecretValue} from '../../security/credentials';
 import type {Principal} from '../../security/context';
 import type {RunnerConfig} from '../../platform/config';
-import {parseSecretRef, type SecretRef} from '../../platform/config/secret_ref';
+import {parseSecretRef} from '../../platform/config/secret_ref';
 import {
     createSecretRefResolver,
     credentialResolverFromSecretRefResolver,
     envOf,
     nodeFileSystem,
 } from '../../platform/security';
-import {SecretResolutionError} from '../../platform/security/error';
-import type {SecretFileSystem, SecretRefResolver} from '../../platform/security/contracts';
+import type {SecretFileSystem} from '../../platform/security/contracts';
 
 const AGENT_PRINCIPAL: Principal = Object.freeze({
     id: 'rpa-agent',
@@ -44,6 +40,7 @@ export type WorkspaceAgentAuthDescription = Readonly<{
 export type WorkspaceAgentComposition = Readonly<{
     agentFactory: WorkspaceAgentFactory;
     modelRuntime: AgentModelRuntime | undefined;
+    modelSettings: AgentModelSettings;
     governance: GovernancePolicy;
     credentialResolver: CredentialResolver;
     auth: WorkspaceAgentAuthDescription;
@@ -60,23 +57,6 @@ const assertConfigurationComplete = (provider: string, model: string, baseUrl: s
                     `provider=${JSON.stringify(provider)}, model=${JSON.stringify(model)}, baseUrl=${JSON.stringify(baseUrl)}`,
             );
         }
-    }
-};
-
-const resolveModelApiKey = async (
-    secretResolver: SecretRefResolver,
-    apiKeyRef: SecretRef,
-): Promise<string> => {
-    try {
-        return (await secretResolver.resolve(apiKeyRef)).value;
-    } catch (error) {
-        if (error instanceof SecretResolutionError) {
-            throw new ModelCredentialError(
-                'MODEL_API_KEY_UNRESOLVABLE',
-                'model API key could not be resolved from agent.model.apiKeyRef at model invocation',
-            );
-        }
-        throw error;
     }
 };
 
@@ -97,19 +77,12 @@ export const composeWorkspaceAgentDependencies = async (
 
     const modelDefaults = config.agent.model;
     assertConfigurationComplete(modelDefaults.provider, modelDefaults.model, modelDefaults.baseUrl);
-    let modelRuntime: AgentModelRuntime | undefined;
-    if (modelDefaults.provider.length > 0) {
-        const apiKeyRef = parseSecretRef(modelDefaults.apiKeyRef);
-        modelRuntime = createOpenAICompatibleAgentModelRuntimeWithCredential({
-            provider: modelDefaults.provider,
-            model: modelDefaults.model,
-            baseUrl: modelDefaults.baseUrl,
-            getApiKey: async (requestedProvider) => {
-                if (requestedProvider !== modelDefaults.provider) {return undefined;}
-                return resolveModelApiKey(secretResolver, apiKeyRef);
-            },
-        });
-    }
+    const modelSettings = createAgentModelSettings({
+        initial: modelDefaults,
+        secretResolver,
+        baseDir,
+    });
+    const modelRuntime = modelSettings.runtime;
 
     const governance = createGovernancePolicy({...config.agent.governance});
     const dataDir = path.resolve(baseDir, config.agent.sessions.storageRoot);
@@ -137,12 +110,7 @@ export const composeWorkspaceAgentDependencies = async (
 
     const agentFactory = createWorkspaceAgentFactory({
         modelRuntime,
-        // The product composer uses the SAME config.agent.model identity; an
-        // all-empty model config truthfully leaves the Product start surface
-        // unconfigured instead of inventing a second source of defaults.
-        ...(modelDefaults.provider.length > 0 && modelDefaults.model.length > 0
-            ? {productDefaults: {provider: modelDefaults.provider, model: modelDefaults.model}}
-            : {}),
+        productModelSettings: modelSettings,
         governancePolicy: governance,
         credentialResolver,
         dataDir,
@@ -176,6 +144,7 @@ export const composeWorkspaceAgentDependencies = async (
     return {
         agentFactory,
         modelRuntime,
+        modelSettings,
         governance,
         credentialResolver,
         auth: {

@@ -146,6 +146,49 @@
       color: #fff;
     }
     button.primary:hover:not(:disabled) { background: var(--accent-hover); }
+    .setup-body {
+      display: grid;
+      gap: 16px;
+      padding: 22px;
+    }
+    .setup-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+    .setup-field {
+      display: grid;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .setup-field.wide { grid-column: 1 / -1; }
+    .setup-field input {
+      width: 100%;
+      min-height: 40px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      padding: 9px 11px;
+      background: var(--surface);
+      color: var(--text);
+      font: inherit;
+      outline: none;
+    }
+    .setup-field input:focus {
+      border-color: #84ad9f;
+      box-shadow: 0 0 0 3px rgba(23, 107, 95, 0.10);
+    }
+    .setup-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    #modelSetupStatus {
+      color: var(--muted);
+      font-size: 12px;
+    }
     .restore-list { display: grid; }
     .restore-item {
       display: flex;
@@ -186,6 +229,7 @@
       .panel-header { align-items: flex-start; flex-direction: column; }
       .panel-tools { width: 100%; justify-content: space-between; }
       .restore-item { align-items: flex-start; }
+      .setup-grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -202,7 +246,40 @@
       <div id="connectionPill" class="connection"><strong id="wsStatus">Connecting…</strong></div>
     </header>
 
-    <section class="panel" aria-labelledby="automationTitle">
+    <section id="modelSetup" class="panel" aria-labelledby="modelSetupTitle" hidden>
+      <div class="panel-header">
+        <div class="panel-title">
+          <h2 id="modelSetupTitle">Finish setup</h2>
+          <p>Connect an OpenAI-compatible model once. The API key is stored locally in a private file, never in the runner config.</p>
+        </div>
+      </div>
+      <div class="setup-body">
+        <div class="setup-grid">
+          <label class="setup-field">
+            Provider
+            <input id="modelProvider" autocomplete="off" placeholder="openai-compatible" />
+          </label>
+          <label class="setup-field">
+            Model
+            <input id="modelName" autocomplete="off" placeholder="model-name" />
+          </label>
+          <label class="setup-field wide">
+            Base URL
+            <input id="modelBaseUrl" autocomplete="off" inputmode="url" placeholder="https://api.example.com/v1" />
+          </label>
+          <label class="setup-field wide">
+            API key
+            <input id="modelApiKey" type="password" autocomplete="new-password" placeholder="Required for first setup" />
+          </label>
+        </div>
+        <div class="setup-actions">
+          <span id="modelSetupStatus" aria-live="polite">Model setup is required before running tasks.</span>
+          <button id="saveModelSetup" class="primary" type="button">Save setup</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="automationPanel" class="panel" aria-labelledby="automationTitle">
       <div class="panel-header">
         <div class="panel-title">
           <h2 id="automationTitle">Automations</h2>
@@ -210,6 +287,7 @@
         </div>
         <div class="panel-tools">
           <span id="restoreStatus" aria-live="polite">Loading…</span>
+          <button id="modelSettingsBtn" type="button">Model settings</button>
           <button id="refreshRestore" type="button">Refresh</button>
         </div>
       </div>

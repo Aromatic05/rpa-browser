@@ -19,7 +19,10 @@ const installedPages = new WeakSet<Page>();
 const bindingName = `__rpa_record__${Math.random().toString(36).slice(2, 8)}`;
 const recordDir = path.dirname(fileURLToPath(import.meta.url));
 const payloadDir = path.join(recordDir, 'payload');
-const payloadBundlePath = path.join(recordDir, 'payload.bundle.js');
+const configuredPayloadBundlePath = process.env.RPA_RECORDER_PAYLOAD_BUNDLE?.trim();
+const payloadBundlePath = configuredPayloadBundlePath
+    ? path.resolve(configuredPayloadBundlePath)
+    : path.join(recordDir, 'payload.bundle.js');
 
 let payloadReady: Promise<void> | null = null;
 

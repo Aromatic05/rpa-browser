@@ -9,6 +9,7 @@ import {createReactAgentRunner} from '../execution/react_runner';
 import {createProgramFirstAgentRunner} from '../execution/program/runner';
 import {createAgentExecutionRouter} from '../execution/router';
 import type {AgentModelRuntime} from '../model/runtime';
+import type {AgentModelSettings} from '../model/settings';
 import type {GovernanceController, GovernancePolicy} from '../governance';
 import type {CredentialResolver} from '../../security/credentials';
 import {createAgentControl} from '../service/control';
@@ -34,10 +35,11 @@ export type WorkspaceAgentFactoryOptions = {
     service?: AgentServiceBinding;
     retention?: RetentionPolicy;
     interaction?: InteractionPolicy;
-    /** The single workspace product composer defaults, derived upstream from
-     *  `config.agent.model` only; passed straight to the service's one
-     *  ProductController. Undefined when the model config is empty. */
+    /** Static defaults retained for embedded/test compositions. */
     productDefaults?: Readonly<{provider: string; model: string; executionMode?: AgentExecutionMode}>;
+    /** Shared process-level model setup. Every workspace sees the same dynamic
+     * runtime/defaults and product Setup status. */
+    productModelSettings?: AgentModelSettings;
 };
 
 /**
@@ -127,6 +129,7 @@ export const createWorkspaceAgentFactory = (
         retention: options.retention,
         interaction: options.interaction,
         ...(options.productDefaults === undefined ? {} : {productDefaults: options.productDefaults}),
+        ...(options.productModelSettings === undefined ? {} : {productModelSettings: options.productModelSettings}),
         productLibrary: () => workspaceLibrary.list(),
         productSaveAutomation: programSaver,
         continuationRestorer: async (request, image) => {

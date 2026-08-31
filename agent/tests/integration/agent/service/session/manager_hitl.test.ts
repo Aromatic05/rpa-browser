@@ -269,14 +269,21 @@ test('a failure pause produces no approval interaction and is not resumable', as
     assert.equal(manager.listInteractions(session.sessionId)!.length, 0);
 });
 
-test('non-irreversible pauses produce no approval interaction', async () => {
+test('unknown-risk commit barriers expose a pending approval instead of becoming orphan pauses', async () => {
     const {manager, stats} = makeHarness({pause: {reason: 'barrier', continuationId: 'cont-u', stepName: 'browser.fill', risk: 'unknown'}});
     await manager.run(makeRequest());
     const [session] = manager.list();
 
     assert.equal(session.state, 'paused');
     assert.equal(session.resumable, true);
-    assert.deepEqual(session.interactions, []);
+    assert.equal(session.interactions.length, 1);
+    const pending = onlyPending(manager, session.sessionId);
+    assert.equal(pending.length, 1);
+    assert.equal(pending[0].payload.kind, 'approval');
+    if (pending[0].payload.kind === 'approval') {
+        assert.equal(pending[0].payload.actionName, 'browser.fill');
+        assert.equal(pending[0].payload.risk, 'unknown');
+    }
     assert.equal(stats.resumeCalls, 0);
 });
 
@@ -307,7 +314,7 @@ test('interaction cancel removes the pending request without touching the sessio
     assert.equal(stats.resumeCalls, 0);
 });
 
-test('only irreversible approval programs become pending interactions in a multi-program pause', async () => {
+test('all commit-barrier programs become pending approvals while failure pauses do not', async () => {
     const {manager, stats} = makeHarness();
     const multi: AgentRunResult = {
         ...makeResult(),
@@ -328,17 +335,26 @@ test('only irreversible approval programs become pending interactions in a multi
     const [session] = manager2.list();
 
     const pending = onlyPending(manager2, session.sessionId);
-    assert.equal(pending.length, 1);
-    assert.equal(pending[0].payload.kind, 'approval');
-    assert.equal(pending[0].internal?.programIndex, 0);
+    assert.equal(pending.length, 2);
+    assert.deepEqual(pending.map((record) => record.internal?.programIndex), [0, 1]);
+    assert.deepEqual(pending.map((record) => record.payload.kind === 'approval' ? record.payload.risk : null), [
+        'irreversible',
+        'unknown',
+    ]);
 
     await manager2.approveInteraction(session.sessionId, pending[0].id, pending[0].revision, 'ops-1');
+    assert.equal(manager2.status(session.sessionId)?.state, 'paused', 'another pending barrier keeps the run paused');
+    assert.equal(stats.resumeCalls, 0);
+    await manager2.approveInteraction(session.sessionId, pending[1].id, pending[1].revision, 'ops-1');
     assert.equal(manager2.status(session.sessionId)?.state, 'completed');
     assert.equal(stats.resumeCalls, 1);
 });
 
-test('headless policy blocks approval-required irreversible effects without pending interactions', async () => {
-    const {manager} = makeHarness({interactionPolicy: 'headless'});
+test('headless policy blocks approval-required commit barriers without pending interactions', async () => {
+    const {manager} = makeHarness({
+        pause: {reason: 'barrier', continuationId: 'cont-u', stepName: 'browser.fill', risk: 'unknown'},
+        interactionPolicy: 'headless',
+    });
     await manager.run(makeRequest());
     const [session] = manager.list();
 

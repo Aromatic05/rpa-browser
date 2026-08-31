@@ -134,7 +134,7 @@ export const buildAuthoringBridge = (
 ): BuildAuthoringBridgeResult => {
     let recorder: CheckpointRecorderUIHandle | null = null;
     let recorderHost: HTMLElement | null = null;
-    let demoActive: 'recording' | 'review' | null = null;
+    let demoActive: 'starting' | 'recording' | 'review' | null = null;
 
     const ensureRecorder = (): CheckpointRecorderUIHandle => {
         if (recorder) {return recorder;}
@@ -206,9 +206,14 @@ export const buildAuthoringBridge = (
             return actionSucceeded(reply) && payload ? parseStructuredSnapshot(payload) : null;
         },
         startDemonstration: () => {
+            // Block the controller's immediate post-reservation snapshot from
+            // observing an idle recorder while record.start is still in flight.
+            // The product UI still switches to `recording` only from the real
+            // successful action notice.
+            demoActive = 'starting';
             void (async () => {
                 const result = await dispatchObserved('record.start', {});
-                if (result.ok) {demoActive = 'recording';}
+                demoActive = result.ok ? 'recording' : null;
             })();
         },
         stopDemonstration: () => {
@@ -217,9 +222,9 @@ export const buildAuthoringBridge = (
                 if (result.ok) {demoActive = 'review';}
             })();
         },
-        saveDemonstration: () => {
+        saveDemonstration: (recordingName) => {
             void (async () => {
-                const result = await dispatchObserved('record.save', {});
+                const result = await dispatchObserved('record.save', {recordingName});
                 if (result.ok) {demoActive = null;}
             })();
         },
@@ -230,12 +235,18 @@ export const buildAuthoringBridge = (
             })();
         },
         readDemonstrationState: async () => {
-            if (demoActive === 'recording') {return null;}
+            if (demoActive === 'starting') {return null;}
             const reply = asAction(await options.dispatchAction('record.get', {}));
             const payload = actionPayload(reply);
             const unsaved = payload && isRecord(payload.unsaved) ? payload.unsaved : undefined;
             const stepCount = typeof unsaved?.stepCount === 'number' ? unsaved.stepCount : 0;
             if (!actionSucceeded(reply)) {return null;}
+            if (demoActive === 'recording') {
+                return {status: 'recording', stepCount};
+            }
+            if (demoActive === 'review') {
+                return {status: 'review', stepCount};
+            }
             if (stepCount > 0) {
                 demoActive = 'review';
                 return {status: 'review', stepCount};

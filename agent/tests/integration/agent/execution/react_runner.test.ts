@@ -49,3 +49,31 @@ test('react runner rejects unknown model', async () => {
         /model not found: x\/y/,
     );
 });
+
+test('react runner rejects model request failures instead of returning an empty success', async () => {
+    const faux = createFauxCore({provider: 'faux', models: [{id: 'baseline'}]});
+    faux.setResponses([
+        fauxAssistantMessage([], {
+            stopReason: 'error',
+            errorMessage: 'fetch failed: connect ECONNREFUSED',
+        }),
+    ]);
+    const runner = createReactAgentRunner({
+        tools: [],
+        modelRuntime: {
+            resolve: (provider, model) => provider === 'faux' && model === 'baseline'
+                ? {model: faux.getModel(), streamFn: faux.streamSimple}
+                : null,
+        },
+    });
+
+    await assert.rejects(
+        () => runner.run({prompt: 'x', provider: 'faux', model: 'baseline'}),
+        (error: unknown) => {
+            const failure = error as {code?: string; message?: string};
+            assert.equal(failure.code, 'ERR_AGENT_MODEL_REQUEST_FAILED');
+            assert.match(failure.message ?? '', /ECONNREFUSED/);
+            return true;
+        },
+    );
+});

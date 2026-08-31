@@ -116,33 +116,33 @@ const lockedDebugSession = (
     session: DslDebugExecutionSession,
     runWorkspaceExecution: CreateWorkspaceProgramExecutorOptions['runWorkspaceExecution'],
 ): DslDebugExecutionSession => {
-    const locked = {
-    ...session,
-    commit: (continuationId) => runWorkspaceExecution(
-        'agent.program.commit',
-        () => session.commit(continuationId),
-    ),
-    rollback: (continuationId, savepointId, options) => runWorkspaceExecution(
-        'agent.program.rollback',
-        () => session.rollback(continuationId, savepointId, options),
-    ),
-    rewind: (continuationId, savepointId, options) => runWorkspaceExecution(
-        'agent.program.rewind',
-        () => session.rewind(continuationId, savepointId, options),
-    ),
-    refresh: (continuationId) => runWorkspaceExecution(
-        'agent.program.refresh',
-        () => session.refresh(continuationId),
-    ),
-    crossBarrier: (continuationId) => runWorkspaceExecution(
-        'agent.program.cross_barrier',
-        () => session.crossBarrier(continuationId),
-    ),
-    advance: (continuationId, mode) => runWorkspaceExecution(
-        'agent.program.advance',
-        () => session.advance(continuationId, mode),
-    ),
-    } as DslDebugExecutionSession;
+    const locked: DslDebugExecutionSession = {
+        ...session,
+        commit: (continuationId) => runWorkspaceExecution(
+            'agent.program.commit',
+            () => session.commit(continuationId),
+        ),
+        rollback: (continuationId, savepointId, options) => runWorkspaceExecution(
+            'agent.program.rollback',
+            () => session.rollback(continuationId, savepointId, options),
+        ),
+        rewind: (continuationId, savepointId, options) => runWorkspaceExecution(
+            'agent.program.rewind',
+            () => session.rewind(continuationId, savepointId, options),
+        ),
+        refresh: (continuationId) => runWorkspaceExecution(
+            'agent.program.refresh',
+            () => session.refresh(continuationId),
+        ),
+        crossBarrier: (continuationId) => runWorkspaceExecution(
+            'agent.program.cross_barrier',
+            () => session.crossBarrier(continuationId),
+        ),
+        advance: (continuationId, mode) => runWorkspaceExecution(
+            'agent.program.advance',
+            () => session.advance(continuationId, mode),
+        ),
+    };
     const image = runtimeImages.get(session);
     if (image) {runtimeImages.set(locked, image);}
     return locked;
@@ -181,8 +181,9 @@ export const createWorkspaceProgramExecutor = (
             const body = checkpointProvider.getCheckpointBody?.(checkpoint.id);
             return body ? [[checkpoint.id, body.source] as const] : [];
         }));
+        const recoverySources = Object.values(checkpointBodies);
         runtime = materializeReferencedCheckpointRuntimeSnapshot({
-            sources: [program.source],
+            sources: [program.source, ...recoverySources],
             checkpointProvider,
             checkpoints: allCheckpoints,
             checkpointStepResolves,
@@ -401,7 +402,9 @@ export const createWorkspaceProgramExecutor = (
     return Object.assign(executeProgram, {exportContinuation, restoreContinuation});
 };
 
-export const createWorkspaceContinuationRestorer = (options: CreateWorkspaceProgramExecutorOptions) => {
+export const createWorkspaceContinuationRestorer = (
+    options: CreateWorkspaceProgramExecutorOptions,
+): WorkspaceProgramExecutor['restoreContinuation'] => {
     const executor = createWorkspaceProgramExecutor(options);
     return (image: unknown) => executor.restoreContinuation(image);
 };

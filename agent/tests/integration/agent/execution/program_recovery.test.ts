@@ -39,7 +39,19 @@ const reversiblePageKnowledge: WorkspaceEntityRulesProvider = {
     availability: 'ready',
     workflowName: 'ws-program-recovery',
     listProfiles: () => ['orders-reversible'],
-    getProfile: (profileName) => profileName === 'orders-reversible' ? ({kind: 'entity_rules', name: profileName} as any) : null,
+    getProfile: (profileName) => profileName === 'orders-reversible' ? ({
+        kind: 'entity_rules',
+        name: profileName,
+        page: {kind: 'form'},
+        match: {version: 2, rules: [
+            {ruleId: 'root', source: 'region', expect: 'unique', match: {kind: 'form', idEquals: 'OrdersForm'}},
+            {ruleId: 'submit', source: 'node', expect: 'unique', within: 'root', match: {idEquals: 'Submit'}},
+        ]},
+        annotation: {version: 2, bindings: [
+            {ruleId: 'root', entityKey: 'orderForm', businessTag: 'order.form', entityKind: 'form'},
+            {ruleId: 'submit', actionIntent: 'submit', effect: {reversibility: 'reversible'}},
+        ]},
+    } as any) : null,
     resolveExports: (profileName) => {
         if (profileName !== 'orders-reversible') {
             return {

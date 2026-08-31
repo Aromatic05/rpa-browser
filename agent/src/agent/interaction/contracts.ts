@@ -374,7 +374,7 @@ export const validateInteractionPayload = (payload: unknown): InteractionPayload
 
 /** Kinds the retained Agent control loop may request directly. Approval is
  *  deliberately absent: it is generated only from an objectively detected
- *  irreversible barrier, never by the model. */
+ *  Program commit barrier that requires human authorization, never by the model. */
 export const MODEL_REQUESTED_INTERACTION_KINDS: readonly InteractionKind[] = [
     'clarification',
     'recovery_decision',
@@ -392,7 +392,7 @@ export const validateModelRequestedInteraction = (value: unknown): ModelRequeste
     const payload = validateInteractionPayload(value);
     if (payload.kind === 'approval') {
         throw new InteractionValidationError(
-            'the model cannot request an approval; approval is generated only from an objectively detected irreversible barrier',
+            'the model cannot request an approval; approval is generated only from an objectively detected Program commit barrier',
         );
     }
     return payload;

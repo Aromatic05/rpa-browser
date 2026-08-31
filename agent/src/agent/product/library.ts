@@ -35,10 +35,10 @@ export const librarySummaryFrom = (
                 }));
                 break;
             case 'procedure':
-                procedures.push(Object.freeze({name: asset.name, health: healthOf(asset)}));
+                procedures.push(Object.freeze({name: asset.title, health: healthOf(asset)}));
                 break;
             case 'recovery':
-                recoveries.push(Object.freeze({name: asset.name, health: healthOf(asset)}));
+                recoveries.push(Object.freeze({name: asset.title, health: healthOf(asset)}));
                 break;
             case 'demonstration':
                 demonstrations.push(Object.freeze({

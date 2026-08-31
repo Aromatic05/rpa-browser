@@ -24,7 +24,21 @@ const irreversibleRulesProvider: WorkspaceEntityRulesProvider = {
     availability: 'ready',
     workflowName: 'ws-ctl',
     listProfiles: () => ['orders'],
-    getProfile: (name) => ({kind: 'entity_rules', name, match: {}, annotation: {}}) as unknown as WorkflowEntityRules,
+    getProfile: (name) => name === 'orders' ? ({
+        kind: 'entity_rules',
+        name,
+        page: {kind: 'form'},
+        match: {version: 2, rules: [
+            {ruleId: 'root', source: 'region', expect: 'unique', match: {kind: 'form', idEquals: 'OrdersForm'}},
+            {ruleId: 'name', source: 'node', expect: 'unique', within: 'root', match: {idEquals: 'Buyer'}},
+            {ruleId: 'submit', source: 'node', expect: 'unique', within: 'root', match: {idEquals: 'Submit'}},
+        ]},
+        annotation: {version: 2, bindings: [
+            {ruleId: 'root', entityKey: 'orderForm', businessTag: 'order.form', entityKind: 'form'},
+            {ruleId: 'name', fieldKey: 'name', effect: {reversibility: 'reversible'}},
+            {ruleId: 'submit', actionIntent: 'submit', effect: {reversibility: 'irreversible'}},
+        ]},
+    }) : null,
     resolveExports: (profileName) => ({
         index: {
             profileName,
@@ -223,6 +237,8 @@ test('approval fast path stays on the exact retained execution barrier and cross
 test('the model requests a clarification and the runner yields a typed request that resumes the SAME execution', async () => {
     const {runner, faux, executeProgramCalls} = await buildRunner((context) => {
         if (userTextIncludes(context.messages, 'answered the clarification')) {
+            const last = lastToolResult(context.messages);
+            if (last?.toolName === 'agent.execute_program') {return assistant('done');}
             return tool('agent.execute_program', {source: REVERSIBLE_SOURCE, input: {value: 'ACME', done: true}});
         }
         return tool('agent.request_interaction', {

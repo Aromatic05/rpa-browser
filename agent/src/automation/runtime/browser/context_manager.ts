@@ -388,7 +388,10 @@ export const createContextManager = (options: ContextManagerOptions): ContextPro
  * 使用相对路径，便于 monorepo 下的运行与打包。
  */
 export const resolvePaths = (): { extensionPaths: string[]; userDataRoot: string } => {
-    const repoRoot = path.resolve(__dirname, '../../../../..');
+    const configuredRepoRoot = process.env.RPA_REPOSITORY_ROOT?.trim();
+    const repoRoot = configuredRepoRoot
+        ? path.resolve(configuredRepoRoot)
+        : path.resolve(__dirname, '../../../../..');
     const stampPath = path.join(repoRoot, '.dev', 'extension-build.json');
     let extensionPaths = [path.join(repoRoot, 'extension', 'dist')];
     try {

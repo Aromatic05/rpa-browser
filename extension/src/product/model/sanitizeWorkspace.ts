@@ -299,6 +299,7 @@ export const sanitizeWorkspaceView = (raw: unknown): WorkspaceProductView => {
     const activeTask = sanitizeTaskView(record.activeTask);
     return {
         workspace: asNonEmptyString(record.workspace) ?? '',
+        modelConfigured: asBoolean(record.modelConfigured) ?? undefined,
         reservation: sanitizeReservationValue(record.reservation),
         reservationTeachKind: sanitizeReservationTeachKind(record.reservation),
         connection: isConnection(record.connection) ? record.connection : 'connected',

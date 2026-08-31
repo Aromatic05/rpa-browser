@@ -218,8 +218,8 @@ const assetSummary = (overrides: Partial<LibraryAssetSummary> & {kind: LibraryAs
 
 test('the Library adapter projects real names and truthful health evidence only', () => {
     const summary = librarySummaryFrom([
-        assetSummary({kind: 'procedure', name: '查询订单', health: 'needs_review'}),
-        assetSummary({kind: 'recovery', name: '关闭弹窗', health: 'broken'}),
+        assetSummary({kind: 'procedure', name: 'procedure-query-order', title: '查询订单', health: 'needs_review'}),
+        assetSummary({kind: 'recovery', name: 'recovery-close-popup', title: '关闭弹窗', health: 'broken'}),
         assetSummary({kind: 'demonstration', name: 'recording-1', stepCount: 7, health: 'unknown'}),
         assetSummary({
             kind: 'page_knowledge',
@@ -236,6 +236,10 @@ test('the Library adapter projects real names and truthful health evidence only'
     ]);
     assert.deepEqual(summary.procedures, [{name: '查询订单', health: 'needs_review'}]);
     assert.deepEqual(summary.recoveries, [{name: '关闭弹窗', health: 'broken'}]);
+    assert.equal(JSON.stringify(summary).includes('procedure-query-order'), false,
+        'stable Procedure ids are runtime references and must not leak into the product Library');
+    assert.equal(JSON.stringify(summary).includes('recovery-close-popup'), false,
+        'stable Recovery ids are runtime references and must not leak into the product Library');
     assert.deepEqual(summary.demonstrations, [{name: 'recording-1', stepCount: 7, health: 'unknown'}]);
     assert.deepEqual(summary.pageKnowledge, [{
         profileName: 'orders',

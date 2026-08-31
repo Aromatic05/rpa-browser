@@ -161,8 +161,9 @@ const procedureSummary = (
         };
     return Object.freeze({
         ...summaryBase(options, validator, id, item, revision, dependencies),
+        title: artifact.checkpoint.name?.trim() || item.title || item.name,
         kind: 'procedure',
-        meaning: item.title || item.name,
+        meaning: artifact.checkpoint.name?.trim() || item.title || item.name,
         inputs: signature.inputs,
         outputs: signature.outputs,
     });
@@ -185,8 +186,9 @@ const recoverySummary = (
     const trigger = artifact.checkpoint.trigger;
     return Object.freeze({
         ...summaryBase(options, validator, id, item, revision, dependencies),
+        title: artifact.checkpoint.name?.trim() || item.title || item.name,
         kind: 'recovery',
-        meaning: item.title || item.name,
+        meaning: artifact.checkpoint.name?.trim() || item.title || item.name,
         triggerSummary: Object.freeze({
             rules: Object.freeze([...new Set((trigger?.matchRules ?? []).map((rule) => ruleKind(rule)))].sort()),
             entityRules: Boolean(trigger?.entityRules),

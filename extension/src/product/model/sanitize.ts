@@ -228,6 +228,18 @@ const sanitizeGuidanceModes = (raw: unknown): GuidanceMode[] => {
     return raw.filter(isGuidanceMode);
 };
 
+const approvalRiskSummary = (raw: unknown): string => {
+    const risk = asString(raw);
+    switch (risk) {
+        case undefined: return '';
+        case 'unknown': return 'Safety has not been classified for this action.';
+        case 'reversible': return 'This action is expected to be reversible.';
+        case 'compensatable': return 'A compensating action may be available, but exact restoration is not guaranteed.';
+        case 'irreversible': return 'This action may not be undoable.';
+        default: return risk;
+    }
+};
+
 const sanitizeInteraction = (raw: unknown): InteractionRequest | null => {
     if (!isRecord(raw)) {
         return null;
@@ -246,7 +258,7 @@ const sanitizeInteraction = (raw: unknown): InteractionRequest | null => {
             kind,
             interactionToken,
             effectName,
-            risk: asString(raw.risk) ?? '',
+            risk: approvalRiskSummary(raw.risk),
             evidence: asString(raw.evidence) ?? asString(raw.summary),
             details: asStringArray(raw.details),
         };

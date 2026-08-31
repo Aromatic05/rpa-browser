@@ -23,6 +23,8 @@ const stubProduct = (overrides: Partial<Record<keyof ProductController, unknown>
     const view = {taskId: 'task-1', status: 'running'};
     const product = {
         workspaceView: record('workspaceView', {workspace: 'ws'}),
+        modelStatus: record('modelStatus', {configured: false, credentialConfigured: false}),
+        configureModel: record('configureModel', {configured: true, credentialConfigured: true}),
         startTask: record('startTask', view),
         taskView: record('taskView', view),
         listTasks: record('listTasks', {active: [], history: []}),
@@ -57,6 +59,11 @@ const rejectsCode = (promise: Promise<unknown>, code: string): Promise<void> =>
 
 test('parseProductCommand normalizes every registered verb', () => {
     assert.deepEqual(parseProductCommand({verb: 'workspaceView'}), {verb: 'workspaceView'});
+    assert.deepEqual(parseProductCommand({verb: 'modelStatus'}), {verb: 'modelStatus'});
+    assert.deepEqual(
+        parseProductCommand({verb: 'configureModel', provider: ' p ', model: ' m ', baseUrl: ' https://example.test/v1 ', apiKey: ' key '}),
+        {verb: 'configureModel', provider: 'p', model: 'm', baseUrl: 'https://example.test/v1', apiKey: ' key '},
+    );
     assert.deepEqual(parseProductCommand({verb: 'listTasks'}), {verb: 'listTasks'});
     assert.deepEqual(parseProductCommand({verb: 'librarySummary'}), {verb: 'librarySummary'});
     assert.deepEqual(parseProductCommand({verb: 'startTask', prompt: '  fill the form  '}), {verb: 'startTask', prompt: 'fill the form'});
@@ -119,6 +126,8 @@ test('parseProductCommand rejects unknown fields for every verb (additionalPrope
     const payloads: Array<Record<string, unknown>> = [
         {verb: 'workspaceView', sessionId: 'x'},
         {verb: 'workspaceView', runId: 'x'},
+        {verb: 'modelStatus', internal: true},
+        {verb: 'configureModel', provider: 'p', model: 'm', baseUrl: 'https://example.test/v1', apiKey: 'k', internal: true},
         {verb: 'listTasks', internal: true},
         {verb: 'librarySummary', provider: 'p'},
         {verb: 'startTask', prompt: 'go', internal: 1},
@@ -159,6 +168,12 @@ test('dispatchProductCommand executes nothing when the envelope carries unknown 
 test('dispatchProductCommand routes each verb to exactly one controller method', async () => {
     const commands: Array<{command: Record<string, unknown>; method: string; args: unknown[]}> = [
         {command: {verb: 'workspaceView'}, method: 'workspaceView', args: []},
+        {command: {verb: 'modelStatus'}, method: 'modelStatus', args: []},
+        {
+            command: {verb: 'configureModel', provider: 'p', model: 'm', baseUrl: 'https://example.test/v1', apiKey: 'k'},
+            method: 'configureModel',
+            args: [{provider: 'p', model: 'm', baseUrl: 'https://example.test/v1', apiKey: 'k'}],
+        },
         {command: {verb: 'listTasks'}, method: 'listTasks', args: []},
         {command: {verb: 'startTask', prompt: ' go '}, method: 'startTask', args: [{prompt: 'go'}]},
         {command: {verb: 'taskView', taskId: 't'}, method: 'taskView', args: ['t']},

@@ -87,8 +87,14 @@ export const runDsl = async (program: DslProgram, ctx: RunDslContext): Promise<R
     if (!Number.isInteger(startIndex) || startIndex < 0 || startIndex > program.body.length) {
         throw new DslRuntimeError(`invalid DSL resume index: ${startIndex}`, 'ERR_DSL_BAD_RESUME');
     }
+    const entityRuleProfiles = (program.imports ?? [])
+        .filter((item) => item.kind === 'entity_rules')
+        .map((item) => item.profileName);
     const taskRunner = ctx.stepExecutionPort ? undefined : createDslTaskRunner({
-        workspaceName: ctx.workspaceName, deps: ctx.deps, stopOnError: true,
+        workspaceName: ctx.workspaceName,
+        deps: ctx.deps,
+        stopOnError: true,
+        entityRuleProfiles,
     });
     const rawPort: StepExecutionPort = ctx.stepExecutionPort || {execute: async (step) => toExecutorStepResult(await taskRunner!.runStep(step))};
     const port: StepExecutionPort = {

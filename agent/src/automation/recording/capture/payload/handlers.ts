@@ -24,12 +24,17 @@ const markEventHandled = (event: Event) => {
     return false;
 };
 
-const inPanel = (path: EventTarget[]): boolean => {
+const inProductControlSurface = (path: EventTarget[]): boolean => {
     for (const node of path) {
-        if (node instanceof HTMLElement && node.id === 'rpa-floating-panel') {return true;}
+        if (!(node instanceof HTMLElement)) {continue;}
+        if (node.id === 'rpa-floating-panel' || node.id === 'rpa-product-panel') {return true;}
+        if (node.hasAttribute('data-rpa-snapshot-ignore')) {return true;}
     }
     return false;
 };
+
+const eventInProductControlSurface = (event: Event): boolean =>
+    inProductControlSurface(event.composedPath());
 
 export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn): void => {
     const handleClick = (event: MouseEvent) => {
@@ -39,7 +44,7 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn): void 
         if (target instanceof Node && target.nodeType === 3) {target = target.parentElement || null;}
         const element = target instanceof Element ? target : null;
         if (!element) {return;}
-        if (inPanel(path) || element.closest('#rpa-floating-panel')) {return;}
+        if (inProductControlSurface(path)) {return;}
         if (isCheckboxOrRadio(element) || element.closest('label input[type="checkbox"], label input[type="radio"]')) {return;}
         const checkboxInput = findCheckboxInput(element);
         if (checkboxInput) {return;}
@@ -79,10 +84,10 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn): void 
     document.addEventListener(
         'input',
         (event) => {
+            if (eventInProductControlSurface(event)) {return;}
             const target = event.composedPath()[0] || event.target;
             const element = target instanceof Element ? target : null;
             if (!element) {return;}
-            if (element.closest('#rpa-floating-panel')) {return;}
             if (isCheckboxOrRadio(element)) {return;}
             if (element instanceof HTMLSelectElement) {return;}
             const selector = selectorFor(element);
@@ -107,10 +112,10 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn): void 
     document.addEventListener(
         'change',
         (event) => {
+            if (eventInProductControlSurface(event)) {return;}
             const target = event.composedPath()[0] || event.target;
             const element = target instanceof Element ? target : null;
             if (!element) {return;}
-            if (element.closest('#rpa-floating-panel')) {return;}
             const selector = selectorFor(element);
             if (!selector) {return;}
             const rawSelector = selector.trim();
@@ -182,9 +187,9 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn): void 
         'keydown',
         (event: KeyboardEvent) => {
             if (!specialKeys.has(event.key)) {return;}
+            if (eventInProductControlSurface(event)) {return;}
             const target = event.composedPath()[0] || event.target;
             const element = target instanceof Element ? target : null;
-            if (element?.closest('#rpa-floating-panel')) {return;}
             const selector = element instanceof Element ? selectorFor(element) : null;
             emit({
                 type: 'keydown',
@@ -204,10 +209,10 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn): void 
     document.addEventListener(
         'paste',
         (event) => {
+            if (eventInProductControlSurface(event)) {return;}
             const target = event.composedPath()[0] || event.target;
             const element = target instanceof Element ? target : null;
             if (!element) {return;}
-            if (element.closest('#rpa-floating-panel')) {return;}
             const selector = selectorFor(element);
             if (!selector) {return;}
             const rawSelector = selector.trim();
@@ -231,10 +236,10 @@ export const installHandlers = (emit: EmitFn, debugTarget: DebugTargetFn): void 
     document.addEventListener(
         'copy',
         (event) => {
+            if (eventInProductControlSurface(event)) {return;}
             const target = event.composedPath()[0] || event.target;
             const element = target instanceof Element ? target : null;
             if (!element) {return;}
-            if (element.closest('#rpa-floating-panel')) {return;}
             const selector = selectorFor(element);
             if (!selector) {return;}
             emit({

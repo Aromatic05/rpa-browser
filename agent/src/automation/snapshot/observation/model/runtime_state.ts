@@ -189,7 +189,7 @@ const RUNTIME_STATE_COLLECTOR_SCRIPT = `(runId) => {
     const type = tag === 'input' ? (normalize(element.type) || '').toLowerCase() : '';
     if (type === 'password' || type === 'hidden') return true;
     const autocomplete = (normalize(safeGetAttr(element, 'autocomplete')) || '').toLowerCase();
-    if (autocomplete.split(/\s+/).some((token) => ['current-password', 'new-password', 'one-time-code'].includes(token))) return true;
+    if (autocomplete.split(' ').filter(Boolean).some((token) => ['current-password', 'new-password', 'one-time-code'].includes(token))) return true;
     return ['name', 'id', 'aria-label', 'autocomplete']
       .map((name) => normalize(safeGetAttr(element, name)) || '')
       .some((value) => SENSITIVE_HINT.test(value));

@@ -1,8 +1,9 @@
 # RPA Browser Monorepo
 
-仓库包含两条对外交互链路：
+仓库包含产品运行时与开发/集成链路：
 
-- `dev`：Extension 通过 WebSocket 连接 Agent，提供录制、回放、规则编辑和浏览器自动化。
+- `start`：正式本地产品运行时；单实例启动 Agent 与主 Chrome MV3 Extension，不启用源码 watcher/hot reload。
+- `dev`：开发运行时，构建并监听 Extension/runner 变更。
 - `mcp`：Agent 提供 HTTP MCP JSON-RPC 服务，供外部程序调用工具。
 
 后端统一由 `runner + step + trace` 执行链路提供能力。
@@ -10,13 +11,12 @@
 ## 目录
 
 - `extension/`：Chrome MV3 扩展
-- `start_extension/`：启动页扩展
 - `agent/`：Node + Playwright Agent、MCP、Step 和 Trace
 - `docs/`：当前契约、运行时和开发文档
 
 ## 环境
 
-- Node.js >= 20
+- Node.js >= 22.19
 - pnpm 11
 
 ## 安装
@@ -29,7 +29,13 @@ pnpm pw:install
 ## 启动
 
 ```bash
-# 扩展模式开发运行时
+# 正式本地产品运行时；缺少构建产物时会先构建一次
+pnpm start
+
+# 显式刷新产品构建产物
+pnpm build:product
+
+# 扩展模式开发运行时（源码监听 / 自动重构建）
 pnpm dev
 
 # CDP 模式开发运行时
@@ -44,6 +50,8 @@ pnpm mcp:hot
 # 本地 Control RPC 客户端
 pnpm control --source "ctx.log('hello')"
 ```
+
+首次 `pnpm start` 打开的 RPA Browser 新标签页会在模型尚未配置时显示 `Finish setup`。Provider、Model 和 OpenAI-compatible Base URL 写入本地 runner config；API key 单独写入权限为 `0600` 的本地 secret 文件，runner config 和运行日志不保存明文 key。保存后同一 Agent 进程立即生效，无需重启浏览器或运行时。
 
 仓库不再提供独立 `mock/` 应用。框架页面回归由 Playwright E2E 页面、浏览器采集 fixture 和 replay corpus 提供。
 

@@ -57,14 +57,20 @@ export const materializeCheckpointRuntimeSnapshot = (options: {
     checkpointStepResolves: Record<string, Record<string, StepResolve>>;
     checkpointBodies: Record<string, string>;
     assetSources?: readonly string[];
+    entityRuleProfiles?: readonly string[];
     workflow?: Workflow;
     entityRulesProvider?: WorkspaceEntityRulesProvider | null;
 }): CheckpointRuntimeSnapshot => {
     const references = collectAssetReferences(options.assetSources || Object.values(options.checkpointBodies));
+    // The runtime image is a reference closure, not a snapshot of the entire
+    // workspace Library. Only profiles named by reachable DSL sources belong
+    // in this execution image; unrelated Page Knowledge must remain outside
+    // the closure and must not be enumerated as a hidden dependency.
     const selectedProfiles = [...new Set([
-        ...(options.entityRulesProvider?.listProfiles() ?? []),
         ...references.entityRuleProfiles,
-    ])].sort((left, right) => left.localeCompare(right));
+        ...(options.entityRuleProfiles ?? []),
+    ])]
+        .sort((left, right) => left.localeCompare(right));
     const entityProfiles = Object.fromEntries(selectedProfiles.flatMap((name) => {
         const profile = options.entityRulesProvider?.getProfile(name) ?? null;
         return profile ? [[name, cloneFrozen(profile)] as const] : [];
@@ -100,43 +106,53 @@ export const checkpointRuntimeSnapshotFromImage = (
     const checkpoints = new Map(frozen.checkpoints.map((checkpoint) => [checkpoint.id, checkpoint]));
     const checkpointStepResolves = Object.fromEntries(Object.entries(frozen.checkpointStepResolves)
         .map(([id, resolves]) => [id, cloneFrozen(resolves)]));
-    const checkpointBodies = cloneFrozen(frozen.checkpointBodies as Record<string, string>);
+    const checkpointBodies = cloneFrozen({...frozen.checkpointBodies});
+    const checkpointBodyMap = new Map(Object.entries(checkpointBodies));
     const provider: DslCheckpointProvider = {
         getCheckpoint: (id) => checkpoints.get(id) ?? null,
         getCheckpointResolves: (id) => checkpointStepResolves[id] ?? null,
-        getCheckpointBody: (id) => checkpointBodies[id] === undefined ? null : {
-            source: checkpointBodies[id],
-            stepResolves: checkpointStepResolves[id] ?? {},
+        getCheckpointBody: (id) => {
+            const source = checkpointBodyMap.get(id);
+            return source === undefined ? null : {
+                source,
+                stepResolves: checkpointStepResolves[id] ?? {},
+            };
         },
         listCheckpoints: () => [...checkpoints.values()],
     };
+    const entityProfileMap = new Map(Object.entries(frozen.entityRules.profiles));
     const entityRulesProvider: WorkspaceEntityRulesProvider | undefined = frozen.entityRules.available
         ? {
             availability: 'ready',
             workflowName: frozen.entityRules.workflowName,
             listProfiles: () => [...frozen.entityRules.selectedProfiles]
-                .filter((name) => frozen.entityRules.profiles[name] !== undefined),
-            getProfile: (name) => frozen.entityRules.profiles[name]
-                ? cloneFrozen(frozen.entityRules.profiles[name])
-                : null,
+                .filter((name) => entityProfileMap.has(name)),
+            getProfile: (name) => {
+                const profile = entityProfileMap.get(name);
+                return profile === undefined ? null : cloneFrozen(profile);
+            },
             resolveExports: (name) => {
-                const profile = frozen.entityRules.profiles[name];
-                return profile
-                    ? buildEntityRuleExportIndex(cloneFrozen(profile))
-                    : {index: null, diagnostics: [{
+                const profile = entityProfileMap.get(name);
+                return profile === undefined
+                    ? {index: null, diagnostics: [{
                         code: 'entity_rule_exports.profile_not_found',
                         message: `entity-rules profile not found: ${name}`,
-                    }]};
+                    }]}
+                    : buildEntityRuleExportIndex(cloneFrozen(profile));
             },
         }
         : undefined;
     const entityRulesResolver = entityRulesProvider
         ? createDslEntityRulesResolver(entityRulesProvider)
         : undefined;
-    const resolveResolver: DslResolveResolver | undefined = Object.keys(frozen.resolveBundles).length > 0
-        ? {resolveBundle: (name) => frozen.resolveBundles[name]
-            ? cloneFrozen(frozen.resolveBundles[name])
-            : {resolves: null, diagnostics: []}}
+    const resolveBundleMap = new Map(Object.entries(frozen.resolveBundles));
+    const resolveResolver: DslResolveResolver | undefined = resolveBundleMap.size > 0
+        ? {resolveBundle: (name) => {
+            const bundle = resolveBundleMap.get(name);
+            return bundle === undefined
+                ? {resolves: null, diagnostics: []}
+                : cloneFrozen(bundle);
+        }}
         : undefined;
     return {
         provider,
@@ -155,6 +171,7 @@ export const materializeReferencedCheckpointRuntimeSnapshot = (options: {
     checkpoints?: readonly Checkpoint[];
     checkpointStepResolves?: Record<string, Record<string, StepResolve>>;
     checkpointBodies?: Record<string, string>;
+    entityRuleProfiles?: readonly string[];
     workflow?: Workflow;
     entityRulesProvider?: WorkspaceEntityRulesProvider | null;
 }): CheckpointRuntimeSnapshot => {
@@ -174,11 +191,11 @@ export const materializeReferencedCheckpointRuntimeSnapshot = (options: {
             const checkpoint = checkpoints.get(id) || options.checkpointProvider.getCheckpoint(id);
             if (!checkpoint) {continue;}
             checkpoints.set(id, checkpoint);
-            if (stepResolves[id] === undefined) {
+            if (!Object.prototype.hasOwnProperty.call(stepResolves, id)) {
                 stepResolves[id] = options.checkpointProvider.getCheckpointResolves?.(id) || {};
             }
             if (!checkpoint.body) {continue;}
-            if (bodies[id] === undefined) {
+            if (!Object.prototype.hasOwnProperty.call(bodies, id)) {
                 const body = options.checkpointProvider.getCheckpointBody?.(id);
                 if (!body) {continue;}
                 bodies[id] = body.source;
@@ -191,10 +208,12 @@ export const materializeReferencedCheckpointRuntimeSnapshot = (options: {
         }
     }
 
-    const frozenAssetSources = new Set([
-        ...visitedSources,
-        ...Object.values(bodies),
-    ]);
+    // `bodies` may contain preloaded checkpoints that are intentionally
+    // unrelated to this run. Keep them available to the frozen provider, but
+    // derive semantic dependencies only from sources reached by the reference
+    // traversal above. Otherwise an invalid/unrelated Procedure contaminates
+    // a recovery closure that never calls it.
+    const frozenAssetSources = visitedSources;
     return materializeCheckpointRuntimeSnapshot({
         checkpoints: [...checkpoints.values()],
         checkpointStepResolves: stepResolves,
@@ -202,6 +221,7 @@ export const materializeReferencedCheckpointRuntimeSnapshot = (options: {
         workflow: options.workflow,
         entityRulesProvider: options.entityRulesProvider,
         assetSources: [...frozenAssetSources],
+        entityRuleProfiles: options.entityRuleProfiles,
     });
 };
 
