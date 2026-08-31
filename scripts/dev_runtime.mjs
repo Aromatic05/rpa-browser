@@ -28,10 +28,7 @@ const watchedPaths = [
     'extension/src',
     'extension/manifest.json',
     'extension/build.mjs',
-    'start_extension/src',
-    'start_extension/manifest.json',
-    'start_extension/build.mjs',
-    'start_extension/newtab.html',
+    'extension/newtab.html',
 ].map((entry) => path.join(root, entry)).filter(existsSync);
 
 let instanceLock = null;

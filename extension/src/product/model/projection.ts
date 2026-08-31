@@ -122,6 +122,8 @@ export const noopCommandPort = (): CommandPort => {
     const noop = (): void => undefined;
     return {
         startTask: noop,
+        pauseTask: noop,
+        resumeTask: noop,
         stopTask: noop,
         openTeach: noop,
         openAnnotate: noop,
@@ -132,12 +134,8 @@ export const noopCommandPort = (): CommandPort => {
         saveTeach: noop,
         discardTeach: noop,
         newTask: noop,
-        retry: noop,
         saveAutomation: noop,
-        viewDetails: noop,
-        replayDemonstration: noop,
         editPageKnowledge: noop,
-        selectHistoryEntry: noop,
         approve: noop,
         deny: noop,
         answerClarification: noop,

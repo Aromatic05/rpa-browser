@@ -54,6 +54,20 @@ const toWorkspaceSummary = (workspace: RuntimeWorkspace) => ({
     updatedAt: workspace.updatedAt,
 });
 
+const toWorkflowSummary = (workflowName: string) => {
+    try {
+        const workflow = loadWorkflowFromFs(workflowName);
+        const entryDslName = workflow.entryDslName?.() ?? 'main';
+        return {
+            workflowName,
+            entryDslName,
+            runnable: workflow.get(entryDslName, {kind: 'dsl'})?.kind === 'dsl',
+        };
+    } catch {
+        return {workflowName, entryDslName: null, runnable: false};
+    }
+};
+
 export const handleRuntimeControlAction = async (input: RuntimeControlInput): Promise<ControlPlaneResult> => {
     const { action, workspaceRegistry } = input;
 
@@ -106,7 +120,7 @@ export const handleRuntimeControlAction = async (input: RuntimeControlInput): Pr
         }
         case 'workflow.list': {
             return {
-                reply: replyAction(action, { workflows: listWorkflowNames().map((workflowName) => ({ workflowName })) }),
+                reply: replyAction(action, {workflows: listWorkflowNames().map(toWorkflowSummary)}),
                 events: [],
             };
         }
@@ -135,14 +149,6 @@ export const handleRuntimeControlAction = async (input: RuntimeControlInput): Pr
                 throw new ActionError(ERROR_CODES.ERR_WORKFLOW_BAD_ARGS, 'workspace/workflow identity mismatch after open');
             }
             workspaceRegistry.setActiveWorkspace(workspace.name);
-            await workspace.browserSession.start();
-            const hasLiveTab = workspace.tabs.listTabs().some((tab) =>
-                tab.page !== null && !tab.page.isClosed());
-            if (!hasLiveTab) {
-                const tabName = crypto.randomUUID();
-                workspace.tabs.createTab({ tabName });
-                await workspace.tabs.createTabPage(tabName, { startUrl: 'about:blank', newWindow: true });
-            }
             const event: Action = {
                 v: 1,
                 id: crypto.randomUUID(),
@@ -152,7 +158,15 @@ export const handleRuntimeControlAction = async (input: RuntimeControlInput): Pr
                 at: Date.now(),
                 traceId: action.traceId,
             };
-            return { reply: replyAction(action, { workflowName, workspaceName: workspace.name, opened: true }), events: [event] };
+            return {
+                reply: replyAction(action, {
+                    workflowName,
+                    workspaceName: workspace.name,
+                    opened: true,
+                    browserStarted: workspace.browserSession.status === 'running',
+                }),
+                events: [event],
+            };
         }
         case 'workflow.rename': {
             const payload = (action.payload ?? {}) as { fromName?: string; toName?: string };

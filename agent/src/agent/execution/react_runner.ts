@@ -27,7 +27,7 @@ import {
     type RunnerContextBudget,
 } from '../tools/context/budget';
 import {measureProviderVisibleContext} from '../tools/context/measure';
-import type {AgentRunRequest, AgentRunResult} from './types';
+import type {AgentRunControl, AgentRunRequest, AgentRunResult} from './types';
 
 export type CreateReactAgentRunnerDeps = {
     tools: AgentTool[];
@@ -57,7 +57,7 @@ export type GovernedAgentRunResult = AgentRunResult & {
 };
 
 export type GovernedAgentRunner = {
-    run: (request: AgentRunRequest) => Promise<GovernedAgentRunResult>;
+    run: (request: AgentRunRequest, control?: AgentRunControl) => Promise<GovernedAgentRunResult>;
 };
 
 const lastAssistantText = (messages: readonly unknown[]): string => {
@@ -82,7 +82,7 @@ const userMessageFromPrompt = (prompt: string): AgentMessage => ({
 });
 
 export const createReactAgentRunner = (deps: CreateReactAgentRunnerDeps): GovernedAgentRunner => ({
-    run: async (request) => {
+    run: async (request, runControl) => {
         const modelBinding = (deps.modelRuntime ?? getDefaultAgentModelRuntime()).resolve(request.provider, request.model);
         if (!modelBinding) {throw new Error(`model not found: ${request.provider}/${request.model}`);}
         const controller = deps.governance?.controller
@@ -96,6 +96,14 @@ export const createReactAgentRunner = (deps: CreateReactAgentRunnerDeps): Govern
         const outcome: {stopReason?: GovernanceStopReason; pendingApproval?: GovernanceApprovalRequest} = {};
         const agentRef: {current: Agent | null} = {current: null};
         let batchToolResults: ToolResultMessage[] = [];
+        let pausedByUser = false;
+
+        const pauseRequested = (): boolean => runControl?.pauseRequested?.() === true;
+        const pauseAtBoundary = (): void => {
+            if (!pauseRequested()) {return;}
+            pausedByUser = true;
+            agentRef.current?.abort();
+        };
 
         const stop = (reason: GovernanceStopReason): void => {
             if (outcome.stopReason === undefined && outcome.pendingApproval === undefined) {
@@ -127,6 +135,10 @@ export const createReactAgentRunner = (deps: CreateReactAgentRunnerDeps): Govern
         const beforeToolCall: NonNullable<AgentOptions['beforeToolCall']> = async (
             context: BeforeToolCallContext,
         ) => {
+            if (pauseRequested()) {
+                pauseAtBoundary();
+                return {block: true, reason: 'user paused the task'};
+            }
             deps.governance?.onBeforeTool?.(context.toolCall.name, context.args);
             const effect = deps.governance?.observeIrreversible?.(context.toolCall.name, context.args);
             if (effect?.declaredIrreversible) {
@@ -175,6 +187,7 @@ export const createReactAgentRunner = (deps: CreateReactAgentRunnerDeps): Govern
                 isError,
                 timestamp: Date.now(),
             });
+            pauseAtBoundary();
             return undefined;
         };
 
@@ -215,9 +228,30 @@ export const createReactAgentRunner = (deps: CreateReactAgentRunnerDeps): Govern
             prepareNextTurnWithContext: prepareNextTurn,
             beforeToolCall,
             afterToolCall,
-            signal: deps.signal,
+            signal: runControl?.signal ?? deps.signal,
         });
         agentRef.current = session.agent;
+        const projectResult = (): GovernedAgentRunResult => ({
+            provider: request.provider,
+            model: request.model,
+            text: lastAssistantText(session.agent.state.messages),
+            trace: trace.snapshot(),
+            ...(outcome.stopReason !== undefined || outcome.pendingApproval !== undefined
+                ? {governance: {...outcome}}
+                : {}),
+            ...(pausedByUser
+                ? {
+                    pausedByUser: true,
+                    continuation: {
+                        resume: async () => {
+                            pausedByUser = false;
+                            await session.agent.continue();
+                            return projectResult();
+                        },
+                    },
+                }
+                : {}),
+        });
         await session.agent.prompt(request.prompt);
         const overflow = accountant.overflow();
         if (overflow) {
@@ -227,14 +261,6 @@ export const createReactAgentRunner = (deps: CreateReactAgentRunnerDeps): Govern
                 overflow.turn,
             );
         }
-        return {
-            provider: request.provider,
-            model: request.model,
-            text: lastAssistantText(session.agent.state.messages),
-            trace: trace.snapshot(),
-            ...(outcome.stopReason !== undefined || outcome.pendingApproval !== undefined
-                ? {governance: {...outcome}}
-                : {}),
-        };
+        return projectResult();
     },
 });

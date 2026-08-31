@@ -29,6 +29,14 @@ export type AgentProgramPause = Readonly<{
 
 export type AgentRunContinuation = Readonly<{
     resume: () => Promise<AgentRunResult>;
+    /** Opaque, JSON-safe durable image. Concrete parsing belongs to the
+     * workspace that created the continuation, never the service/session. */
+    exportImage?: () => unknown;
+}>;
+
+export type AgentRunControl = Readonly<{
+    signal?: AbortSignal;
+    pauseRequested?: () => boolean;
 }>;
 
 /**
@@ -98,8 +106,9 @@ export type AgentRunResult = {
      *  a generic prompt blob. Approval is excluded structurally: the model can
      *  request only clarification / recovery_decision / takeover. */
     requestedInteraction?: ModelRequestedInteraction;
+    pausedByUser?: boolean;
 };
 
 export type AgentRunner = {
-    run: (request: AgentRunRequest) => Promise<AgentRunResult>;
+    run: (request: AgentRunRequest, control?: AgentRunControl) => Promise<AgentRunResult>;
 };

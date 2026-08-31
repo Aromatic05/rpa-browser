@@ -64,7 +64,10 @@ export interface ProductBackendClient {
     startTask(prompt: string): Promise<BackendTaskView>;
     taskView(taskId: string): Promise<BackendTaskView>;
     events(taskId: string, afterSeq: number): Promise<BackendEventsResponse>;
+    pauseTask(taskId: string): Promise<BackendTaskView>;
+    resumeTask(taskId: string): Promise<BackendTaskView>;
     stopTask(taskId: string): Promise<BackendTaskView>;
+    saveAutomation(taskId: string, name: string): Promise<{saved: boolean; name: string; reason?: 'conflict'}>;
     approve(taskId: string, interactionToken: string): Promise<BackendTaskView>;
     deny(taskId: string, interactionToken: string, reason: string, requestedAlternative?: string): Promise<BackendTaskView>;
     answer(taskId: string, interactionToken: string, value: unknown): Promise<BackendTaskView>;
@@ -155,7 +158,10 @@ export const createProductHttpClient = (options: ProductHttpClientOptions): Prod
         startTask: (prompt) => request('POST', '/agent/product/tasks', { prompt }),
         taskView: (taskId) => request('GET', taskBase(taskId)),
         events: (taskId, afterSeq) => request('GET', `${taskBase(taskId)}/events?afterSeq=${String(afterSeq)}`),
+        pauseTask: (taskId) => request('POST', `${taskBase(taskId)}/pause`, {}),
+        resumeTask: (taskId) => request('POST', `${taskBase(taskId)}/resume`, {}),
         stopTask: (taskId) => request('POST', `${taskBase(taskId)}/stop`, {}),
+        saveAutomation: (taskId, name) => request('POST', `${taskBase(taskId)}/save`, {name}),
         approve: (taskId, interactionToken) =>
             request('POST', `${taskBase(taskId)}/approve`, { interactionToken }),
         deny: (taskId, interactionToken, reason, requestedAlternative) =>
@@ -188,7 +194,10 @@ export type ProductRequest =
     | { verb: 'startTask'; prompt: string }
     | { verb: 'taskView'; taskId: string }
     | { verb: 'events'; taskId: string; afterSeq: number }
+    | { verb: 'pauseTask'; taskId: string }
+    | { verb: 'resumeTask'; taskId: string }
     | { verb: 'stopTask'; taskId: string }
+    | { verb: 'saveAutomation'; taskId: string; name: string }
     | { verb: 'approve'; taskId: string; interactionToken: string }
     | { verb: 'deny'; taskId: string; interactionToken: string; reason: string; requestedAlternative?: string }
     | { verb: 'answer'; taskId: string; interactionToken: string; value: unknown }
@@ -216,8 +225,17 @@ export const dispatchProductRequest = async (client: ProductBackendClient, reque
                 typeof body.taskId === 'string' ? body.taskId : '',
                 typeof body.afterSeq === 'number' ? body.afterSeq : 0,
             );
+        case 'pauseTask':
+            return await client.pauseTask(typeof body.taskId === 'string' ? body.taskId : '');
+        case 'resumeTask':
+            return await client.resumeTask(typeof body.taskId === 'string' ? body.taskId : '');
         case 'stopTask':
             return await client.stopTask(typeof body.taskId === 'string' ? body.taskId : '');
+        case 'saveAutomation':
+            return await client.saveAutomation(
+                typeof body.taskId === 'string' ? body.taskId : '',
+                typeof body.name === 'string' ? body.name : '',
+            );
         case 'approve':
             return await client.approve(
                 typeof body.taskId === 'string' ? body.taskId : '',
@@ -309,7 +327,11 @@ export const createProductMessageClient = (): ProductBackendClient => {
         startTask: (prompt) => call({ verb: 'startTask', prompt }) as Promise<BackendTaskView>,
         taskView: (taskId) => call({ verb: 'taskView', taskId }) as Promise<BackendTaskView>,
         events: (taskId, afterSeq) => call({ verb: 'events', taskId, afterSeq }) as Promise<BackendEventsResponse>,
+        pauseTask: (taskId) => call({ verb: 'pauseTask', taskId }) as Promise<BackendTaskView>,
+        resumeTask: (taskId) => call({ verb: 'resumeTask', taskId }) as Promise<BackendTaskView>,
         stopTask: (taskId) => call({ verb: 'stopTask', taskId }) as Promise<BackendTaskView>,
+        saveAutomation: (taskId, name) =>
+            call({ verb: 'saveAutomation', taskId, name }) as Promise<{saved: boolean; name: string; reason?: 'conflict'}>,
         approve: (taskId, interactionToken) =>
             call({ verb: 'approve', taskId, interactionToken }) as Promise<BackendTaskView>,
         deny: (taskId, interactionToken, reason, requestedAlternative) =>

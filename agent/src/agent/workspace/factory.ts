@@ -82,22 +82,24 @@ export const createWorkspaceAgentFactory = (
         workspaceName: deps.workspaceName,
         deps: deps.runStepsDeps,
     });
+    const programExecutor = createWorkspaceProgramExecutor({
+        workspaceName: deps.workspaceName,
+        deps: deps.runStepsDeps,
+        runWorkspaceExecution: deps.runWorkspaceExecution,
+        credentialResolver: options.credentialResolver,
+    });
+    const programSaver = createWorkspaceProgramSaver({
+        workspaceName: deps.workspaceName,
+        deps: deps.runStepsDeps,
+    });
     const programRunner = createProgramFirstAgentRunner({
         readTools: createWorkspaceAgentReadTools(toolDeps),
-        executeProgram: createWorkspaceProgramExecutor({
-            workspaceName: deps.workspaceName,
-            deps: deps.runStepsDeps,
-            runWorkspaceExecution: deps.runWorkspaceExecution,
-            credentialResolver: options.credentialResolver,
-        }),
+        executeProgram: programExecutor,
         programLibrary: createWorkspaceProgramLibrary({
             workspaceName: deps.workspaceName,
             deps: deps.runStepsDeps,
         }),
-        saveProgram: createWorkspaceProgramSaver({
-            workspaceName: deps.workspaceName,
-            deps: deps.runStepsDeps,
-        }),
+        saveProgram: programSaver,
         knowledge: {
             library: workspaceLibrary,
             entityRules: lazyWorkspaceEntityRules(deps.workspaceName, deps.runStepsDeps),
@@ -126,6 +128,15 @@ export const createWorkspaceAgentFactory = (
         interaction: options.interaction,
         ...(options.productDefaults === undefined ? {} : {productDefaults: options.productDefaults}),
         productLibrary: () => workspaceLibrary.list(),
+        productSaveAutomation: programSaver,
+        continuationRestorer: async (request, image) => {
+            const restored = await programExecutor.restoreContinuation(image);
+            if (!restored.ok) {return restored;}
+            return {
+                ok: true as const,
+                result: await programRunner.restore(request, restored.start),
+            };
+        },
         log: (...args) => { getLogger('infra').info('[RPA:agent]', ...args); },
     });
     return {

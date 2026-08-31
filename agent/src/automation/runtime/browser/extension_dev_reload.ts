@@ -187,9 +187,9 @@ const verifyContentPageBuild = async (page: Page, buildId: string): Promise<void
     throw new Error(`content page did not load extension build ${buildId}: ${page.url()}`);
 };
 
-const restoreStartPages = async (
+const restoreNewTabPages = async (
     context: BrowserContext,
-    startExtensionId: string | undefined,
+    mainExtensionId: string,
     startUrl: string,
     buildId: string,
 ): Promise<number> => {
@@ -197,12 +197,12 @@ const restoreStartPages = async (
         const url = page.url();
         return url === 'chrome://new-tab-page/' ||
             url.startsWith('chrome://newtab/') ||
-            Boolean(startExtensionId && url.startsWith(`chrome-extension://${startExtensionId}/`));
+            url.startsWith(`chrome-extension://${mainExtensionId}/`);
     });
     let restored = 0;
     for (const page of candidates) {
         if (page.isClosed()) {continue;}
-        if (!page.url().startsWith(`chrome-extension://${startExtensionId || ''}/`)) {
+        if (!page.url().startsWith(`chrome-extension://${mainExtensionId}/`)) {
             await page.goto(startUrl, {waitUntil: 'domcontentloaded', timeout: 15_000});
         } else {
             await page.reload({waitUntil: 'domcontentloaded', timeout: 15_000});
@@ -214,7 +214,7 @@ const restoreStartPages = async (
             return manifest.version_name || manifest.version;
         });
         if (activeBuildId !== buildId) {
-            throw new Error(`start extension page is build ${activeBuildId}, expected ${buildId}`);
+            throw new Error(`newtab page is build ${activeBuildId}, expected ${buildId}`);
         }
         restored += 1;
     }
@@ -247,15 +247,15 @@ export const reloadExtensionsForBuild = async (
         }
         const loaded = await loadExtensionPaths(session, options.extensionPaths);
         await verifyLoadedExtensions(session, loaded);
+        const mainLoaded = loaded[0];
 
         const newWorker = await resolveMainWorker(context, buildInfo.buildId);
         await options.configureMainExtension(context);
         const contentPages = await reloadContentPages(context);
         await Promise.all(contentPages.map((page) => verifyContentPageBuild(page, buildInfo.buildId)));
-        const startExtensionId = loaded[1]?.id;
-        const startPages = await restoreStartPages(
+        const newTabPages = await restoreNewTabPages(
             context,
-            startExtensionId,
+            mainLoaded.id,
             options.startUrl(),
             buildInfo.buildId,
         );
@@ -270,7 +270,7 @@ export const reloadExtensionsForBuild = async (
             buildId: activeBuildId,
             preservedTabCount: prepared.tabCount,
             contentPageReloads: contentPages.length,
-            startPageReloads: startPages,
+            newTabPageReloads: newTabPages,
         });
     } finally {
         await session.detach().catch(() => undefined);
@@ -322,5 +322,12 @@ export const resolveExtensionBuildStampPath = (extensionPaths: string[]): string
     if (configured) {return path.resolve(configured);}
     const mainExtensionPath = extensionPaths[0];
     if (!mainExtensionPath) {throw new Error('main extension path is unavailable');}
-    return path.resolve(mainExtensionPath, '..', '..', '.dev', 'extension-build.json');
+    const resolvedMainPath = path.resolve(mainExtensionPath);
+    const versionedMarker = `${path.sep}.dev${path.sep}extensions${path.sep}`;
+    const markerIndex = resolvedMainPath.lastIndexOf(versionedMarker);
+    if (markerIndex >= 0) {
+        const repositoryRoot = resolvedMainPath.slice(0, markerIndex);
+        return path.join(repositoryRoot, '.dev', 'extension-build.json');
+    }
+    return path.resolve(resolvedMainPath, '..', '..', '.dev', 'extension-build.json');
 };

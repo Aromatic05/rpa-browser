@@ -48,7 +48,7 @@ export const startAgent = async (opts?: { headed?: boolean; workflowFixtureDir?:
     while (Date.now() < dl) {
       if (proc.exitCode !== null) throw new Error(`agent exited: ${proc.exitCode} ${stderr}`);
       try {
-        const r = await sendControlEval({ source: 'return { ready: !!ctx?.workspaceRegistry && !!ctx?.dispatch && !!ctx?.runStep };', timeoutMs: 2000 }, { endpoint, timeoutMs: 2000 });
+        const r = await sendControlEval({ source: 'const w = ctx?.resolveWorkspace?.("default"); return { ready: !!ctx?.dispatch && !!ctx?.runStep && w?.browserSession?.status === "running" && w?.tabs?.listTabs?.().length > 0 };', timeoutMs: 2000 }, { endpoint, timeoutMs: 2000 });
         if (r.ok && (r.result as { ready?: boolean })?.ready) return;
       } catch {}
       await sleep(100);

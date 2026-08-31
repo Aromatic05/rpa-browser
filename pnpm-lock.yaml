@@ -155,15 +155,6 @@ importers:
         specifier: ^2.2.12
         version: 2.2.12(typescript@5.9.3)
 
-  start_extension:
-    devDependencies:
-      '@types/chrome':
-        specifier: ^0.0.279
-        version: 0.0.279
-      typescript:
-        specifier: ^5.9.2
-        version: 5.9.3
-
 packages:
 
   '@ant-design/colors@7.2.1':

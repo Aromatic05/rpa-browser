@@ -1,4 +1,5 @@
 import type {AgentExecutionMode, AgentRunRequest} from '../execution/types';
+import type {AgentProgramSaver} from '../execution/program/persistence';
 import type {GuidanceMode, InteractionRecord} from '../interaction/contracts';
 import type {LibraryAssetSummary} from '../library/contracts';
 import type {SessionManager} from '../service/session/manager';
@@ -16,7 +17,11 @@ import type {
     ProductDenyInput,
     ProductEndAuthoringInput,
     ProductEventsResponse,
+    ProductPauseTaskInput,
+    ProductResumeTaskInput,
     ProductReturnControlInput,
+    ProductSaveAutomationInput,
+    ProductSaveAutomationResult,
     ProductStartTaskInput,
     ProductStopTaskInput,
     WorkspaceLibrarySummary,
@@ -55,6 +60,7 @@ export type ProductControllerOptions = Readonly<{
     /** Real committed Library summaries; projected through the bounded product
      *  adapter. When absent, the Library endpoint truthfully reports unavailable. */
     library?: () => Promise<ReadonlyArray<LibraryAssetSummary>>;
+    saveAutomation?: AgentProgramSaver;
     now?: () => number;
 }>;
 
@@ -68,7 +74,10 @@ export type ProductController = Readonly<{
     startTask: (input: ProductStartTaskInput) => AgentTaskView;
     taskView: (taskId: string) => AgentTaskView | null;
     listTasks: () => ProductTaskList;
+    pauseTask: (input: ProductPauseTaskInput) => AgentTaskView | null;
+    resumeTask: (input: ProductResumeTaskInput) => Promise<AgentTaskView | null>;
     stopTask: (input: ProductStopTaskInput) => AgentTaskView | null;
+    saveAutomation: (input: ProductSaveAutomationInput) => Promise<ProductSaveAutomationResult>;
     approveTask: (input: ProductApproveInput) => Promise<AgentTaskView | null>;
     denyTask: (input: ProductDenyInput) => Promise<AgentTaskView | null>;
     answerTask: (input: ProductAnswerInput) => Promise<AgentTaskView | null>;
@@ -292,11 +301,15 @@ export const createProductController = (options: ProductControllerOptions): Prod
         const snapshot = manager.status(taskId);
         if (snapshot === null) {return null;}
         const interactions = manager.listInteractions(taskId) ?? [];
+        const saveEligible = options.saveAutomation !== undefined
+            && snapshot.state === 'completed'
+            && (snapshot.result?.programs ?? []).some((program) => program.status === 'completed');
         return projectAgentTaskView({
             taskId,
             snapshot,
             interactions,
             lastSeq: events.lastSeq(taskId),
+            saveEligible,
         });
     };
 
@@ -374,12 +387,60 @@ export const createProductController = (options: ProductControllerOptions): Prod
             history.sort((left, right) => (right.endedAt ?? 0) - (left.endedAt ?? 0));
             return Object.freeze({active: Object.freeze(active), history: Object.freeze(history)});
         },
+        pauseTask: (input) => {
+            sync();
+            const snapshot = manager.status(input.taskId);
+            if (!snapshot) {return null;}
+            if (snapshot.state !== 'running') {
+                throw new ProductCommandError('ERR_BAD_STATE', 'only a running task can be paused');
+            }
+            manager.pause(input.taskId);
+            sync();
+            return viewFor(input.taskId);
+        },
+        resumeTask: async (input) => {
+            sync();
+            const snapshot = manager.status(input.taskId);
+            if (!snapshot) {return null;}
+            if (snapshot.state !== 'paused' || snapshot.result?.pausedByUser !== true || !snapshot.resumable) {
+                throw new ProductCommandError('ERR_BAD_STATE', 'task is not a user-paused resumable task');
+            }
+            await manager.resume(input.taskId);
+            sync();
+            return viewFor(input.taskId);
+        },
         stopTask: (input) => {
             sync();
             const snapshot = manager.cancel(input.taskId);
             if (!snapshot) {return null;}
             sync();
             return viewFor(input.taskId);
+        },
+        saveAutomation: async (input) => {
+            const name = input.name.trim();
+            if (!name) {throw new ProductCommandError('ERR_BAD_ARGS', 'automation name must not be empty');}
+            if (!options.saveAutomation) {
+                throw new ProductCommandError('ERR_BAD_STATE', 'automation saving is not available on this workspace');
+            }
+            const snapshot = manager.status(input.taskId);
+            if (!snapshot) {throw new ProductCommandError('ERR_NOT_FOUND', `task not found: ${input.taskId}`);}
+            if (snapshot.state !== 'completed' || snapshot.result === null) {
+                throw new ProductCommandError('ERR_BAD_STATE', 'only a completed task can be saved as an automation');
+            }
+            const program = [...(snapshot.result.programs ?? [])]
+                .reverse()
+                .find((candidate) => candidate.status === 'completed');
+            if (!program) {
+                throw new ProductCommandError('ERR_BAD_STATE', 'completed task has no reusable Program to save');
+            }
+            const saved = await options.saveAutomation({
+                name,
+                source: program.materializedSource ?? program.source,
+            });
+            if (saved.status === 'conflict') {
+                return Object.freeze({saved: false, name, reason: 'conflict' as const});
+            }
+            return Object.freeze({saved: true, name: saved.name});
         },
         approveTask: async (input) => {
             const token = requireToken(input.interactionToken);

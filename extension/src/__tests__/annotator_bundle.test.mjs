@@ -26,3 +26,13 @@ test('service worker entry changes on every extension build', async () => {
     assert.doesNotMatch(serviceWorker, /^import\s/m);
     assert.match(serviceWorker, /entity_rules\.annotator\.open/);
 });
+
+test('merged newtab surface is emitted at the manifest-owned path', async () => {
+    const manifest = JSON.parse(await readFile(`${distRoot}manifest.json`, 'utf8'));
+    const newtabHtml = await readFile(`${distRoot}newtab.html`, 'utf8');
+    const newtabEntry = await readFile(`${distRoot}start/newtab.js`, 'utf8');
+    assert.equal(manifest.chrome_url_overrides.newtab, 'newtab.html');
+    assert.match(newtabHtml, /src="\.\/start\/newtab\.js"/);
+    assert.match(newtabEntry, /tab\.report/);
+    assert.doesNotMatch(newtabEntry, /tab\.init|tab\.opened/);
+});

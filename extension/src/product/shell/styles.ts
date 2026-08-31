@@ -128,12 +128,13 @@ export const productStyles = `
     touch-action: none;
 }
 .rpa-header {
-    height: 48px;
-    flex: 0 0 48px;
+    min-height: 48px;
+    flex: 0 0 auto;
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 4px;
-    padding: 0 8px 0 12px;
+    padding: 8px;
     border-bottom: 1px solid var(--rpa-border);
     background: var(--rpa-surface);
 }
@@ -146,7 +147,9 @@ export const productStyles = `
     display: flex;
     align-items: center;
     gap: 2px;
-    flex: 1;
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-x: auto;
 }
 .rpa-nav-btn {
     border: none;
@@ -174,6 +177,12 @@ export const productStyles = `
     display: flex;
     align-items: center;
     gap: 4px;
+    margin-left: auto;
+    flex: 0 0 auto;
+}
+.rpa-header-action {
+    padding: 5px 8px;
+    white-space: nowrap;
 }
 .rpa-icon-btn {
     border: none;

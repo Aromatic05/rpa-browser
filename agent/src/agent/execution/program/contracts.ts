@@ -20,6 +20,10 @@ export type AgentProgramExecutor = (
     program: AgentProgram,
 ) => Promise<AgentProgramExecutionStart>;
 
+export type AgentProgramContinuationExporter = (
+    start: AgentProgramExecutionStart,
+) => unknown;
+
 export const summarizePause = (pause: PausedDslDebugExecution): AgentProgramPause => {
     if (pause.reason === 'barrier' || pause.reason === 'effect') {
         return Object.freeze({

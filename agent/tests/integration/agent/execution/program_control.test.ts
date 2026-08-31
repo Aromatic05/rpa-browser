@@ -7,6 +7,7 @@ import type {WorkspaceEntityRulesProvider} from '../../../../src/automation/snap
 import type {WorkflowEntityRules} from '../../../../src/automation/workflow';
 import {PageSnapshotSessionStore} from '../../../../src/automation/snapshot';
 import {createWorkspaceProgramExecutor} from '../../../../src/agent/workspace/program_executor';
+import type {AgentProgramExecutor} from '../../../../src/agent/execution/program/contracts';
 import {createProgramFirstAgentRunner, requestInteractionTool, requestInteractionSchema} from '../../../../src/agent/execution/program/runner';
 import {completeRunStepsDeps} from '../../../helpers/run_steps_workspace';
 import {createV2BusinessPage} from '../../../helpers/v2_business_page';
@@ -156,7 +157,7 @@ const buildRunner = async (script: ModelScript = defaultScript) => {
     const clickCalls: string[] = [];
     const executor = createWorkspaceProgramExecutor(await buildExecutorOptions(clickCalls));
     let executeProgramCalls = 0;
-    const fake: typeof executor = async (program) => {
+    const fake: AgentProgramExecutor = async (program) => {
         executeProgramCalls += 1;
         return executor(program);
     };

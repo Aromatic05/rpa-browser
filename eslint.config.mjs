@@ -180,11 +180,10 @@ export default tseslint.config(
     extends: [tseslint.configs.disableTypeChecked]
   },
 
-  // browser extension / start page runtime globals
+  // browser extension runtime globals
   {
     files: [
-      "extension/**/*.{ts,tsx,js,jsx,mjs,cjs}",
-      "start_extension/**/*.{ts,tsx,js,jsx,mjs,cjs}"
+      "extension/**/*.{ts,tsx,js,jsx,mjs,cjs}"
     ],
     languageOptions: {
       globals: {

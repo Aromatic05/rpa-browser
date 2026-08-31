@@ -12,6 +12,7 @@ import type {
 export type AgentTaskStatus =
     | 'draft'
     | 'running'
+    | 'paused'
     | 'waiting_for_user'
     | 'completed'
     | 'failed'
@@ -67,6 +68,7 @@ export type ProductInteractionCard =
 export type AgentTaskResultView = Readonly<{
     outcome: 'completed' | 'failed' | 'cancelled' | 'interrupted';
     summary: string;
+    saveEligible?: boolean;
 }>;
 
 export type AgentTaskErrorView = Readonly<{
@@ -188,6 +190,14 @@ export type ProductStartTaskInput = Readonly<{
 }>;
 
 export type ProductStopTaskInput = Readonly<{taskId: string}>;
+export type ProductPauseTaskInput = Readonly<{taskId: string}>;
+export type ProductResumeTaskInput = Readonly<{taskId: string}>;
+export type ProductSaveAutomationInput = Readonly<{taskId: string; name: string}>;
+export type ProductSaveAutomationResult = Readonly<{
+    saved: boolean;
+    name: string;
+    reason?: 'conflict';
+}>;
 export type ProductApproveInput = Readonly<{taskId: string; interactionToken: string}>;
 export type ProductDenyInput = Readonly<{
     taskId: string;

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { footerText, idleView, mount, openPanel, runningView } from './harness.js';
 
-test('launcher toggles the right-docked panel and collapse returns to the launcher', () => {
+test('launcher toggles the right-docked panel and an explicit collapse button returns to the launcher', () => {
     const fixture = mount(idleView());
     try {
         assert.equal(fixture.panel.hidden, true, 'panel starts collapsed');
@@ -13,11 +13,58 @@ test('launcher toggles the right-docked panel and collapse returns to the launch
         assert.equal(fixture.launcher.hidden, true, 'launcher hides while the panel is open');
         assert.equal(fixture.panel.style.width, '400px', 'default width is 400px');
 
-        const collapse = fixture.shadow.querySelector('[aria-label="Collapse panel"]') as HTMLButtonElement;
+        const collapse = fixture.shadow.querySelector('[data-rpa-product-action="collapse-panel"]') as HTMLButtonElement;
         assert.ok(collapse);
+        assert.equal(collapse.textContent, 'Collapse', 'collapse is a visible text control, not a cryptic glyph');
         collapse.click();
         assert.equal(fixture.panel.hidden, true, 'collapse hides the panel');
         assert.equal(fixture.launcher.hidden, false, 'collapse restores the launcher');
+    } finally {
+        fixture.cleanup();
+    }
+});
+
+test('non-home surfaces always expose a visible back button', () => {
+    const fixture = mount(idleView());
+    try {
+        openPanel(fixture);
+        const libraryNav = fixture.shadow.querySelector('[data-rpa-product-nav="library"]') as HTMLButtonElement;
+        libraryNav.click();
+        const back = fixture.shadow.querySelector('[data-rpa-product-action="back"]') as HTMLButtonElement;
+        assert.ok(back);
+        assert.match(back.textContent, /Back/);
+        back.click();
+        assert.equal(fixture.body.dataset.rpaProductSurface, 'home');
+    } finally {
+        fixture.cleanup();
+    }
+});
+
+test('active tasks keep Pause and Stop visible in the shell header', () => {
+    const fixture = mount(runningView());
+    try {
+        openPanel(fixture);
+        const pause = fixture.shadow.querySelector('[data-rpa-product-action="pause-task"]') as HTMLButtonElement;
+        const stop = fixture.shadow.querySelector('[data-rpa-product-action="stop"]') as HTMLButtonElement;
+        assert.ok(pause, 'Pause is always reachable from the shell header');
+        assert.ok(stop, 'Stop is always reachable from the shell header');
+        pause.click();
+        assert.equal(fixture.calls.some((call) => call.name === 'pauseTask'), true);
+    } finally {
+        fixture.cleanup();
+    }
+});
+
+test('a user-paused task exposes Resume and Stop in the shell header', () => {
+    const fixture = mount(runningView({status: 'paused', resumable: true}));
+    try {
+        openPanel(fixture);
+        const resume = fixture.shadow.querySelector('[data-rpa-product-action="resume-task"]') as HTMLButtonElement;
+        const stop = fixture.shadow.querySelector('[data-rpa-product-action="stop"]') as HTMLButtonElement;
+        assert.ok(resume);
+        assert.ok(stop);
+        resume.click();
+        assert.equal(fixture.calls.some((call) => call.name === 'resumeTask'), true);
     } finally {
         fixture.cleanup();
     }
@@ -62,11 +109,12 @@ test('developer disclosure is a separate confirmable slot, off by default', () =
     try {
         openPanel(fixture);
         assert.equal(fixture.body.dataset.rpaProductSurface, 'home', 'product surface by default');
-        assert.match(footerText(fixture), /Developer mode: off/);
-        assert.equal(footerText(fixture).includes('Developer mode: on'), false);
+        const footer = fixture.shadow.querySelector('.rpa-footer') as HTMLElement;
+        assert.equal(footer.hidden, true, 'developer disclosure does not consume ordinary product space');
 
-        const enable = fixture.shadow.querySelector('[data-rpa-product-action="enable-dev"]') as HTMLButtonElement;
-        enable.click();
+        const gear = fixture.shadow.querySelector('[data-rpa-product-dev]') as HTMLButtonElement;
+        gear.click();
+        assert.equal(footer.hidden, false, 'developer disclosure appears only after the user asks for it');
         assert.match(footerText(fixture), /Confirm enable/);
         assert.equal(fixture.body.dataset.rpaProductSurface, 'home', 'not enabled until confirmed');
 

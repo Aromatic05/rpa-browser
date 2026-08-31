@@ -18,6 +18,7 @@ export type ProductSurface = 'home' | 'task' | 'library' | 'history' | 'teach' |
 export type TaskLifecycleStatus =
     | 'draft'
     | 'running'
+    | 'paused'
     | 'waiting_for_user'
     | 'completed'
     | 'failed'
@@ -134,6 +135,12 @@ export type TaskResultView = {
     recoverySummary?: string;
 };
 
+export type AutomationSaveState = {
+    status: 'saving' | 'saved' | 'conflict' | 'failed';
+    name: string;
+    message?: string;
+};
+
 /** Sanitized AgentTaskView (AgentProductInteraction §12.1). */
 export type AgentTaskView = {
     taskId: string;
@@ -239,12 +246,11 @@ export type WorkspaceProductView = {
      *  the surface must say so instead of rendering an empty-but-complete look. */
     libraryUnavailable?: boolean;
     history: TaskHistoryEntry[];
+    automationSave?: AutomationSaveState;
     startError?: StartError;
     reconnectAttempts?: number;
     lastKnownAt?: number;
 };
-
-export type DemonstrationRef = { name: string };
 
 export type PageKnowledgeRef = { profileName: string };
 
@@ -254,6 +260,8 @@ export type PageKnowledgeRef = { profileName: string };
  */
 export type CommandPort = {
     startTask(prompt: string): void;
+    pauseTask(): void;
+    resumeTask(): void;
     stopTask(): void;
     openTeach(): void;
     openAnnotate(): void;
@@ -264,12 +272,8 @@ export type CommandPort = {
     saveTeach(): void;
     discardTeach(): void;
     newTask(): void;
-    retry(): void;
-    saveAutomation(): void;
-    viewDetails(): void;
-    replayDemonstration(ref: DemonstrationRef): void;
+    saveAutomation(name: string): void;
     editPageKnowledge(ref: PageKnowledgeRef): void;
-    selectHistoryEntry(taskId: string): void;
     approve(): void;
     deny(reason: string, requestedAlternative?: string): void;
     answerClarification(value: string): void;

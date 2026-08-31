@@ -9,7 +9,7 @@
 ### 1. 分层架构
 
 ```text
-入口层          extension / start_extension / MCP / Control RPC
+入口层          extension（content / newtab）/ MCP / Control RPC
                   -> action/tool bridge -> action handlers
 产品交互层        Task（Agent 自主执行）、Teach / Annotate（人工 authoring）、Library
 语义层           Entity Rules：页面业务语义 schema/bindings（nouns/fields/actions/primary-key）
@@ -32,7 +32,7 @@
 
 ### 3. workflow 与 workspace/tab
 
--   workflow 绑定 workspaceName：`workflow:<scene>`；workspace 维护 tab 集合和 activeTab；tab 通过 `tabName` 与扩展侧生命周期绑定。
+-   workflow identity 与 workspaceName 相同；workspace 维护 tab 集合和 activeTab；tab 通过 `tabName` 与扩展侧生命周期绑定。
 
 ### 4. 录制与回放
 
@@ -51,7 +51,7 @@
 
 ## 示例
 
--   UI 调 `workflow.releaseRun`，最终进入 `runWorkflow -> runDslSource -> runSteps`。
+-   UI 先 `workflow.open` 获得目标 `workspaceName`，再调用 `dsl.run`，最终进入 `runDslSource -> runSteps`。
 
 ## 限制
 

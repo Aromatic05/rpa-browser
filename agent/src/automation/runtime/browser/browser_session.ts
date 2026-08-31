@@ -60,7 +60,7 @@ type ExtensionRuntimeState = {
     ready: ExtensionRuntimeReady | null;
 };
 
-export const buildStartExtensionUrl = (workspaceName: string, wsPort: number): string => {
+export const buildStartPageUrl = (workspaceName: string, wsPort: number): string => {
     const params = new URLSearchParams({
         rpaWorkspaceName: workspaceName,
         rpaWsPort: String(wsPort),
@@ -73,7 +73,7 @@ export const resolveInteractiveStartUrl = (workspaceName: string, wsPort: number
     if (configured) {
         return configured;
     }
-    return buildStartExtensionUrl(workspaceName, wsPort);
+    return buildStartPageUrl(workspaceName, wsPort);
 };
 
 const RUNTIME_READY_KEY = 'rpa.runtime.ready';
@@ -105,7 +105,7 @@ const resolveExtensionServiceWorker = async (context: BrowserContext): Promise<W
         for (const worker of context.serviceWorkers()) {
             try {
                 const state = await readExtensionRuntimeState(worker);
-                if (state.manifestName === 'RPA Browser Demo') {return worker;}
+                if (state.manifestName === 'RPA Browser' && state.workerUrl.includes('/entry/sw.js')) {return worker;}
                 if (!observed.some((item) => item.url === state.workerUrl && item.name === state.manifestName)) {
                     observed.push({url: state.workerUrl, name: state.manifestName});
                 }
@@ -134,19 +134,18 @@ const configureExtensionSession = async (
     let worker = await resolveExtensionServiceWorker(context);
     const state = await readExtensionRuntimeState(worker);
 
-    await worker.evaluate(async (input: {workspaceName: string; wsPort: number; readyKey: string}) => {
+    await worker.evaluate(async (input: {workspaceName: string; wsPort: number}) => {
         const runtimeGlobal = globalThis as typeof globalThis & {
-            chrome: {storage: {local: {
-                set: (values: Record<string, unknown>) => Promise<void>;
-                remove: (key: string) => Promise<void>;
-            }}};
+            __rpaSessionRuntime?: {
+                configure: (config: {workspaceName: string; wsPort: number}) => Promise<void>;
+            };
         };
-        await runtimeGlobal.chrome.storage.local.remove(input.readyKey);
-        await runtimeGlobal.chrome.storage.local.set({
-            rpaWorkspaceName: input.workspaceName,
-            rpaWsPort: input.wsPort,
-        });
-    }, {workspaceName, wsPort, readyKey: RUNTIME_READY_KEY});
+        const sessionRuntime = runtimeGlobal.__rpaSessionRuntime;
+        if (!sessionRuntime) {
+            throw new Error('main extension session runtime bridge is unavailable');
+        }
+        await sessionRuntime.configure({workspaceName: input.workspaceName, wsPort: input.wsPort});
+    }, {workspaceName, wsPort});
 
     const deadline = Date.now() + 12_000;
     let lastState = state;
@@ -177,7 +176,7 @@ const configureExtensionSession = async (
     throw new Error(`main extension runtime readiness timeout: ${JSON.stringify(lastState)}`);
 };
 
-const awaitStartExtensionBinding = async (input: {
+const awaitStartPageBinding = async (input: {
     context: BrowserContext;
     pageRegistry: PageRegistry;
     workspaceRegistry: WorkspaceRegistry;
@@ -233,7 +232,7 @@ const awaitStartExtensionBinding = async (input: {
         }
         await new Promise((resolve) => setTimeout(resolve, 50));
     }
-    throw new Error(`start extension binding timeout: ${JSON.stringify(lastState)}`);
+    throw new Error(`start page binding timeout: ${JSON.stringify(lastState)}`);
 };
 
 const browserMode = () => (process.env.RPA_BROWSER_MODE || 'extension').trim().toLowerCase();
@@ -358,7 +357,7 @@ export const createWorkspaceBrowserSession = (options: CreateWorkspaceBrowserSes
                     manifestVersion: extensionRuntime.manifestVersion,
                 });
                 await wsClient.waitForClient(10_000);
-                const startTabName = await awaitStartExtensionBinding({
+                const startTabName = await awaitStartPageBinding({
                     context,
                     pageRegistry,
                     workspaceRegistry: options.workspaceRegistry,

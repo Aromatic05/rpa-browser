@@ -8,10 +8,11 @@ import type {
     WorkspaceServiceStopResult,
 } from '../../automation/runtime/service/types';
 import type {AgentExecutionMode, AgentRunRequest, AgentRunResult, AgentRunner} from '../execution/types';
+import type {AgentProgramSaver} from '../execution/program/persistence';
 import type {LibraryAssetSummary} from '../library/contracts';
 import {createProductController, type ProductController} from '../product';
 import {createAgentHttpServer} from './server';
-import {createSessionManager, type SessionManager} from './session/manager';
+import {createSessionManager, type ContinuationRestorer, type SessionManager} from './session/manager';
 import {createFileSystemSessionStorage} from './session/storage';
 import type {SessionInteractionPolicy} from './session/types';
 import type {SessionRetentionPolicy} from './session/store';
@@ -60,6 +61,9 @@ export type WorkspaceAgentServiceDeps = {
      *  (`GET /agent/product/library`). When absent the projection is
      *  explicitly unavailable rather than fabricated. */
     productLibrary?: () => Promise<ReadonlyArray<LibraryAssetSummary>>;
+    /** Persists a completed product Task's retained Program into this
+     * workspace's DSL library. */
+    productSaveAutomation?: AgentProgramSaver;
     /** Default provider/model/executionMode for the product task composer. The
      *  product surface is provider-agnostic and resolves a started task from
      *  these workspace-owned defaults. Supplied by workspace/factory.ts from the
@@ -67,6 +71,7 @@ export type WorkspaceAgentServiceDeps = {
      *  config); when unconfigured the Product start surface truthfully errors
      *  with ERR_BAD_ARGS rather than fabricating a model choice. */
     productDefaults?: Readonly<{provider: string; model: string; executionMode?: AgentExecutionMode}>;
+    continuationRestorer?: ContinuationRestorer;
 };
 
 export const createWorkspaceAgentService = (deps: WorkspaceAgentServiceDeps): WorkspaceAgentService => {
@@ -83,6 +88,7 @@ export const createWorkspaceAgentService = (deps: WorkspaceAgentServiceDeps): Wo
         storage,
         log: deps.log,
         interactionPolicy: deps.interaction,
+        continuationRestorer: deps.continuationRestorer,
     });
     const security = createAgentServiceSecurity(deps.security);
     if (deps.retention) {
@@ -93,6 +99,7 @@ export const createWorkspaceAgentService = (deps: WorkspaceAgentServiceDeps): Wo
         workspace: deps.workspaceName,
         ...(deps.productDefaults === undefined ? {} : {defaults: deps.productDefaults}),
         ...(deps.productLibrary === undefined ? {} : {library: deps.productLibrary}),
+        ...(deps.productSaveAutomation === undefined ? {} : {saveAutomation: deps.productSaveAutomation}),
     });
 
     return {
@@ -108,6 +115,7 @@ export const createWorkspaceAgentService = (deps: WorkspaceAgentServiceDeps): Wo
             if (status === 'starting') {throw new Error('agent service is already starting');}
             status = 'starting';
             try {
+                await sessions.ready();
                 if (deps.fixedPort !== undefined && deps.fixedPort > 0) {
                     port = deps.fixedPort;
                     portReserved = false;

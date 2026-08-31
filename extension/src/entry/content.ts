@@ -396,7 +396,6 @@ const isProductDevMode = async (): Promise<boolean> => {
     let consumeActionEvent: ((action: ActionShape) => void) | null = null;
     let annotatorHandle: AnnotatorHandle | null = null;
     void (async () => {
-        const { mountFloatingUI } = await loadFloatingUI();
         const { MSG } = await loadProtocol();
         const { tabName, workspaceName } = await ensureToken();
         bindReportOnUrlChange();
@@ -498,6 +497,7 @@ const isProductDevMode = async (): Promise<boolean> => {
         const devMode = await isProductDevMode();
         if (devMode) {
             // Legacy debug panel: the old developer surface, explicitly opted in.
+            const { mountFloatingUI } = await loadFloatingUI();
             uiHandle = mountFloatingUI({
                 tabName,
                 workspaceName,

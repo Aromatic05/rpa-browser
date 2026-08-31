@@ -8,7 +8,7 @@ import {createWorkspaceActivityReservation} from '../../../../src/agent/product/
 import type {ProductInteractionCard} from '../../../../src/agent/product/types';
 import type {ModelRequestedInteraction} from '../../../../src/agent/interaction/contracts';
 import type {AgentRunResult} from '../../../../src/agent/execution/types';
-import {makeRequest, makeResult} from '../service/session/helpers';
+import {flush, makeRequest, makeResult} from '../service/session/helpers';
 
 const approvalPause = {reason: 'barrier', continuationId: 'cont-1', stepName: 'browser.submit', risk: 'irreversible'} as const;
 
@@ -366,4 +366,39 @@ test('startTask requires a provider/model default and rejects empty prompts', ()
         () => controller.startTask({prompt: '   ', provider: 'p', model: 'm'}),
         (error: unknown) => error instanceof ProductCommandError && error.code === 'ERR_BAD_ARGS',
     );
+});
+
+test('a completed Program remains save-eligible and Save Automation persists the executed source', async () => {
+    const manager = createSessionManager({
+        runner: {
+            run: async () => makeResult({
+                programs: [{
+                    source: 'output result = "ok"',
+                    materializedSource: 'output result = "ok"',
+                    input: {},
+                    status: 'completed',
+                }],
+            }),
+        },
+    });
+    const saves: Array<{name: string; source: string}> = [];
+    const controller = createProductController({
+        manager,
+        workspace: 'ws-save',
+        defaults: {provider: 'test', model: 'model'},
+        saveAutomation: async (request) => {
+            saves.push({name: request.name, source: request.source});
+            return {status: 'saved', name: request.name, artifactRevision: 'rev-1'};
+        },
+    });
+
+    const started = controller.startTask({prompt: 'make a reusable automation'});
+    await flush();
+    const completed = controller.taskView(started.taskId)!;
+    assert.equal(completed.status, 'completed');
+    assert.equal(completed.result?.saveEligible, true);
+
+    const saved = await controller.saveAutomation({taskId: started.taskId, name: 'order-flow'});
+    assert.deepEqual(saved, {saved: true, name: 'order-flow'});
+    assert.deepEqual(saves, [{name: 'order-flow', source: 'output result = "ok"'}]);
 });

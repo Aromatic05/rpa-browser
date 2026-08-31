@@ -691,13 +691,12 @@ await log('router snapshot restores tab identity without reopening existing tabs
     assert.equal(secondSent.some((action) => action.type === ACTION_TYPES.TAB_OPENED), false);
 });
 
-await log('source guard: content avoids legacy tab.init while start_extension owns new-tab binding', async () => {
+await log('source guard: content and newtab avoid legacy lifecycle publication', async () => {
     const contentSrc = fs.readFileSync(new URL('../content/token_bridge.ts', import.meta.url), 'utf8');
     const contentEntrySrc = fs.readFileSync(new URL('../entry/content.ts', import.meta.url), 'utf8');
-    const startSrc = fs.readFileSync(new URL('../../../start_extension/src/entry/newtab.ts', import.meta.url), 'utf8');
-    const startManifest = JSON.parse(
-        fs.readFileSync(new URL('../../../start_extension/manifest.json', import.meta.url), 'utf8'),
-    );
+    const startSrc = fs.readFileSync(new URL('../start/newtab.ts', import.meta.url), 'utf8');
+    const newtabHtml = fs.readFileSync(new URL('../../newtab.html', import.meta.url), 'utf8');
+    const mainManifest = JSON.parse(fs.readFileSync(new URL('../../manifest.json', import.meta.url), 'utf8'));
     assert.equal(contentSrc.includes("type: 'tab.init'"), false);
     assert.equal(contentEntrySrc.includes("searchParams.get('rpaRuntimeBootstrap') === '1'"), true);
     assert.equal(contentEntrySrc.includes("type: 'RPA_RUNTIME_BOOTSTRAP_WAKE'"), true);
@@ -705,8 +704,11 @@ await log('source guard: content avoids legacy tab.init while start_extension ow
     assert.equal(startSrc.includes("sendAction<BoundTokenData>('tab.opened'"), false);
     assert.equal(startSrc.includes("sendAction<RuntimeTabListData>('tab.list'"), true);
     assert.equal(startSrc.includes('chrome.runtime.sendMessage'), false);
-    assert.equal(startManifest.content_security_policy.extension_pages.includes('ws://127.0.0.1:*'), true);
-    assert.equal(startManifest.content_security_policy.extension_pages.includes(':17333'), false);
+    assert.equal(mainManifest.chrome_url_overrides.newtab, 'newtab.html');
+    assert.equal(newtabHtml.includes('src="./start/newtab.js"'), true);
+    assert.equal(mainManifest.content_security_policy.extension_pages.includes('ws://127.0.0.1:*'), true);
+    assert.equal(mainManifest.content_security_policy.extension_pages.includes('ws://localhost:*'), true);
+    assert.equal(mainManifest.content_security_policy.extension_pages.includes(':17333'), false);
 });
 
 await log('MSG.PRODUCT travels as one agent.product Action over the session WS without base-URL config', async () => {

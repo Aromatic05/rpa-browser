@@ -60,6 +60,55 @@ test('start returns a running snapshot before the runner settles', async () => {
     assert.equal(manager.status(snapshot.sessionId)?.state, 'completed');
 });
 
+test('user pause is cooperative, resumable, and keeps the same task reservation', async () => {
+    const entered = deferred<void>();
+    let runCalls = 0;
+    let resumeCalls = 0;
+    const manager = createSessionManager({
+        runner: {
+            run: async (_request, control) => {
+                runCalls += 1;
+                entered.resolve();
+                while (control?.pauseRequested?.() !== true) {
+                    await new Promise((resolve) => setTimeout(resolve, 1));
+                }
+                return makeResult({
+                    pausedByUser: true,
+                    continuation: {
+                        resume: async () => {
+                            resumeCalls += 1;
+                            return makeResult({text: 'resumed'});
+                        },
+                    },
+                });
+            },
+        },
+    });
+
+    const snapshot = manager.start(makeRequest());
+    await entered.promise;
+    assert.equal(manager.pause(snapshot.sessionId)?.state, 'running', 'pause request is cooperative until a safe boundary');
+
+    for (let index = 0; index < 20 && manager.status(snapshot.sessionId)?.state !== 'paused'; index += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 2));
+    }
+    const paused = manager.status(snapshot.sessionId);
+    assert.equal(paused?.state, 'paused');
+    assert.equal(paused?.resumable, true);
+    assert.equal(paused?.result?.pausedByUser, true);
+    assert.equal(manager.activityReservation().owner, 'task', 'paused task keeps its workspace reservation');
+
+    const resumed = await manager.resume(snapshot.sessionId);
+    assert.equal(resumed?.state, 'running', 'resume returns immediately while retained execution continues');
+    assert.equal(runCalls, 1, 'resume never creates a second runner invocation');
+    for (let index = 0; index < 20 && manager.status(snapshot.sessionId)?.state !== 'completed'; index += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 2));
+    }
+    assert.equal(manager.status(snapshot.sessionId)?.state, 'completed');
+    assert.equal(resumeCalls, 1, 'resume uses the retained continuation');
+    assert.equal(manager.activityReservation().owner, 'none', 'completion releases the reservation');
+});
+
 test('cancel aborts a running session and marks it cancelled', async () => {
     const pending = deferred<AgentRunResult>();
     const manager = createSessionManager({runner: {run: () => pending.promise}});

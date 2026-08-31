@@ -1,4 +1,4 @@
-import { mkdir, readFile, unlink, writeFile } from 'fs/promises';
+import { copyFile, mkdir, readFile, unlink, writeFile } from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import {buildIdToManifestVersion} from '../scripts/extension_version.mjs';
@@ -18,6 +18,7 @@ await writeFile(
     `${JSON.stringify({buildId, manifestVersion, builtAt: new Date().toISOString()}, null, 2)}\n`,
     'utf8',
 );
+await copyFile(path.join(root, 'newtab.html'), path.join(distDir, 'newtab.html'));
 
 const serviceWorkerPath = path.join(distDir, 'entry', 'sw.js');
 const serviceWorker = await readFile(serviceWorkerPath, 'utf8');

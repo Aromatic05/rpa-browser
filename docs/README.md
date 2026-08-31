@@ -44,7 +44,7 @@
 - `Architecture/WorkflowLifecycle.md`
 - `Architecture/RuntimeArchitecture.md`
 - `Architecture/Extension.md`
-- `Architecture/StartExtension.md`
+- `Architecture/ExtensionStartPage.md`
 - `Architecture/MCPIntegration.md`
 
 ### Development

@@ -94,15 +94,7 @@ export const renderLibrarySurface = (root: HTMLElement, ctx: SurfaceContext): vo
         demonstrations.append(
             libraryItem(
                 demonstration.name,
-                `${String(demonstration.stepCount)} actions · replayable${healthMarker(demonstration.health)}`,
-                button(
-                    'Replay',
-                    () => {
-                        ctx.commands.replayDemonstration({ name: demonstration.name });
-                    },
-                    'ghost',
-                    { disabled: mutationsDisabled || workspaceBusy, dataAction: 'replay' },
-                ),
+                `${String(demonstration.stepCount)} recorded actions${healthMarker(demonstration.health)}`,
             ),
         );
     }
@@ -141,6 +133,6 @@ export const renderLibrarySurface = (root: HTMLElement, ctx: SurfaceContext): vo
     root.append(pageKnowledge);
 
     if (workspaceBusy) {
-        root.append(card([hint('The workspace is in use. Replay and editing are paused.')]));
+        root.append(card([hint('The workspace is in use. Editing is paused.')]));
     }
 };

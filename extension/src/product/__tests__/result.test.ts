@@ -49,7 +49,13 @@ test('completed result shows output, effect count and Save Automation only when 
         assert.match(text, /Effects applied: 3/);
 
         (fixture.shadow.querySelector('[data-rpa-product-action="save-automation"]') as HTMLButtonElement).click();
-        assert.equal(fixture.calls.some((call) => call.name === 'saveAutomation'), true);
+        const name = fixture.shadow.querySelector('[data-rpa-product-field="automation-name"]') as HTMLInputElement;
+        assert.ok(name, 'saving opens an explicit naming step instead of firing a no-op');
+        name.value = 'Place order automation';
+        name.dispatchEvent(new fixture.dom.window.Event('input', {bubbles: true}));
+        (fixture.shadow.querySelector('[data-rpa-product-action="confirm-save-automation"]') as HTMLButtonElement).click();
+        const saveCall = fixture.calls.find((call) => call.name === 'saveAutomation');
+        assert.deepEqual(saveCall?.args, ['Place order automation']);
 
         (fixture.shadow.querySelector('[data-rpa-product-action="new-task"]') as HTMLButtonElement).click();
         assert.equal(fixture.calls.some((call) => call.name === 'newTask'), true);
@@ -100,7 +106,7 @@ test('failed result points to Developer mode instead of dumping the raw report',
     }
 });
 
-test('History lists terminal tasks with the active task pinned on top', () => {
+test('History lists terminal tasks without a fake click affordance', () => {
     const view: WorkspaceProductView = {
         ...libraryView(),
         activeTask: runningTask({ status: 'waiting_for_user' }),
@@ -119,9 +125,11 @@ test('History lists terminal tasks with the active task pinned on top', () => {
 
         const entry = fixture.shadow.querySelector('[data-rpa-product-history-entry]') as HTMLElement;
         entry.click();
-        const selectCall = fixture.calls.find((call) => call.name === 'selectHistoryEntry');
-        assert.ok(selectCall);
-        assert.equal(typeof selectCall.args[0], 'string');
+        assert.equal(
+            fixture.calls.some((call) => call.name === 'selectHistoryEntry'),
+            false,
+            'history stays read-only until a real historical task detail route exists',
+        );
     } finally {
         fixture.cleanup();
     }
