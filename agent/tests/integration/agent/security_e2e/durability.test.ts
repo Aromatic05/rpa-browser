@@ -139,7 +139,7 @@ test('a cancelled durable session survives a service restart with no raw secret'
     }
 });
 
-test('a paused durable session is explicitly non-resumable after a service restart', async () => {
+test('a paused durable approval barrier is restored and resumes exactly once after service restart', async () => {
     const dataDir = mkdtempDir('agent-sec-durable-paused-');
     const first = await buildSecurityHarness({
         portBegin: 30800,
@@ -166,19 +166,24 @@ test('a paused durable session is explicitly non-resumable after a service resta
             interactions: unknown[];
         };
         assert.equal(recovered.state, 'paused');
-        assert.equal(recovered.resumable, false, 'paused sessions must be explicitly non-resumable after restart');
-        assert.deepEqual(recovered.interactions, [], 'the retained interactions must not resurrect across a restart');
+        assert.equal(recovered.resumable, true, 'a durable approval barrier remains resumable after restart');
 
         const listed = await fetch(`${baseUrl}/agent/sessions/${sessionId}/interactions`);
-        assert.deepEqual((await listed.json() as {interactions: unknown[]}).interactions, []);
+        const interactions = (await listed.json() as {interactions: Array<{id: string; revision: number; kind: string; status: string}>}).interactions;
+        assert.equal(interactions.length, 1);
+        assert.equal(interactions[0].kind, 'approval');
+        assert.equal(interactions[0].status, 'pending');
 
-        const approve = await fetch(`${baseUrl}/agent/sessions/${sessionId}/interactions/any/approve`, {
+        const approve = await fetch(`${baseUrl}/agent/sessions/${sessionId}/interactions/${interactions[0].id}/approve`, {
             method: 'POST',
             headers: {'content-type': 'application/json'},
-            body: JSON.stringify({revision: 0, approvedBy: 'ops-1'}),
+            body: JSON.stringify({revision: interactions[0].revision, approvedBy: 'ops-1'}),
         });
-        assert.equal(approve.status, 404, 'no retained transaction may resume across the restart boundary');
-        assert.deepEqual(second.calls, [], 'no effect may execute across the restart boundary');
+        assert.equal(approve.status, 200);
+        const approved = await approve.json() as {session: {state: string}};
+        assert.equal(approved.session.state, 'completed');
+        assert.deepEqual(second.calls, [{name: 'browser.click', args: {nodeId: 'secret-field'}}],
+            'restored approval must cross the retained barrier exactly once');
         assert.deepEqual(scanForString(dataDir, SECURITY_CANARY), []);
     } finally {
         await second.harness.stop();

@@ -1,5 +1,6 @@
 import type {AgentExecutionMode, AgentRunRequest} from '../execution/types';
 import type {AgentProgramSaver} from '../execution/program/persistence';
+import type {AgentModelSettings} from '../model/settings';
 import type {GuidanceMode, InteractionRecord} from '../interaction/contracts';
 import type {LibraryAssetSummary} from '../library/contracts';
 import type {SessionManager} from '../service/session/manager';
@@ -14,10 +15,12 @@ import type {
     ProductBeginAuthoringInput,
     ProductBeginGuidanceInput,
     ProductChooseRecoveryInput,
+    ProductConfigureModelInput,
     ProductDenyInput,
     ProductEndAuthoringInput,
     ProductEventsResponse,
     ProductPauseTaskInput,
+    ProductModelSetupStatus,
     ProductResumeTaskInput,
     ProductReturnControlInput,
     ProductSaveAutomationInput,
@@ -57,6 +60,7 @@ export type ProductControllerOptions = Readonly<{
     manager: SessionManager;
     workspace: string;
     defaults?: Readonly<{provider: string; model: string; executionMode?: AgentExecutionMode}>;
+    modelSettings?: AgentModelSettings;
     /** Real committed Library summaries; projected through the bounded product
      *  adapter. When absent, the Library endpoint truthfully reports unavailable. */
     library?: () => Promise<ReadonlyArray<LibraryAssetSummary>>;
@@ -71,6 +75,8 @@ export type ProductTaskList = Readonly<{
 
 export type ProductController = Readonly<{
     workspaceView: () => WorkspaceProductView;
+    modelStatus: () => ProductModelSetupStatus;
+    configureModel: (input: ProductConfigureModelInput) => Promise<ProductModelSetupStatus>;
     startTask: (input: ProductStartTaskInput) => AgentTaskView;
     taskView: (taskId: string) => AgentTaskView | null;
     listTasks: () => ProductTaskList;
@@ -303,7 +309,8 @@ export const createProductController = (options: ProductControllerOptions): Prod
         const interactions = manager.listInteractions(taskId) ?? [];
         const saveEligible = options.saveAutomation !== undefined
             && snapshot.state === 'completed'
-            && (snapshot.result?.programs ?? []).some((program) => program.status === 'completed');
+            && (snapshot.result?.programs ?? []).some((program) =>
+                program.status === 'completed' && Object.keys(program.input).length === 0);
         return projectAgentTaskView({
             taskId,
             snapshot,
@@ -322,8 +329,9 @@ export const createProductController = (options: ProductControllerOptions): Prod
     };
 
     const requestWithDefaults = (input: ProductStartTaskInput): AgentRunRequest => {
-        const provider = input.provider ?? options.defaults?.provider;
-        const model = input.model ?? options.defaults?.model;
+        const dynamicDefaults = options.modelSettings?.defaults();
+        const provider = input.provider ?? dynamicDefaults?.provider ?? options.defaults?.provider;
+        const model = input.model ?? dynamicDefaults?.model ?? options.defaults?.model;
         if (!provider || !model) {
             throw new ProductCommandError('ERR_BAD_ARGS', 'provider/model defaults are not configured for the product task composer');
         }
@@ -342,11 +350,14 @@ export const createProductController = (options: ProductControllerOptions): Prod
     const workspaceView = (): WorkspaceProductView => {
         sync();
         const reservation = manager.activityReservation();
+        const staticModelConfigured = Boolean(options.defaults?.provider && options.defaults.model);
         const activeView = reservation.owner === 'task' && reservation.ownerTaskId !== undefined
             ? viewFor(reservation.ownerTaskId)
             : undefined;
         return Object.freeze({
             workspace: options.workspace,
+            modelConfigured: options.modelSettings?.status().configured
+                ?? staticModelConfigured,
             reservation: {
                 owner: reservation.owner,
                 ...(reservation.ownerTaskId === undefined ? {} : {ownerTaskId: reservation.ownerTaskId}),
@@ -359,6 +370,25 @@ export const createProductController = (options: ProductControllerOptions): Prod
 
     return {
         workspaceView,
+        modelStatus: () => options.modelSettings?.status() ?? Object.freeze({
+            configured: Boolean(options.defaults?.provider && options.defaults.model),
+            credentialConfigured: false,
+            ...(options.defaults?.provider ? {provider: options.defaults.provider} : {}),
+            ...(options.defaults?.model ? {model: options.defaults.model} : {}),
+        }),
+        configureModel: async (input) => {
+            if (!options.modelSettings) {
+                throw new ProductCommandError('ERR_BAD_STATE', 'runtime model setup is not available');
+            }
+            try {
+                return await options.modelSettings.configure(input);
+            } catch (error) {
+                throw new ProductCommandError(
+                    'ERR_BAD_ARGS',
+                    error instanceof Error ? error.message : 'model setup failed',
+                );
+            }
+        },
         startTask: (input) => {
             if (input.prompt.trim().length === 0) {
                 throw new ProductCommandError('ERR_BAD_ARGS', 'prompt must not be empty');
@@ -429,9 +459,12 @@ export const createProductController = (options: ProductControllerOptions): Prod
             }
             const program = [...(snapshot.result.programs ?? [])]
                 .reverse()
-                .find((candidate) => candidate.status === 'completed');
+                .find((candidate) => candidate.status === 'completed' && Object.keys(candidate.input).length === 0);
             if (!program) {
-                throw new ProductCommandError('ERR_BAD_STATE', 'completed task has no reusable Program to save');
+                throw new ProductCommandError(
+                    'ERR_BAD_STATE',
+                    'completed task has no directly runnable zero-input Program to save',
+                );
             }
             const saved = await options.saveAutomation({
                 name,

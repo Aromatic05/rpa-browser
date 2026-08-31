@@ -25,12 +25,19 @@ const OUTCOME_META: Record<TaskOutcome, { glyph: string; label: string; tone: st
     interrupted: { glyph: '⏸', label: 'Task interrupted', tone: 'info' },
 };
 
+const failedTaskCopy = (task: AgentTaskView): string => {
+    if (task.error?.code === 'ERR_AGENT_MODEL_REQUEST_FAILED') {
+        return 'The model service could not complete this request. Check Model settings or service availability, then try again.';
+    }
+    return task.error?.message ?? 'The task failed.';
+};
+
 const primaryCopy = (task: AgentTaskView, outcome: TaskOutcome): Node => {
     if (outcome === 'completed') {
         return task.result?.output ? muted(`Output: ${task.result.output}`) : muted('The task finished successfully.');
     }
     if (outcome === 'failed') {
-        const wrapper = el('div', undefined, [muted(task.error?.message ?? 'The task failed.')]);
+        const wrapper = el('div', undefined, [muted(failedTaskCopy(task))]);
         wrapper.append(hint('See Developer mode for the full report.'));
         return wrapper;
     }

@@ -43,6 +43,23 @@ test('Enter in the composer starts the task', () => {
     }
 });
 
+test('an unconfigured model is a first-run setup state, not a fake service outage', () => {
+    const fixture = mount({...idleView(), modelConfigured: false});
+    try {
+        openPanel(fixture);
+        const textarea = fixture.shadow.querySelector('[data-rpa-product-composer]') as HTMLTextAreaElement;
+        const start = fixture.shadow.querySelector('[data-rpa-product-action="start"]') as HTMLButtonElement;
+        assert.equal(textarea.disabled, true);
+        assert.equal(start.disabled, true);
+        assert.match(bodyText(fixture), /Model setup is required/);
+        assert.equal(bodyText(fixture).includes('Agent service is not reachable'), false);
+        assert.ok(fixture.shadow.querySelector('[data-rpa-product-action="teach"]'));
+        assert.ok(fixture.shadow.querySelector('[data-rpa-product-action="annotate"]'));
+    } finally {
+        fixture.cleanup();
+    }
+});
+
 test('Teach and Annotate are first-class entry cards from Home', () => {
     const fixture = mount(idleView());
     try {

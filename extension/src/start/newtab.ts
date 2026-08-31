@@ -10,6 +10,14 @@ const connectionPillEl = document.getElementById('connectionPill');
 const restoreStatusEl = document.getElementById('restoreStatus');
 const restoreListEl = document.getElementById('restoreList');
 const refreshRestoreBtn = document.getElementById('refreshRestore');
+const modelSetupEl = document.getElementById('modelSetup');
+const modelProviderEl = document.getElementById('modelProvider') as HTMLInputElement | null;
+const modelNameEl = document.getElementById('modelName') as HTMLInputElement | null;
+const modelBaseUrlEl = document.getElementById('modelBaseUrl') as HTMLInputElement | null;
+const modelApiKeyEl = document.getElementById('modelApiKey') as HTMLInputElement | null;
+const modelSetupStatusEl = document.getElementById('modelSetupStatus');
+const saveModelSetupBtn = document.getElementById('saveModelSetup') as HTMLButtonElement | null;
+const modelSettingsBtn = document.getElementById('modelSettingsBtn') as HTMLButtonElement | null;
 const log = (...args: unknown[]) => { console.warn('[RPA:newtab]', ...args); };
 
 declare global {
@@ -34,24 +42,26 @@ type WsActionEnvelope = {
     payload?: unknown;
 };
 
-type WorkflowListItem = {
-    workflowName: string;
-    entryDslName?: string | null;
-    runnable?: boolean;
+type AutomationItem = {
+    name: string;
+    description?: string;
+    status?: 'ready' | 'needs_review' | 'broken' | 'unknown';
 };
 
-type WorkflowListData = {
-    workflows?: WorkflowListItem[];
+type ProductLibrarySummary = {
+    automations?: AutomationItem[];
 };
 
-type WorkflowOpenData = {
-    workspaceName?: string;
-    tabName?: string;
-};
-
-type WorkflowRunData = {
+type AutomationRunData = {
     ok?: boolean;
     output?: unknown;
+};
+type ModelSetupStatus = {
+    configured?: boolean;
+    credentialConfigured?: boolean;
+    provider?: string;
+    model?: string;
+    baseUrl?: string;
 };
 type ActionScope = {
     sessionWorkspace?: boolean;
@@ -73,10 +83,17 @@ type RuntimeTabListData = {
 };
 type BoundScope = { tabName: string; workspaceName: string };
 type SessionConfig = { workspaceName: string; wsPort: number };
+let boundScope: BoundScope | null = null;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
     typeof value === 'object' && value !== null;
 const asString = (value: unknown): string | undefined => (typeof value === 'string' ? value : undefined);
+const payloadForLog = (type: string, payload: Record<string, unknown>): Record<string, unknown> => {
+    if (type !== 'agent.product' || payload.verb !== 'configureModel' || !Object.hasOwn(payload, 'apiKey')) {
+        return payload;
+    }
+    return {...payload, apiKey: '[redacted]'};
+};
 const readSessionConfigFromUrl = (): SessionConfig | null => {
     const params = new URLSearchParams(location.search);
     const workspaceName = (params.get('rpaWorkspaceName') ?? '').trim();
@@ -141,6 +158,29 @@ const setStatus = (text: string, ok = false) => {
         wsStatusEl.classList.toggle('ok', ok);
     }
     connectionPillEl?.classList.toggle('ok', ok);
+};
+
+const offlineCopy = 'Agent service is offline. Start RPA Browser, then retry.';
+
+const applyOfflineState = (message: string): void => {
+    boundScope = null;
+    window.__rpa_start_error = message;
+    setStatus('Offline');
+    if (modelSetupEl) {modelSetupEl.hidden = true;}
+    if (modelSetupStatusEl) {modelSetupStatusEl.textContent = offlineCopy;}
+    if (restoreStatusEl) {restoreStatusEl.textContent = offlineCopy;}
+    renderAutomationList([]);
+    if (refreshRestoreBtn) {refreshRestoreBtn.textContent = 'Retry';}
+    if (modelSettingsBtn) {modelSettingsBtn.disabled = true;}
+    if (saveModelSetupBtn) {saveModelSetupBtn.disabled = true;}
+};
+
+const applyConnectedState = (): void => {
+    window.__rpa_start_error = undefined;
+    setStatus('Connected', true);
+    if (refreshRestoreBtn) {refreshRestoreBtn.textContent = 'Refresh';}
+    if (modelSettingsBtn) {modelSettingsBtn.disabled = false;}
+    if (saveModelSetupBtn) {saveModelSetupBtn.disabled = false;}
 };
 
 const applyTabName = (tabName: string) => {
@@ -213,13 +253,16 @@ const ensureBoundToken = async (): Promise<BoundScope> => {
 };
 
 const sendHeartbeat = async (scope: BoundScope): Promise<void> => {
-    await sendAction('tab.ping', {
+    const result = await sendAction('tab.ping', {
         tabName: scope.tabName,
         source: 'extension.newtab',
         url: location.href,
         title: document.title,
         at: Date.now(),
     }, {sessionWorkspace: true});
+    if (!result.ok) {
+        throw new Error(result.error?.message ?? 'Agent heartbeat failed');
+    }
 };
 
 const sendAction = async <TData = unknown>(
@@ -238,13 +281,13 @@ const sendAction = async <TData = unknown>(
             resolve(result);
         };
         const timeout = setTimeout(() => {
-            log('action.timeout', { type, requestId, payload, scope });
+            log('action.timeout', { type, requestId, payload: payloadForLog(type, payload), scope });
             done({ ok: false, error: { message: 'ws action timeout' } });
         }, 5000);
         readSessionConfig()
             .then((sessionConfig) => {
                 ws = new WebSocket(`ws://127.0.0.1:${String(sessionConfig.wsPort)}`);
-                log('action.ws.connecting', { type, requestId, payload });
+                log('action.ws.connecting', { type, requestId, payload: payloadForLog(type, payload) });
                 ws.addEventListener('open', () => {
                     log('action.ws.open', { type, requestId });
                     ws?.send(
@@ -282,19 +325,85 @@ const sendAction = async <TData = unknown>(
             });
     });
 
-const runWorkflow = async (workflowName: string) => {
-    if (restoreStatusEl) {
-        restoreStatusEl.textContent = `Running ${workflowName}…`;
+const applyModelStatus = (status: ModelSetupStatus, showConfigured = false): boolean => {
+    const configured = status.configured === true;
+    if (modelProviderEl && status.provider) {modelProviderEl.value = status.provider;}
+    if (modelNameEl && status.model) {modelNameEl.value = status.model;}
+    if (modelBaseUrlEl && status.baseUrl) {modelBaseUrlEl.value = status.baseUrl;}
+    if (modelApiKeyEl) {
+        modelApiKeyEl.value = '';
+        modelApiKeyEl.placeholder = status.credentialConfigured === true
+            ? 'Leave blank to keep the current key'
+            : 'Required for first setup';
     }
-    const opened = await sendAction<WorkflowOpenData>('workflow.open', {workflowName});
-    const workspaceName = opened.data?.workspaceName;
-    if (!opened.ok || !workspaceName) {
-        if (restoreStatusEl) {
-            restoreStatusEl.textContent = `Could not run: ${opened.error?.message ?? 'failed to load automation'}`;
+    if (modelSetupEl) {modelSetupEl.hidden = configured && !showConfigured;}
+    if (modelSetupStatusEl) {
+        modelSetupStatusEl.textContent = configured
+            ? 'Model is ready. Save only if you want to change these settings.'
+            : 'Model setup is required before starting agent tasks.';
+    }
+    return configured;
+};
+
+const refreshModelStatus = async (scope: BoundScope, showConfigured = false): Promise<boolean> => {
+    const result = await sendAction<ModelSetupStatus>(
+        'agent.product',
+        {verb: 'modelStatus'},
+        {workspaceName: scope.workspaceName},
+    );
+    if (!result.ok || !result.data) {
+        if (modelSetupEl) {modelSetupEl.hidden = false;}
+        if (modelSetupStatusEl) {
+            modelSetupStatusEl.textContent = `Could not read model setup: ${result.error?.message ?? 'unknown error'}`;
         }
+        return false;
+    }
+    return applyModelStatus(result.data, showConfigured);
+};
+
+const saveModelSetup = async (): Promise<void> => {
+    const scope = boundScope;
+    if (!scope || !modelProviderEl || !modelNameEl || !modelBaseUrlEl || !modelApiKeyEl) {return;}
+    const provider = modelProviderEl.value.trim();
+    const model = modelNameEl.value.trim();
+    const baseUrl = modelBaseUrlEl.value.trim();
+    if (!provider || !model || !baseUrl) {
+        if (modelSetupStatusEl) {modelSetupStatusEl.textContent = 'Provider, model, and base URL are required.';}
         return;
     }
-    const result = await sendAction<WorkflowRunData>('dsl.run', {}, {workspaceName});
+    if (saveModelSetupBtn) {saveModelSetupBtn.disabled = true;}
+    if (modelSetupStatusEl) {modelSetupStatusEl.textContent = 'Saving setup…';}
+    try {
+        const result = await sendAction<ModelSetupStatus>(
+            'agent.product',
+            {
+                verb: 'configureModel',
+                provider,
+                model,
+                baseUrl,
+                ...(modelApiKeyEl.value.length > 0 ? {apiKey: modelApiKeyEl.value} : {}),
+            },
+            {workspaceName: scope.workspaceName},
+        );
+        if (!result.ok || !result.data) {
+            if (modelSetupStatusEl) {modelSetupStatusEl.textContent = `Setup failed: ${result.error?.message ?? 'unknown error'}`;}
+            return;
+        }
+        applyModelStatus(result.data, false);
+    } finally {
+        if (saveModelSetupBtn) {saveModelSetupBtn.disabled = false;}
+    }
+};
+
+const runAutomation = async (automationName: string) => {
+    if (restoreStatusEl) {
+        restoreStatusEl.textContent = `Running ${automationName}…`;
+    }
+    const result = await sendAction<AutomationRunData>(
+        'dsl.run',
+        {dslName: automationName},
+        {sessionWorkspace: true},
+    );
     if (!result.ok) {
         if (restoreStatusEl) {
             restoreStatusEl.textContent = `Run failed: ${result.error?.message ?? 'unknown error'}`;
@@ -302,35 +411,46 @@ const runWorkflow = async (workflowName: string) => {
         return;
     }
     if (restoreStatusEl) {
-        restoreStatusEl.textContent = `${workflowName} completed`;
+        restoreStatusEl.textContent = `${automationName} completed`;
     }
 };
 
-const renderWorkflowList = (items: WorkflowListItem[]) => {
+const statusLabel = (status: AutomationItem['status']): string => {
+    if (status === 'ready') {return 'Ready to run';}
+    if (status === 'needs_review') {return 'Needs review';}
+    if (status === 'broken') {return 'Broken dependency';}
+    return 'Not checked yet';
+};
+
+const renderAutomationList = (items: AutomationItem[]) => {
     if (!restoreListEl) {return;}
     restoreListEl.innerHTML = '';
-    const runnableItems = items
-        .filter((item) => item.runnable === true)
-        .sort((left, right) => left.workflowName.localeCompare(right.workflowName));
-    if (!runnableItems.length) {
+    const automations = [...items].sort((left, right) => left.name.localeCompare(right.name));
+    if (!automations.length) {
         const empty = document.createElement('div');
         empty.className = 'empty';
-        empty.textContent = 'No runnable automations yet.';
+        empty.textContent = 'No saved automations yet.';
         restoreListEl.appendChild(empty);
         return;
     }
-    runnableItems.forEach((item) => {
+    automations.forEach((item) => {
         const row = document.createElement('div');
         row.className = 'restore-item';
 
         const meta = document.createElement('div');
         meta.className = 'restore-meta';
         const title = document.createElement('strong');
-        title.textContent = item.workflowName;
+        title.textContent = item.name;
         const entry = document.createElement('div');
-        entry.className = 'state-ready';
-        entry.textContent = 'Ready to run';
-        meta.append(title, entry);
+        if (item.status === 'ready') {entry.className = 'state-ready';}
+        entry.textContent = statusLabel(item.status);
+        meta.append(title);
+        if (item.description && item.description !== item.name) {
+            const description = document.createElement('div');
+            description.textContent = item.description;
+            meta.append(description);
+        }
+        meta.append(entry);
 
         const actions = document.createElement('div');
         actions.className = 'row';
@@ -338,8 +458,9 @@ const renderWorkflowList = (items: WorkflowListItem[]) => {
         const runBtn = document.createElement('button');
         runBtn.className = 'primary';
         runBtn.textContent = 'Run';
+        runBtn.disabled = item.status === 'broken';
         runBtn.addEventListener('click', () => {
-            void runWorkflow(item.workflowName);
+            void runAutomation(item.name);
         });
         actions.append(runBtn);
         row.append(meta, actions);
@@ -347,42 +468,70 @@ const renderWorkflowList = (items: WorkflowListItem[]) => {
     });
 };
 
-const refreshWorkflowList = async () => {
+const refreshAutomationList = async () => {
     if (restoreStatusEl) {restoreStatusEl.textContent = 'Loading…';}
-    const result = await sendAction<WorkflowListData>('workflow.list');
+    const result = await sendAction<ProductLibrarySummary>(
+        'agent.product',
+        {verb: 'librarySummary'},
+        {sessionWorkspace: true},
+    );
     if (!result.ok) {
         if (restoreStatusEl) {
             const errorMessage = result.error?.message ?? 'unknown';
             restoreStatusEl.textContent = `Load failed: ${errorMessage}`;
         }
-        renderWorkflowList([]);
+        renderAutomationList([]);
         return;
     }
-    const workflows = result.data && Array.isArray(result.data.workflows) ? result.data.workflows : [];
-    renderWorkflowList(workflows);
-    const runnableCount = workflows.filter((item) => item.runnable === true).length;
-    if (restoreStatusEl) {restoreStatusEl.textContent = `${String(runnableCount)} ready`;}
+    const automations = result.data && Array.isArray(result.data.automations) ? result.data.automations : [];
+    renderAutomationList(automations);
+    if (restoreStatusEl) {restoreStatusEl.textContent = `${String(automations.length)} saved`;}
+};
+
+const connectAndRefresh = async (): Promise<BoundScope | null> => {
+    setStatus('Connecting…');
+    try {
+        const bound = await ensureBoundToken();
+        boundScope = bound;
+        applyConnectedState();
+        await refreshModelStatus(bound);
+        await refreshAutomationList();
+        return bound;
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        applyOfflineState(message);
+        log('connection.failed', {message});
+        return null;
+    }
 };
 
 void (async () => {
-    try {
-        const bound = await ensureBoundToken();
-        setStatus('Connected', true);
-        await refreshWorkflowList();
-        setInterval(() => {
-            void sendHeartbeat(bound);
-        }, 15_000);
-    } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        window.__rpa_start_error = message;
-        setStatus('Offline');
-        log('token.init.failed', {message});
-        throw error;
-    }
+    await connectAndRefresh();
+    setInterval(() => {
+        void (async () => {
+            if (!boundScope) {
+                await connectAndRefresh();
+                return;
+            }
+            try {
+                await sendHeartbeat(boundScope);
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                applyOfflineState(message);
+                log('heartbeat.failed', {message});
+            }
+        })();
+    }, 15_000);
 })();
 refreshRestoreBtn?.addEventListener('click', () => {
+    void connectAndRefresh();
+});
+modelSettingsBtn?.addEventListener('click', () => {
     void (async () => {
-        await ensureBoundToken();
-        await refreshWorkflowList();
+        const bound = boundScope ?? await connectAndRefresh();
+        if (!bound) {return;}
+        await refreshModelStatus(bound, true);
+        modelSetupEl?.scrollIntoView({behavior: 'smooth', block: 'start'});
     })();
 });
+saveModelSetupBtn?.addEventListener('click', () => {void saveModelSetup();});

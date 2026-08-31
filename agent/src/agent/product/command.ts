@@ -11,6 +11,8 @@ import {ProductCommandError, type ProductController} from './controller';
 
 export type ProductCommand =
     | {verb: 'workspaceView'}
+    | {verb: 'modelStatus'}
+    | {verb: 'configureModel'; provider: string; model: string; baseUrl: string; apiKey?: string}
     | {verb: 'listTasks'}
     | {verb: 'startTask'; prompt: string}
     | {verb: 'taskView'; taskId: string}
@@ -38,6 +40,8 @@ const AUTHORING_OUTCOMES = new Set<string>(['saved', 'discarded']);
  *  exact accepted fields; anything else fails closed. */
 const PRODUCT_COMMAND_FIELDS: Record<ProductCommand['verb'], ReadonlySet<string>> = {
     workspaceView: new Set(['verb']),
+    modelStatus: new Set(['verb']),
+    configureModel: new Set(['verb', 'provider', 'model', 'baseUrl', 'apiKey']),
     listTasks: new Set(['verb']),
     startTask: new Set(['verb', 'prompt']),
     taskView: new Set(['verb', 'taskId']),
@@ -108,6 +112,18 @@ export const parseProductCommand = (value: unknown): ProductCommand => {
     switch (record.verb) {
         case 'workspaceView':
             return {verb: 'workspaceView'};
+        case 'modelStatus':
+            return {verb: 'modelStatus'};
+        case 'configureModel': {
+            const apiKey = optionalText(record, 'apiKey');
+            return {
+                verb: 'configureModel',
+                provider: requireText(record, 'provider'),
+                model: requireText(record, 'model'),
+                baseUrl: requireText(record, 'baseUrl'),
+                ...(apiKey === undefined ? {} : {apiKey}),
+            };
+        }
         case 'listTasks':
             return {verb: 'listTasks'};
         case 'librarySummary':
@@ -215,6 +231,15 @@ export const dispatchProductCommand = async (
     switch (parsed.verb) {
         case 'workspaceView':
             return product.workspaceView();
+        case 'modelStatus':
+            return product.modelStatus();
+        case 'configureModel':
+            return await product.configureModel({
+                provider: parsed.provider,
+                model: parsed.model,
+                baseUrl: parsed.baseUrl,
+                ...(parsed.apiKey === undefined ? {} : {apiKey: parsed.apiKey}),
+            });
         case 'listTasks':
             return product.listTasks();
         case 'startTask':

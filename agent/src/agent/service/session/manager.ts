@@ -57,8 +57,13 @@ const deriveState = (result: AgentRunResult): Exclude<SessionState, 'running'> =
     if (result.pausedByUser) {return 'paused';}
     if (result.requestedInteraction) {return 'paused';}
     const programs = result.programs ?? [];
-    if (programs.some((program) => program.status === 'paused')) {return 'paused';}
-    if (programs.some((program) => program.status === 'failed' || program.status === 'aborted')) {return 'failed';}
+    const latestProgram = programs.at(-1);
+    if (latestProgram?.status === 'paused') {return 'paused';}
+    if (
+        latestProgram?.status === 'failed'
+        || latestProgram?.status === 'aborted'
+        || latestProgram?.status === 'invalid'
+    ) {return 'failed';}
     return 'completed';
 };
 
@@ -92,13 +97,16 @@ const approvalPayload = (result: AgentRunResult, index: number): InteractionReco
         kind: 'approval',
         actionName: stepName ?? `effect ${index}`,
         summary: `program ${index} requests approval before executing${stepName ? ` '${stepName}'` : ' the next effect'}`,
-        risk: 'irreversible',
+        risk: pause?.risk ?? 'unknown',
     };
 };
 
 const isApprovalBarrier = (result: AgentRunResult, index: number): boolean => {
     const pause = (result.programs ?? [])[index]?.pause;
-    return pause?.reason === 'barrier' && pause.risk === 'irreversible';
+    // A Program barrier is already the runtime's explicit commit boundary.
+    // The executor raises it for effects that require human authorization;
+    // leaving any such pause without an interaction creates an orphan pause.
+    return pause?.reason === 'barrier';
 };
 
 const abortable = <T>(promise: Promise<T>, signal: AbortSignal, onAbort: () => Error): Promise<T> =>
@@ -358,7 +366,7 @@ export const createSessionManager = (options: SessionManagerOptions): SessionMan
                 state: 'cancelled',
                 error: {
                     code: 'ERR_SESSION_INTERACTION_BLOCKED',
-                    message: 'approval-required irreversible effect is blocked by headless interaction policy',
+                    message: 'approval-required program effect is blocked by headless interaction policy',
                 },
             });
             options.storage?.deleteContinuation(sessionId);

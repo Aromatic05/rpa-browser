@@ -374,7 +374,22 @@ test('runSteps snapshots imports for queued procedure calls without parsing unre
         },
     });
     deps.resolveEntityRulesProvider = () => ({
-        workflowName: 'ws-1', availability: 'ready', listProfiles: () => ['orders'], getProfile: (name: string) => name === 'orders' ? {} as any : null,
+        workflowName: 'ws-1',
+        availability: 'ready',
+        listProfiles: () => ['orders'],
+        getProfile: (name: string) => name === 'orders' ? ({
+            kind: 'entity_rules',
+            name: 'orders',
+            page: {kind: 'form'},
+            match: {version: 2, rules: [
+                {ruleId: 'root', source: 'region', expect: 'unique', match: {kind: 'form'}},
+                {ruleId: 'query', source: 'node', expect: 'unique', within: 'root', match: {idEquals: 'query'}},
+            ]},
+            annotation: {version: 2, bindings: [
+                {ruleId: 'root', entityKey: 'ordersQuery', businessTag: 'orders.query', entityKind: 'form'},
+                {ruleId: 'query', actionIntent: 'query', actionRole: 'form'},
+            ]},
+        } as any) : null,
         resolveExports: (name: string) => name === 'orders' ? {
             index: {
                 profileName: 'orders',

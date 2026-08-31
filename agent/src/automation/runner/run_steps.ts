@@ -423,6 +423,11 @@ const resolveRunCheckpoints = (
                 ? [bodies[checkpointId]]
                 : [];
         });
+    const queuedEntityRuleProfiles = req.stepsQueue.items
+        .slice(req.stepsQueue.cursor)
+        .flatMap((step) => step.entityRules?.selection === 'explicit'
+            ? step.entityRules.profiles ?? []
+            : []);
     const snapshot = materializeReferencedCheckpointRuntimeSnapshot({
         sources: [...recoverySources, ...queuedProcedureSources], checkpointProvider: sourceProvider || {
             getCheckpoint: (id) => allCheckpoints.find((checkpoint) => checkpoint.id === id) || null,
@@ -432,6 +437,7 @@ const resolveRunCheckpoints = (
         checkpoints: allCheckpoints, checkpointStepResolves: stepResolves, checkpointBodies: bodies,
         workflow: isWorkflow(workspace.workflow) ? workspace.workflow : undefined,
         entityRulesProvider: deps.resolveEntityRulesProvider?.(req.workspaceName),
+        entityRuleProfiles: [...(req.entityRuleProfiles ?? []), ...queuedEntityRuleProfiles],
     });
     const checkpoints = snapshot.provider.listCheckpoints!()
         .filter(isAutomaticRecoveryCheckpoint);

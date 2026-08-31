@@ -30,6 +30,7 @@ export type CreateDslTaskRunnerOptions = {
     deps: RunStepsDeps;
     stopOnError?: boolean;
     stepResolves?: Record<string, StepResolve>;
+    entityRuleProfiles?: readonly string[];
 };
 
 export const createDslTaskRunner = (options: CreateDslTaskRunnerOptions): DslTaskRunner => {
@@ -57,6 +58,7 @@ export const createDslTaskRunner = (options: CreateDslTaskRunnerOptions): DslTas
             resultPipe: pipe,
             signalChannel: signals,
             stepResolves: options.stepResolves,
+            entityRuleProfiles: options.entityRuleProfiles,
             stopOnError: options.stopOnError ?? true,
             onCheckpoint: async (checkpoint) => {
                 latestCheckpoint = checkpoint;

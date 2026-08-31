@@ -234,6 +234,9 @@ export type TaskHistoryEntry = {
  */
 export type WorkspaceProductView = {
     workspace: string;
+    /** Explicit false means first-run model setup is still required. Missing is
+     * accepted for compatibility with older/test projections. */
+    modelConfigured?: boolean;
     reservation: WorkspaceReservation;
     /** Coarse Teach kind while a standalone Teach owns the reservation; lets a
      *  reloaded surface adopt the activity truthfully instead of guessing. */
@@ -269,7 +272,7 @@ export type CommandPort = {
     openCurrentActivity(): void;
     startTeach(kind: TeachKind, businessArea?: string): void;
     stopTeach(): void;
-    saveTeach(): void;
+    saveTeach(name?: string): void;
     discardTeach(): void;
     newTask(): void;
     saveAutomation(name: string): void;

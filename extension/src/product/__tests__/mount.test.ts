@@ -440,6 +440,10 @@ test('basic demonstration uses the generic record.* actions, never the checkpoin
                 'demonstration reuses the existing record.start capability');
             assert.equal(actions.some((entry) => entry.type === 'checkpoint.record.start'), false,
                 'demonstration must never start the checkpoint recorder');
+            assert.ok(
+                shadow.querySelector('[data-rpa-product-action="stop-teach"]'),
+                'a successful record.start survives the immediate authoring refresh and shows Stop & Review',
+            );
         } finally {
             handle.unmount();
         }

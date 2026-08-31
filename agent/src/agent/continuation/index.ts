@@ -3,7 +3,6 @@ import type {WorldViewSource} from '../worldview/contracts';
 import {describeWorldView} from '../worldview/descriptor';
 import {isSameWorldView} from '../worldview/revision';
 import {
-    type ProgramExecutionImage,
     type ProgramExecutionImageExportResult,
     type ProgramExecutionRehydrateResult,
 } from './contracts';

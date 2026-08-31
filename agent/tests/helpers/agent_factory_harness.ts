@@ -80,7 +80,7 @@ export const createFauxAgentModelRuntime = (
     model = 'gpt-4.1',
 ): OfflineModelRuntime => {
     const faux = createFauxCore({ provider, models: [{ id: model }] });
-    faux.setResponses([fauxAssistantMessage('done')]);
+    faux.setResponses(Array.from({length: 64}, () => fauxAssistantMessage('done')));
     const runtime: AgentModelRuntime = {
         resolve: (requestedProvider, requestedModel) =>
             requestedProvider === provider && requestedModel === model

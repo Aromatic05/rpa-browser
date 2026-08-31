@@ -12,6 +12,7 @@ import {createReactAgentSession, type ReactAgentSession} from '../../loop/react'
 import {validateModelRequestedInteraction, type ModelRequestedInteraction} from '../../interaction';
 import type {AgentModelRuntime} from '../../model/runtime';
 import {getDefaultAgentModelRuntime} from '../../model/runtime';
+import {throwIfAgentModelRequestFailed} from '../../model/failure';
 import {classifyAgentToolCall, type AgentToolClassification} from '../../tools/policy';
 import {classifyPausedDslDebugToolCall} from '../../debug/execution/tool_policy';
 import {compactDebuggerSystemPromptForPause} from '../../debug/execution/agent_surface';
@@ -598,6 +599,17 @@ export const createRetainedControlLoop = (deps: RetainedControlLoopDeps): Retain
     };
 
     const settleRun = (request: AgentRunRequest): ProgramFirstAgentRunResult => {
+        const controlledStop = outcome.stopReason !== undefined
+            || outcome.pendingApproval !== undefined
+            || outcome.requestedInteraction !== undefined
+            || outcome.pausedByUser === true
+            || deps.runControl?.signal?.aborted === true
+            || deps.signal?.aborted === true;
+        throwIfAgentModelRequestFailed({
+            messages: session?.agent.state.messages ?? [],
+            stateErrorMessage: session?.agent.state.errorMessage,
+            controlledStop,
+        });
         const base: ProgramFirstAgentRunResult = {
             provider: request.provider,
             model: request.model,

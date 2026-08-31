@@ -9,6 +9,7 @@ import type {
 } from '../../automation/runtime/service/types';
 import type {AgentExecutionMode, AgentRunRequest, AgentRunResult, AgentRunner} from '../execution/types';
 import type {AgentProgramSaver} from '../execution/program/persistence';
+import type {AgentModelSettings} from '../model/settings';
 import type {LibraryAssetSummary} from '../library/contracts';
 import {createProductController, type ProductController} from '../product';
 import {createAgentHttpServer} from './server';
@@ -64,13 +65,10 @@ export type WorkspaceAgentServiceDeps = {
     /** Persists a completed product Task's retained Program into this
      * workspace's DSL library. */
     productSaveAutomation?: AgentProgramSaver;
-    /** Default provider/model/executionMode for the product task composer. The
-     *  product surface is provider-agnostic and resolves a started task from
-     *  these workspace-owned defaults. Supplied by workspace/factory.ts from the
-     *  existing `config.agent.model` provider/model (composition-owned single
-     *  config); when unconfigured the Product start surface truthfully errors
-     *  with ERR_BAD_ARGS rather than fabricating a model choice. */
+    /** Static defaults retained for embedded/test compositions. */
     productDefaults?: Readonly<{provider: string; model: string; executionMode?: AgentExecutionMode}>;
+    /** Process-level dynamic model setup shared by all workspace services. */
+    productModelSettings?: AgentModelSettings;
     continuationRestorer?: ContinuationRestorer;
 };
 
@@ -98,6 +96,7 @@ export const createWorkspaceAgentService = (deps: WorkspaceAgentServiceDeps): Wo
         manager: sessions,
         workspace: deps.workspaceName,
         ...(deps.productDefaults === undefined ? {} : {defaults: deps.productDefaults}),
+        ...(deps.productModelSettings === undefined ? {} : {modelSettings: deps.productModelSettings}),
         ...(deps.productLibrary === undefined ? {} : {library: deps.productLibrary}),
         ...(deps.productSaveAutomation === undefined ? {} : {saveAutomation: deps.productSaveAutomation}),
     });

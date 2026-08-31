@@ -466,7 +466,6 @@ export const jsonRoundTripProgramExecutionImage = (
 ): {ok: true; image: ProgramExecutionImage} | {ok: false; error: ProgramContinuationError} => {
     try {
         const json = JSON.stringify(image);
-        if (json === undefined) {return {ok: false, error: invalid('continuation image is not JSON serializable')};}
         return parseProgramExecutionImage(JSON.parse(json));
     } catch (error) {
         return {ok: false, error: invalid('continuation image is not JSON serializable', String(error))};

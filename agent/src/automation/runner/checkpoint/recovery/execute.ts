@@ -210,10 +210,17 @@ export const runCheckpointRecovery = async (options: RunCheckpointRecoveryOption
             const existingDetails = error && typeof error === 'object' && 'details' in error
                 ? (error as {details?: unknown}).details
                 : undefined;
+            const diagnostics = error && typeof error === 'object' && 'diagnostics' in error
+                ? (error as {diagnostics?: unknown}).diagnostics
+                : undefined;
             const bodyFailure = checkpointBodyFailure(checkpoint, failure, {
                 code: error instanceof Error && 'code' in error ? String((error as { code: unknown }).code) : 'ERR_CHECKPOINT_BODY_FAILED',
                 message: error instanceof Error ? error.message : String(error),
-                details: isRecord(existingDetails) ? existingDetails : {},
+                details: isRecord(existingDetails)
+                    ? existingDetails
+                    : Array.isArray(diagnostics)
+                        ? {diagnostics}
+                        : {},
             });
             return {
                 ...bodyFailure,

@@ -106,6 +106,24 @@ test('failed result points to Developer mode instead of dumping the raw report',
     }
 });
 
+test('model request failures are identified as model-service problems in the ordinary result UI', () => {
+    const task = terminalTask('failed');
+    task.error = {
+        code: 'ERR_AGENT_MODEL_REQUEST_FAILED',
+        message: 'connect ECONNREFUSED 127.0.0.1:43179',
+    };
+    const fixture = mount(terminalView(task));
+    try {
+        openPanel(fixture);
+        const text = bodyText(fixture);
+        assert.match(text, /model service could not complete this request/i);
+        assert.match(text, /Model settings/);
+        assert.equal(text.includes('ECONNREFUSED'), false, 'transport internals stay out of the ordinary product surface');
+    } finally {
+        fixture.cleanup();
+    }
+});
+
 test('History lists terminal tasks without a fake click affordance', () => {
     const view: WorkspaceProductView = {
         ...libraryView(),

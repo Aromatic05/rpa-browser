@@ -1205,11 +1205,11 @@ export const createDslDebugExecutionSession = (
                 completion.then((result) => ({status: 'completed' as const, output: structuredClone(result.scope.output)}), (error) => ({status: 'failed' as const, failure: normalizeTerminalFailure(error)})),
             ]);
             if (driven.status !== 'paused' || driven.pause.reason !== 'barrier') {
-                return driven as DslDebugAdvanceResult;
+                return driven;
             }
             const equivalent = sameBarrierEffect(saved, driven.pause);
             if (!equivalent) {
-                return Object.freeze({status: 'barrier' as const, pause: driven.pause as Extract<PausedDslDebugExecution, {reason: 'barrier'}>});
+                return Object.freeze({status: 'barrier' as const, pause: driven.pause});
             }
             return await crossBarrier(driven.pause.continuationId);
         }
@@ -1917,7 +1917,7 @@ const failureContextOf = (current: ActivePause): RecoveryFailureContext => {
         auditEffects: () => journal.list(),
         exportProgramExecutionImage: () => {
             const current = active;
-            if (!current || current.pause.reason !== 'barrier' || pendingRecovery) {
+            if (current?.pause.reason !== 'barrier' || pendingRecovery) {
                 return Object.freeze({ok: false as const, error: Object.freeze({
                     code: 'ERR_CONTINUATION_UNSUPPORTED' as const,
                     message: 'only an ordinary retained Program barrier can be exported',

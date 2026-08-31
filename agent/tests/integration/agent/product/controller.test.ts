@@ -402,3 +402,61 @@ test('a completed Program remains save-eligible and Save Automation persists the
     assert.deepEqual(saved, {saved: true, name: 'order-flow'});
     assert.deepEqual(saves, [{name: 'order-flow', source: 'output result = "ok"'}]);
 });
+
+test('a completed Program with runtime inputs is not exposed as directly runnable Save Automation', async () => {
+    const manager = createSessionManager({
+        runner: {
+            run: async () => makeResult({
+                programs: [{
+                    source: 'output result = input.value',
+                    materializedSource: 'output result = input.value',
+                    input: {value: 'task-specific'},
+                    status: 'completed',
+                }],
+            }),
+        },
+    });
+    const controller = createProductController({
+        manager,
+        workspace: 'ws-input-save',
+        defaults: {provider: 'test', model: 'model'},
+        saveAutomation: async (request) => ({status: 'saved', name: request.name, artifactRevision: 'rev'}),
+    });
+
+    const started = controller.startTask({prompt: 'use a task-specific input'});
+    await flush();
+    const completed = controller.taskView(started.taskId)!;
+    assert.equal(completed.status, 'completed');
+    assert.notEqual(completed.result?.saveEligible, true);
+    await assert.rejects(
+        () => controller.saveAutomation({taskId: started.taskId, name: 'not-runnable-yet'}),
+        (error: unknown) => error instanceof ProductCommandError && error.code === 'ERR_BAD_STATE',
+    );
+});
+
+test('runtime model setup changes the same ProductController from unconfigured to startable', async () => {
+    let configured = false;
+    const manager = createSessionManager({runner: {run: async () => makeResult()}});
+    const modelSettings = {
+        runtime: {resolve: () => null},
+        status: () => configured
+            ? {configured: true as const, credentialConfigured: true, provider: 'p', model: 'm', baseUrl: 'https://example.test/v1'}
+            : {configured: false as const, credentialConfigured: false},
+        defaults: () => configured ? {provider: 'p', model: 'm'} : undefined,
+        configure: async () => {
+            configured = true;
+            return {configured: true as const, credentialConfigured: true, provider: 'p', model: 'm', baseUrl: 'https://example.test/v1'};
+        },
+    };
+    const controller = createProductController({manager, workspace: 'ws-setup', modelSettings});
+
+    assert.equal(controller.workspaceView().modelConfigured, false);
+    assert.throws(
+        () => controller.startTask({prompt: 'before setup'}),
+        (error: unknown) => error instanceof ProductCommandError && error.code === 'ERR_BAD_ARGS',
+    );
+
+    await controller.configureModel({provider: 'p', model: 'm', baseUrl: 'https://example.test/v1', apiKey: 'secret'});
+    assert.equal(controller.workspaceView().modelConfigured, true);
+    assert.equal(controller.startTask({prompt: 'after setup'}).status, 'running');
+});

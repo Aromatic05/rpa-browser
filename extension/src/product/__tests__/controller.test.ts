@@ -219,6 +219,7 @@ test('adapter maps the real backend workspace projection into the typed view', a
     }
     assert.equal(interaction.effectName, 'browser.submit', 'backend actionName maps to product effectName');
     assert.equal(interaction.evidence, 'Submits the order', 'backend summary maps to evidence');
+    assert.equal(interaction.risk, 'This action may not be undoable.', 'backend risk is translated into user-facing safety text');
     const serialized = JSON.stringify(view);
     assert.equal(serialized.includes('sessionId'), false);
     assert.equal(serialized.includes('runId'), false);
@@ -377,6 +378,40 @@ test('interaction commands use the opaque token and refresh on success', async (
         'approve carries taskId + interaction token',
     );
     assert.equal(backend.live.filter((entry) => entry.name === 'approve').length, 1, 'no automatic retries');
+});
+
+test('an interaction refresh requested during an in-flight poll is coalesced instead of dropped', async () => {
+    const backend = new StubBackend();
+    const waiting = task({ status: 'waiting_for_user', phase: 'interacting', interaction: approvalInteraction });
+    const completed = task({ status: 'completed', endedAt: 2_000 });
+    backend.workspaceImpl = () => workspace(waiting);
+    backend.taskViewImpl = () => completed;
+    backend.listImpl = () => ({active: [], history: [completed]});
+    const controller = create(backend);
+    await controller.refresh();
+    assert.equal(controller.getView().activeTask?.status, 'waiting_for_user');
+
+    let workspaceCalls = 0;
+    let releaseStalePoll!: () => void;
+    backend.workspaceView = () => {
+        workspaceCalls += 1;
+        if (workspaceCalls === 1) {
+            return new Promise<BackendWorkspaceView>((resolve) => {
+                releaseStalePoll = () => {resolve(workspace(waiting));};
+            });
+        }
+        return Promise.resolve(workspace());
+    };
+
+    const stalePoll = controller.refresh();
+    controller.commands.approve();
+    await settle();
+    releaseStalePoll();
+    await stalePoll;
+    await settle();
+
+    assert.equal(workspaceCalls, 2, 'the explicit post-approval refresh runs immediately after the stale poll');
+    assert.equal(controller.getView().activeTask?.status, 'completed');
 });
 
 test('deny requires a reason and forwards optional alternative only when given', async () => {

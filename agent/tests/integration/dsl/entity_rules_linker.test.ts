@@ -257,7 +257,24 @@ test('runDslSource uses strict explicit profile steps and runtime input for row 
             availability: 'ready',
             workflowName: 'ws',
             listProfiles: () => ['order-page'],
-            getProfile: () => ({} as any),
+            getProfile: (name) => name === 'order-page' ? ({
+                kind: 'entity_rules',
+                name,
+                page: {kind: 'table'},
+                match: {version: 2, rules: [
+                    {ruleId: 'root', source: 'region', expect: 'unique', match: {kind: 'table'}},
+                ]},
+                annotation: {version: 2, bindings: [
+                    {
+                        ruleId: 'root',
+                        entityKey: 'orderList',
+                        businessTag: 'order.list',
+                        entityKind: 'table',
+                        primaryKey: {fieldKey: 'orderNo', columns: ['orderNo'], source: 'annotation'},
+                        columns: [{fieldKey: 'orderNo', name: 'orderNo', kind: 'text'}],
+                    },
+                ]},
+            } as any) : null,
             resolveExports: () => ({profileName: 'order-page', index: null, diagnostics: []}),
         }),
         pluginHost: {getExecutors: () => ({

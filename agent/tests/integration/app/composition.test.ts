@@ -189,7 +189,9 @@ test('model and governance defaults from the committed config are actually appli
         assert.equal(composed.governance.wallClockDeadlineMs, defaultAgentConfig.governance.wallClockDeadlineMs);
         assert.equal(composed.governance.irreversibleApproval, defaultAgentConfig.governance.irreversibleApproval);
 
-        assert.equal(composed.modelRuntime, undefined, 'unconfigured model defaults keep the env fallback');
+        assert.equal(composed.modelRuntime, composed.modelSettings.runtime,
+            'the dynamic model runtime exists before first-run setup and becomes configured in-place');
+        assert.equal((await composed.modelSettings.status()).configured, false);
         assert.equal(composed.dataDir.endsWith(path.join('.artifacts', 'sessions')), true);
         assert.equal(composed.auth.enabled, false);
         assert.equal(composed.interaction, 'interactive');

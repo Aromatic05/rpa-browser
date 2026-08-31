@@ -33,6 +33,52 @@ test('run maps a paused program to a retained paused session', async () => {
     assert.equal(session.error, null);
 });
 
+test('an invalid latest Program makes the session fail even if the model returns success text', async () => {
+    const result = makeResult({
+        text: 'task completed',
+        programs: [{
+            source: 'invalid source',
+            input: {},
+            status: 'invalid',
+            error: {code: 'ERR_DSL_PARSE', message: 'parse failed'},
+        }],
+    });
+    const manager = createSessionManager({runner: {run: async () => result}});
+    await manager.run(makeRequest());
+
+    const [session] = manager.list();
+    assert.equal(session.state, 'failed');
+    assert.equal(session.result?.programs?.[0].status, 'invalid');
+});
+
+test('a repaired completed Program determines the final session state after an earlier failed attempt', async () => {
+    const result = makeResult({
+        programs: [
+            {source: 'first', input: {}, status: 'failed', error: {code: 'ERR_FIRST', message: 'first failed'}},
+            {source: 'second', input: {}, status: 'completed'},
+        ],
+    });
+    const manager = createSessionManager({runner: {run: async () => result}});
+    await manager.run(makeRequest());
+
+    const [session] = manager.list();
+    assert.equal(session.state, 'completed');
+});
+
+test('a failed latest Program makes the final session state failed after an earlier completed attempt', async () => {
+    const result = makeResult({
+        programs: [
+            {source: 'first', input: {}, status: 'completed'},
+            {source: 'second', input: {}, status: 'failed', error: {code: 'ERR_SECOND', message: 'second failed'}},
+        ],
+    });
+    const manager = createSessionManager({runner: {run: async () => result}});
+    await manager.run(makeRequest());
+
+    const [session] = manager.list();
+    assert.equal(session.state, 'failed');
+});
+
 test('run rethrows runner errors and retains a failed session with the error code', async () => {
     const manager = createSessionManager({
         runner: {run: async () => {throw Object.assign(new Error('boom'), {code: 'ERR_BOOM'});}},

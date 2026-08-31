@@ -24,7 +24,7 @@ import {
 const renderApprovalCard = (ctx: SurfaceContext, interaction: Extract<InteractionRequest, { kind: 'approval' }>): HTMLElement => {
     const disabled = isMutationDisabled(ctx);
     const cardBody: Array<Node | string> = [
-        statusLine('⚠', 'Approval needed · irreversible effect', 'waiting'),
+        statusLine('⚠', 'Approval needed', 'waiting'),
         cardTitle(`The agent will: ${interaction.effectName}`),
         muted(interaction.risk),
     ];
