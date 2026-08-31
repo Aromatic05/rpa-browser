@@ -2,6 +2,8 @@ import {getLogger} from '../../platform/logging/logger';
 import type {AgentServiceBinding, InteractionPolicy, RetentionPolicy} from '../../platform/config';
 import type {WorkspaceAgentFactory} from '../../automation/runtime/workspace/agent';
 import type {WorkspaceMcpToolDeps} from '../../automation/runtime/mcp/tool_handlers';
+import type {RunStepsDeps} from '../../automation/runner/run_steps';
+import type {KnowledgeEntityRulesPort} from '../execution/knowledge';
 import {createReactAgentRunner} from '../execution/react_runner';
 import {createProgramFirstAgentRunner} from '../execution/program/runner';
 import {createAgentExecutionRouter} from '../execution/router';
@@ -33,6 +35,25 @@ export type WorkspaceAgentFactoryOptions = {
     interaction?: InteractionPolicy;
 };
 
+/**
+ * The workspace is created and registered only AFTER this factory returns (see
+ * createWorkspace -> createRuntimeWorkspace), so resolution is deferred to the
+ * first knowledge inspect call. The adapter implements ONLY the narrow
+ * read-only port the Knowledge seam uses; every method resolves the real,
+ * committed workspace Entity Rules provider at call time. No provider status,
+ * availability or identity is fabricated here.
+ */
+const lazyWorkspaceEntityRules = (workspaceName: string, runStepsDeps: RunStepsDeps): KnowledgeEntityRulesPort => {
+    const resolveProvider = () => {
+        const workspace = runStepsDeps.resolveWorkspace(workspaceName);
+        return workspace.entityRules.getProvider(workspace.workflow);
+    };
+    return {
+        getProfile: (name) => resolveProvider().getProfile(name),
+        resolveExports: (name) => resolveProvider().resolveExports(name),
+    };
+};
+
 export const createWorkspaceAgentFactory = (
     options: WorkspaceAgentFactoryOptions = {},
 ): WorkspaceAgentFactory => (deps) => {
@@ -52,6 +73,10 @@ export const createWorkspaceAgentFactory = (
         readWorldRevision: () => readWorkspaceWorldRevision(toolDeps),
         governance: reactGovernance,
     });
+    const workspaceLibrary = createWorkspaceLibrary({
+        workspaceName: deps.workspaceName,
+        deps: deps.runStepsDeps,
+    });
     const programRunner = createProgramFirstAgentRunner({
         readTools: createWorkspaceAgentReadTools(toolDeps),
         executeProgram: createWorkspaceProgramExecutor({
@@ -68,6 +93,10 @@ export const createWorkspaceAgentFactory = (
             workspaceName: deps.workspaceName,
             deps: deps.runStepsDeps,
         }),
+        knowledge: {
+            library: workspaceLibrary,
+            entityRules: lazyWorkspaceEntityRules(deps.workspaceName, deps.runStepsDeps),
+        },
         readWorldRevision: () => readWorkspaceWorldRevision(toolDeps),
         modelRuntime: options.modelRuntime,
         governancePolicy: options.governancePolicy,
@@ -77,10 +106,6 @@ export const createWorkspaceAgentFactory = (
         baseline: baselineRunner,
         program: programRunner,
         defaultMode: 'program',
-    });
-    const workspaceLibrary = createWorkspaceLibrary({
-        workspaceName: deps.workspaceName,
-        deps: deps.runStepsDeps,
     });
     const service = createWorkspaceAgentService({
         workspaceName: deps.workspaceName,

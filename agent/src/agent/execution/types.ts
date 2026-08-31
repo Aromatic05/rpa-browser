@@ -67,6 +67,15 @@ export type AgentProgramExecutionSummary = Readonly<{
     trace?: AgentTraceSnapshot;
     effects?: readonly AgentProgramEffectSummary[];
     pause?: AgentProgramPause;
+    /** Sanitized summary of a human-taught Workflow Recovery applied to this
+     *  retained Program transaction. Never exposes raw checkpoint bodies. */
+    recovery?: Readonly<{
+        checkpointId: string;
+        checkpointName?: string;
+        applied: boolean;
+        retried?: boolean;
+        blockedByApproval?: boolean;
+    }>;
 }>;
 
 export type AgentProgramSavedArtifact = Readonly<{

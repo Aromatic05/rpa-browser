@@ -1,28 +1,37 @@
 import { getLogger } from '../../../platform/logging/logger';
 import type { CheckpointCtx } from './types';
+import { foldRecoveryResult, retryOriginalStep } from './recovery';
 
 const log = getLogger('step');
 
 export const maybeRetryOriginalStep = async (ctx: CheckpointCtx): Promise<CheckpointCtx> => {
     if (!ctx.active || !ctx.runResult?.ok) {return ctx;}
-    if (ctx.checkpoint?.policy?.retryOriginal === false) {
-        return {
-            ...ctx,
-            stopReason: 'checkpoint_completed',
-        };
-    }
 
-    const retryResult = await ctx.failedCtx.executeStep(ctx.failedCtx.step);
+    const retry = await retryOriginalStep({
+        checkpoint: ctx.checkpoint!,
+        failure: {
+            runId: ctx.failedCtx.runId,
+            workspaceName: ctx.failedCtx.workspaceName,
+            stepId: ctx.failedCtx.step.id,
+            stepName: ctx.failedCtx.step.name,
+            args: ctx.failedCtx.step.args,
+            error: ctx.failedCtx.rawResult.error,
+            currentUrl: ctx.failedCtx.currentUrl,
+            step: ctx.failedCtx.step,
+        },
+        executeStep: (step, stepResolves) => ctx.failedCtx.executeStep(step, stepResolves),
+    });
+
     log.info('checkpoint.retry', {
         stepId: ctx.failedCtx.step.id,
         stepName: ctx.failedCtx.step.name,
-        ok: retryResult.ok,
-        code: retryResult.error?.code,
+        ok: retry.retryResult?.ok,
+        code: retry.retryResult?.error?.code,
     });
     return {
         ...ctx,
-        retryResult,
-        stopReason: retryResult.ok ? 'checkpoint_completed' : 'checkpoint_retry_failed',
+        ...(retry.retryResult ? {retryResult: retry.retryResult} : {}),
+        stopReason: retry.stopReason,
     };
 };
 
@@ -47,53 +56,25 @@ export const foldCheckpointResult = (ctx: CheckpointCtx): CheckpointCtx => {
         };
     }
 
-    if (!ctx.active) {
-        if (ctx.meta?.checkpointBodyFailure && ctx.runResult) {
-            return {
-                ...ctx,
-                finalResult: ctx.runResult,
-                meta: {...ctx.meta, foldedBy: 'checkpoint_body_failure', stopReason: ctx.stopReason},
-            };
-        }
-        log.info('checkpoint.fold', { stepId: ctx.failedCtx.step.id, fallbackToRaw: true, stopReason: ctx.stopReason });
-        return {
-            ...ctx,
-            finalResult: ctx.failedCtx.rawResult,
-            meta: {
-                ...(ctx.meta || {}),
-                foldedBy: 'raw_result',
-                stopReason: ctx.stopReason,
-            },
-        };
-    }
+    const folded = foldRecoveryResult({
+        active: ctx.active,
+        checkpoint: ctx.checkpoint,
+        runResult: ctx.runResult,
+        retryResult: ctx.retryResult,
+        rawResult: ctx.failedCtx.rawResult,
+        meta: ctx.meta,
+        nextStatus: ctx.nextStatus,
+    });
 
-    if (ctx.runResult?.ok) {
-        const finalResult = ctx.retryResult || ctx.runResult;
-        log.info('checkpoint.fold', {
-            stepId: ctx.failedCtx.step.id,
-            foldedBy: ctx.retryResult ? 'retry_result' : 'checkpoint_result',
-            ok: finalResult.ok,
-            stopReason: ctx.stopReason,
-        });
-        return {
-            ...ctx,
-            finalResult,
-            meta: {
-                ...(ctx.meta || {}),
-                foldedBy: ctx.retryResult ? 'retry_result' : 'checkpoint_result',
-                stopReason: ctx.stopReason,
-            },
-        };
-    }
-
-    log.info('checkpoint.fold', { stepId: ctx.failedCtx.step.id, foldedBy: 'raw_result', stopReason: ctx.stopReason });
+    log.info('checkpoint.fold', {
+        stepId: ctx.failedCtx.step.id,
+        foldedBy: folded.meta.foldedBy,
+        ok: folded.finalResult.ok,
+        stopReason: folded.meta.stopReason,
+    });
     return {
         ...ctx,
-        finalResult: ctx.failedCtx.rawResult,
-        meta: {
-            ...(ctx.meta || {}),
-            foldedBy: 'raw_result',
-            stopReason: ctx.stopReason,
-        },
+        finalResult: folded.finalResult,
+        meta: folded.meta,
     };
 };

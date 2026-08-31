@@ -121,7 +121,7 @@ test('page knowledge summary exposes applicability, entity count and safe semant
     });
 });
 
-test('capability flags truthfully reflect current integration maturity', async () => {
+test('capability flags truthfully reflect the wired Agent knowledge seam', async () => {
     const {library} = createLibraryHarness();
     const automation = await library.summary(automationId);
     assert.ok(automation && automation.kind === 'automation');
@@ -140,11 +140,11 @@ test('capability flags truthfully reflect current integration maturity', async (
     assert.deepEqual((procedure as ProcedureSummary).capabilities, {
         runtimeApplied: false,
         callableFromDsl: true,
-        agentDiscovery: false,
+        agentDiscovery: true,
         runnerRecovery: false,
         agentRecovery: false,
         replayable: false,
-        modelLoadSeam: false,
+        modelLoadSeam: true,
     });
 
     const recovery = await library.summary({kind: 'recovery', name: RENEW_SESSION_RECOVERY});
@@ -152,7 +152,7 @@ test('capability flags truthfully reflect current integration maturity', async (
     assert.deepEqual((recovery as RecoverySummary).capabilities, {
         runtimeApplied: false,
         callableFromDsl: false,
-        agentDiscovery: false,
+        agentDiscovery: true,
         runnerRecovery: true,
         agentRecovery: false,
         replayable: false,
@@ -164,7 +164,7 @@ test('capability flags truthfully reflect current integration maturity', async (
     assert.deepEqual((demo as DemonstrationSummary).capabilities, {
         runtimeApplied: false,
         callableFromDsl: false,
-        agentDiscovery: false,
+        agentDiscovery: true,
         runnerRecovery: false,
         agentRecovery: false,
         replayable: true,
@@ -176,29 +176,30 @@ test('capability flags truthfully reflect current integration maturity', async (
     assert.deepEqual((page as PageKnowledgeSummary).capabilities, {
         runtimeApplied: true,
         callableFromDsl: false,
-        agentDiscovery: false,
+        agentDiscovery: true,
         runnerRecovery: false,
         agentRecovery: false,
         replayable: false,
-        modelLoadSeam: false,
+        modelLoadSeam: true,
     });
 });
 
-test('capability semantics: only Procedure is DSL-callable; Automation discovery is real but no model load seam is wired', async () => {
+test('capability semantics: Procedure and Page Knowledge are wired model-loadable, Recovery/Demonstration are not', async () => {
     const {library} = createLibraryHarness();
     const listed = await library.list();
     for (const item of listed) {
-        assert.equal(item.capabilities.modelLoadSeam, false, `${item.kind}:${item.name} claims a wired model load seam`);
+        assert.equal(item.capabilities.modelLoadSeam, item.kind === 'procedure' || item.kind === 'page_knowledge', `${item.kind}:${item.name} modelLoadSeam mismatch`);
+        assert.equal(item.capabilities.agentDiscovery, true, `${item.kind}:${item.name} agentDiscovery mismatch`);
         assert.equal(item.capabilities.callableFromDsl, item.kind === 'procedure', `${item.kind}:${item.name} callableFromDsl mismatch`);
     }
 
-    const automation = await library.summary(automationId);
-    assert.ok(automation && automation.kind === 'automation');
-    assert.equal(automation.capabilities.callableFromDsl, false);
-    assert.equal(automation.capabilities.agentDiscovery, true);
+    const recovery = await library.summary({kind: 'recovery', name: RENEW_SESSION_RECOVERY});
+    assert.ok(recovery && recovery.kind === 'recovery');
+    assert.equal(recovery.capabilities.runnerRecovery, true);
+    assert.equal(recovery.capabilities.replayable, false);
 
-    const procedure = await library.summary({kind: 'procedure', name: ENSURE_LOGIN_PROCEDURE});
-    assert.ok(procedure && procedure.kind === 'procedure');
-    assert.equal(procedure.capabilities.callableFromDsl, true);
-    assert.equal(procedure.capabilities.agentDiscovery, false);
+    const demo = await library.summary({kind: 'demonstration', name: DEMO_ONBOARDING});
+    assert.ok(demo && demo.kind === 'demonstration');
+    assert.equal(demo.capabilities.replayable, true);
+    assert.equal(demo.capabilities.runnerRecovery, false);
 });

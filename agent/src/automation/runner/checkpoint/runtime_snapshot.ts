@@ -90,10 +90,14 @@ export const materializeReferencedCheckpointRuntimeSnapshot = (options: {
         }
     }
 
+    const frozenAssetSources = new Set([
+        ...visitedSources,
+        ...Object.values(bodies),
+    ]);
     return materializeCheckpointRuntimeSnapshot({
         checkpoints: [...checkpoints.values()], checkpointStepResolves: stepResolves, checkpointBodies: bodies,
         workflow: options.workflow, entityRulesProvider: options.entityRulesProvider,
-        assetSources: [...visitedSources],
+        assetSources: [...frozenAssetSources],
     });
 };
 
