@@ -9,7 +9,6 @@ const repositoryDirectory = path.resolve(agentDirectory, '..');
 const productionRoots = [
     path.join(agentDirectory, 'src'),
     path.join(repositoryDirectory, 'extension/src'),
-    path.join(repositoryDirectory, 'start_extension/src'),
     path.join(repositoryDirectory, 'shared'),
 ];
 

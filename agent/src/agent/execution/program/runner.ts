@@ -38,7 +38,7 @@ import type {
     RecoveryBudgetLimits,
     RecoveryContext,
 } from '../../debug/recovery/contracts';
-import type {AgentProgramExecutor} from './contracts';
+import type {AgentProgramExecutor, AgentProgramExecutionStart} from './contracts';
 import {createProgramExecutionTool, EXECUTE_PROGRAM_TOOL, type ProgramExecutionToolController} from './tool';
 import type {AgentProgramSaver} from './persistence';
 import {createProgramSaveTool, SAVE_PROGRAM_TOOL} from './save_tool';
@@ -99,6 +99,11 @@ export type CreateProgramFirstAgentRunnerOptions = {
     governanceController?: GovernanceController;
     recoveryBudgetLimits?: RecoveryBudgetLimits;
     signal?: AbortSignal;
+};
+
+export type ProgramFirstAgentRunner = {
+    run: (request: AgentRunRequest) => Promise<ProgramFirstAgentRunResult>;
+    restore: (request: AgentRunRequest, start: AgentProgramExecutionStart) => Promise<ProgramFirstAgentRunResult>;
 };
 
 export type ProgramFirstAgentRunResult = GovernedAgentRunResult & {
@@ -266,6 +271,10 @@ const retainedContinuation = (
     execution: ProgramExecutionToolController,
     request: AgentRunRequest,
 ): AgentRunContinuation => ({
+    // Export lazily at Session settle time so the image always describes the
+    // current pause. Unsupported pauses return undefined and are deliberately
+    // non-durable rather than capturing an older barrier.
+    exportImage: () => safeExportContinuation(execution),
     resume: async () => {
         const outcome = await execution.continuePaused();
         const base = {
@@ -294,6 +303,10 @@ const retainedContinuation = (
         return withContinuation(base, execution, request);
     },
 });
+
+const safeExportContinuation = (execution: ProgramExecutionToolController): unknown => {
+    try { return execution.exportContinuationImage(); } catch { return undefined; }
+};
 
 const withContinuation = (
     base: ProgramFirstAgentRunResult,
@@ -372,6 +385,7 @@ const controlMessageFromInput = (input: AgentControlInput): AgentMessage => {
 
 export type RetainedControlLoop = {
     run: (request: AgentRunRequest) => Promise<ProgramFirstAgentRunResult>;
+    attach: (request: AgentRunRequest) => void;
     control: (input: AgentControlInput) => Promise<ProgramFirstAgentRunResult>;
 };
 
@@ -535,14 +549,19 @@ export const createRetainedControlLoop = (deps: RetainedControlLoopDeps): Retain
         return next;
     };
 
-    const ensureSession = async (request: AgentRunRequest): Promise<ReactAgentSession> => {
+    const ensureSession = async (request: AgentRunRequest, initialMessage: AgentMessage): Promise<ReactAgentSession> => {
         if (session) {return session;}
         const modelBinding = (deps.modelRuntime ?? getDefaultAgentModelRuntime()).resolve(request.provider, request.model);
-        if (!modelBinding) {throw new Error(`model not found: ${request.provider}/${request.model}`);}
+        if (!modelBinding) {
+            throw Object.assign(
+                new Error(`model not found: ${request.provider}/${request.model}`),
+                {code: 'ERR_AGENT_MODEL_UNAVAILABLE'},
+            );
+        }
         const systemPrompt = request.systemPrompt ?? ACTIVE_PROGRAM_CONTROL_PROMPT;
         const initialSize = measureProviderVisibleContext(
             systemPrompt,
-            [userMessageFromPrompt(request.prompt)],
+            [initialMessage],
             deps.tools,
         );
         if (initialSize.chars > accountant.budget.maxChars) {
@@ -585,7 +604,7 @@ export const createRetainedControlLoop = (deps: RetainedControlLoopDeps): Retain
     return {
         run: async (request) => {
             resetOutcome();
-            const reactSession = await ensureSession(request);
+            const reactSession = await ensureSession(request, userMessageFromPrompt(request.prompt));
             activeRequest = request;
             agentRef.current = reactSession.agent;
             await reactSession.agent.prompt(request.prompt);
@@ -599,13 +618,19 @@ export const createRetainedControlLoop = (deps: RetainedControlLoopDeps): Retain
             }
             return settleRun(request);
         },
+        attach: (request) => {
+            if (activeRequest) {throw new Error('retained agent control loop is already attached to a task');}
+            activeRequest = request;
+        },
         control: async (input) => {
-            if (!session || !activeRequest) {
+            if (!activeRequest) {
                 throw new Error('retained agent control continuation is not running a task');
             }
             resetOutcome();
-            agentRef.current = session.agent;
-            await session.agent.prompt(controlMessageFromInput(input));
+            const message = controlMessageFromInput(input);
+            const reactSession = await ensureSession(activeRequest, message);
+            agentRef.current = reactSession.agent;
+            await reactSession.agent.prompt(message);
             const overflow = accountant.overflow();
             if (overflow) {
                 throw new AgentContextBudgetExceededError(
@@ -672,13 +697,19 @@ const prepareProgramContext = (
 
 export const createProgramFirstAgentRunner = (
     options: CreateProgramFirstAgentRunnerOptions,
-): {run: (request: AgentRunRequest) => Promise<ProgramFirstAgentRunResult>} => ({
-    run: async (request) => {
+): ProgramFirstAgentRunner => {
+    const run = async (request: AgentRunRequest, restoredStart?: AgentProgramExecutionStart): Promise<ProgramFirstAgentRunResult> => {
         const governance = options.governanceController
             ?? createGovernanceController(options.governancePolicy ?? SAFE_UNATTENDED_POLICY, Date.now());
         const budgetStore = createRecoveryBudgetStore(options.recoveryBudgetLimits);
 
-        const execution = createProgramExecutionTool({execute: options.executeProgram});
+        const execution = createProgramExecutionTool({
+            execute: options.executeProgram,
+            ...(restoredStart ? {seed: restoredStart} : {}),
+            ...((options.executeProgram as typeof options.executeProgram & {exportContinuation?: (start: AgentProgramExecutionStart) => unknown}).exportContinuation
+                ? {exportContinuation: (options.executeProgram as typeof options.executeProgram & {exportContinuation: (start: AgentProgramExecutionStart) => unknown}).exportContinuation}
+                : {}),
+        });
         const save = options.saveProgram
             ? createProgramSaveTool({execution, save: options.saveProgram})
             : null;
@@ -741,6 +772,27 @@ export const createProgramFirstAgentRunner = (
             };
         };
 
+        if (restoredStart) {
+            const debugTools = execution.readDebugTools();
+            if (!debugTools) {throw new Error('restored program has no debugger tools');}
+            const loop = createRetainedControlLoop({
+                tools: [...debugTools, requestInteractionTool],
+                modelRuntime: options.modelRuntime,
+                classifyToolCall: classifyProgramToolCall,
+                readWorldRevision: () => readProgramWorldRevision(execution, options.readWorldRevision),
+                prepareNextTurnWithContext: prepareProgramContext(execution, planningTools, terminalTools, knowledgeTools, request, recoveryContext),
+                governance: reactGovernance,
+                signal: options.signal,
+            });
+            loop.attach(request);
+            return composeResult(loop)({
+                provider: request.provider,
+                model: request.model,
+                text: '',
+                trace: mergeAgentTraceSnapshots([]),
+                executionMode: 'program',
+            });
+        }
         if (request.source) {
             const first = await execution.start({
                 source: request.source,
@@ -802,5 +854,6 @@ export const createProgramFirstAgentRunner = (
             systemPrompt: requestSystemPrompt(request),
         });
         return composeResult(loop)(result);
-    },
-});
+    };
+    return {run, restore: (request, start) => run(request, start)};
+};

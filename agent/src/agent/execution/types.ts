@@ -29,6 +29,9 @@ export type AgentProgramPause = Readonly<{
 
 export type AgentRunContinuation = Readonly<{
     resume: () => Promise<AgentRunResult>;
+    /** Opaque, JSON-safe durable image. Concrete parsing belongs to the
+     * workspace that created the continuation, never the service/session. */
+    exportImage?: () => unknown;
 }>;
 
 /**

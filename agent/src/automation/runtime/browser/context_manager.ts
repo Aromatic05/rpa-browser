@@ -388,27 +388,18 @@ export const createContextManager = (options: ContextManagerOptions): ContextPro
  * 使用相对路径，便于 monorepo 下的运行与打包。
  */
 export const resolvePaths = (): { extensionPaths: string[]; userDataRoot: string } => {
-    const stampPath = path.resolve(__dirname, '../../../../.dev/extension-build.json');
-    let extensionPaths = [
-        path.resolve(__dirname, '../../../../extension/dist'),
-        path.resolve(__dirname, '../../../../start_extension/dist'),
-    ];
+    const repoRoot = path.resolve(__dirname, '../../../../..');
+    const stampPath = path.join(repoRoot, '.dev', 'extension-build.json');
+    let extensionPaths = [path.join(repoRoot, 'extension', 'dist')];
     try {
         const stamp = JSON.parse(fs.readFileSync(stampPath, 'utf8')) as {
             mainExtensionPath?: unknown;
-            startExtensionPath?: unknown;
         };
-        if (typeof stamp.mainExtensionPath === 'string'
-            && typeof stamp.startExtensionPath === 'string'
-            && fs.existsSync(stamp.mainExtensionPath)
-            && fs.existsSync(stamp.startExtensionPath)) {
-            extensionPaths = [
-                path.resolve(stamp.mainExtensionPath),
-                path.resolve(stamp.startExtensionPath),
-            ];
+        if (typeof stamp.mainExtensionPath === 'string' && fs.existsSync(stamp.mainExtensionPath)) {
+            extensionPaths = [path.resolve(stamp.mainExtensionPath)];
         }
     } catch {
-        // Direct agent runs fall back to the fixed dist directories.
+        // Direct agent runs fall back to the merged main extension dist directory.
     }
     const userDataRoot = process.env.RPA_USER_DATA_DIR?.trim() || path.resolve(__dirname, '../../../.user-data');
     return { extensionPaths, userDataRoot };

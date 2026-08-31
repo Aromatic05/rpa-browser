@@ -206,21 +206,22 @@ export const startModeAwareFauxModel = async (): Promise<{baseUrl: string; close
     };
 };
 
-const syncExtensionBuildStamp = async (cwd: string): Promise<void> => {
+const assertExtensionBuildReady = async (cwd: string): Promise<void> => {
     const rootStamp = path.resolve(cwd, '..', '.dev', 'extension-build.json');
-    const agentStampDir = path.resolve(cwd, '.dev');
     const stamp = await fs.readFile(rootStamp, 'utf8');
-    const parsed = JSON.parse(stamp) as {mainExtensionPath?: unknown; startExtensionPath?: unknown};
-    if (typeof parsed.mainExtensionPath !== 'string' || typeof parsed.startExtensionPath !== 'string') {
+    const parsed = JSON.parse(stamp) as {mainExtensionPath?: unknown};
+    if (typeof parsed.mainExtensionPath !== 'string') {
         throw new Error('extension build stamp is incomplete; run `pnpm build:extension` again');
     }
-    await fs.mkdir(agentStampDir, {recursive: true});
-    await fs.writeFile(path.join(agentStampDir, 'extension-build.json'), stamp, 'utf8');
+    const mainStat = await fs.stat(parsed.mainExtensionPath).catch(() => null);
+    if (!mainStat?.isDirectory()) {
+        throw new Error(`extension build main path is missing: ${parsed.mainExtensionPath}`);
+    }
 };
 
 export const startProductAgent = async (): Promise<ProductE2EHandle> => {
     const cwd = path.resolve(process.cwd());
-    await syncExtensionBuildStamp(cwd);
+    await assertExtensionBuildReady(cwd);
     const provider = 'e2e-smoke';
     const model = 'e2e-smoke-model';
     const faux = await startModeAwareFauxModel();
@@ -262,7 +263,7 @@ export const startProductAgent = async (): Promise<ProductE2EHandle> => {
         }
         try {
             const probe = await sendControlEval(
-                {source: 'return { ready: !!ctx?.workspaceRegistry && !!ctx?.dispatch && !!ctx?.runStep };', timeoutMs: 2000},
+                {source: 'const w = ctx?.resolveWorkspace?.("default"); return { ready: !!ctx?.dispatch && !!ctx?.runStep && w?.browserSession?.status === "running" && w?.tabs?.listTabs?.().length > 0 };', timeoutMs: 2000},
                 {endpoint, timeoutMs: 2000},
             );
             if (probe.ok && (probe.result as {ready?: boolean})?.ready) {

@@ -93,6 +93,7 @@ export type SessionStore = {
     create: (request: AgentRunRequest) => SessionSnapshot;
     settle: (sessionId: SessionId, patch: SessionSettle) => SessionSnapshot | null;
     reopen: (sessionId: SessionId) => SessionSnapshot | null;
+    attachPausedResult: (sessionId: SessionId, result: AgentRunResult) => SessionSnapshot | null;
     terminate: (sessionId: SessionId, patch: SessionSettle) => SessionSnapshot | null;
     discard: (sessionId: SessionId) => boolean;
     get: (sessionId: SessionId) => SessionSnapshot | null;
@@ -173,6 +174,12 @@ export const createSessionStore = (options: SessionStoreOptions = {}): SessionSt
             record.state = 'running';
             record.endedAt = null;
             persist(record);
+            return toSnapshot(record);
+        },
+        attachPausedResult: (sessionId, result) => {
+            const record = records.get(sessionId);
+            if (record?.state !== 'paused') {return null;}
+            record.result = result;
             return toSnapshot(record);
         },
         terminate: (sessionId, patch) => {

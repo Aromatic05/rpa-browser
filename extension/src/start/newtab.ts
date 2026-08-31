@@ -1,3 +1,5 @@
+export {};
+
 const TAB_TOKEN_KEY = '__rpa_tab_token';
 const TAB_NAME_KEY = '__rpa_tab_name';
 const TAB_NAME_CONFIRMED_KEY = '__rpa_tab_name_confirmed';
@@ -9,7 +11,7 @@ const urlEl = document.getElementById('url');
 const restoreStatusEl = document.getElementById('restoreStatus');
 const restoreListEl = document.getElementById('restoreList');
 const refreshRestoreBtn = document.getElementById('refreshRestore');
-const log = (...args: unknown[]) => { console.warn('[RPA:start]', ...args); };
+const log = (...args: unknown[]) => { console.warn('[RPA:newtab]', ...args); };
 
 declare global {
     interface Window {
@@ -34,13 +36,9 @@ type WsActionEnvelope = {
 };
 
 type WorkflowListItem = {
-    scene: string;
-    id: string;
-    name?: string;
-    entryDsl: string;
-    entryInputs?: string;
-    recordCount: number;
-    checkpointCount: number;
+    workflowName: string;
+    entryDslName?: string | null;
+    runnable?: boolean;
 };
 
 type WorkflowListData = {
@@ -55,6 +53,10 @@ type WorkflowOpenData = {
 type WorkflowRunData = {
     ok?: boolean;
     output?: unknown;
+};
+type ActionScope = {
+    sessionWorkspace?: boolean;
+    workspaceName?: string;
 };
 
 type BoundTokenData = {
@@ -155,7 +157,7 @@ const resolvePublishedTabName = async (): Promise<string> => {
     const deadline = Date.now() + 5000;
     let lastError = 'workspace tab is not published yet';
     while (Date.now() < deadline) {
-        const listed = await sendAction<RuntimeTabListData>('tab.list', {}, true);
+        const listed = await sendAction<RuntimeTabListData>('tab.list', {}, {sessionWorkspace: true});
         if (listed.ok) {
             const tabs = Array.isArray(listed.data?.tabs) ? listed.data.tabs : [];
             const candidate = tabs.find((tab) => tab.active === true)
@@ -181,11 +183,11 @@ const ensureBoundToken = async (): Promise<BoundScope> => {
     if (currentToken) {
         const reported = await sendAction<BoundTokenData>('tab.report', {
             tabName: currentToken,
-            source: 'start_extension',
+            source: 'extension.newtab',
             url: location.href,
             title: document.title,
             at: Date.now(),
-        }, true);
+        }, {sessionWorkspace: true});
         if (reported.ok && reported.data?.stale !== true) {
             applyTabName(currentToken);
             return {tabName: currentToken, workspaceName: sessionConfig.workspaceName};
@@ -195,11 +197,11 @@ const ensureBoundToken = async (): Promise<BoundScope> => {
     const tabName = await resolvePublishedTabName();
     const reported = await sendAction<BoundTokenData>('tab.report', {
         tabName,
-        source: 'start_extension',
+        source: 'extension.newtab',
         url: location.href,
         title: document.title,
         at: Date.now(),
-    }, true);
+    }, {sessionWorkspace: true});
     if (!reported.ok || reported.data?.stale === true) {
         throw new Error(reported.error?.message ?? 'published tab reference is stale');
     }
@@ -213,14 +215,18 @@ const ensureBoundToken = async (): Promise<BoundScope> => {
 const sendHeartbeat = async (scope: BoundScope): Promise<void> => {
     await sendAction('tab.ping', {
         tabName: scope.tabName,
-        source: 'start_extension',
+        source: 'extension.newtab',
         url: location.href,
         title: document.title,
         at: Date.now(),
-    }, true);
+    }, {sessionWorkspace: true});
 };
 
-const sendAction = async <TData = unknown>(type: string, payload: Record<string, unknown> = {}, workspaceScoped?: boolean) =>
+const sendAction = async <TData = unknown>(
+    type: string,
+    payload: Record<string, unknown> = {},
+    scope: ActionScope = {},
+) =>
     await new Promise<ActionResult<TData>>((resolve) => {
         let settled = false;
         let ws: WebSocket | null = null;
@@ -232,7 +238,7 @@ const sendAction = async <TData = unknown>(type: string, payload: Record<string,
             resolve(result);
         };
         const timeout = setTimeout(() => {
-            log('action.timeout', { type, requestId, payload, workspaceScoped });
+            log('action.timeout', { type, requestId, payload, scope });
             done({ ok: false, error: { message: 'ws action timeout' } });
         }, 5000);
         readSessionConfig()
@@ -247,7 +253,8 @@ const sendAction = async <TData = unknown>(type: string, payload: Record<string,
                             id: requestId,
                             type,
                             payload,
-                            workspaceName: workspaceScoped ? sessionConfig.workspaceName : undefined,
+                            workspaceName: scope.workspaceName
+                                ?? (scope.sessionWorkspace ? sessionConfig.workspaceName : undefined),
                         }),
                     );
                     log('action.sent', { type, requestId });
@@ -275,13 +282,19 @@ const sendAction = async <TData = unknown>(type: string, payload: Record<string,
             });
     });
 
-const formatTs = (ts: number) => new Date(ts).toLocaleString();
-
-const runWorkflowAction = async (scene: string, type: string, label: string, workspaceScoped?: boolean) => {
+const runWorkflowAction = async (workflowName: string, type: 'dsl.run' | 'dsl.test', label: string) => {
     if (restoreStatusEl) {
         restoreStatusEl.textContent = `${label}...`;
     }
-    const result = await sendAction<WorkflowRunData>(type, { scene }, workspaceScoped);
+    const opened = await sendAction<WorkflowOpenData>('workflow.open', {workflowName});
+    const workspaceName = opened.data?.workspaceName;
+    if (!opened.ok || !workspaceName) {
+        if (restoreStatusEl) {
+            restoreStatusEl.textContent = `${label} failed: ${opened.error?.message ?? 'workflow.open failed'}`;
+        }
+        return;
+    }
+    const result = await sendAction<WorkflowRunData>(type, {}, {workspaceName});
     if (!result.ok) {
         if (restoreStatusEl) {
             restoreStatusEl.textContent = `${label} failed: ${result.error?.message ?? 'unknown'}`;
@@ -293,7 +306,7 @@ const runWorkflowAction = async (scene: string, type: string, label: string, wor
     }
 };
 
-const renderWorkflowList = (items: WorkflowListItem[], workspaceScoped?: boolean) => {
+const renderWorkflowList = (items: WorkflowListItem[]) => {
     if (!restoreListEl) {return;}
     restoreListEl.innerHTML = '';
     if (!items.length) {
@@ -309,12 +322,13 @@ const renderWorkflowList = (items: WorkflowListItem[], workspaceScoped?: boolean
 
         const meta = document.createElement('div');
         meta.className = 'restore-meta';
-        meta.innerHTML = [
-            `<div><strong>${item.scene}</strong> ${item.name ? `(${item.name})` : ''}</div>`,
-            `<div>id: ${item.id} | records: ${String(item.recordCount)} | checkpoints: ${String(item.checkpointCount)}</div>`,
-            `<div>entry: ${item.entryDsl}${item.entryInputs ? ` | inputs: ${item.entryInputs}` : ''}</div>`,
-            `<div>updated: ${formatTs(Date.now())}</div>`,
-        ].join('');
+        const title = document.createElement('strong');
+        title.textContent = item.workflowName;
+        const entry = document.createElement('div');
+        entry.textContent = item.runnable
+            ? `entry: ${item.entryDslName ?? 'main'}`
+            : '尚未设置可运行 DSL';
+        meta.append(title, entry);
 
         const actions = document.createElement('div');
         actions.className = 'row';
@@ -324,7 +338,7 @@ const renderWorkflowList = (items: WorkflowListItem[], workspaceScoped?: boolean
         openBtn.textContent = '打开 workflow';
         openBtn.addEventListener('click', () => {
             void (async () => {
-                const opened = await sendAction<WorkflowOpenData>('workflow.open', { scene: item.scene }, workspaceScoped);
+                const opened = await sendAction<WorkflowOpenData>('workflow.open', {workflowName: item.workflowName});
                 if (!opened.ok) {
                     if (restoreStatusEl) {
                         restoreStatusEl.textContent = `open failed: ${opened.error?.message ?? 'unknown'}`;
@@ -346,31 +360,27 @@ const renderWorkflowList = (items: WorkflowListItem[], workspaceScoped?: boolean
 
         const runBtn = document.createElement('button');
         runBtn.textContent = '运行';
+        runBtn.disabled = item.runnable !== true;
         runBtn.addEventListener('click', () => {
-            void runWorkflowAction(item.scene, 'workflow.releaseRun', 'run', workspaceScoped);
+            void runWorkflowAction(item.workflowName, 'dsl.run', 'run');
         });
 
         const testBtn = document.createElement('button');
-        testBtn.textContent = '测试 DSL';
+        testBtn.textContent = '检查 DSL';
+        testBtn.disabled = item.runnable !== true;
         testBtn.addEventListener('click', () => {
-            void runWorkflowAction(item.scene, 'workflow.dsl.test', 'dsl test', workspaceScoped);
+            void runWorkflowAction(item.workflowName, 'dsl.test', 'dsl check');
         });
 
-        const saveRecordBtn = document.createElement('button');
-        saveRecordBtn.textContent = '保存录制';
-        saveRecordBtn.addEventListener('click', () => {
-            void runWorkflowAction(item.scene, 'workflow.record.save', 'record save', workspaceScoped);
-        });
-
-        actions.append(openBtn, runBtn, testBtn, saveRecordBtn);
+        actions.append(openBtn, runBtn, testBtn);
         row.append(meta, actions);
         restoreListEl.appendChild(row);
     });
 };
 
-const refreshWorkflowList = async (workspaceScoped?: boolean) => {
+const refreshWorkflowList = async () => {
     if (restoreStatusEl) {restoreStatusEl.textContent = 'loading...';}
-    const result = await sendAction<WorkflowListData>('workflow.list', {}, workspaceScoped);
+    const result = await sendAction<WorkflowListData>('workflow.list');
     if (!result.ok) {
         if (restoreStatusEl) {
             const errorMessage = result.error?.message ?? 'unknown';
@@ -380,7 +390,7 @@ const refreshWorkflowList = async (workspaceScoped?: boolean) => {
         return;
     }
     const workflows = result.data && Array.isArray(result.data.workflows) ? result.data.workflows : [];
-    renderWorkflowList(workflows, workspaceScoped);
+    renderWorkflowList(workflows);
     if (restoreStatusEl) {restoreStatusEl.textContent = `ready (${String(workflows.length)})`;}
 };
 
@@ -390,7 +400,7 @@ void (async () => {
         if (tokenEl) {tokenEl.textContent = `${bound.tabName.slice(0, 8)}...`;}
         if (urlEl) {urlEl.textContent = location.href;}
         setStatus('connected', true);
-        await refreshWorkflowList(false);
+        await refreshWorkflowList();
         setInterval(() => {
             void sendHeartbeat(bound);
         }, 15_000);
@@ -405,6 +415,6 @@ void (async () => {
 refreshRestoreBtn?.addEventListener('click', () => {
     void (async () => {
         await ensureBoundToken();
-        await refreshWorkflowList(false);
+        await refreshWorkflowList();
     })();
 });

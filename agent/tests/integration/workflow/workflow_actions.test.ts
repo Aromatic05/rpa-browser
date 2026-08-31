@@ -36,6 +36,24 @@ test('workflow lifecycle actions are handled by runtime control', async () => {
         workspaceRegistry: registry,
     } as any);
     assert.equal(listed.reply.type, 'workflow.list.result');
+    const initialSummary = ((listed.reply.payload as {workflows: Array<{
+        workflowName: string;
+        entryDslName: string | null;
+        runnable: boolean;
+    }>}).workflows).find((item) => item.workflowName === workflowName);
+    assert.deepEqual(initialSummary, {workflowName, entryDslName: 'main', runnable: false});
+
+    createdWorkspace.workflow.save({kind: 'dsl', name: 'main', content: 'wait 1', stepResolves: {}});
+    const listedRunnable = await handleRuntimeControlAction({
+        action: {v: 1, id: '2b', type: 'workflow.list'},
+        workspaceRegistry: registry,
+    } as any);
+    const runnableSummary = ((listedRunnable.reply.payload as {workflows: Array<{
+        workflowName: string;
+        entryDslName: string | null;
+        runnable: boolean;
+    }>}).workflows).find((item) => item.workflowName === workflowName);
+    assert.deepEqual(runnableSummary, {workflowName, entryDslName: 'main', runnable: true});
 
     const opened = await handleRuntimeControlAction({
         action: { v: 1, id: '3', type: 'workflow.open', payload: { workflowName } },

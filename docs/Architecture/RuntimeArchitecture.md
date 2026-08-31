@@ -66,7 +66,7 @@ RuntimeWorkspace
 ### 2.3 协议不变量
 
 - `workspaceName === workflowName` — workspace 名称必须等于其绑定的 workflow 名称
-- workspace 的 workflow binding 使用 `workflow:<scene>` 命名规则
+- workspace 不再附加 `workflow:` 前缀；workflow identity 直接作为 workspaceName
 
 ## 3. WorkspaceRouter 前缀转发
 

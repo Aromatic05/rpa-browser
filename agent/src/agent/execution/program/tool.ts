@@ -10,7 +10,13 @@ import type {
     AgentProgramExecutionSummary,
     AgentProgramPause,
 } from '../types';
-import {summarizePause, type AgentProgram, type AgentProgramExecutionStart, type AgentProgramExecutor} from './contracts';
+import {
+    summarizePause,
+    type AgentProgram,
+    type AgentProgramContinuationExporter,
+    type AgentProgramExecutionStart,
+    type AgentProgramExecutor,
+} from './contracts';
 
 export const EXECUTE_PROGRAM_TOOL = 'agent.execute_program';
 
@@ -123,37 +129,43 @@ export type ProgramExecutionToolController = Readonly<{
     readEffects: () => readonly DebugEffectRecord[];
     hasStartedProgram: () => boolean;
     hasCompletedProgram: () => boolean;
+    exportContinuationImage: () => unknown;
     continuePaused: () => Promise<AgentProgramContinueResult>;
 }>;
 
 export const createProgramExecutionTool = (options: {
     execute: AgentProgramExecutor;
+    seed?: AgentProgramExecutionStart;
+    exportContinuation?: AgentProgramContinuationExporter;
 }): ProgramExecutionToolController => {
     const attempts: ProgramAttempt[] = [];
     const latest = (): ProgramAttempt | undefined => attempts.at(-1);
     const latestDebugger = (): PausedDslDebugAgentTools | null => latest()?.debugger ?? null;
     const latestPause = () => latestDebugger()?.readPause() ?? null;
+    const retain = (executionStart: AgentProgramExecutionStart): ProgramAttempt => ({
+        start: {
+            ...executionStart,
+            summary: {
+                ...executionStart.summary,
+                input: structuredClone(executionStart.summary.input),
+            },
+        },
+        ...(executionStart.debug
+            ? {debugger: createPausedDslDebugAgentTools(executionStart.debug.session, executionStart.debug.pause)}
+            : {}),
+    });
+    if (options.seed) {attempts.push(retain(options.seed));}
     const start = async (program: AgentProgram): Promise<AgentProgramExecutionSummary> => {
         const previous = latest();
         if (previous && summarizeAttempt(previous).status !== 'invalid') {
             throw new Error('a program execution already started; repair or rollback must remain inside its retained transaction');
         }
-        const executionStart = await options.execute({
-            source: program.source,
-            input: structuredClone(program.input),
+        let executionStart: AgentProgramExecutionStart;
+        executionStart = await options.execute({source: program.source, input: structuredClone(program.input)});
+        const attempt = retain({
+            ...executionStart,
+            summary: {...executionStart.summary, input: structuredClone(program.input)},
         });
-        const attempt: ProgramAttempt = {
-            start: {
-                ...executionStart,
-                summary: {
-                    ...executionStart.summary,
-                    input: structuredClone(program.input),
-                },
-            },
-            ...(executionStart.debug
-                ? {debugger: createPausedDslDebugAgentTools(executionStart.debug.session, executionStart.debug.pause)}
-                : {}),
-        };
         attempts.push(attempt);
         return summarizeAttempt(attempt);
     };
@@ -202,6 +214,13 @@ export const createProgramExecutionTool = (options: {
         readEffects: () => latest()?.start.debug?.session.auditEffects() ?? [],
         hasStartedProgram: () => attempts.some((attempt) => summarizeAttempt(attempt).status !== 'invalid'),
         hasCompletedProgram: () => latest() ? summarizeAttempt(latest()!).status === 'completed' : false,
+        exportContinuationImage: () => {
+            const attempt = latest();
+            if (!attempt || !options.exportContinuation) {
+                throw new Error('retained program continuation is not durably exportable');
+            }
+            return options.exportContinuation(attempt.start);
+        },
         continuePaused: async () => {
             const attempt = latest();
             const debuggerTools = attempt?.debugger;

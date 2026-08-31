@@ -21,7 +21,7 @@
         "typecheck:agent": "pnpm --filter ./agent typecheck",
         "typecheck:extension": "pnpm --filter ./extension typecheck",
         "typecheck": "pnpm typecheck:agent && pnpm typecheck:extension",
-        "lint": "pnpm exec eslint \"agent/**/*.{ts,tsx,js,jsx,mjs,cjs}\" \"extension/**/*.{ts,tsx,js,jsx,mjs,cjs}\" \"start_extension/**/*.{ts,tsx,js,jsx,mjs,cjs}\" --max-warnings=0",
+        "lint": "pnpm exec eslint \"agent/**/*.{ts,tsx,js,jsx,mjs,cjs}\" \"extension/**/*.{ts,tsx,js,jsx,mjs,cjs}\" --max-warnings=0",
         "format": "npx prettier --write \"**/*.{ts,tsx,js,jsx,css,md,json,html}\"",
         "control": "pnpm --filter ./agent control",
         "test:repo-contract": "node --test scripts/__tests__/repository_contract.test.mjs",

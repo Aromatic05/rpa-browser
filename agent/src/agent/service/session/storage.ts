@@ -21,11 +21,15 @@ export type SessionStorage = {
     saveMetadata: (metadata: StoredSessionMetadata) => void;
     loadReport: (sessionId: SessionId) => AgentRunReport | null;
     saveReport: (sessionId: SessionId, report: AgentRunReport) => void;
+    loadContinuation: (sessionId: SessionId) => unknown | null;
+    saveContinuation: (sessionId: SessionId, image: unknown) => void;
+    deleteContinuation: (sessionId: SessionId) => void;
     delete: (sessionId: SessionId) => void;
 };
 
 const METADATA_DIR = 'metadata';
 const REPORTS_DIR = 'reports';
+const CONTINUATIONS_DIR = 'continuations';
 
 const atomicWriteJsonSync = (filePath: string, value: unknown): void => {
     const dir = path.dirname(filePath);
@@ -67,15 +71,19 @@ export const createFileSystemSessionStorage = (
     const dataDir = path.resolve(options.dataDir);
     const metadataDir = path.join(dataDir, METADATA_DIR);
     const reportsDir = path.join(dataDir, REPORTS_DIR);
+    const continuationsDir = path.join(dataDir, CONTINUATIONS_DIR);
 
     fs.mkdirSync(metadataDir, {recursive: true});
     fs.mkdirSync(reportsDir, {recursive: true});
+    fs.mkdirSync(continuationsDir, {recursive: true});
 
     const metadataPath = (sessionId: SessionId): string =>
         path.join(metadataDir, `${sessionId}.json`);
 
     const reportPath = (sessionId: SessionId): string =>
         path.join(reportsDir, `${sessionId}.json`);
+    const continuationPath = (sessionId: SessionId): string =>
+        path.join(continuationsDir, `${sessionId}.json`);
 
     return {
         load: () => {
@@ -116,6 +124,17 @@ export const createFileSystemSessionStorage = (
         saveReport: (sessionId, report) => {
             atomicWriteJsonSync(reportPath(sessionId), JSON.parse(serializeAgentRunReport(report)));
         },
+        loadContinuation: (sessionId) => {
+            const filePath = continuationPath(sessionId);
+            if (!fs.existsSync(filePath)) {return null;}
+            const raw = safeReadJsonSync(filePath);
+            if (raw === null) {
+                options.log?.('agent session storage skipping corrupt continuation', filePath);
+            }
+            return raw;
+        },
+        saveContinuation: (sessionId, image) => atomicWriteJsonSync(continuationPath(sessionId), image),
+        deleteContinuation: (sessionId) => { try { fs.unlinkSync(continuationPath(sessionId)); } catch {} },
         delete: (sessionId) => {
             try {
                 fs.unlinkSync(metadataPath(sessionId));
@@ -127,6 +146,7 @@ export const createFileSystemSessionStorage = (
             } catch {
                 // ignore missing files
             }
+            try { fs.unlinkSync(continuationPath(sessionId)); } catch { /* ignore missing files */ }
         },
     };
 };
@@ -134,15 +154,20 @@ export const createFileSystemSessionStorage = (
 export const createInMemorySessionStorage = (): SessionStorage => {
     const metadata = new Map<SessionId, StoredSessionMetadata>();
     const reports = new Map<SessionId, AgentRunReport>();
+    const continuations = new Map<SessionId, unknown>();
 
     return {
         load: () => Array.from(metadata.values()),
         saveMetadata: (record) => {metadata.set(record.sessionId, record);},
         loadReport: (sessionId) => reports.get(sessionId) ?? null,
         saveReport: (sessionId, report) => {reports.set(sessionId, report);},
+        loadContinuation: (sessionId) => continuations.get(sessionId) ?? null,
+        saveContinuation: (sessionId, image) => {continuations.set(sessionId, structuredClone(image));},
+        deleteContinuation: (sessionId) => {continuations.delete(sessionId);},
         delete: (sessionId) => {
             metadata.delete(sessionId);
             reports.delete(sessionId);
+            continuations.delete(sessionId);
         },
     };
 };

@@ -12,26 +12,27 @@
 2. `workflow.open`
 3. `dsl.get` / `dsl.save`
 4. `dsl.test`
-5. `record.save`
+5. `dsl.run`
+6. 按需通过独立录制流程执行 `record.start` / `record.stop` / `record.save`
 
 ### 关键规则
 
-- `workflow.open` 只做 manifest + workspace 绑定，不执行 DSL。
-- `workflow.releaseRun` 才执行正式流程。
-- `workflow.dsl.test` 属于开发态运行。
+- `workflow.open` 负责载入 workflow、建立或激活同名 workspace 并确保 browser session 可用，不执行 DSL。
+- `dsl.test` 只做 DSL / Checkpoint graph 校验，不执行正式流程。
+- `dsl.run` 执行当前 workflow 的 entry DSL。
 
 ### 绑定规则
 
-- workflow workspace 固定为 `workflow:<scene>`。
-- 策略来自 `workspace.yaml`（通过 `workflow.workspace.binding` 引用）。
+- workflow workspaceName 与 workflow name 相同。
+- action 必须显式使用 `workflow.open` 返回的 `workspaceName`，不能依赖 active workspace 猜测。
 
 ## 示例
 
 ```text
-workflow.open(order_scene)
--> workspaceName=workflow:order_scene
--> tabName=...
--> workflow.releaseRun(order_scene)
+workflow.open({ workflowName: "order_scene" })
+-> workspaceName="order_scene"
+-> dsl.test(workspaceName="order_scene")
+-> dsl.run(workspaceName="order_scene")
 ```
 
 ## 限制

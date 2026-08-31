@@ -11,7 +11,7 @@ import type {AgentExecutionMode, AgentRunRequest, AgentRunResult, AgentRunner} f
 import type {LibraryAssetSummary} from '../library/contracts';
 import {createProductController, type ProductController} from '../product';
 import {createAgentHttpServer} from './server';
-import {createSessionManager, type SessionManager} from './session/manager';
+import {createSessionManager, type ContinuationRestorer, type SessionManager} from './session/manager';
 import {createFileSystemSessionStorage} from './session/storage';
 import type {SessionInteractionPolicy} from './session/types';
 import type {SessionRetentionPolicy} from './session/store';
@@ -67,6 +67,7 @@ export type WorkspaceAgentServiceDeps = {
      *  config); when unconfigured the Product start surface truthfully errors
      *  with ERR_BAD_ARGS rather than fabricating a model choice. */
     productDefaults?: Readonly<{provider: string; model: string; executionMode?: AgentExecutionMode}>;
+    continuationRestorer?: ContinuationRestorer;
 };
 
 export const createWorkspaceAgentService = (deps: WorkspaceAgentServiceDeps): WorkspaceAgentService => {
@@ -83,6 +84,7 @@ export const createWorkspaceAgentService = (deps: WorkspaceAgentServiceDeps): Wo
         storage,
         log: deps.log,
         interactionPolicy: deps.interaction,
+        continuationRestorer: deps.continuationRestorer,
     });
     const security = createAgentServiceSecurity(deps.security);
     if (deps.retention) {
@@ -108,6 +110,7 @@ export const createWorkspaceAgentService = (deps: WorkspaceAgentServiceDeps): Wo
             if (status === 'starting') {throw new Error('agent service is already starting');}
             status = 'starting';
             try {
+                await sessions.ready();
                 if (deps.fixedPort !== undefined && deps.fixedPort > 0) {
                     port = deps.fixedPort;
                     portReserved = false;

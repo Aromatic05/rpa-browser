@@ -54,6 +54,20 @@ const toWorkspaceSummary = (workspace: RuntimeWorkspace) => ({
     updatedAt: workspace.updatedAt,
 });
 
+const toWorkflowSummary = (workflowName: string) => {
+    try {
+        const workflow = loadWorkflowFromFs(workflowName);
+        const entryDslName = workflow.entryDslName?.() ?? 'main';
+        return {
+            workflowName,
+            entryDslName,
+            runnable: workflow.get(entryDslName, {kind: 'dsl'})?.kind === 'dsl',
+        };
+    } catch {
+        return {workflowName, entryDslName: null, runnable: false};
+    }
+};
+
 export const handleRuntimeControlAction = async (input: RuntimeControlInput): Promise<ControlPlaneResult> => {
     const { action, workspaceRegistry } = input;
 
@@ -106,7 +120,7 @@ export const handleRuntimeControlAction = async (input: RuntimeControlInput): Pr
         }
         case 'workflow.list': {
             return {
-                reply: replyAction(action, { workflows: listWorkflowNames().map((workflowName) => ({ workflowName })) }),
+                reply: replyAction(action, {workflows: listWorkflowNames().map(toWorkflowSummary)}),
                 events: [],
             };
         }

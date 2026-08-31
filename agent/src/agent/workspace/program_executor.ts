@@ -3,6 +3,10 @@ import {
     type RunStepsDeps,
 } from '../../automation/runner/run_steps';
 import {materializeReferencedCheckpointRuntimeSnapshot, isAutomaticRecoveryCheckpoint} from '../../automation/runner/checkpoint';
+import {
+    checkpointRuntimeSnapshotFromImage,
+    type CheckpointRuntimeSnapshotImage,
+} from '../../automation/runner/checkpoint/runtime_snapshot';
 import type {Checkpoint} from '../../automation/runner/checkpoint/types';
 import {
     compileDslSource,
@@ -30,6 +34,15 @@ import type {
     AgentProgramExecutor,
 } from '../execution/program/contracts';
 import type {AgentProgramEffectSummary, AgentProgramExecutionSummary} from '../execution/types';
+import {exportProgramExecutionImage, rehydrateProgramExecutionImage} from '../continuation';
+import {
+    jsonRoundTripWorkspaceContinuationImage,
+    parseWorkspaceContinuationImage,
+    WORKSPACE_CONTINUATION_IMAGE_SCHEMA,
+    WORKSPACE_CONTINUATION_IMAGE_VERSION,
+} from '../continuation/workspace';
+
+const runtimeImages = new WeakMap<DslDebugExecutionSession, CheckpointRuntimeSnapshotImage>();
 
 export type CreateWorkspaceProgramExecutorOptions = {
     workspaceName: string;
@@ -37,6 +50,14 @@ export type CreateWorkspaceProgramExecutorOptions = {
     runWorkspaceExecution: <T>(actionType: string, run: () => Promise<T>) => Promise<T>;
     credentialResolver?: CredentialResolver;
     worldViewSource?: WorldViewSource;
+};
+
+export type WorkspaceProgramExecutor = AgentProgramExecutor & {
+    exportContinuation: (start: AgentProgramExecutionStart) => unknown;
+    restoreContinuation: (image: unknown) => Promise<
+        | Readonly<{ok: true; start: AgentProgramExecutionStart}>
+        | Readonly<{ok: false; error: Readonly<{code: string; message: string}>}>
+    >;
 };
 
 const invalidProgram = (
@@ -94,7 +115,8 @@ const listRecoveryCheckpoints = (
 const lockedDebugSession = (
     session: DslDebugExecutionSession,
     runWorkspaceExecution: CreateWorkspaceProgramExecutorOptions['runWorkspaceExecution'],
-): DslDebugExecutionSession => ({
+): DslDebugExecutionSession => {
+    const locked = {
     ...session,
     commit: (continuationId) => runWorkspaceExecution(
         'agent.program.commit',
@@ -120,7 +142,11 @@ const lockedDebugSession = (
         'agent.program.advance',
         () => session.advance(continuationId, mode),
     ),
-});
+    } as DslDebugExecutionSession;
+    const image = runtimeImages.get(session);
+    if (image) {runtimeImages.set(locked, image);}
+    return locked;
+};
 
 const summary = (
     program: AgentProgram,
@@ -139,7 +165,8 @@ const summary = (
 
 export const createWorkspaceProgramExecutor = (
     options: CreateWorkspaceProgramExecutorOptions,
-): AgentProgramExecutor => async (program: AgentProgram) => {
+): WorkspaceProgramExecutor => {
+    const executeProgram = async (program: AgentProgram): Promise<AgentProgramExecutionStart> => {
     const workspace = options.deps.resolveWorkspace(options.workspaceName);
     const checkpointProvider = workspace.checkpoint.getProvider(workspace.workflow);
     let runtime: ReturnType<typeof materializeReferencedCheckpointRuntimeSnapshot>;
@@ -212,6 +239,7 @@ export const createWorkspaceProgramExecutor = (
                 barrierResumeMode: 'continue',
             },
         });
+        if (runtime.image) {runtimeImages.set(session, runtime.image);}
         const initial = await Promise.race([
             session.waitForPause().then((pause) => ({status: 'paused' as const, pause})),
             session.waitForCompletion().then(
@@ -296,4 +324,84 @@ export const createWorkspaceProgramExecutor = (
             },
         };
     });
+    };
+    const exportContinuation = (start: AgentProgramExecutionStart): unknown => {
+        if (!start.debug) {throw new Error('program is not paused and cannot be continued');}
+        const runtimeImage = runtimeImages.get(start.debug.session);
+        if (!runtimeImage) {throw new Error('workspace runtime image is unavailable');}
+        const execution = exportProgramExecutionImage(start.debug.session);
+        if (!execution.ok) {throw new Error(execution.error.message);}
+        const roundTrip = jsonRoundTripWorkspaceContinuationImage({
+            schema: WORKSPACE_CONTINUATION_IMAGE_SCHEMA,
+            version: WORKSPACE_CONTINUATION_IMAGE_VERSION,
+            workspaceName: options.workspaceName,
+            program: {
+                source: start.summary.source,
+                input: structuredClone(start.summary.input),
+            },
+            execution: execution.image,
+            runtime: runtimeImage,
+        });
+        if (!roundTrip.ok) {throw new Error(roundTrip.error.message);}
+        return roundTrip.image;
+    };
+    const restoreContinuation = async (value: unknown) => {
+        const parsed = parseWorkspaceContinuationImage(value);
+        if (!parsed.ok) {return parsed;}
+        if (parsed.image.workspaceName !== options.workspaceName) {
+            return {ok: false as const, error: {code: 'ERR_CONTINUATION_WORLD_CONFLICT', message: 'continuation belongs to a different workspace'}};
+        }
+        const runtime = checkpointRuntimeSnapshotFromImage(parsed.image.runtime);
+        const worldViewSource = options.worldViewSource ?? createWorkspaceWorldViewSource({workspaceName: options.workspaceName, deps: options.deps});
+        const resolver = options.credentialResolver ?? createDenyAllCredentialResolver();
+        const executeStep = (step: Parameters<typeof executeStepWithRuntimeContracts>[0]) =>
+            executeStepWithRuntimeContracts(step, options.workspaceName, options.deps, {
+                checkpointProvider: runtime.provider,
+                entityRulesProvider: runtime.entityRulesProvider,
+                entityRulesResolver: runtime.entityRulesResolver,
+                resolveResolver: runtime.resolveResolver,
+            });
+        const executeWithCredentials = createCredentialResolvingStepExecutor({
+            resolver,
+            execute: executeStep,
+        });
+        const stepExecutionPort: StepExecutionPort = {
+            execute: async (step, precondition) => executeWithCredentials(step, precondition),
+        };
+        const program: AgentProgram = {
+            source: parsed.image.program.source,
+            input: structuredClone(parsed.image.program.input),
+        };
+        const rehydrated = await rehydrateProgramExecutionImage(parsed.image.execution, {
+            worldViewSource,
+            context: {
+                workspaceName: options.workspaceName,
+                deps: options.deps,
+                input: structuredClone(program.input),
+                checkpointProvider: runtime.provider,
+                entityRulesResolver: runtime.entityRulesResolver,
+                resolveResolver: runtime.resolveResolver,
+                stepExecutionPort,
+            },
+            compensationPort: {execute: executeStep},
+        });
+        if (!rehydrated.ok) {return rehydrated;}
+        if (runtime.image) {runtimeImages.set(rehydrated.session, runtime.image);}
+        return {
+            ok: true as const,
+            start: {
+                summary: summary(program, rehydrated.session, 'paused'),
+                debug: {
+                    session: lockedDebugSession(rehydrated.session, options.runWorkspaceExecution),
+                    pause: rehydrated.pause,
+                },
+            },
+        };
+    };
+    return Object.assign(executeProgram, {exportContinuation, restoreContinuation});
+};
+
+export const createWorkspaceContinuationRestorer = (options: CreateWorkspaceProgramExecutorOptions) => {
+    const executor = createWorkspaceProgramExecutor(options);
+    return (image: unknown) => executor.restoreContinuation(image);
 };

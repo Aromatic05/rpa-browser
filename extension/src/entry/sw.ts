@@ -116,7 +116,10 @@ const initializeRuntime = async () => {
     }
     const sessionKey = `${sessionConfig.workspaceName}:${String(sessionConfig.wsPort)}`;
     if (initialized) {
-        if (activeSessionKey === sessionKey) {return;}
+        if (activeSessionKey === sessionKey) {
+            await writeRuntimeReady({...sessionConfig, sessionKey});
+            return;
+        }
         if (activeWorkspaceName !== sessionConfig.workspaceName || !activeWsClient) {
             log.warning('session workspace changed; reloading extension runtime', {
                 previous: activeSessionKey,

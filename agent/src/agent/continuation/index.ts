@@ -11,6 +11,7 @@ import {parseProgramExecutionImage, jsonRoundTripProgramExecutionImage} from './
 
 export * from './contracts';
 export * from './image';
+export * from './workspace';
 
 export const exportProgramExecutionImage = (
     session: {exportProgramExecutionImage: () => ProgramExecutionImageExportResult},
