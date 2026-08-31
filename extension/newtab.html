@@ -6,121 +6,216 @@
   <title>RPA Browser</title>
   <style>
     :root {
-      --bg: radial-gradient(1200px 700px at 20% 10%, #e6f3ff 0%, #f8fbff 45%, #ffffff 100%);
-      --text: #0f172a;
-      --muted: #475569;
-      --card: #ffffffcc;
-      --line: #cbd5e1;
-      --accent: #0f766e;
+      color-scheme: light;
+      --page: #f5f7fb;
+      --surface: #ffffff;
+      --surface-soft: #f8fafc;
+      --text: #172033;
+      --muted: #667085;
+      --line: #e4e7ec;
+      --accent: #176b5f;
+      --accent-hover: #12574e;
+      --ok: #16805d;
+      --shadow: 0 18px 50px rgba(16, 24, 40, 0.08);
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
       min-height: 100vh;
-      font-family: "Segoe UI", "PingFang SC", "Noto Sans SC", sans-serif;
-      background: var(--bg);
+      font-family: Inter, "Segoe UI", "PingFang SC", "Noto Sans SC", system-ui, sans-serif;
       color: var(--text);
+      background: var(--page);
+    }
+    .shell {
+      width: min(920px, calc(100vw - 40px));
+      margin: 0 auto;
+      padding: 56px 0 72px;
+    }
+    .hero {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 24px;
+      margin-bottom: 36px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 12px;
+    }
+    .mark {
+      width: 38px;
+      height: 38px;
       display: grid;
       place-items: center;
-      padding: 24px;
+      border-radius: 11px;
+      background: var(--text);
+      color: #fff;
+      font-weight: 700;
+      letter-spacing: -0.04em;
     }
-    .card {
-      width: min(840px, 96vw);
-      background: var(--card);
-      border: 1px solid var(--line);
-      border-radius: 16px;
-      padding: 24px;
-      box-shadow: 0 14px 40px rgba(15, 23, 42, 0.08);
-      backdrop-filter: blur(4px);
+    h1 {
+      margin: 0;
+      font-size: 30px;
+      line-height: 1.15;
+      letter-spacing: -0.025em;
     }
-    h1 { margin: 0 0 8px; font-size: 28px; }
-    p { margin: 0 0 16px; color: var(--muted); }
-    .row { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
-    .row.actions { margin-top: 12px; }
-    .tag {
+    .hero p {
+      max-width: 650px;
+      margin: 0;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.7;
+    }
+    .connection {
       display: inline-flex;
       align-items: center;
       gap: 8px;
+      flex: 0 0 auto;
+      min-height: 36px;
+      padding: 8px 12px;
       border: 1px solid var(--line);
       border-radius: 999px;
-      padding: 6px 12px;
-      font-size: 13px;
+      background: var(--surface);
       color: var(--muted);
-      background: #fff;
+      font-size: 13px;
     }
-    .ok { color: var(--accent); }
-    ul { margin: 0; padding-left: 20px; line-height: 1.7; }
-    .restore {
-      margin-top: 18px;
-      border-top: 1px dashed var(--line);
-      padding-top: 14px;
+    .connection::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #98a2b3;
     }
-    .restore h2 {
-      margin: 0 0 10px;
-      font-size: 18px;
-    }
-    .restore-list {
-      display: grid;
-      gap: 8px;
-    }
-    .restore-item {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 8px;
+    .connection.ok::before { background: var(--ok); }
+    .panel {
+      overflow: hidden;
       border: 1px solid var(--line);
-      border-radius: 10px;
-      background: #fff;
-      padding: 10px 12px;
-      font-size: 13px;
+      border-radius: 16px;
+      background: var(--surface);
+      box-shadow: var(--shadow);
     }
-    .restore-meta {
+    .panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 20px 22px;
+      border-bottom: 1px solid var(--line);
+    }
+    .panel-title h2 {
+      margin: 0 0 4px;
+      font-size: 18px;
+      letter-spacing: -0.01em;
+    }
+    .panel-title p {
+      margin: 0;
       color: var(--muted);
-      line-height: 1.4;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .panel-tools {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex: 0 0 auto;
+    }
+    #restoreStatus {
+      color: var(--muted);
+      font-size: 12px;
     }
     button {
+      appearance: none;
       border: 1px solid var(--line);
-      background: #fff;
+      border-radius: 9px;
+      background: var(--surface);
       color: var(--text);
-      border-radius: 8px;
-      padding: 6px 10px;
-      cursor: pointer;
-    }
-    button.primary {
-      border-color: #0f766e;
-      color: #0f766e;
-    }
-    code {
-      background: #f1f5f9;
-      border: 1px solid #e2e8f0;
-      border-radius: 6px;
-      padding: 2px 6px;
+      padding: 8px 12px;
+      font: inherit;
       font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;
+    }
+    button:hover:not(:disabled) { background: var(--surface-soft); }
+    button:active:not(:disabled) { transform: translateY(1px); }
+    button.primary {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: #fff;
+    }
+    button.primary:hover:not(:disabled) { background: var(--accent-hover); }
+    .restore-list { display: grid; }
+    .restore-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      min-height: 74px;
+      padding: 16px 22px;
+      border-bottom: 1px solid var(--line);
+    }
+    .restore-item:last-child { border-bottom: 0; }
+    .restore-meta {
+      min-width: 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.55;
+    }
+    .restore-meta strong {
+      display: block;
+      overflow: hidden;
+      margin-bottom: 3px;
+      color: var(--text);
+      font-size: 14px;
+      font-weight: 650;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .state-ready { color: var(--ok); }
+    .empty {
+      padding: 44px 22px;
+      color: var(--muted);
+      text-align: center;
+      font-size: 14px;
+    }
+    @media (max-width: 680px) {
+      .shell { width: min(100% - 24px, 920px); padding-top: 32px; }
+      .hero { flex-direction: column; }
+      .panel-header { align-items: flex-start; flex-direction: column; }
+      .panel-tools { width: 100%; justify-content: space-between; }
+      .restore-item { align-items: flex-start; }
     }
   </style>
 </head>
 <body>
-  <main class="card">
-    <h1>RPA Browser Start Page</h1>
-    <p>这个标签页由 RPA Browser 接管，负责帮助信息展示与新标签页上报。</p>
-    <div class="row">
-      <span class="tag">Agent WS: <strong id="wsStatus">connecting...</strong></span>
-      <span class="tag">tabName: <strong id="token">-</strong></span>
-      <span class="tag">url: <strong id="url">-</strong></span>
-    </div>
-    <ul>
-      <li>新标签页创建时会自动向 runner 上报 <code>tab.opened</code>。</li>
-      <li>录制、回放、workspace 管理由原扩展继续负责。</li>
-      <li>如果 WS 不可用，不会影响你继续浏览。</li>
-    </ul>
-    <section class="restore">
-      <h2>Workflow 列表</h2>
-      <div class="row actions">
-        <button id="refreshRestore">刷新 workflow 列表</button>
-        <span class="tag">status: <strong id="restoreStatus">idle</strong></span>
+  <main class="shell">
+    <header class="hero">
+      <div>
+        <div class="brand">
+          <div class="mark" aria-hidden="true">R</div>
+          <h1>RPA Browser</h1>
+        </div>
+        <p>Run saved automations here. Open any website to create tasks, teach procedures, or annotate page knowledge from the Agent sidebar.</p>
+      </div>
+      <div id="connectionPill" class="connection"><strong id="wsStatus">Connecting…</strong></div>
+    </header>
+
+    <section class="panel" aria-labelledby="automationTitle">
+      <div class="panel-header">
+        <div class="panel-title">
+          <h2 id="automationTitle">Automations</h2>
+          <p>Only complete, runnable automations are shown here.</p>
+        </div>
+        <div class="panel-tools">
+          <span id="restoreStatus" aria-live="polite">Loading…</span>
+          <button id="refreshRestore" type="button">Refresh</button>
+        </div>
       </div>
       <div id="restoreList" class="restore-list"></div>
     </section>
+
   </main>
   <script type="module" src="./start/newtab.js"></script>
 </body>

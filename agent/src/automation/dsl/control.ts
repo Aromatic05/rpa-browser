@@ -185,6 +185,7 @@ export const createDslControl = (services: DslControlServices): DslControl => ({
         }
 
         const runResult = await runWorkspaceExecution(workspace, action.type, async () => {
+            await workspace.browserSession.start();
             const checkpointRuntime = materializeReferencedCheckpointRuntimeSnapshot({
                 sources: [dsl.content], checkpointProvider: workspace.checkpoint.getProvider(workflow), workflow,
                 entityRulesProvider: services.runStepsDeps.resolveEntityRulesProvider?.(workspace.name),

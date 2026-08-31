@@ -88,6 +88,10 @@ export const createWorkspaceAgentFactory = (
         runWorkspaceExecution: deps.runWorkspaceExecution,
         credentialResolver: options.credentialResolver,
     });
+    const programSaver = createWorkspaceProgramSaver({
+        workspaceName: deps.workspaceName,
+        deps: deps.runStepsDeps,
+    });
     const programRunner = createProgramFirstAgentRunner({
         readTools: createWorkspaceAgentReadTools(toolDeps),
         executeProgram: programExecutor,
@@ -95,10 +99,7 @@ export const createWorkspaceAgentFactory = (
             workspaceName: deps.workspaceName,
             deps: deps.runStepsDeps,
         }),
-        saveProgram: createWorkspaceProgramSaver({
-            workspaceName: deps.workspaceName,
-            deps: deps.runStepsDeps,
-        }),
+        saveProgram: programSaver,
         knowledge: {
             library: workspaceLibrary,
             entityRules: lazyWorkspaceEntityRules(deps.workspaceName, deps.runStepsDeps),
@@ -127,6 +128,7 @@ export const createWorkspaceAgentFactory = (
         interaction: options.interaction,
         ...(options.productDefaults === undefined ? {} : {productDefaults: options.productDefaults}),
         productLibrary: () => workspaceLibrary.list(),
+        productSaveAutomation: programSaver,
         continuationRestorer: async (request, image) => {
             const restored = await programExecutor.restoreContinuation(image);
             if (!restored.ok) {return restored;}

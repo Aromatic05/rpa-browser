@@ -54,6 +54,7 @@ const errorCode = (error: unknown): string => {
 };
 
 const deriveState = (result: AgentRunResult): Exclude<SessionState, 'running'> => {
+    if (result.pausedByUser) {return 'paused';}
     if (result.requestedInteraction) {return 'paused';}
     const programs = result.programs ?? [];
     if (programs.some((program) => program.status === 'paused')) {return 'paused';}
@@ -139,6 +140,8 @@ export type SessionManager = {
     run: (request: AgentRunRequest) => Promise<AgentRunResult>;
     runTracked: (request: AgentRunRequest) => Promise<{sessionId: SessionId; result: AgentRunResult}>;
     start: (request: AgentRunRequest) => SessionSnapshot;
+    pause: (sessionId: SessionId) => SessionSnapshot | null;
+    resume: (sessionId: SessionId) => Promise<SessionSnapshot | null>;
     cancel: (sessionId: SessionId) => SessionSnapshot | null;
     status: (sessionId: SessionId) => SessionSnapshot | null;
     list: () => SessionSnapshot[];
@@ -217,6 +220,7 @@ export type SessionManagerOptions = {
 export const createSessionManager = (options: SessionManagerOptions): SessionManager => {
     const store = createSessionStore({storage: options.storage});
     const controllers = new Map<SessionId, AbortController>();
+    const pauseRequests = new Set<SessionId>();
     const now = options.now ?? Date.now;
     const ttlMs = options.interactionTtlMs ?? 15 * 60 * 1000;
     const interactions = options.interactions
@@ -329,6 +333,7 @@ export const createSessionManager = (options: SessionManagerOptions): SessionMan
             releaseTask(sessionId);
         }
         if (state !== 'paused' || result === null) {return;}
+        if (result.pausedByUser) {return;}
         const runId = runIds.get(sessionId);
         if (runId === undefined) {return;}
         if (result.requestedInteraction) {
@@ -381,10 +386,29 @@ export const createSessionManager = (options: SessionManagerOptions): SessionMan
         if (!store.reopen(sessionId)) {return;}
         try {
             const result = await continuation.resume();
-            settle(sessionId, deriveState(result), result, null);
+            const nextState = deriveState(result);
+            settle(sessionId, nextState, result, null);
+            if (nextState !== 'paused') {controllers.delete(sessionId);}
         } catch (error) {
             settle(sessionId, 'failed', null, {code: errorCode(error), message: errorMessage(error)});
+            controllers.delete(sessionId);
         }
+    };
+
+    const resumeUserPaused = (sessionId: SessionId): SessionSnapshot | null => {
+        const snapshot = store.get(sessionId);
+        if (snapshot?.state !== 'paused' || snapshot.result?.pausedByUser !== true) {return enrich(snapshot);}
+        const continuation = snapshot.result.continuation;
+        if (!continuation || !store.reopen(sessionId)) {return enrich(store.get(sessionId));}
+        void continuation.resume().then((result) => {
+            const nextState = deriveState(result);
+            settle(sessionId, nextState, result, null);
+            if (nextState !== 'paused') {controllers.delete(sessionId);}
+        }).catch((error) => {
+            settle(sessionId, 'failed', null, {code: errorCode(error), message: errorMessage(error)});
+            controllers.delete(sessionId);
+        });
+        return enrich(store.get(sessionId));
     };
 
     const controlPaused = async (sessionId: SessionId, input: AgentControlInput): Promise<void> => {
@@ -409,7 +433,10 @@ export const createSessionManager = (options: SessionManagerOptions): SessionMan
         controllers.set(sessionId, controller);
         try {
             const result = await abortable(
-                options.runner.run(request),
+                options.runner.run(request, {
+                    signal: controller.signal,
+                    pauseRequested: () => pauseRequests.has(sessionId),
+                }),
                 controller.signal,
                 () => new SessionCancelledError(sessionId),
             );
@@ -424,7 +451,11 @@ export const createSessionManager = (options: SessionManagerOptions): SessionMan
             }
             throw error;
         } finally {
-            controllers.delete(sessionId);
+            const snapshot = store.get(sessionId);
+            if (snapshot?.state !== 'paused') {
+                controllers.delete(sessionId);
+                pauseRequests.delete(sessionId);
+            }
         }
     };
 
@@ -523,20 +554,41 @@ export const createSessionManager = (options: SessionManagerOptions): SessionMan
             });
             return snapshot;
         },
+        pause: (sessionId) => {
+            const snapshot = store.get(sessionId);
+            if (!snapshot) {return null;}
+            if (snapshot.state === 'running' && controllers.has(sessionId)) {
+                pauseRequests.add(sessionId);
+            }
+            return enrich(store.get(sessionId));
+        },
+        resume: async (sessionId) => {
+            const snapshot = store.get(sessionId);
+            if (!snapshot) {return null;}
+            if (snapshot.state !== 'paused' || snapshot.result?.pausedByUser !== true || !snapshot.resumable) {
+                return enrich(snapshot);
+            }
+            pauseRequests.delete(sessionId);
+            return resumeUserPaused(sessionId);
+        },
         cancel: (sessionId) => {
+            const existing = store.get(sessionId);
+            if (!existing) {return null;}
+            if (existing.state === 'paused') {
+                controllers.get(sessionId)?.abort();
+                controllers.delete(sessionId);
+                pauseRequests.delete(sessionId);
+                cancelPendingInteractions(sessionId, 'session-cancel');
+                store.terminate(sessionId, {
+                    state: 'cancelled',
+                    error: {code: 'ERR_SESSION_CANCELLED', message: `session ${sessionId} was cancelled`},
+                });
+                options.storage?.deleteContinuation(sessionId);
+                releaseTask(sessionId);
+                return enrich(store.get(sessionId));
+            }
             const controller = controllers.get(sessionId);
             if (!controller) {
-                const existing = store.get(sessionId);
-                if (!existing) {return null;}
-                if (existing.state === 'paused') {
-                    cancelPendingInteractions(sessionId, 'session-cancel');
-                    store.terminate(sessionId, {
-                        state: 'cancelled',
-                        error: {code: 'ERR_SESSION_CANCELLED', message: `session ${sessionId} was cancelled`},
-                    });
-                    options.storage?.deleteContinuation(sessionId);
-                    releaseTask(sessionId);
-                }
                 return enrich(store.get(sessionId));
             }
             store.settle(sessionId, {
@@ -545,6 +597,7 @@ export const createSessionManager = (options: SessionManagerOptions): SessionMan
             });
             cancelPendingInteractions(sessionId, 'session-cancel');
             releaseTask(sessionId);
+            pauseRequests.delete(sessionId);
             controller.abort();
             return enrich(store.get(sessionId));
         },
@@ -672,6 +725,7 @@ export const createSessionManager = (options: SessionManagerOptions): SessionMan
             let swept = 0;
             for (const snapshot of store.list()) {
                 if (snapshot.state !== 'paused') {continue;}
+                if (snapshot.result?.pausedByUser === true && snapshot.resumable) {continue;}
                 const runId = runIds.get(snapshot.sessionId);
                 const pendingCount = runId === undefined
                     ? 0

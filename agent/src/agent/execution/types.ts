@@ -34,6 +34,11 @@ export type AgentRunContinuation = Readonly<{
     exportImage?: () => unknown;
 }>;
 
+export type AgentRunControl = Readonly<{
+    signal?: AbortSignal;
+    pauseRequested?: () => boolean;
+}>;
+
 /**
  * Typed external control input delivered to the retained Agent control loop of
  * the SAME Task/run. These are never generic prompt blobs; each kind carries
@@ -101,8 +106,9 @@ export type AgentRunResult = {
      *  a generic prompt blob. Approval is excluded structurally: the model can
      *  request only clarification / recovery_decision / takeover. */
     requestedInteraction?: ModelRequestedInteraction;
+    pausedByUser?: boolean;
 };
 
 export type AgentRunner = {
-    run: (request: AgentRunRequest) => Promise<AgentRunResult>;
+    run: (request: AgentRunRequest, control?: AgentRunControl) => Promise<AgentRunResult>;
 };

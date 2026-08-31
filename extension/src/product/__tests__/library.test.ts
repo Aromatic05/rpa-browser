@@ -22,7 +22,7 @@ test('Library never renders Step as an asset and shows dependency metadata only'
         assert.match(text, /New vendor onboarding/);
         assert.match(text, /Orders page/);
 
-        assert.match(text, /12 actions · replayable/);
+        assert.match(text, /12 recorded actions/);
         assert.match(text, /form · 1 entity/);
         assert.match(text, /needs review/, 'real library health evidence is shown, never a fabricated ready');
 
@@ -47,14 +47,15 @@ test('an unavailable Library projection says so instead of faking completeness',
     }
 });
 
-test('Library emits typed replay and edit intents for backend-supported actions', () => {
+test('Library exposes only actions that are actually implemented', () => {
     const fixture = mount(libraryView());
     try {
         openLibrary(fixture);
-        (fixture.shadow.querySelector('[data-rpa-product-action="replay"]') as HTMLButtonElement).click();
-        const replayCall = fixture.calls.find((call) => call.name === 'replayDemonstration');
-        assert.ok(replayCall);
-        assert.deepEqual(replayCall.args, [{ name: 'New vendor onboarding' }]);
+        assert.equal(
+            fixture.shadow.querySelector('[data-rpa-product-action="replay"]'),
+            null,
+            'demonstration replay is not advertised until its product lifecycle is actually wired',
+        );
 
         (fixture.shadow.querySelector('[data-rpa-product-action="edit-page-knowledge"]') as HTMLButtonElement).click();
         const editCall = fixture.calls.find((call) => call.name === 'editPageKnowledge');
@@ -65,17 +66,13 @@ test('Library emits typed replay and edit intents for backend-supported actions'
     }
 });
 
-test('replay and editing are disabled while another workspace activity owns the reservation', () => {
+test('editing is disabled while another workspace activity owns the reservation', () => {
     const fixture = mount(libraryView('task'));
     try {
         openLibrary(fixture);
-        const replay = fixture.shadow.querySelector('[data-rpa-product-action="replay"]') as HTMLButtonElement;
         const edit = fixture.shadow.querySelector('[data-rpa-product-action="edit-page-knowledge"]') as HTMLButtonElement;
-        assert.equal(replay.disabled, true, 'Replay disabled under an active reservation');
         assert.equal(edit.disabled, true, 'Edit disabled under an active reservation');
         assert.match(bodyText(fixture), /The workspace is in use\./);
-        replay.click();
-        assert.equal(fixture.calls.some((call) => call.name === 'replayDemonstration'), false);
     } finally {
         fixture.cleanup();
     }

@@ -16,20 +16,20 @@
 
 `workflow.list` 返回启动页需要的最小事实：`workflowName`、`entryDslName`、`runnable`。
 
-新建但尚未保存 entry DSL 的 workflow（包括全新 `default`）仍可打开，但启动页必须禁用“运行”和“检查 DSL”，不能让用户点击后才得到 `dsl not found`。
+普通启动页只展示 `runnable=true` 的 Automation。新建但尚未保存 entry DSL 的 workflow（包括全新 `default`）属于内部/草稿状态，不在启动面暴露，也不能通过“打开”产生浏览器副作用。
 
 ## 按钮与 Action 映射
 
 - 列表刷新 -> `workflow.list`
-- 打开 workflow -> `workflow.open { workflowName }`
-- 检查 DSL -> 先 `workflow.open`，再向其返回的 `workspaceName` 发送 `dsl.test`
-- 运行 -> 先 `workflow.open`，再向其返回的 `workspaceName` 发送 `dsl.run`
+- 运行 -> 内部先 `workflow.open` 取得目标 `workspaceName`，再发送 `dsl.run`
+
+`workflow.open` 是纯 workspace 选择/载入操作：不得启动 BrowserSession、创建 tab 或打开窗口。真正的浏览器启动延迟到 `dsl.run`。
 
 录制、Teach、Annotate 属于页面内产品 authoring surface，不由启动页伪造 `workflow.*` action。
 
 ## Scope 与绑定
 
-启动页自身的 `tab.report` / `tab.ping` 使用启动 session 的 `workspaceName`。workflow 操作不能沿用这个 scope 猜目标 workspace：`workflow.open` 返回哪个 `workspaceName`，后续 `dsl.test` / `dsl.run` 就显式发送到哪个 workspace。
+启动页自身的 `tab.report` / `tab.ping` 使用启动 session 的 `workspaceName`。Automation 运行不能沿用这个 scope 猜目标 workspace：`workflow.open` 返回哪个 `workspaceName`，后续 `dsl.run` 就显式发送到哪个 workspace。
 
 `workflow.open` 的 workspace identity 与 workflow identity 相同；不再使用 `workflow:<scene>` 前缀模型。
 
@@ -43,9 +43,9 @@
 
 - `workflow.list` 失败：显示错误并保留刷新入口；
 - `workflow.open` 失败：不执行后续 DSL action；
-- `dsl.test` / `dsl.run` 失败：直接显示后端返回的失败信息；
+- `dsl.run` 失败：直接显示后端返回的失败信息；
 - session config 或 tab binding 不可用：启动页保持 offline，不伪造 connected 状态。
 
 ## 验收要求
 
-不能只以 build/unit test 作为启动页可用证明。至少要用真实 Chromium 验证：主 service worker 被发现、`extension.configured`、`extension.connected`、workflow 列表可见，并实际点击一次可运行 workflow 的“打开 / 检查 DSL / 运行”。
+不能只以 build/unit test 作为启动页可用证明。至少要用真实 Chromium 验证：主 service worker 被发现、`extension.configured`、`extension.connected`、可运行 Automation 列表可见，并实际点击一次“Run”；同时验证空 workflow 不启动 BrowserSession、不创建 tab。

@@ -28,7 +28,7 @@ test('http client maps product intents to the real /agent/product routes', async
         if (url.endsWith('/events')) {
             return json({ events: [], nextSeq: 0, gap: false });
         }
-        if (url.includes('/stop') || url.includes('/approve') || url.includes('/deny')
+        if (url.includes('/pause') || url.includes('/resume') || url.includes('/stop') || url.includes('/approve') || url.includes('/deny')
             || url.includes('/answer') || url.includes('/recovery') || url.includes('/takeover')
             || url.includes('/return-control')) {
             return json({ taskId: 'task-1', status: 'running', title: 't', promptSummary: 't' });
@@ -42,6 +42,8 @@ test('http client maps product intents to the real /agent/product routes', async
     await client.listTasks();
     await client.taskView('task-1');
     await client.events('task-1', 3);
+    await client.pauseTask('task-1');
+    await client.resumeTask('task-1');
     await client.stopTask('task-1');
     await client.approve('task-1', 'tok-1');
     await client.deny('task-1', 'tok-1', 'not that');
@@ -60,6 +62,8 @@ test('http client maps product intents to the real /agent/product routes', async
         ['GET', '/agent/product/tasks', undefined],
         ['GET', '/agent/product/tasks/task-1', undefined],
         ['GET', '/agent/product/tasks/task-1/events?afterSeq=3', undefined],
+        ['POST', '/agent/product/tasks/task-1/pause', '{}'],
+        ['POST', '/agent/product/tasks/task-1/resume', '{}'],
         ['POST', '/agent/product/tasks/task-1/stop', '{}'],
         ['POST', '/agent/product/tasks/task-1/approve', '{"interactionToken":"tok-1"}'],
         ['POST', '/agent/product/tasks/task-1/deny', '{"interactionToken":"tok-1","reason":"not that"}'],
@@ -132,6 +136,9 @@ test('dispatchProductRequest forwards every product verb to the backend client',
         startTask: () => { dispatched.push('startTask'); return Promise.resolve({}); },
         taskView: () => { dispatched.push('taskView'); return Promise.resolve({}); },
         events: () => { dispatched.push('events'); return Promise.resolve({ events: [], nextSeq: 0, gap: false }); },
+        pauseTask: () => { dispatched.push('pauseTask'); return Promise.resolve({}); },
+        resumeTask: () => { dispatched.push('resumeTask'); return Promise.resolve({}); },
+        saveAutomation: (_taskId, name) => { dispatched.push('saveAutomation'); return Promise.resolve({saved: true, name}); },
         stopTask: () => { dispatched.push('stopTask'); return Promise.resolve({}); },
         approve: () => { dispatched.push('approve'); return Promise.resolve({}); },
         deny: () => { dispatched.push('deny'); return Promise.resolve({}); },
@@ -150,6 +157,9 @@ test('dispatchProductRequest forwards every product verb to the backend client',
         { request: { verb: 'startTask', prompt: 'p' }, name: 'startTask' },
         { request: { verb: 'taskView', taskId: 't' }, name: 'taskView' },
         { request: { verb: 'events', taskId: 't', afterSeq: 0 }, name: 'events' },
+        { request: { verb: 'pauseTask', taskId: 't' }, name: 'pauseTask' },
+        { request: { verb: 'resumeTask', taskId: 't' }, name: 'resumeTask' },
+        { request: { verb: 'saveAutomation', taskId: 't', name: 'saved' }, name: 'saveAutomation' },
         { request: { verb: 'stopTask', taskId: 't' }, name: 'stopTask' },
         { request: { verb: 'approve', taskId: 't', interactionToken: 'tok' }, name: 'approve' },
         { request: { verb: 'deny', taskId: 't', interactionToken: 'tok', reason: 'r' }, name: 'deny' },
@@ -200,7 +210,6 @@ test('productReplyFromAction preserves stale/not_found/conflict/bad_args classif
             },
         });
         assert.equal(reply.ok, false, `${code} must fail`);
-        if (reply.ok) {continue;}
         assert.equal(reply.error.code, expected, `${code} classifies as ${expected}`);
         assert.equal(reply.error.detailCode, productCode ?? code);
         assert.equal(reply.error.message, 'nope');

@@ -401,6 +401,6 @@ export const resolvePaths = (): { extensionPaths: string[]; userDataRoot: string
     } catch {
         // Direct agent runs fall back to the merged main extension dist directory.
     }
-    const userDataRoot = process.env.RPA_USER_DATA_DIR?.trim() || path.resolve(__dirname, '../../../.user-data');
+    const userDataRoot = process.env.RPA_USER_DATA_DIR?.trim() || path.join(repoRoot, 'agent', '.user-data');
     return { extensionPaths, userDataRoot };
 };

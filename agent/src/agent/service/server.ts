@@ -383,7 +383,10 @@ export const createAgentHttpServer = async (
                 if (req.method === 'POST' && productRoute.verb !== undefined) {
                     const authzEndpoint: AgentServiceEndpoint = productRoute.verb === 'stop'
                         ? 'sessionCancel'
-                        : productRoute.verb === 'approve'
+                        : productRoute.verb === 'pause'
+                            || productRoute.verb === 'resume'
+                            || productRoute.verb === 'save'
+                            || productRoute.verb === 'approve'
                             || productRoute.verb === 'deny'
                             || productRoute.verb === 'answer'
                             || productRoute.verb === 'recovery'
@@ -394,11 +397,27 @@ export const createAgentHttpServer = async (
                     const principal = await requireAuthz(authzEndpoint);
                     if (!principal) {return;}
                     const body = productRoute.verb === 'stop'
+                        || productRoute.verb === 'pause'
+                        || productRoute.verb === 'resume'
                         ? {}
                         : (await readJsonBody(req)) as Record<string, unknown>;
                     const taskId = productRoute.taskId;
+                    if (productRoute.verb === 'save') {
+                        const saved = await product.saveAutomation({
+                            taskId,
+                            name: requireField(body, 'name'),
+                        });
+                        writeJsonSafe(res, 200, saved);
+                        return;
+                    }
                     let view: ReturnType<typeof product.taskView>;
                     switch (productRoute.verb) {
+                        case 'pause':
+                            view = product.pauseTask({taskId});
+                            break;
+                        case 'resume':
+                            view = await product.resumeTask({taskId});
+                            break;
                         case 'stop':
                             view = product.stopTask({taskId});
                             break;

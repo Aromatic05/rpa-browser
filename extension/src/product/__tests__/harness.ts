@@ -18,6 +18,8 @@ export const createCommandRecorder = (): { commands: CommandPort; calls: Command
     };
     const commands: CommandPort = {
         startTask: record('startTask'),
+        pauseTask: record('pauseTask'),
+        resumeTask: record('resumeTask'),
         stopTask: record('stopTask'),
         openTeach: record('openTeach'),
         openAnnotate: record('openAnnotate'),
@@ -28,12 +30,8 @@ export const createCommandRecorder = (): { commands: CommandPort; calls: Command
         saveTeach: record('saveTeach'),
         discardTeach: record('discardTeach'),
         newTask: record('newTask'),
-        retry: record('retry'),
         saveAutomation: record('saveAutomation'),
-        viewDetails: record('viewDetails'),
-        replayDemonstration: record('replayDemonstration'),
         editPageKnowledge: record('editPageKnowledge'),
-        selectHistoryEntry: record('selectHistoryEntry'),
         approve: record('approve'),
         deny: record('deny'),
         answerClarification: record('answerClarification'),

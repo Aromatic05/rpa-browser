@@ -49,6 +49,7 @@ import {createKnowledgeTools, KNOWLEDGE_CATALOG_TOOL, KNOWLEDGE_INSPECT_TOOL} fr
 import type {KnowledgeSeamDeps} from '../knowledge';
 import type {
     AgentControlInput,
+    AgentRunControl,
     AgentRunContinuation,
     AgentRunRequest,
 } from '../types';
@@ -102,7 +103,7 @@ export type CreateProgramFirstAgentRunnerOptions = {
 };
 
 export type ProgramFirstAgentRunner = {
-    run: (request: AgentRunRequest) => Promise<ProgramFirstAgentRunResult>;
+    run: (request: AgentRunRequest, control?: AgentRunControl) => Promise<ProgramFirstAgentRunResult>;
     restore: (request: AgentRunRequest, start: AgentProgramExecutionStart) => Promise<ProgramFirstAgentRunResult>;
 };
 
@@ -386,6 +387,7 @@ const controlMessageFromInput = (input: AgentControlInput): AgentMessage => {
 export type RetainedControlLoop = {
     run: (request: AgentRunRequest) => Promise<ProgramFirstAgentRunResult>;
     attach: (request: AgentRunRequest) => void;
+    resume: () => Promise<ProgramFirstAgentRunResult>;
     control: (input: AgentControlInput) => Promise<ProgramFirstAgentRunResult>;
 };
 
@@ -403,6 +405,7 @@ type RetainedControlLoopDeps = {
     };
     contextBudget?: RunnerContextBudget;
     signal?: AbortSignal;
+    runControl?: AgentRunControl;
 };
 
 /**
@@ -430,6 +433,7 @@ export const createRetainedControlLoop = (deps: RetainedControlLoopDeps): Retain
         stopReason?: GovernanceStopReason;
         pendingApproval?: {effectSequence: number; toolName: string};
         requestedInteraction?: ModelRequestedInteraction;
+        pausedByUser?: boolean;
     } = {};
     const agentRef: {current: {abort: () => void} | null} = {current: null};
     let batchToolResults: ToolResultMessage[] = [];
@@ -438,6 +442,14 @@ export const createRetainedControlLoop = (deps: RetainedControlLoopDeps): Retain
         outcome.stopReason = undefined;
         outcome.pendingApproval = undefined;
         outcome.requestedInteraction = undefined;
+        outcome.pausedByUser = undefined;
+    };
+
+    const pauseRequested = (): boolean => deps.runControl?.pauseRequested?.() === true;
+    const pauseAtBoundary = (): void => {
+        if (!pauseRequested()) {return;}
+        outcome.pausedByUser = true;
+        agentRef.current?.abort();
     };
 
     const stop = (reason: GovernanceStopReason): void => {
@@ -470,6 +482,10 @@ export const createRetainedControlLoop = (deps: RetainedControlLoopDeps): Retain
     const beforeToolCall: NonNullable<AgentOptions['beforeToolCall']> = async (
         context: BeforeToolCallContext,
     ) => {
+        if (pauseRequested()) {
+            pauseAtBoundary();
+            return {block: true, reason: 'user paused the task'};
+        }
         if (context.toolCall.name === REQUEST_INTERACTION_TOOL) {
             const requested = tryValidateInteractionRequest(context.args);
             if (!requested.ok) {
@@ -527,6 +543,7 @@ export const createRetainedControlLoop = (deps: RetainedControlLoopDeps): Retain
             isError,
             timestamp: Date.now(),
         });
+        pauseAtBoundary();
         return undefined;
     };
 
@@ -575,7 +592,7 @@ export const createRetainedControlLoop = (deps: RetainedControlLoopDeps): Retain
             prepareNextTurnWithContext: prepareNextTurn,
             beforeToolCall,
             afterToolCall,
-            signal: deps.signal,
+            signal: deps.runControl?.signal ?? deps.signal,
         });
         return session;
     };
@@ -591,12 +608,16 @@ export const createRetainedControlLoop = (deps: RetainedControlLoopDeps): Retain
         const signals: {
             governance?: {stopReason?: GovernanceStopReason; pendingApproval?: {effectSequence: number; toolName: string}};
             requestedInteraction?: ModelRequestedInteraction;
+            pausedByUser?: boolean;
         } = {};
         if (outcome.stopReason !== undefined || outcome.pendingApproval !== undefined) {
             signals.governance = {stopReason: outcome.stopReason, pendingApproval: outcome.pendingApproval};
         }
         if (outcome.requestedInteraction !== undefined) {
             signals.requestedInteraction = outcome.requestedInteraction;
+        }
+        if (outcome.pausedByUser === true) {
+            signals.pausedByUser = true;
         }
         return {...base, ...signals};
     };
@@ -621,6 +642,15 @@ export const createRetainedControlLoop = (deps: RetainedControlLoopDeps): Retain
         attach: (request) => {
             if (activeRequest) {throw new Error('retained agent control loop is already attached to a task');}
             activeRequest = request;
+        },
+        resume: async () => {
+            if (!activeRequest || !session) {
+                throw new Error('retained agent control continuation is not running a task');
+            }
+            resetOutcome();
+            agentRef.current = session.agent;
+            await session.agent.continue();
+            return settleRun(activeRequest);
         },
         control: async (input) => {
             if (!activeRequest) {
@@ -698,7 +728,11 @@ const prepareProgramContext = (
 export const createProgramFirstAgentRunner = (
     options: CreateProgramFirstAgentRunnerOptions,
 ): ProgramFirstAgentRunner => {
-    const run = async (request: AgentRunRequest, restoredStart?: AgentProgramExecutionStart): Promise<ProgramFirstAgentRunResult> => {
+    const run = async (
+        request: AgentRunRequest,
+        restoredStart?: AgentProgramExecutionStart,
+        runControl?: AgentRunControl,
+    ): Promise<ProgramFirstAgentRunResult> => {
         const governance = options.governanceController
             ?? createGovernanceController(options.governancePolicy ?? SAFE_UNATTENDED_POLICY, Date.now());
         const budgetStore = createRecoveryBudgetStore(options.recoveryBudgetLimits);
@@ -761,6 +795,14 @@ export const createProgramFirstAgentRunner = (
                 programs: execution.readAttempts(),
                 ...(save && save.readSaved().length > 0 ? {savedPrograms: save.readSaved()} : {}),
             };
+            if (result.pausedByUser) {
+                return {
+                    ...base,
+                    continuation: {
+                        resume: async () => composeResult(loop)(await loop.resume()),
+                    },
+                };
+            }
             const resumed = withContinuation(base, execution, request);
             const pause = execution.readPause();
             if (!pause && !result.requestedInteraction) {return resumed;}
@@ -783,6 +825,7 @@ export const createProgramFirstAgentRunner = (
                 prepareNextTurnWithContext: prepareProgramContext(execution, planningTools, terminalTools, knowledgeTools, request, recoveryContext),
                 governance: reactGovernance,
                 signal: options.signal,
+                runControl,
             });
             loop.attach(request);
             return composeResult(loop)({
@@ -825,6 +868,7 @@ export const createProgramFirstAgentRunner = (
                 ),
                 governance: reactGovernance,
                 signal: options.signal,
+                runControl,
             });
             const result = await loop.run({
                 ...request,
@@ -848,6 +892,7 @@ export const createProgramFirstAgentRunner = (
             ),
             governance: reactGovernance,
             signal: options.signal,
+            runControl,
         });
         const result = await loop.run({
             ...request,
@@ -855,5 +900,8 @@ export const createProgramFirstAgentRunner = (
         });
         return composeResult(loop)(result);
     };
-    return {run, restore: (request, start) => run(request, start)};
+    return {
+        run: (request, control) => run(request, undefined, control),
+        restore: (request, start) => run(request, start),
+    };
 };

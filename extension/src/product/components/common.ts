@@ -27,6 +27,8 @@ export type UiState = {
     devEnabled: boolean;
     devConfirm: boolean;
     selectedHistoryId: string | null;
+    automationSaveOpen: boolean;
+    automationName: string;
 };
 
 export const createUiState = (): UiState => ({
@@ -46,6 +48,8 @@ export const createUiState = (): UiState => ({
     devEnabled: false,
     devConfirm: false,
     selectedHistoryId: null,
+    automationSaveOpen: false,
+    automationName: '',
 });
 
 export type SurfaceContext = {

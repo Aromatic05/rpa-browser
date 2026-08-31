@@ -15,7 +15,10 @@ export type ProductCommand =
     | {verb: 'startTask'; prompt: string}
     | {verb: 'taskView'; taskId: string}
     | {verb: 'events'; taskId: string; afterSeq: number}
+    | {verb: 'pauseTask'; taskId: string}
+    | {verb: 'resumeTask'; taskId: string}
     | {verb: 'stopTask'; taskId: string}
+    | {verb: 'saveAutomation'; taskId: string; name: string}
     | {verb: 'approve'; taskId: string; interactionToken: string}
     | {verb: 'deny'; taskId: string; interactionToken: string; reason: string; requestedAlternative?: string}
     | {verb: 'answer'; taskId: string; interactionToken: string; value: unknown}
@@ -39,7 +42,10 @@ const PRODUCT_COMMAND_FIELDS: Record<ProductCommand['verb'], ReadonlySet<string>
     startTask: new Set(['verb', 'prompt']),
     taskView: new Set(['verb', 'taskId']),
     events: new Set(['verb', 'taskId', 'afterSeq']),
+    pauseTask: new Set(['verb', 'taskId']),
+    resumeTask: new Set(['verb', 'taskId']),
     stopTask: new Set(['verb', 'taskId']),
+    saveAutomation: new Set(['verb', 'taskId', 'name']),
     approve: new Set(['verb', 'taskId', 'interactionToken']),
     deny: new Set(['verb', 'taskId', 'interactionToken', 'reason', 'requestedAlternative']),
     answer: new Set(['verb', 'taskId', 'interactionToken', 'value']),
@@ -90,10 +96,10 @@ export const parseProductCommand = (value: unknown): ProductCommand => {
     if (typeof record.verb !== 'string' || record.verb.trim().length === 0) {
         reject('product command verb is required');
     }
-    const allowedFields = PRODUCT_COMMAND_FIELDS[record.verb as ProductCommand['verb']];
-    if (allowedFields === undefined) {
+    if (!Object.prototype.hasOwnProperty.call(PRODUCT_COMMAND_FIELDS, record.verb)) {
         reject(`unsupported product command verb: ${record.verb}`);
     }
+    const allowedFields = PRODUCT_COMMAND_FIELDS[record.verb as ProductCommand['verb']];
     for (const key of Object.keys(record)) {
         if (!allowedFields.has(key)) {
             reject(`unexpected field '${key}' for product command '${record.verb}'`);
@@ -114,8 +120,14 @@ export const parseProductCommand = (value: unknown): ProductCommand => {
         }
         case 'taskView':
             return {verb: 'taskView', taskId: requireText(record, 'taskId')};
+        case 'pauseTask':
+            return {verb: 'pauseTask', taskId: requireText(record, 'taskId')};
+        case 'resumeTask':
+            return {verb: 'resumeTask', taskId: requireText(record, 'taskId')};
         case 'stopTask':
             return {verb: 'stopTask', taskId: requireText(record, 'taskId')};
+        case 'saveAutomation':
+            return {verb: 'saveAutomation', taskId: requireText(record, 'taskId'), name: requireText(record, 'name')};
         case 'events': {
             const afterSeq = record.afterSeq ?? 0;
             if (typeof afterSeq !== 'number' || !Number.isInteger(afterSeq) || afterSeq < 0) {
@@ -211,8 +223,14 @@ export const dispatchProductCommand = async (
             return requireTaskView(product.taskView(parsed.taskId), parsed.taskId);
         case 'events':
             return product.events(parsed.taskId, parsed.afterSeq);
+        case 'pauseTask':
+            return requireTaskView(product.pauseTask({taskId: parsed.taskId}), parsed.taskId);
+        case 'resumeTask':
+            return requireTaskView(await product.resumeTask({taskId: parsed.taskId}), parsed.taskId);
         case 'stopTask':
             return requireTaskView(product.stopTask({taskId: parsed.taskId}), parsed.taskId);
+        case 'saveAutomation':
+            return await product.saveAutomation({taskId: parsed.taskId, name: parsed.name});
         case 'approve':
             return requireTaskView(
                 await product.approveTask({taskId: parsed.taskId, interactionToken: parsed.interactionToken}),

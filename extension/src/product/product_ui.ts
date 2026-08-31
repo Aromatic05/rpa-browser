@@ -1,7 +1,6 @@
 /**
- * Product UI entry point — an independent ES module (`product/product_ui.js`).
- * Not yet mounted from the content script; integration wires a controller that
- * feeds `WorkspaceProductView` projections and a typed `CommandPort`.
+ * Product UI entry point. The content-script mount wires this module to the
+ * workspace product controller and renders the right-docked product surface.
  */
 export { mountProductUI } from './shell/mount.js';
 export type { ProductUIOptions, ProductUIHandle } from './shell/mount.js';
@@ -26,7 +25,6 @@ export type {
     ClarificationSchema,
     CommandPort,
     ConnectionState,
-    DemonstrationRef,
     DemonstrationSummary,
     GuidanceMode,
     InteractionRequest,

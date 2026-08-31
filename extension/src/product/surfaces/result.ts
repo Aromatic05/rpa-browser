@@ -56,22 +56,58 @@ export const renderResultView = (root: HTMLElement, ctx: SurfaceContext, task: A
     const reportCopy = result?.reportAvailable ? ' · Report available' : '';
     body.append(muted(`Effects applied: ${String(result?.effectsCount ?? 0)}${reportCopy}`));
     const row = el('div', 'rpa-row');
-    row.append(
-        button('New Task', () => { ctx.commands.newTask(); }, 'primary', { dataAction: 'new-task' }),
-        button('Retry', () => { ctx.commands.retry(); }, 'ghost', { dataAction: 'retry' }),
-    );
+    row.append(button('New Task', () => { ctx.commands.newTask(); }, 'primary', { dataAction: 'new-task' }));
     if (outcome === 'completed' && result?.saveEligible) {
-        row.append(
-            button('Save Automation', () => { ctx.commands.saveAutomation(); }, 'ghost', {
-                disabled: ctx.view.connection !== 'connected',
-                dataAction: 'save-automation',
-            }),
-        );
+        if (!ctx.ui.automationSaveOpen && ctx.view.automationSave?.status !== 'saved') {
+            row.append(
+                button('Save Automation', () => {
+                    ctx.ui.automationSaveOpen = true;
+                    ctx.ui.automationName = task.title;
+                    ctx.rerender();
+                }, 'ghost', {
+                    disabled: ctx.view.connection !== 'connected',
+                    dataAction: 'save-automation',
+                }),
+            );
+        }
     }
-    row.append(
-        button('View Details', () => { ctx.commands.viewDetails(); }, 'ghost', { dataAction: 'view-details' }),
-    );
     body.append(row);
+
+    if (outcome === 'completed' && result?.saveEligible && ctx.ui.automationSaveOpen) {
+        const saveCard = el('div', 'rpa-block');
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'rpa-input';
+        input.maxLength = 80;
+        input.value = ctx.ui.automationName;
+        input.placeholder = 'Automation name';
+        input.dataset.rpaProductField = 'automation-name';
+        input.addEventListener('input', () => {ctx.ui.automationName = input.value;});
+        const saveState = ctx.view.automationSave;
+        if (saveState?.status === 'saved') {
+            saveCard.append(statusLine('✓', `Saved as ${saveState.name}`, 'success'));
+        } else {
+            saveCard.append(input);
+            if (saveState?.status === 'conflict' || saveState?.status === 'failed') {
+                saveCard.append(muted(saveState.message ?? 'Saving failed.'));
+            } else if (saveState?.status === 'saving') {
+                saveCard.append(muted('Saving…'));
+            }
+            const saveRow = el('div', 'rpa-row');
+            saveRow.append(
+                button('Save', () => {ctx.commands.saveAutomation(ctx.ui.automationName);}, 'primary', {
+                    disabled: ctx.view.connection !== 'connected' || saveState?.status === 'saving',
+                    dataAction: 'confirm-save-automation',
+                }),
+                button('Cancel', () => {
+                    ctx.ui.automationSaveOpen = false;
+                    ctx.rerender();
+                }, 'ghost', {dataAction: 'cancel-save-automation'}),
+            );
+            saveCard.append(saveRow);
+        }
+        body.append(saveCard);
+    }
     root.append(body);
 };
 
@@ -84,9 +120,6 @@ const renderHistoryEntry = (ctx: SurfaceContext, entry: TaskHistoryEntry): HTMLE
     ]);
     entryCard.dataset.rpaProductHistoryEntry = 'true';
     entryCard.classList.add('rpa-history-card');
-    entryCard.addEventListener('click', () => {
-        ctx.commands.selectHistoryEntry(entry.taskId);
-    });
     return entryCard;
 };
 

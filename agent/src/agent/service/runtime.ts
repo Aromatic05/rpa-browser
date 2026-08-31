@@ -8,6 +8,7 @@ import type {
     WorkspaceServiceStopResult,
 } from '../../automation/runtime/service/types';
 import type {AgentExecutionMode, AgentRunRequest, AgentRunResult, AgentRunner} from '../execution/types';
+import type {AgentProgramSaver} from '../execution/program/persistence';
 import type {LibraryAssetSummary} from '../library/contracts';
 import {createProductController, type ProductController} from '../product';
 import {createAgentHttpServer} from './server';
@@ -60,6 +61,9 @@ export type WorkspaceAgentServiceDeps = {
      *  (`GET /agent/product/library`). When absent the projection is
      *  explicitly unavailable rather than fabricated. */
     productLibrary?: () => Promise<ReadonlyArray<LibraryAssetSummary>>;
+    /** Persists a completed product Task's retained Program into this
+     * workspace's DSL library. */
+    productSaveAutomation?: AgentProgramSaver;
     /** Default provider/model/executionMode for the product task composer. The
      *  product surface is provider-agnostic and resolves a started task from
      *  these workspace-owned defaults. Supplied by workspace/factory.ts from the
@@ -95,6 +99,7 @@ export const createWorkspaceAgentService = (deps: WorkspaceAgentServiceDeps): Wo
         workspace: deps.workspaceName,
         ...(deps.productDefaults === undefined ? {} : {defaults: deps.productDefaults}),
         ...(deps.productLibrary === undefined ? {} : {library: deps.productLibrary}),
+        ...(deps.productSaveAutomation === undefined ? {} : {saveAutomation: deps.productSaveAutomation}),
     });
 
     return {

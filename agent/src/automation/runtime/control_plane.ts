@@ -149,14 +149,6 @@ export const handleRuntimeControlAction = async (input: RuntimeControlInput): Pr
                 throw new ActionError(ERROR_CODES.ERR_WORKFLOW_BAD_ARGS, 'workspace/workflow identity mismatch after open');
             }
             workspaceRegistry.setActiveWorkspace(workspace.name);
-            await workspace.browserSession.start();
-            const hasLiveTab = workspace.tabs.listTabs().some((tab) =>
-                tab.page !== null && !tab.page.isClosed());
-            if (!hasLiveTab) {
-                const tabName = crypto.randomUUID();
-                workspace.tabs.createTab({ tabName });
-                await workspace.tabs.createTabPage(tabName, { startUrl: 'about:blank', newWindow: true });
-            }
             const event: Action = {
                 v: 1,
                 id: crypto.randomUUID(),
@@ -166,7 +158,15 @@ export const handleRuntimeControlAction = async (input: RuntimeControlInput): Pr
                 at: Date.now(),
                 traceId: action.traceId,
             };
-            return { reply: replyAction(action, { workflowName, workspaceName: workspace.name, opened: true }), events: [event] };
+            return {
+                reply: replyAction(action, {
+                    workflowName,
+                    workspaceName: workspace.name,
+                    opened: true,
+                    browserStarted: workspace.browserSession.status === 'running',
+                }),
+                events: [event],
+            };
         }
         case 'workflow.rename': {
             const payload = (action.payload ?? {}) as { fromName?: string; toName?: string };

@@ -29,6 +29,9 @@ const renderTaskStatus = (task: AgentTaskView): HTMLElement => {
     if (task.status === 'waiting_for_user') {
         return statusLine('●', 'Waiting for you', 'waiting', true);
     }
+    if (task.status === 'paused') {
+        return statusLine('Ⅱ', 'Paused', 'info', false);
+    }
     return statusLine('●', 'Running', 'running', false);
 };
 
@@ -135,6 +138,15 @@ export const renderTaskSurface = (root: HTMLElement, ctx: SurfaceContext): void 
     }
 
     const actions = el('div', 'rpa-row');
+    if (task.status === 'running') {
+        actions.append(
+            button('Pause', () => { ctx.commands.pauseTask(); }, 'ghost', {dataAction: 'pause-task'}),
+        );
+    } else if (task.status === 'paused') {
+        actions.append(
+            button('Resume', () => { ctx.commands.resumeTask(); }, 'primary', {dataAction: 'resume-task'}),
+        );
+    }
     actions.append(stopButton(ctx));
     actions.append(
         button('History', () => { ctx.commands.navigate('history'); }, 'ghost', { dataAction: 'history' }),

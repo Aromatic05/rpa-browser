@@ -57,6 +57,7 @@ export const isConnection = (value: unknown): value is WorkspaceProductView['con
 const STATUSES: ReadonlyArray<TaskLifecycleStatus> = [
     'draft',
     'running',
+    'paused',
     'waiting_for_user',
     'completed',
     'failed',

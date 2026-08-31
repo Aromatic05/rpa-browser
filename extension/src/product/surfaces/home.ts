@@ -48,9 +48,10 @@ const TEACH_KIND_OPTIONS: Array<{ value: TeachKind; label: string; hint: string;
 const activeActivitySummary = (ctx: SurfaceContext): { title: string; statusText: string } => {
     if (ctx.view.activeTask) {
         const waiting = ctx.view.activeTask.status === 'waiting_for_user';
+        const paused = ctx.view.activeTask.status === 'paused';
         return {
             title: ctx.view.activeTask.title,
-            statusText: waiting ? 'Waiting for you' : 'Running',
+            statusText: waiting ? 'Waiting for you' : paused ? 'Paused' : 'Running',
         };
     }
     if (ctx.view.reservation === 'teach' || ctx.view.authoring?.teach) {

@@ -26,7 +26,10 @@ const stubProduct = (overrides: Partial<Record<keyof ProductController, unknown>
         startTask: record('startTask', view),
         taskView: record('taskView', view),
         listTasks: record('listTasks', {active: [], history: []}),
+        pauseTask: record('pauseTask', view),
+        resumeTask: record('resumeTask', view),
         stopTask: record('stopTask', view),
+        saveAutomation: record('saveAutomation', {saved: true, name: 'saved'}),
         approveTask: record('approveTask', view),
         denyTask: record('denyTask', view),
         answerTask: record('answerTask', view),
@@ -59,7 +62,11 @@ test('parseProductCommand normalizes every registered verb', () => {
     assert.deepEqual(parseProductCommand({verb: 'startTask', prompt: '  fill the form  '}), {verb: 'startTask', prompt: 'fill the form'});
     assert.deepEqual(parseProductCommand({verb: 'taskView', taskId: ' t '}), {verb: 'taskView', taskId: 't'});
     assert.deepEqual(parseProductCommand({verb: 'events', taskId: 't'}), {verb: 'events', taskId: 't', afterSeq: 0});
+    assert.deepEqual(parseProductCommand({verb: 'pauseTask', taskId: 't'}), {verb: 'pauseTask', taskId: 't'});
+    assert.deepEqual(parseProductCommand({verb: 'resumeTask', taskId: 't'}), {verb: 'resumeTask', taskId: 't'});
     assert.deepEqual(parseProductCommand({verb: 'stopTask', taskId: 't'}), {verb: 'stopTask', taskId: 't'});
+    assert.deepEqual(parseProductCommand({verb: 'saveAutomation', taskId: 't', name: ' saved '}),
+        {verb: 'saveAutomation', taskId: 't', name: 'saved'});
     assert.deepEqual(parseProductCommand({verb: 'approve', taskId: 't', interactionToken: 'tok'}),
         {verb: 'approve', taskId: 't', interactionToken: 'tok'});
     assert.deepEqual(parseProductCommand({verb: 'deny', taskId: 't', interactionToken: 'tok', reason: 'r', requestedAlternative: 'alt'}),
@@ -117,7 +124,10 @@ test('parseProductCommand rejects unknown fields for every verb (additionalPrope
         {verb: 'startTask', prompt: 'go', internal: 1},
         {verb: 'taskView', taskId: 't', sessionId: 'x'},
         {verb: 'events', taskId: 't', afterSeq: 0, runId: 'x'},
+        {verb: 'pauseTask', taskId: 't', internal: 1},
+        {verb: 'resumeTask', taskId: 't', internal: 1},
         {verb: 'stopTask', taskId: 't', internal: 1},
+        {verb: 'saveAutomation', taskId: 't', name: 'x', internal: 1},
         {verb: 'approve', taskId: 't', interactionToken: 'tok', provider: 'p'},
         {verb: 'deny', taskId: 't', interactionToken: 'tok', reason: 'r', model: 'm'},
         {verb: 'answer', taskId: 't', interactionToken: 'tok', value: 1, internal: 'x'},
@@ -153,7 +163,10 @@ test('dispatchProductCommand routes each verb to exactly one controller method',
         {command: {verb: 'startTask', prompt: ' go '}, method: 'startTask', args: [{prompt: 'go'}]},
         {command: {verb: 'taskView', taskId: 't'}, method: 'taskView', args: ['t']},
         {command: {verb: 'events', taskId: 't', afterSeq: 4}, method: 'events', args: ['t', 4]},
+        {command: {verb: 'pauseTask', taskId: 't'}, method: 'pauseTask', args: [{taskId: 't'}]},
+        {command: {verb: 'resumeTask', taskId: 't'}, method: 'resumeTask', args: [{taskId: 't'}]},
         {command: {verb: 'stopTask', taskId: 't'}, method: 'stopTask', args: [{taskId: 't'}]},
+        {command: {verb: 'saveAutomation', taskId: 't', name: 'saved'}, method: 'saveAutomation', args: [{taskId: 't', name: 'saved'}]},
         {command: {verb: 'approve', taskId: 't', interactionToken: 'tok'}, method: 'approveTask', args: [{taskId: 't', interactionToken: 'tok'}]},
         {command: {verb: 'deny', taskId: 't', interactionToken: 'tok', reason: 'r'}, method: 'denyTask', args: [{taskId: 't', interactionToken: 'tok', reason: 'r'}]},
         {command: {verb: 'answer', taskId: 't', interactionToken: 'tok', value: 5}, method: 'answerTask', args: [{taskId: 't', interactionToken: 'tok', value: 5}]},

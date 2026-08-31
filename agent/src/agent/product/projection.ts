@@ -36,6 +36,7 @@ export const deriveTaskStatus = (
     switch (snapshot.state) {
         case 'running': return 'running';
         case 'paused': {
+            if (snapshot.result?.pausedByUser === true && snapshot.resumable) {return 'paused';}
             const pending = interactions.some((record) => record.status === 'pending');
             return pending ? 'waiting_for_user' : 'failed';
         }
@@ -107,6 +108,7 @@ export type ProjectAgentTaskViewInput = Readonly<{
     snapshot: SessionSnapshot;
     interactions: ReadonlyArray<InteractionRecord>;
     lastSeq: number;
+    saveEligible?: boolean;
 }>;
 
 export const projectAgentTaskView = (input: ProjectAgentTaskViewInput): AgentTaskView => {
@@ -123,7 +125,11 @@ export const projectAgentTaskView = (input: ProjectAgentTaskViewInput): AgentTas
         title: titleFromPrompt(snapshot.request.prompt),
         promptSummary: promptSummaryFrom(snapshot.request.prompt),
         ...(status === 'completed'
-            ? {result: {outcome: 'completed' as const, summary: snapshot.result?.text ?? 'Task completed'}}
+            ? {result: {
+                outcome: 'completed' as const,
+                summary: snapshot.result?.text ?? 'Task completed',
+                ...(input.saveEligible === true ? {saveEligible: true} : {}),
+            }}
             : {}),
         ...(status === 'failed'
             ? {

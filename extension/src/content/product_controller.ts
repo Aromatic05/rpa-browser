@@ -11,6 +11,7 @@ import type {
     AgentTaskView,
     AnnotateStage,
     AnnotateView,
+    AutomationSaveState,
     BusinessArea,
     CommandPort,
     GuidanceMode,
@@ -161,6 +162,8 @@ export const createProductController = (options: ProductControllerOptions): Prod
         teachSnapshot: StructuredTeachSnapshot | null;
         teachPreview: boolean;
         demoReview: {stepCount: number} | null;
+        automationSave: AutomationSaveState | undefined;
+        currentTaskId: string | undefined;
     } = {
         view: {
             workspace: options.workspace,
@@ -185,6 +188,8 @@ export const createProductController = (options: ProductControllerOptions): Prod
         teachSnapshot: null,
         teachPreview: false,
         demoReview: null,
+        automationSave: undefined,
+        currentTaskId: undefined,
     };
 
     const listeners = new Set<(view: WorkspaceProductView) => void>();
@@ -651,6 +656,9 @@ export const createProductController = (options: ProductControllerOptions): Prod
         if (state.library) {
             sanitized.librarySummary = state.library;
         }
+        if (state.automationSave) {
+            sanitized.automationSave = state.automationSave;
+        }
         // A workspace-conflict start error is only truthful while the workspace
         // is still occupied; clear it as soon as the projection returns to idle.
         if (
@@ -744,7 +752,18 @@ export const createProductController = (options: ProductControllerOptions): Prod
         state.inFlight = true;
         try {
             const rawWorkspace = await client.workspaceView();
-            const rawActive = isRecord(rawWorkspace.activeTask) ? rawWorkspace.activeTask : undefined;
+            let rawActive = isRecord(rawWorkspace.activeTask) ? rawWorkspace.activeTask : undefined;
+            if (rawActive && typeof rawActive.taskId === 'string') {
+                state.currentTaskId = rawActive.taskId;
+            } else if (state.currentTaskId) {
+                try {
+                    rawActive = await client.taskView(state.currentTaskId);
+                } catch (error) {
+                    if (error instanceof ProductTransportError && error.code === 'not_found') {
+                        state.currentTaskId = undefined;
+                    }
+                }
+            }
             if (rawActive) {
                 await syncActiveTaskEvents(rawActive);
             }
@@ -827,6 +846,7 @@ export const createProductController = (options: ProductControllerOptions): Prod
                     const rawTask = await client.startTask(value);
                     const taskId = typeof rawTask.taskId === 'string' ? rawTask.taskId : '';
                     if (taskId) {
+                        state.currentTaskId = taskId;
                         state.timelines.set(taskId, []);
                         state.lastSeq.set(
                             taskId,
@@ -836,6 +856,36 @@ export const createProductController = (options: ProductControllerOptions): Prod
                     state.startError = undefined;
                 } catch (error) {
                     setStartError(startErrorFor(error).kind, error instanceof Error ? error.message : String(error));
+                }
+                await syncOnce();
+            })();
+        },
+        pauseTask: () => {
+            const task = state.view.activeTask;
+            if (task?.status !== 'running') {return;}
+            void (async () => {
+                try {
+                    await client.pauseTask(task.taskId);
+                } catch (error) {
+                    if (error instanceof ProductTransportError && error.code === 'unreachable') {
+                        applyDisconnected();
+                        return;
+                    }
+                }
+                await syncOnce();
+            })();
+        },
+        resumeTask: () => {
+            const task = state.view.activeTask;
+            if (task?.status !== 'paused') {return;}
+            void (async () => {
+                try {
+                    await client.resumeTask(task.taskId);
+                } catch (error) {
+                    if (error instanceof ProductTransportError && error.code === 'unreachable') {
+                        applyDisconnected();
+                        return;
+                    }
                 }
                 await syncOnce();
             })();
@@ -1009,18 +1059,39 @@ export const createProductController = (options: ProductControllerOptions): Prod
             void syncOnce();
         },
         newTask: () => {
+            state.automationSave = undefined;
+            state.currentTaskId = undefined;
             state.startError = undefined;
-            state.view = { ...state.view, startError: undefined };
+            state.view = {...state.view, activeTask: undefined, automationSave: undefined, startError: undefined};
             emit();
         },
-        retry: () => undefined,
-        saveAutomation: () => undefined,
-        viewDetails: () => undefined,
-        replayDemonstration: () => undefined,
+        saveAutomation: (name) => {
+            const task = state.view.activeTask;
+            const cleanName = name.trim();
+            if (task?.status !== 'completed' || task.result?.saveEligible !== true || !cleanName) {return;}
+            state.automationSave = {status: 'saving', name: cleanName};
+            state.view = {...state.view, automationSave: state.automationSave};
+            emit();
+            void (async () => {
+                try {
+                    const saved = await client.saveAutomation(task.taskId, cleanName);
+                    state.automationSave = saved.saved
+                        ? {status: 'saved', name: saved.name}
+                        : {status: 'conflict', name: saved.name, message: 'An automation with this name already exists.'};
+                    if (saved.saved) {await fetchLibrary();}
+                } catch (error) {
+                    state.automationSave = {
+                        status: 'failed',
+                        name: cleanName,
+                        message: error instanceof Error ? error.message : 'Saving failed.',
+                    };
+                }
+                await syncOnce();
+            })();
+        },
         editPageKnowledge: (ref) => {
             void beginStandalone({ activity: 'annotate' }, undefined, ref.profileName);
         },
-        selectHistoryEntry: () => undefined,
         navigate: () => undefined,
         collapse: () => undefined,
         openDeveloper: () => undefined,

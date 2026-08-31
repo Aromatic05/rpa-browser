@@ -61,11 +61,14 @@ class StubBackend implements ProductBackendClient {
     listImpl: () => BackendTaskList = () => ({ active: [], history: [] });
     startImpl: (prompt: string) => BackendTaskView = (prompt) =>
         task({ status: 'running', title: prompt, promptSummary: prompt });
+    taskViewImpl: () => BackendTaskView = () => task();
     eventsImpl: (afterSeq: number) => BackendEventsResponse = () => ({
         events: [],
         nextSeq: 0,
         gap: false,
     });
+    pauseImpl: () => BackendTaskView = () => task({ status: 'paused', resumable: true });
+    resumeImpl: () => BackendTaskView = () => task({ status: 'running' });
     stopImpl: () => BackendTaskView = () => task({ status: 'cancelled' });
     approveImpl: (token: string) => BackendTaskView = (_token: string) => task({ status: 'running' });
     denyImpl: (token: string, reason: string) => BackendTaskView = () => task({ status: 'running' });
@@ -95,12 +98,27 @@ class StubBackend implements ProductBackendClient {
 
     taskView(taskId: string): Promise<BackendTaskView> {
         this.log('taskView', [taskId]);
-        return Promise.resolve(task());
+        return Promise.resolve(this.taskViewImpl());
     }
 
     events(taskId: string, afterSeq: number): Promise<BackendEventsResponse> {
         this.log('events', [taskId, afterSeq]);
         return Promise.resolve(this.eventsImpl(afterSeq));
+    }
+
+    pauseTask(taskId: string): Promise<BackendTaskView> {
+        this.log('pauseTask', [taskId]);
+        return Promise.resolve(this.pauseImpl());
+    }
+
+    resumeTask(taskId: string): Promise<BackendTaskView> {
+        this.log('resumeTask', [taskId]);
+        return Promise.resolve(this.resumeImpl());
+    }
+
+    saveAutomation(taskId: string, name: string): Promise<{saved: boolean; name: string; reason?: 'conflict'}> {
+        this.log('saveAutomation', [taskId, name]);
+        return Promise.resolve({saved: true, name});
     }
 
     stopTask(taskId: string): Promise<BackendTaskView> {
@@ -233,6 +251,32 @@ test('terminal tasks list into history when the workspace is idle', async () => 
         'task-1',
         'history entries keep the opaque taskId only',
     );
+});
+
+test('a task result stays selected after completion until the user starts a new task', async () => {
+    const backend = new StubBackend();
+    let active: BackendTaskView | undefined = task({status: 'running'});
+    const completed = task({
+        status: 'completed',
+        result: {outcome: 'completed', summary: 'done', saveEligible: true},
+        endedAt: 9000,
+    });
+    backend.workspaceImpl = () => workspace(active);
+    backend.taskViewImpl = () => completed;
+    backend.listImpl = () => ({active: [], history: [completed]});
+    const controller = create(backend);
+
+    await controller.refresh();
+    assert.equal(controller.getView().activeTask?.status, 'running');
+
+    active = undefined;
+    await controller.refresh();
+    assert.equal(controller.getView().reservation, 'idle');
+    assert.equal(controller.getView().activeTask?.status, 'completed', 'result remains visible after reservation release');
+    assert.equal(controller.getView().activeTask?.result?.saveEligible, true);
+
+    controller.commands.newTask();
+    assert.equal(controller.getView().activeTask, undefined, 'New Task explicitly dismisses the retained result');
 });
 
 test('startTask sends only the prompt and uses product defaults (no provider/model fields)', async () => {

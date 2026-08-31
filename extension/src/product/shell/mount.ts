@@ -2,9 +2,6 @@
  * Product shell: launcher + right-docked panel (spec §2-§4). Projection-driven:
  * `setView` re-renders from a `WorkspaceProductView`; user actions go through a
  * wrapped `CommandPort` so no raw RPC name ever reaches a component.
- *
- * This module is NOT mounted from the content script yet — it ships as an
- * independent bundle (`product/product_ui.js`) for later integration.
  */
 import {
     button,
@@ -13,11 +10,12 @@ import {
     muted,
     sectionTitle,
     statusLine,
+    stopButton,
     type SurfaceContext,
     type UiState,
 } from '../components/common.js';
 import type { CommandPort, ProductSurface, WorkspaceProductView } from '../model/contracts.js';
-import { interactionWaitingKind, isActiveActivity } from '../model/projection.js';
+import { interactionWaitingKind, isActiveActivity, isTerminalStatus } from '../model/projection.js';
 import { renderHistorySurface } from '../surfaces/result.js';
 import { renderAnnotateSurface, renderHomeSurface, renderTeachSurface } from '../surfaces/home.js';
 import { renderLibrarySurface } from '../surfaces/library.js';
@@ -67,6 +65,7 @@ export const mountProductUI = (opts: ProductUIOptions): ProductUIHandle => {
         width: number;
         collapsed: boolean;
         productStateKey: string;
+        surfaceHistory: ProductSurface[];
     } = {
         view: opts.view,
         ui: createUiState(),
@@ -74,6 +73,7 @@ export const mountProductUI = (opts: ProductUIOptions): ProductUIHandle => {
         width: clampWidth(opts.initialWidth ?? DEFAULT_WIDTH),
         collapsed: true,
         productStateKey: '',
+        surfaceHistory: [],
     };
 
     const now = opts.now ?? (() => Date.now());
@@ -142,11 +142,33 @@ export const mountProductUI = (opts: ProductUIOptions): ProductUIHandle => {
         renderLauncher();
     };
 
-    const navigateTo = (surface: ProductSurface): void => {
+    const navigateTo = (surface: ProductSurface, recordHistory = true): void => {
         if (surface === 'task' && !state.view.activeTask) {
             return;
         }
+        if (surface === state.surface) {
+            return;
+        }
+        if (recordHistory) {
+            state.surfaceHistory.push(state.surface);
+            if (state.surfaceHistory.length > 12) {
+                state.surfaceHistory.shift();
+            }
+        }
         state.surface = surface;
+        renderAll();
+    };
+
+    const navigateBack = (): void => {
+        while (state.surfaceHistory.length > 0) {
+            const previous = state.surfaceHistory.pop();
+            if (!previous) {break;}
+            if (previous === 'task' && !state.view.activeTask) {continue;}
+            state.surface = previous;
+            renderAll();
+            return;
+        }
+        state.surface = 'home';
         renderAll();
     };
 
@@ -205,11 +227,10 @@ export const mountProductUI = (opts: ProductUIOptions): ProductUIHandle => {
             routeToActive();
         },
         newTask: () => {
+            state.ui.composer = '';
+            state.ui.automationSaveOpen = false;
+            state.ui.automationName = '';
             opts.commands.newTask();
-            navigateTo('home');
-        },
-        retry: () => {
-            opts.commands.retry();
             navigateTo('home');
         },
         collapse: () => {
@@ -310,6 +331,9 @@ export const mountProductUI = (opts: ProductUIOptions): ProductUIHandle => {
         } else if (state.view.activeTask?.status === 'running') {
             dot.classList.add('rpa-launcher-dot--running');
             ariaLabel = 'Agent running';
+        } else if (state.view.activeTask?.status === 'paused') {
+            dot.classList.add('rpa-launcher-dot--waiting');
+            ariaLabel = 'Agent paused';
         }
         launcher.append(dot);
         if (waiting) {
@@ -324,17 +348,26 @@ export const mountProductUI = (opts: ProductUIOptions): ProductUIHandle => {
     const renderHeader = (): void => {
         header.innerHTML = '';
         const authoringLocked = state.view.reservation === 'teach' || state.view.reservation === 'annotate';
+        if (state.surface !== 'home') {
+            header.append(
+                button('← Back', navigateBack, 'ghost', {
+                    className: 'rpa-header-action',
+                    dataAction: 'back',
+                    ariaLabel: 'Back',
+                }),
+            );
+        }
         if (authoringLocked) {
             const title = state.view.reservation === 'teach' ? 'Teach the agent' : 'Annotate this page';
             header.append(el('div', 'rpa-brand', [title]));
             const tools = el('div', 'rpa-header-tools');
-            const collapseBtn = document.createElement('button');
-            collapseBtn.type = 'button';
-            collapseBtn.className = 'rpa-icon-btn';
-            collapseBtn.textContent = '─';
-            collapseBtn.setAttribute('aria-label', 'Collapse panel');
-            collapseBtn.addEventListener('click', () => { collapsePanel(); });
-            tools.append(collapseBtn);
+            tools.append(
+                button('Collapse', collapsePanel, 'ghost', {
+                    className: 'rpa-header-action',
+                    dataAction: 'collapse-panel',
+                    ariaLabel: 'Collapse sidebar',
+                }),
+            );
             header.append(tools);
             return;
         }
@@ -363,6 +396,27 @@ export const mountProductUI = (opts: ProductUIOptions): ProductUIHandle => {
         }
         header.append(nav);
         const tools = el('div', 'rpa-header-tools');
+        const activeTask = state.view.activeTask;
+        if (activeTask && !isTerminalStatus(activeTask.status)) {
+            if (activeTask.status === 'running') {
+                tools.append(
+                    button('Pause', () => { commands.pauseTask(); }, 'ghost', {
+                        className: 'rpa-header-action',
+                        dataAction: 'pause-task',
+                        ariaLabel: 'Pause task',
+                    }),
+                );
+            } else if (activeTask.status === 'paused') {
+                tools.append(
+                    button('Resume', () => { commands.resumeTask(); }, 'primary', {
+                        className: 'rpa-header-action',
+                        dataAction: 'resume-task',
+                        ariaLabel: 'Resume task',
+                    }),
+                );
+            }
+            tools.append(stopButton(buildContext()));
+        }
         const devBtn = document.createElement('button');
         devBtn.type = 'button';
         devBtn.className = 'rpa-icon-btn';
@@ -382,18 +436,22 @@ export const mountProductUI = (opts: ProductUIOptions): ProductUIHandle => {
             devBtn.classList.add('active');
         }
         tools.append(devBtn);
-        const collapseBtn = document.createElement('button');
-        collapseBtn.type = 'button';
-        collapseBtn.className = 'rpa-icon-btn';
-        collapseBtn.textContent = '─';
-        collapseBtn.setAttribute('aria-label', 'Collapse panel');
-        collapseBtn.addEventListener('click', () => { collapsePanel(); });
-        tools.append(collapseBtn);
+        tools.append(
+            button('Collapse', collapsePanel, 'ghost', {
+                className: 'rpa-header-action',
+                dataAction: 'collapse-panel',
+                ariaLabel: 'Collapse sidebar',
+            }),
+        );
         header.append(tools);
     };
 
     const renderFooter = (): void => {
         footer.innerHTML = '';
+        footer.hidden = !state.ui.devEnabled && !state.ui.devConfirm;
+        if (footer.hidden) {
+            return;
+        }
         const disclosure = el('div', 'rpa-dev-disclosure');
         disclosure.dataset.rpaProductDevDisclosure = 'true';
         disclosure.append(

@@ -60,7 +60,8 @@ test('workflow lifecycle actions are handled by runtime control', async () => {
         workspaceRegistry: registry,
     } as any);
     assert.equal(opened.reply.type, 'workflow.open.result');
-    assert.equal(registry.getWorkspace(workflowName)?.tabs.listTabs().length, 1);
+    assert.equal(registry.getWorkspace(workflowName)?.tabs.listTabs().length, 0);
+    assert.equal((opened.reply.payload as Record<string, unknown>).browserStarted, false);
 
     const renamedReply = await handleRuntimeControlAction({
         action: { v: 1, id: '4', type: 'workflow.rename', payload: { fromName: workflowName, toName: renamed } },
@@ -71,7 +72,7 @@ test('workflow lifecycle actions are handled by runtime control', async () => {
     cleanup(renamed);
 });
 
-test('workflow.open opens a tab only for tabless workspace', async () => {
+test('workflow.open selects a workflow without creating browser tabs', async () => {
     const { registry } = createWorkspaceHarness();
     const workflowName = uniqueName('wf-open-tab');
     cleanup(workflowName);
@@ -90,7 +91,7 @@ test('workflow.open opens a tab only for tabless workspace', async () => {
 
     const workspace = registry.getWorkspace(workflowName);
     assert.ok(workspace);
-    assert.equal(workspace.tabs.listTabs().length, 1);
+    assert.equal(workspace.tabs.listTabs().length, 0);
     workspace.tabs.createTab({ tabName: 'tab-existing' });
 
     const reopened = await handleRuntimeControlAction({
@@ -98,7 +99,7 @@ test('workflow.open opens a tab only for tabless workspace', async () => {
         workspaceRegistry: registry,
     } as any);
     assert.deepEqual(reopened.events.map((event) => event.type), ['workspace.changed']);
-    assert.equal(workspace.tabs.listTabs().length, 2);
+    assert.equal(workspace.tabs.listTabs().length, 1);
     cleanup(workflowName);
 });
 
@@ -116,6 +117,8 @@ test('dsl actions are handled by dsl control', async () => {
         hints: {},
     } as any);
     const ws = registry.createWorkspace(name, workflow);
+    let browserStarts = 0;
+    ws.browserSession.start = async () => {browserStarts += 1;};
 
     const got = await ws.router.handle({ v: 1, id: 'd1', type: 'dsl.get', workspaceName: name } as any, ws as any, registry as any);
     assert.equal(got.reply.type, 'dsl.get.result');
@@ -125,9 +128,11 @@ test('dsl actions are handled by dsl control', async () => {
 
     const tested = await ws.router.handle({ v: 1, id: 'd3', type: 'dsl.test', workspaceName: name, payload: { input: { a: 1 } } } as any, ws as any, registry as any);
     assert.equal(tested.reply.type, 'dsl.test.result');
+    assert.equal(browserStarts, 0, 'read/validation operations never start a browser');
 
     const ran = await ws.router.handle({ v: 1, id: 'd4', type: 'dsl.run', workspaceName: name, payload: { input: { b: 2 } } } as any, ws as any, registry as any);
     assert.equal(ran.reply.type, 'dsl.run.result');
+    assert.equal(browserStarts, 1, 'browser startup is deferred until execution');
 
     cleanup(name);
 });
@@ -764,7 +769,7 @@ test('workflow.resetDefault refuses to replace a workspace owned by an active ta
     }
 });
 
-test('workflow.open creates a blank page instead of navigating to a placeholder site', async () => {
+test('workflow.open has no browser or navigation side effects', async () => {
     const startUrls: Array<string | undefined> = [];
     const { registry } = createWorkspaceHarness({
         getPage: async (_tabName, startUrl) => {
@@ -781,13 +786,15 @@ test('workflow.open creates a blank page instead of navigating to a placeholder 
     try {
         const workflow = createWorkflowOnFs(name);
         const workspace = registry.createWorkspace(name, workflow);
-        workspace.browserSession.start = async () => undefined;
+        let browserStarts = 0;
+        workspace.browserSession.start = async () => {browserStarts += 1;};
         const opened = await handleRuntimeControlAction({
             action: { v: 1, id: 'blank-open', type: 'workflow.open', payload: { workflowName: name } },
             workspaceRegistry: registry,
         } as any);
         assert.equal(opened.reply.type, 'workflow.open.result');
-        assert.deepEqual(startUrls, ['about:blank']);
+        assert.equal(browserStarts, 0);
+        assert.deepEqual(startUrls, []);
     } finally {
         cleanup(name);
     }
@@ -996,7 +1003,7 @@ test('workflow lifecycle stops MCP runner and browser services before removing o
     }
 });
 
-test('workflow.open creates a live managed tab when bootstrap reporting left only an unbound placeholder', async () => {
+test('workflow.open preserves an unbound placeholder instead of spawning another browser page', async () => {
     const openedUrls: Array<string | undefined> = [];
     const {registry} = createWorkspaceHarness({
         getPage: async (_tabName, startUrl) => {
@@ -1013,7 +1020,8 @@ test('workflow.open creates a live managed tab when bootstrap reporting left onl
     try {
         const workflow = createWorkflowOnFs(name);
         const workspace = registry.createWorkspace(name, workflow);
-        workspace.browserSession.start = async () => undefined;
+        let browserStarts = 0;
+        workspace.browserSession.start = async () => {browserStarts += 1;};
         workspace.tabs.createTab({tabName: 'bootstrap-placeholder'});
 
         const opened = await handleRuntimeControlAction({
@@ -1023,9 +1031,10 @@ test('workflow.open creates a live managed tab when bootstrap reporting left onl
 
         assert.equal(opened.reply.type, 'workflow.open.result');
         const tabs = workspace.tabs.listTabs();
-        assert.equal(tabs.length, 2);
-        assert.equal(tabs.some((tab) => tab.page && !tab.page.isClosed()), true);
-        assert.deepEqual(openedUrls, ['about:blank']);
+        assert.equal(tabs.length, 1);
+        assert.equal(tabs[0]?.page, null);
+        assert.equal(browserStarts, 0);
+        assert.deepEqual(openedUrls, []);
     } finally {
         cleanup(name);
     }
