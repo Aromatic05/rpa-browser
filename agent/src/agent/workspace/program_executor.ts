@@ -179,6 +179,7 @@ export const createWorkspaceProgramExecutor = (
     const executeStep = (step: Parameters<typeof executeStepWithRuntimeContracts>[0]) =>
         executeStepWithRuntimeContracts(step, options.workspaceName, options.deps, {
             checkpointProvider: runtime.provider,
+            entityRulesProvider: runtime.entityRulesProvider,
             entityRulesResolver: runtime.entityRulesResolver,
             resolveResolver: runtime.resolveResolver,
         });

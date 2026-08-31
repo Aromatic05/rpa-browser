@@ -1,4 +1,4 @@
-import type {RunStepsDeps} from '../../run_steps';
+import type {RunStepsDeps, RunStepsExecutionContext} from '../../run_steps';
 import {
     buildPageSessionEntityView,
     ensureFreshPageSession,
@@ -22,6 +22,7 @@ export const executeBrowserAssert = async (
     step: Step<'browser.assert'>,
     deps: RunStepsDeps,
     workspaceName: string,
+    context?: RunStepsExecutionContext,
 ): Promise<StepResult> => {
     const {urlIncludes, textVisible, entityExists} = step.args;
     if (!urlIncludes && !textVisible && !entityExists) {
@@ -80,7 +81,7 @@ export const executeBrowserAssert = async (
         const {entry} = await ensureFreshPageSession(
             deps,
             workspaceName,
-            {explicit: true, entityRules: step.entityRules},
+            {explicit: true, entityRules: step.entityRules, entityRulesProvider: context?.entityRulesProvider},
         );
         const entities = filterPageSessionEntities(
             buildPageSessionEntityView(entry).entities,

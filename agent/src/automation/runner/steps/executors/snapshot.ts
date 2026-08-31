@@ -1,4 +1,4 @@
-import type {RunStepsDeps} from '../../run_steps_types';
+import type {RunStepsDeps, RunStepsExecutionContext} from '../../run_steps_types';
 import type {Step, StepResult} from '../types';
 import {ensureFreshPageSession} from '../../session/capture';
 import {
@@ -12,6 +12,7 @@ export const executeBrowserSnapshot = async (
     step: Step<'browser.snapshot'>,
     deps: RunStepsDeps,
     workspaceName: string,
+    context?: RunStepsExecutionContext,
 ): Promise<StepResult> => {
     const depth = step.args.depth ?? -1;
     if (!Number.isInteger(depth) || depth < -1) {
@@ -27,6 +28,7 @@ export const executeBrowserSnapshot = async (
 
     const {entry, binding} = await ensureFreshPageSession(deps, workspaceName, {
         explicit: step.args.refresh === true,
+        entityRulesProvider: context?.entityRulesProvider,
     });
     const built = buildSnapshotProjection(entry, {
         mode: step.args.mode,

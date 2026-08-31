@@ -1,5 +1,5 @@
 import type {Step, StepResult} from '../types';
-import type {RunStepsDeps} from '../../run_steps';
+import type {RunStepsDeps, RunStepsExecutionContext} from '../../run_steps';
 import {ensureFreshPageSession} from '../../session/capture';
 import {resolveSnapshotContentRef} from '../../../snapshot/projection';
 
@@ -7,8 +7,9 @@ export const executeBrowserGetContent = async (
     step: Step<'browser.get_content'>,
     deps: RunStepsDeps,
     workspaceName: string,
+    context?: RunStepsExecutionContext,
 ): Promise<StepResult> => {
-    const {entry} = await ensureFreshPageSession(deps, workspaceName);
+    const {entry} = await ensureFreshPageSession(deps, workspaceName, {entityRulesProvider: context?.entityRulesProvider});
     const resolved = resolveSnapshotContentRef(entry, step.args.ref);
     if (!resolved.ok) {
         return {

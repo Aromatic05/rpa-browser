@@ -68,6 +68,7 @@ export const executeBrowserCheckpoint = async (
             runLocalStepResults: nestedResults,
             stepResolves,
             checkpointProvider: provider,
+            entityRulesProvider: context.entityRulesProvider,
             entityRulesResolver: context.entityRulesResolver,
             resolveResolver: context.resolveResolver,
         });

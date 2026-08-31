@@ -24,7 +24,7 @@ import { injectStepResolve } from './step_resolve';
 import type { DslCheckpointProvider } from '../dsl/emit';
 import type { DslEntityRulesResolver, DslResolveResolver } from '../dsl/link';
 import type { Workflow } from '../workflow';
-import { resolveStepEntityRulesExecution } from '../snapshot/rules/runtime';
+import { resolveStepEntityRulesExecution, type WorkspaceEntityRulesProvider } from '../snapshot/rules/runtime';
 import { summarizeStepArgs } from './step_event_summary';
 
 export type {
@@ -114,6 +114,7 @@ export type RunLocalStepResults = Record<
 
 export type ExecuteStepRuntimeOptions = {
     runLocalStepResults?: RunLocalStepResults;
+    entityRulesProvider?: WorkspaceEntityRulesProvider;
     stepResolves?: Record<string, StepResolve>;
     checkpointProvider?: DslCheckpointProvider;
     entityRulesResolver?: DslEntityRulesResolver;
@@ -164,7 +165,7 @@ export const executeStepWithRuntimeContracts = async (
     const entityRules = resolveStepEntityRulesExecution(
         runtimeStep.step.entityRules,
         deps.config.entityRules,
-        deps.resolveEntityRulesProvider?.(workspaceName),
+        options.entityRulesProvider ?? deps.resolveEntityRulesProvider?.(workspaceName),
     );
     if (entityRules.status === 'invalid') {
         return {
@@ -201,6 +202,7 @@ export const executeStepWithRuntimeContracts = async (
     try {
         return await fn(runtimeStep.step, deps, workspaceName, {
             checkpointProvider: options.checkpointProvider,
+            entityRulesProvider: options.entityRulesProvider,
             entityRulesResolver: options.entityRulesResolver,
             resolveResolver: options.resolveResolver,
         });
@@ -218,12 +220,14 @@ const executeOne = async (
     deps: RunStepsDeps,
     stepResolves?: Record<string, StepResolve>,
     checkpointProvider?: DslCheckpointProvider,
+    entityRulesProvider?: WorkspaceEntityRulesProvider,
     entityRulesResolver?: DslEntityRulesResolver,
     resolveResolver?: DslResolveResolver,
 ): Promise<ExecStepResult> => await executeStepWithRuntimeContracts(step, workspaceName, deps, {
     runLocalStepResults,
     stepResolves,
     checkpointProvider,
+    entityRulesProvider,
     entityRulesResolver,
     resolveResolver,
 });
@@ -384,7 +388,7 @@ export const setRunStepsDeps = (deps: RunStepsDeps): void => {
 const resolveRunCheckpoints = (
     req: RunStepsRequest,
     deps: RunStepsDeps,
-): {checkpoints: RunnerCheckpoint[]; stepResolves: Record<string, Record<string, StepResolve>>; bodies: Record<string, string>; provider: DslCheckpointProvider; entityRulesResolver?: DslEntityRulesResolver; resolveResolver?: DslResolveResolver} => {
+): {checkpoints: RunnerCheckpoint[]; stepResolves: Record<string, Record<string, StepResolve>>; bodies: Record<string, string>; provider: DslCheckpointProvider; entityRulesProvider?: WorkspaceEntityRulesProvider; entityRulesResolver?: DslEntityRulesResolver; resolveResolver?: DslResolveResolver} => {
     if (req.checkpoints !== undefined) {
         validateCheckpointFileForSerialization({version: 1, checkpoints: req.checkpoints});
     }
@@ -436,6 +440,7 @@ const resolveRunCheckpoints = (
         stepResolves: snapshot.checkpointStepResolves,
         bodies: snapshot.checkpointBodies,
         provider: snapshot.provider,
+        entityRulesProvider: snapshot.entityRulesProvider,
         entityRulesResolver: snapshot.entityRulesResolver,
         resolveResolver: snapshot.resolveResolver,
     };
@@ -565,6 +570,7 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
                 resolvedDeps,
                 req.stepResolves,
                 checkpointRuntime.provider,
+                checkpointRuntime.entityRulesProvider,
                 checkpointRuntime.entityRulesResolver,
                 checkpointRuntime.resolveResolver,
             );
@@ -606,6 +612,7 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
                             resolvedDeps,
                             stepResolves ?? req.stepResolves,
                             checkpointRuntime!.provider,
+                            checkpointRuntime!.entityRulesProvider,
                             checkpointRuntime!.entityRulesResolver,
                             checkpointRuntime!.resolveResolver,
                         ),
