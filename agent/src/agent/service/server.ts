@@ -5,7 +5,9 @@ import {
     InteractionStateError,
     InteractionValidationError,
 } from '../interaction';
-import {SessionCancelledError, type SessionManager} from './session/manager';
+import {SessionCancelledError, ActivityConflictError, type SessionManager} from './session/manager';
+import type {AgentExecutionMode} from '../execution/types';
+import {createProductController, ProductCommandError} from '../product';
 import type {AgentServiceEndpoint, AgentServiceSecurity} from './security/contracts';
 import {authorizeAgentRequest} from './security/guard';
 import type {Principal} from '../../security/context';
@@ -87,6 +89,28 @@ const requireActor = (body: Record<string, unknown>, field: string): string => {
     return body[field].trim();
 };
 
+const requireField = (body: Record<string, unknown>, field: string): string => {
+    if (typeof body[field] !== 'string' || body[field].trim().length === 0) {
+        throw new AgentRequestError(`${field} is required`);
+    }
+    return body[field].trim();
+};
+
+type ProductRoute = Readonly<{taskId: string; verb?: string}>;
+
+const parseProductRoute = (pathname: string, productPath: string): ProductRoute | null => {
+    const prefix = `${productPath}/tasks/`;
+    if (!pathname.startsWith(prefix)) {return null;}
+    const segments = pathname.slice(prefix.length).split('/');
+    if (segments.length === 1 && segments[0] !== '') {
+        return {taskId: decodeURIComponent(segments[0])};
+    }
+    if (segments.length === 2 && segments[0] !== '' && segments[1] !== '') {
+        return {taskId: decodeURIComponent(segments[0]), verb: segments[1]};
+    }
+    return null;
+};
+
 export type AgentHttpServerOptions = {
     manager: SessionManager;
     workspaceName: string;
@@ -96,6 +120,9 @@ export type AgentHttpServerOptions = {
     healthPath?: string;
     log?: (...args: unknown[]) => void;
     security?: AgentServiceSecurity;
+    /** Default provider/model/executionMode for the product task composer (the
+     *  product surface is provider-agnostic and uses product defaults). */
+    productDefaults?: Readonly<{provider: string; model: string; executionMode?: AgentExecutionMode}>;
 };
 
 export const createAgentHttpServer = async (
@@ -105,7 +132,13 @@ export const createAgentHttpServer = async (
     const agentPath = options.agentPath || process.env.RPA_AGENT_PATH || '/agent';
     const healthPath = options.healthPath || process.env.RPA_AGENT_HEALTH_PATH || '/health';
     const sessionsPath = `${agentPath}/sessions`;
+    const productPath = `${agentPath}/product`;
     const security = options.security;
+    const product = createProductController({
+        manager: options.manager,
+        workspace: options.workspaceName,
+        ...(options.productDefaults === undefined ? {} : {defaults: options.productDefaults}),
+    });
 
     const writeJsonSafe = (res: http.ServerResponse, status: number, payload: unknown): void => {
         const sanitized = security ? security.redactionPolicy.redact(payload).value : payload;
@@ -248,6 +281,143 @@ export const createAgentHttpServer = async (
                 return;
             }
 
+            if (pathname === productPath && req.method === 'GET') {
+                const principal = await requireAuthz('sessionList');
+                if (!principal) {return;}
+                writeJsonSafe(res, 200, product.workspaceView());
+                return;
+            }
+
+            if (pathname === `${productPath}/tasks`) {
+                if (req.method === 'POST') {
+                    const principal = await requireAuthz('sessionStart');
+                    if (!principal) {return;}
+                    const body = (await readJsonBody(req)) as Record<string, unknown>;
+                    const prompt = requireField(body, 'prompt');
+                    const view = product.startTask({
+                        prompt,
+                        ...(typeof body.provider === 'string' ? {provider: body.provider} : {}),
+                        ...(typeof body.model === 'string' ? {model: body.model} : {}),
+                        ...(body.executionMode === 'program' || body.executionMode === 'react-baseline'
+                            ? {executionMode: body.executionMode}
+                            : {}),
+                    });
+                    writeJsonSafe(res, 202, view);
+                    return;
+                }
+                if (req.method === 'GET') {
+                    const principal = await requireAuthz('sessionList');
+                    if (!principal) {return;}
+                    writeJsonSafe(res, 200, product.listTasks());
+                    return;
+                }
+                writeJsonSafe(res, 405, {error: 'method not allowed'});
+                return;
+            }
+
+            const productRoute = parseProductRoute(pathname, productPath);
+            if (productRoute !== null) {
+                if (req.method === 'GET' && productRoute.verb === undefined) {
+                    const principal = await requireAuthz('sessionList');
+                    if (!principal) {return;}
+                    const view = product.taskView(productRoute.taskId);
+                    if (!view) {writeJsonSafe(res, 404, {error: 'task not found'}); return;}
+                    writeJsonSafe(res, 200, view);
+                    return;
+                }
+                if (req.method === 'GET' && productRoute.verb === 'events') {
+                    const principal = await requireAuthz('sessionList');
+                    if (!principal) {return;}
+                    const url = new URL(req.url || '/', `http://${req.headers.host || `${host}:${String(options.port)}`}`);
+                    const afterSeq = Number(url.searchParams.get('afterSeq') ?? '0');
+                    if (!Number.isInteger(afterSeq) || afterSeq < 0) {
+                        writeJsonSafe(res, 400, {error: 'afterSeq must be a non-negative integer'});
+                        return;
+                    }
+                    writeJsonSafe(res, 200, product.events(productRoute.taskId, afterSeq));
+                    return;
+                }
+                if (req.method === 'POST' && productRoute.verb !== undefined) {
+                    const authzEndpoint: AgentServiceEndpoint = productRoute.verb === 'stop'
+                        ? 'sessionCancel'
+                        : productRoute.verb === 'approve'
+                            || productRoute.verb === 'deny'
+                            || productRoute.verb === 'answer'
+                            || productRoute.verb === 'recovery'
+                            || productRoute.verb === 'takeover'
+                            || productRoute.verb === 'return-control'
+                            ? 'run'
+                            : 'sessionList';
+                    const principal = await requireAuthz(authzEndpoint);
+                    if (!principal) {return;}
+                    const body = productRoute.verb === 'stop'
+                        ? {}
+                        : (await readJsonBody(req)) as Record<string, unknown>;
+                    const taskId = productRoute.taskId;
+                    let view: ReturnType<typeof product.taskView>;
+                    switch (productRoute.verb) {
+                        case 'stop':
+                            view = product.stopTask({taskId});
+                            break;
+                        case 'approve':
+                            view = await product.approveTask({
+                                taskId,
+                                interactionToken: requireField(body, 'interactionToken'),
+                            });
+                            break;
+                        case 'deny':
+                            view = await product.denyTask({
+                                taskId,
+                                interactionToken: requireField(body, 'interactionToken'),
+                                reason: requireField(body, 'reason'),
+                                ...(typeof body.requestedAlternative === 'string'
+                                    ? {requestedAlternative: body.requestedAlternative}
+                                    : {}),
+                            });
+                            break;
+                        case 'answer':
+                            view = await product.answerTask({
+                                taskId,
+                                interactionToken: requireField(body, 'interactionToken'),
+                                value: body.value,
+                            });
+                            break;
+                        case 'recovery':
+                            view = await product.chooseRecoveryTask({
+                                taskId,
+                                interactionToken: requireField(body, 'interactionToken'),
+                                optionId: requireField(body, 'optionId'),
+                            });
+                            break;
+                        case 'takeover':
+                            view = product.beginGuidanceTask({
+                                taskId,
+                                interactionToken: requireField(body, 'interactionToken'),
+                                mode: requireField(body, 'mode') as 'manual' | 'teach' | 'annotate',
+                            });
+                            break;
+                        case 'return-control':
+                            view = await product.returnControlTask({
+                                taskId,
+                                interactionToken: requireField(body, 'interactionToken'),
+                                mode: requireField(body, 'mode') as 'manual' | 'teach' | 'annotate',
+                                ...(typeof body.savedReference === 'string'
+                                    ? {savedReference: body.savedReference}
+                                    : {}),
+                            });
+                            break;
+                        default:
+                            writeJsonSafe(res, 404, {error: 'unknown task command'});
+                            return;
+                    }
+                    if (!view) {writeJsonSafe(res, 404, {error: 'task not found'}); return;}
+                    writeJsonSafe(res, 200, view);
+                    return;
+                }
+                writeJsonSafe(res, 405, {error: 'method not allowed'});
+                return;
+            }
+
             if (pathname === `${sessionsPath}/prune` && req.method === 'POST') {
                 const principal = await requireAuthz('sessionPrune');
                 if (!principal) {return;}
@@ -276,8 +446,24 @@ export const createAgentHttpServer = async (
                 res.end();
                 return;
             }
+            if (error instanceof ProductCommandError) {
+                if (error.code === 'ERR_STALE') {
+                    writeJsonSafe(res, 409, {error: error.message, code: error.code});
+                    return;
+                }
+                if (error.code === 'ERR_NOT_FOUND') {
+                    writeJsonSafe(res, 404, {error: error.message, code: error.code});
+                    return;
+                }
+                writeJsonSafe(res, 400, {error: error.message, code: error.code});
+                return;
+            }
             if (error instanceof AgentRequestError || error instanceof SyntaxError || error instanceof InteractionValidationError) {
                 writeJsonSafe(res, 400, {error: error.message});
+                return;
+            }
+            if (error instanceof ActivityConflictError) {
+                writeJsonSafe(res, 409, {error: error.message, code: error.code});
                 return;
             }
             if (error instanceof SessionCancelledError) {

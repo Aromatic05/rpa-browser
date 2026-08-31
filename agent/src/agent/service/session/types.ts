@@ -22,13 +22,15 @@ export type SessionInteractionPolicy = 'interactive' | 'headless';
 /**
  * A session is `running` from creation until the runner settles it. Terminal and
  * retained states never move again once recorded:
- * - `paused`    the run finished but left a program paused, retained for a later
- *               human approve/resume.
- * - `completed` the run finished with no paused or failed program.
- * - `failed`    the runner threw or reported a failed/aborted program.
- * - `cancelled` the session was aborted externally before the runner settled.
+ * - `paused`       the run finished but left a program paused for a later human
+ *                  approval / control re-entry.
+ * - `completed`    the run finished with no paused or failed program.
+ * - `failed`       the runner threw or reported a failed/aborted program.
+ * - `cancelled`    the session was aborted externally before the runner settled.
+ * - `interrupted`  the session was active at service restart with no durable
+ *                  continuation; it is derived, non-resumable and terminal.
  */
-export type SessionState = 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
+export type SessionState = 'running' | 'paused' | 'completed' | 'failed' | 'cancelled' | 'interrupted';
 
 export type SessionRequestSummary = Readonly<{
     prompt: string;
@@ -60,4 +62,25 @@ export type SessionSnapshot = Readonly<{
 export type SessionReport = Readonly<{
     sessionId: SessionId;
     report: AgentRunReport | null;
+}>;
+
+export type ActivityOwnerKind = 'none' | 'task' | 'standalone_teach' | 'standalone_annotate' | 'playback';
+
+export type ActivityHumanControl = 'none' | 'manual' | 'teach' | 'annotate';
+
+export type ActivityReservationSnapshot = Readonly<{
+    owner: ActivityOwnerKind;
+    ownerTaskId?: string;
+    humanControl: ActivityHumanControl;
+}>;
+
+/** Workspace-level product activity reservation port consumed by the session
+ *  manager. A Task start acquires the reservation and holds it across running
+ *  and waiting_for_user; terminal settle releases it. Conflicts reject, never
+ *  queue. Implemented by the product reservation domain. */
+export type ActivityReservationPort = Readonly<{
+    acquireTask: (taskId: string) => boolean;
+    releaseTask: (taskId: string) => boolean;
+    setHumanControl: (taskId: string, control: ActivityHumanControl) => boolean;
+    snapshot: () => ActivityReservationSnapshot;
 }>;

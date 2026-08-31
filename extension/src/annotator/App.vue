@@ -648,6 +648,7 @@ const selectedAnnotation = computed<CanvasAnnotationDraft | null>(() => {
                 target: action.target,
                 origin: action.origin,
                 disposition: action.disposition,
+                ...(action.effect ? {effect: {...action.effect}} : {}),
             };
         }
     }
@@ -1289,6 +1290,13 @@ const onApplyBusinessEdit = (
     if (patch.primaryKey !== undefined) {
         nextDraft = setColumnPrimaryKey(nextDraft, entityId, annotationId, patch.primaryKey);
     }
+    if (patch.effect !== undefined) {
+        if (entity.columns.some((column) => column.actions.some((action) => action.id === annotationId))) {
+            nextDraft = updateColumnAction(nextDraft, entityId, annotationId, {effect: patch.effect});
+        } else {
+            nextDraft = updateAnnotation(nextDraft, entityId, annotationId, {effect: patch.effect});
+        }
+    }
     applyDraftUpdate(nextDraft);
     detailEditorDirty.value = false;
     applyState(pickReceived(props.state, {annotationId: null, entityId}));
@@ -1302,6 +1310,7 @@ const onApplyPendingEdit = (patch: BusinessObjectEditPatch): void => {
         ...(patch.name !== undefined ? {name: patch.name} : {}),
         ...(patch.fieldKey !== undefined ? {businessKey: patch.fieldKey} : {}),
         ...(patch.actionIntent !== undefined ? {businessKey: patch.actionIntent} : {}),
+        ...(patch.effect !== undefined ? {effect: {...patch.effect}} : {}),
         target: {...pending.annotation.target},
     };
     const nextDraft = addAnnotation(

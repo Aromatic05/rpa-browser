@@ -1,6 +1,14 @@
+import type {
+    EntityRuleEffectReversibility,
+    EntityRuleEffectView,
+} from '../../../shared/entity-rules-contract/index.js';
+
 export type RegionKind = 'form' | 'table' | 'dialog' | 'list' | 'panel' | 'toolbar';
 export type GroupKind = 'table' | 'kv' | 'list';
 export type EntityKind = RegionKind | GroupKind;
+
+export type CanvasEffectReversibility = EntityRuleEffectReversibility;
+export type CanvasEffectDraft = EntityRuleEffectView;
 
 export type EntityRuleExpect = 'unique' | 'one_or_more';
 export type EntityRuleSource = 'region' | 'group' | 'node';
@@ -39,6 +47,7 @@ export type CanvasColumnActionDraft = {
     target: PersistentTargetDraft;
     origin: AnnotationOrigin;
     disposition: AnnotationDisposition;
+    effect?: CanvasEffectDraft;
 };
 
 export type CanvasColumnDraft = {
@@ -63,6 +72,7 @@ export type CanvasAnnotationDraft = {
     expect?: EntityRuleExpect;
     origin: AnnotationOrigin;
     disposition: AnnotationDisposition;
+    effect?: CanvasEffectDraft;
 };
 
 export type CanvasPrimaryKeyDraft = {

@@ -4,6 +4,7 @@ import { createRecordingState, type RecordingState } from '../../src/automation/
 import {createRecordingSnapshotPort} from '../../src/automation/recording/pipeline/snapshot';
 import {SnapshotProjectionBaselineStore} from '../../src/automation/runner/session';
 import {PageSnapshotSessionStore} from '../../src/automation/snapshot';
+import type { PageSnapshotSessionPort } from '../../src/automation/snapshot/session';
 import type { RunStepsDeps } from '../../src/automation/runner/run_steps';
 import { getRunnerConfig } from '../../src/platform/config';
 import type { Action } from '../../src/interface/actions/action_protocol';
@@ -23,6 +24,7 @@ export type WorkspaceHarnessOptions = {
     agentModelRuntime?: AgentModelRuntime;
     agentFactoryOptions?: WorkspaceAgentFactoryOptions;
     pluginHost?: RunStepsDeps['pluginHost'];
+    onPageMutation?: (page: Page, pageSession: PageSnapshotSessionPort<Page>) => void;
 };
 
 export const createWorkspaceHarness = (options: WorkspaceHarnessOptions = {}) => {
@@ -56,10 +58,16 @@ export const createWorkspaceHarness = (options: WorkspaceHarnessOptions = {}) =>
         createPendingBindingClaim: () => undefined,
         claimPendingBinding: async () => false,
     };
-    const runtime = createExecutionBindings({ pageRegistry: testPageRegistry });
+    const pageSession = new PageSnapshotSessionStore();
+    const runtime = createExecutionBindings({
+        pageRegistry: testPageRegistry,
+        onPageMutation: options.onPageMutation
+            ? (page) => options.onPageMutation!(page, pageSession)
+            : undefined,
+    });
     const runStepsDeps = options.runStepsDeps || ({
         runtime,
-        pageSession: new PageSnapshotSessionStore(),
+        pageSession,
         snapshotProjection: new SnapshotProjectionBaselineStore(),
         resolveWorkspace: () => {
             throw new Error('resolveWorkspace is not configured in test helper');

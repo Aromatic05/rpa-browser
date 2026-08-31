@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>self-mutating world</title>
+</head>
+<body>
+<main>
+  <h1>Self-mutating world</h1>
+  <section>
+    <button id="submit" type="button">Submit</button>
+    <button id="secondary" type="button">Secondary</button>
+  </section>
+</main>
+<script>
+  window.__clickCount = 0;
+  document.getElementById('submit').addEventListener('click', () => { window.__clickCount += 1; });
+</script>
+</body>
+</html>

@@ -162,6 +162,12 @@ const FAILING_REVERSIBLE_SOURCE = [
     'output done = input.done',
 ].join('\n');
 
+const COMPLETING_REVERSIBLE_SOURCE = [
+    'use entity_rules "orders" as order',
+    'fill order.orderForm.name with input.value',
+    'output done = input.done',
+].join('\n');
+
 const buildRunner = async (options: ExecutorOptions = {}) => {
     const faux = createFauxAgentModelRuntime();
     const executor = createWorkspaceProgramExecutor(await buildExecutorOptions(options));
@@ -226,8 +232,11 @@ test('production approve resumes the SAME retained transaction and executes the 
 
         const interactions = service.sessions.listInteractions(sessionId)!;
         assert.equal(interactions.length, 1);
-        assert.equal(interactions[0].kind, 'irreversible-effect-approval');
-        assert.equal(interactions[0].evidence.effectName, 'browser.click');
+        assert.equal(interactions[0].kind, 'approval');
+        assert.equal(interactions[0].payload.kind, 'approval');
+        if (interactions[0].payload.kind === 'approval') {
+            assert.equal(interactions[0].payload.actionName, 'browser.click');
+        }
 
         const decided = await service.sessions.approveInteraction(
             sessionId,
@@ -244,7 +253,7 @@ test('production approve resumes the SAME retained transaction and executes the 
     }
 });
 
-test('production deny terminates the retained session without executing the irreversible effect', async () => {
+test('production deny never cancels: the denied effect is not executed and the task is not cancelled', async () => {
     const clickCalls: string[] = [];
     const {service, faux} = await buildService({executorOptions: {clickCalls}});
     try {
@@ -259,9 +268,8 @@ test('production deny terminates the retained session without executing the irre
             'not safe',
         );
         assert.equal(decided!.interaction.status, 'denied');
-        assert.equal(decided!.session.state, 'cancelled');
-        assert.equal(decided!.session.error?.code, 'ERR_SESSION_INTERACTION_DENIED');
-        assert.equal(decided!.session.error?.message.includes('not safe'), true);
+        assert.notEqual(decided!.session.state, 'cancelled', 'denial must never cancel the task');
+        assert.notEqual(decided!.session.error?.code, 'ERR_SESSION_INTERACTION_DENIED');
         assert.deepEqual(clickCalls, [], 'denial must never execute the irreversible effect');
         assert.equal(snapshot.resumable, true);
     } finally {
@@ -304,21 +312,24 @@ test('production headless policy blocks approval-required effects with no pendin
 test('production stale revision and foreign session are rejected', async () => {
     const {service, faux} = await buildService();
     try {
-        const first = await runSource(service, faux, IRREVERSIBLE_SOURCE);
+        // The first task completes (releasing the workspace reservation) so a
+        // second task can start and pause with its own interaction.
+        const first = await runSource(service, faux, COMPLETING_REVERSIBLE_SOURCE);
+        assert.equal(service.sessions.status(first.sessionId)?.state, 'completed');
         const second = await runSource(service, faux, IRREVERSIBLE_SOURCE);
-        const interaction = service.sessions.listInteractions(first.sessionId)![0];
+        const interaction = service.sessions.listInteractions(second.sessionId)![0];
 
         await assert.rejects(
-            () => service.sessions.approveInteraction(first.sessionId, interaction.id, interaction.revision - 1, 'ops-1'),
+            () => service.sessions.approveInteraction(second.sessionId, interaction.id, interaction.revision - 1, 'ops-1'),
             (error: unknown) => error instanceof Error
                 && (error as Error & {code?: string}).code === 'ERR_INTERACTION_CONCURRENCY',
         );
         assert.equal(
-            await service.sessions.approveInteraction(second.sessionId, interaction.id, interaction.revision, 'ops-1'),
+            await service.sessions.approveInteraction(first.sessionId, interaction.id, interaction.revision, 'ops-1'),
             null,
         );
-        assert.equal(service.sessions.getInteraction(second.sessionId, interaction.id), null);
-        assert.equal(service.sessions.status(first.sessionId)?.state, 'paused');
+        assert.equal(service.sessions.getInteraction(first.sessionId, interaction.id), null);
+        assert.equal(service.sessions.status(second.sessionId)?.state, 'paused');
     } finally {
         await service.stop();
     }
@@ -365,7 +376,7 @@ test('production service exposes the full approve flow over HTTP', async () => {
         const body = await listed.json() as any;
         assert.equal(body.interactions.length, 1);
         const interaction = body.interactions[0];
-        assert.equal(interaction.kind, 'irreversible-effect-approval');
+        assert.equal(interaction.kind, 'approval');
 
         const approved = await fetch(
             `http://127.0.0.1:${String(started.port)}/agent/sessions/${sessionId}/interactions/${interaction.id}/approve`,
@@ -416,7 +427,7 @@ test('factory interaction policy is honored for approval-required effects', asyn
         const interactiveSnapshot = interactive.sessions.status(interactiveRun.sessionId)!;
         assert.equal(interactiveSnapshot.state, 'paused');
         assert.equal(interactiveSnapshot.interactions.length, 1);
-        assert.equal(interactiveSnapshot.interactions[0].kind, 'irreversible-effect-approval');
+        assert.equal(interactiveSnapshot.interactions[0].kind, 'approval');
         const interaction = interactive.sessions.listInteractions(interactiveRun.sessionId)![0];
         const decided = await interactive.sessions.approveInteraction(
             interactiveRun.sessionId,

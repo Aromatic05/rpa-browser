@@ -45,16 +45,10 @@ const pauseRun = async (baseUrl: string, provider: string, model: string): Promi
     return run.headers.get('x-session-id')!;
 };
 
-const denyRun = async (baseUrl: string, provider: string, model: string): Promise<string> => {
+const cancelRun = async (baseUrl: string, provider: string, model: string): Promise<string> => {
     const sessionId = await pauseRun(baseUrl, provider, model);
-    const listed = await fetch(`${baseUrl}/agent/sessions/${sessionId}/interactions`);
-    const interaction = ((await listed.json() as {interactions: Array<{id: string; revision: number}>}).interactions)[0];
-    const denied = await fetch(`${baseUrl}/agent/sessions/${sessionId}/interactions/${interaction.id}/deny`, {
-        method: 'POST',
-        headers: {'content-type': 'application/json'},
-        body: JSON.stringify({revision: interaction.revision, deniedBy: 'ops-2', reason: 'not safe'}),
-    });
-    assert.equal(denied.status, 200);
+    const cancelled = await fetch(`${baseUrl}/agent/sessions/${sessionId}/cancel`, {method: 'POST'});
+    assert.equal(cancelled.status, 200);
     return sessionId;
 };
 
@@ -122,7 +116,7 @@ test('a cancelled durable session survives a service restart with no raw secret'
         interaction: 'interactive',
     });
     const firstPort = await first.start();
-    const sessionId = await denyRun(
+    const sessionId = await cancelRun(
         `http://127.0.0.1:${String(firstPort)}`,
         first.provider,
         first.model,
@@ -137,7 +131,7 @@ test('a cancelled durable session survives a service restart with no raw secret'
             error: {code: string} | null;
         };
         assert.equal(recovered.state, 'cancelled');
-        assert.equal(recovered.error?.code, 'ERR_SESSION_INTERACTION_DENIED');
+        assert.equal(recovered.error?.code, 'ERR_SESSION_CANCELLED');
         assert.deepEqual(scanForString(dataDir, SECURITY_CANARY), [], 'the cancelled session must leave no secret on disk');
     } finally {
         await second.harness.stop();

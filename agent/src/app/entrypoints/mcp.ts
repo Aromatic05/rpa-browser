@@ -48,17 +48,21 @@ const traceSinks = config.observability.traceFileEnabled
 const runnerPluginHost = new RunnerPluginHost(path.resolve(process.cwd(), '.runner-dist/plugin.mjs'));
 await runnerPluginHost.load();
 
+const pageSession = new PageSnapshotSessionStore();
 const runtimeRegistry = createExecutionBindings({
     traceSinks,
     traceHooks: config.observability.traceConsoleEnabled
         ? createLoggingHooks()
         : createNoopHooks(),
     pluginHost: runnerPluginHost,
+    onPageMutation: (page) => {
+        pageSession.markDirty(page, 'interaction');
+    },
 });
 
 const runStepsDeps: RunStepsDeps = {
     runtime: runtimeRegistry,
-    pageSession: new PageSnapshotSessionStore(),
+    pageSession,
     snapshotProjection: new SnapshotProjectionBaselineStore(),
     resolveWorkspace: (workspaceName: string) => {
         const workspace = workspaceRegistry.getWorkspace(workspaceName);

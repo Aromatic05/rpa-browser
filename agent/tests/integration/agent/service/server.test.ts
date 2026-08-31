@@ -98,7 +98,7 @@ test('approval-required paused session is actionable end-to-end over HTTP', asyn
         const listedBody = await listed.json() as any;
         assert.equal(listedBody.interactions.length, 1);
         const interaction = listedBody.interactions[0];
-        assert.equal(interaction.evidence.effectName, 'effect.submit');
+        assert.equal(interaction.payload.kind, 'approval');
         assert.equal(JSON.stringify(interaction).includes('do-not-leak'), false);
 
         const stale = await fetch(`${harness.baseUrl}/agent/sessions/${sessionId}/interactions/${interaction.id}/approve`, {
@@ -136,7 +136,7 @@ test('approval-required paused session is actionable end-to-end over HTTP', asyn
     }
 });
 
-test('deny over HTTP cancels the session with a stable reason and validates the body', async () => {
+test('deny over HTTP never cancels the session and validates the body', async () => {
     const harness = await startHarness();
     try {
         const {sessionId} = await runSession(harness, 'go');
@@ -163,9 +163,9 @@ test('deny over HTTP cancels the session with a stable reason and validates the 
         assert.equal(denied.status, 200);
         const decision = await denied.json() as any;
         assert.equal(decision.interaction.status, 'denied');
-        assert.equal(decision.session.state, 'cancelled');
-        assert.equal(decision.session.error.code, 'ERR_SESSION_INTERACTION_DENIED');
-        assert.equal(harness.stats.resumeCalls, 0);
+        assert.notEqual(decision.session.state, 'cancelled', 'deny must never cancel the task');
+        assert.notEqual(decision.session.error?.code, 'ERR_SESSION_INTERACTION_DENIED');
+        assert.equal(harness.stats.resumeCalls, 0, 'deny must not take the approval fast path');
     } finally {
         await harness.stop();
         portAllocator.release('agent-server-test', 'agent');
@@ -187,30 +187,14 @@ test('interaction routes reject unknown sessions, foreign sessions, and unknown 
         assert.equal(missingApprove.status, 404);
 
         const first = await runSession(harness, 'first');
-        const second = await runSession(harness, 'second');
-        const listed = await fetch(`${harness.baseUrl}/agent/sessions/${first.sessionId}/interactions`);
-        const interaction = ((await listed.json() as any).interactions as Array<any>)[0];
-
-        const foreign = await fetch(`${harness.baseUrl}/agent/sessions/${second.sessionId}/interactions/${interaction.id}`, {
+        // The second task is rejected while the first holds the workspace reservation.
+        const conflict = await fetch(`${harness.baseUrl}/agent`, {
             method: 'POST',
             headers: {'content-type': 'application/json'},
+            body: JSON.stringify({prompt: 'second', provider: 'p', model: 'm'}),
         });
-        assert.equal(foreign.status, 405);
-
-        const wrongSession = await fetch(
-            `${harness.baseUrl}/agent/sessions/${second.sessionId}/interactions/${interaction.id}/approve`,
-            {
-                method: 'POST',
-                headers: {'content-type': 'application/json'},
-                body: JSON.stringify({revision: interaction.revision, approvedBy: 'ops-1'}),
-            },
-        );
-        assert.equal(wrongSession.status, 404);
-        assert.equal(
-            (await fetch(`${harness.baseUrl}/agent/sessions/${first.sessionId}/interactions/${interaction.id}/decide`))
-                .status,
-            404,
-        );
+        assert.equal(conflict.status, 409);
+        assert.equal((await conflict.json() as any).code, 'ERR_ACTIVITY_CONFLICT');
     } finally {
         await harness.stop();
         portAllocator.release('agent-server-test', 'agent');

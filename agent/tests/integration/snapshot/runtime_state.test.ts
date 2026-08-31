@@ -4,7 +4,10 @@ import {
     cleanupTaggedRuntimeState,
     collectTaggedRuntimeState,
     collectTaggedRuntimeStateCapture,
+    RUNTIME_STATE_ATTRIBUTE,
 } from '../../../src/automation/snapshot/observation/model/runtime_state';
+import {buildPageObservation} from '../../../src/automation/snapshot/observation/model/build';
+import type {RawPageCapture} from '../../../src/automation/snapshot/observation/model/raw_capture';
 
 type FakeElement = {
     nodeType: number;
@@ -388,4 +391,182 @@ test('runtime collection exposes execution failure as unavailable', async () => 
     assert.equal(result.status, 'unavailable');
     assert.deepEqual(result.records, {});
     assert.match(result.error ?? '', /page context unavailable/);
+});
+
+test('runtime collector preserves explicit empty string for editable control values', async () => {
+    const root = createElement('HTML');
+    const body = createElement('BODY', {}, root);
+
+    const input = createElement('INPUT', { type: 'text' }, body);
+    input.value = '';
+
+    const textarea = createElement('TEXTAREA', {}, body);
+    textarea.value = '';
+
+    const select = createElement('SELECT', {}, body);
+    select.value = '';
+
+    const doc = createDocument(root);
+    const page = createPage(doc);
+
+    const map = await collectTaggedRuntimeState(page as never, 'epoch-empty-values');
+
+    const inputRow = findRow(map, (row) => row.tag === 'input' && row.type === 'text');
+    assert.equal(inputRow?.value, '', 'an empty text input must capture its explicit empty value');
+
+    const textareaRow = findRow(map, (row) => row.tag === 'textarea');
+    assert.equal(textareaRow?.value, '', 'an empty textarea must capture its explicit empty value');
+
+    const selectRow = findRow(map, (row) => row.tag === 'select');
+    assert.equal(selectRow?.value, '', 'an empty select must capture its explicit empty value');
+});
+
+test('runtime collector preserves user-entered whitespace in editable values', async () => {
+    const root = createElement('HTML');
+    const body = createElement('BODY', {}, root);
+
+    const whitespaceOnly = createElement('INPUT', { type: 'text' }, body);
+    whitespaceOnly.value = '   ';
+
+    const padded = createElement('TEXTAREA', {}, body);
+    padded.value = '  alice  ';
+
+    const doc = createDocument(root);
+    const page = createPage(doc);
+
+    const map = await collectTaggedRuntimeState(page as never, 'epoch-whitespace');
+
+    const whitespaceRow = findRow(map, (row) => row.tag === 'input' && row.type === 'text');
+    assert.equal(whitespaceRow?.value, '   ', 'whitespace-only input value must be preserved as entered');
+
+    const paddedRow = findRow(map, (row) => row.tag === 'textarea');
+    assert.equal(paddedRow?.value, '  alice  ', 'padded textarea value must not be trimmed');
+});
+
+test('runtime collector keeps an unreadable editable value as missing instead of empty', async () => {
+    const root = createElement('HTML');
+    const body = createElement('BODY', {}, root);
+
+    const input = createElement('INPUT', { type: 'text' }, body);
+    delete (input as {value?: string}).value;
+
+    const doc = createDocument(root);
+    const page = createPage(doc);
+
+    const map = await collectTaggedRuntimeState(page as never, 'epoch-missing');
+
+    const inputRow = findRow(map, (row) => row.tag === 'input' && row.type === 'text');
+    assert.equal(inputRow?.value, undefined, 'an unreadable input value must stay missing, not empty');
+});
+
+test('runtime collector distinguishes empty contenteditable text from absent editable text', async () => {
+    const root = createElement('HTML');
+    const body = createElement('BODY', {}, root);
+
+    const emptyEditable = createElement('DIV', { contenteditable: 'true' }, body);
+    emptyEditable.isContentEditable = true;
+    emptyEditable.textContent = '';
+
+    const whitespaceEditable = createElement('DIV', { contenteditable: 'true' }, body);
+    whitespaceEditable.isContentEditable = true;
+    whitespaceEditable.textContent = '  ';
+
+    const button = createElement('BUTTON', {}, body);
+
+    const doc = createDocument(root);
+    const page = createPage(doc);
+
+    const map = await collectTaggedRuntimeState(page as never, 'epoch-editable-empty');
+
+    const emptyRow = findRow(map, (row) => row.tag === 'div' && row.contentEditableText === '');
+    assert.ok(emptyRow, 'an empty contenteditable must capture an explicit empty text state');
+    assert.equal(emptyRow?.value, '', 'empty contenteditable value must be captured as empty');
+
+    const whitespaceRow = findRow(map, (row) => row.tag === 'div' && row.contentEditableText === '  ');
+    assert.ok(whitespaceRow, 'whitespace contenteditable text must be preserved as entered');
+    assert.equal(whitespaceRow?.value, '  ');
+
+    const buttonRow = findRow(map, (row) => row.tag === 'button');
+    assert.equal(buttonRow?.contentEditableText, undefined, 'a non-editable element must keep editable text absent');
+});
+
+test('runtime collector still normalizes non-editable string fields from empty to absent', async () => {
+    const root = createElement('HTML');
+    const body = createElement('BODY', {}, root);
+
+    const input = createElement(
+        'INPUT',
+        {
+            type: 'text',
+            role: '',
+            'aria-valuetext': '',
+            'aria-labelledby': '',
+            'aria-describedby': '',
+        },
+        body,
+    );
+    input.value = 'x';
+
+    const doc = createDocument(root);
+    const page = createPage(doc);
+
+    const map = await collectTaggedRuntimeState(page as never, 'epoch-normalized-id');
+
+    const inputRow = findRow(map, (row) => row.tag === 'input' && row.value === 'x');
+    assert.ok(inputRow);
+    assert.equal(inputRow?.value, 'x');
+    assert.equal(inputRow?.role, undefined, 'empty role must remain absent');
+    assert.equal(inputRow?.ariaValueText, undefined, 'empty aria-valuetext must remain absent');
+    assert.equal(inputRow?.ariaLabelledBy, undefined, 'empty aria-labelledby must remain absent');
+    assert.equal(inputRow?.ariaDescribedBy, undefined, 'empty aria-describedby must remain absent');
+});
+
+test('captured empty editable value survives the observation join for physical compensation', async () => {
+    const root = createElement('HTML');
+    const body = createElement('BODY', {}, root);
+    const input = createElement('INPUT', { type: 'text' }, body);
+    input.value = '';
+
+    const doc = createDocument(root);
+    const page = createPage(doc);
+
+    const records = await collectTaggedRuntimeState(page as never, 'epoch-integration');
+    const inputRow = Object.values(records).find((row) => row?.tag === 'input');
+    assert.equal(inputRow?.value, '');
+    assert.ok(inputRow?.stateId);
+
+    const active = {hiddenByStyle: false, inert: false, selfHasBox: true, rendered: true} as const;
+    const raw: RawPageCapture = {
+        identity: {pageEpoch: 'v2-empty-integration', captureRevision: 1},
+        metadata: {schemaVersion: 1, source: 'fixed-fixture', capturedAt: '2026-08-30T00:00:00.000Z'},
+        completeness: {dom: 'complete', a11y: 'complete', runtime: 'complete', geometry: 'complete'},
+        scopes: [{
+            id: 'main',
+            kind: 'document',
+            rootCaptureId: 'html',
+            status: 'captured',
+            completeness: {dom: 'complete', a11y: 'complete', runtime: 'complete', geometry: 'complete'},
+        }],
+        nodes: [
+            {captureId: 'html', scopeId: 'main', childCaptureIds: ['body'], tag: 'html', attributes: {}, activity: active},
+            {captureId: 'body', scopeId: 'main', parentCaptureId: 'html', childCaptureIds: ['field'], tag: 'body', attributes: {}, activity: active},
+            {
+                captureId: 'field',
+                scopeId: 'main',
+                parentCaptureId: 'body',
+                childCaptureIds: [],
+                tag: 'input',
+                attributes: {[RUNTIME_STATE_ATTRIBUTE]: inputRow.stateId},
+                activity: active,
+            },
+        ],
+        accessibility: [],
+        runtimeState: records,
+        diagnostics: [],
+    };
+
+    const observation = buildPageObservation(raw);
+    const nodeId = observation.captureIdToNodeId.field;
+    assert.ok(nodeId);
+    assert.equal(observation.runtimeState[nodeId]?.value, '', 'empty value must survive capture -> observation join');
 });

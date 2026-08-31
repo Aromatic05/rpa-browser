@@ -2,6 +2,7 @@ import type { Page } from 'playwright';
 import type { Action } from '../../../interface/actions/action_protocol';
 import { ActionError, ERROR_CODES } from '../../../interface/actions/results';
 import { createTraceTools, type BrowserAutomationTools } from '../../runner/trace';
+import { installPageMutationObserver } from '../../runner/session/page_mutation';
 import type { RunnerPluginHost } from '../../runner/hotreload/plugin_host';
 import type { CreateTraceToolsFn } from '../../runner/plugin_entry';
 import type { TraceContext, TraceHooks, TraceSink } from '../../runner/trace/types';
@@ -41,6 +42,8 @@ type ExecutionBindingsOptions = {
     traceSinks?: TraceSink[];
     pluginHost?: RunnerPluginHost;
     dispatchAction?: (action: Action) => Promise<Action>;
+    /** Page lifecycle hook fired whenever a bound page's DOM mutates on its own. */
+    onPageMutation?: (page: Page) => void;
 };
 
 const isBindableUrl = (url: string): boolean => {
@@ -86,6 +89,9 @@ export const createExecutionBindings = (options: ExecutionBindingsOptions): Exec
             tags: { workspaceName, tabName },
         });
         const binding: ExecutionBinding = { workspaceName, tabName, pageRegistry, page, traceTools: tools, traceCtx: ctx };
+        if (options.onPageMutation) {
+            void installPageMutationObserver(page, () => options.onPageMutation?.(page)).catch(() => undefined);
+        }
         const key = keyOf(workspaceName, tabName);
         bindings.set(key, binding);
         const tabs = workspaceTabs.get(workspaceName) || new Set<string>();

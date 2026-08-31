@@ -98,16 +98,20 @@ if (process.env.NODE_ENV !== 'production') {
     runnerPluginHost.watchDev(path.resolve(process.cwd(), '.runner-dist'));
 }
 
+const pageSession = new PageSnapshotSessionStore();
 const runtimeRegistry = createExecutionBindings({
     traceSinks,
     traceHooks: config.observability.traceConsoleEnabled ? createLoggingHooks() : createNoopHooks(),
     pluginHost: runnerPluginHost,
     dispatchAction: async (action) => await dispatchActionForTrace(action),
+    onPageMutation: (page) => {
+        pageSession.markDirty(page, 'interaction');
+    },
 });
 
 const runStepsDeps: RunStepsDeps = {
     runtime: runtimeRegistry,
-    pageSession: new PageSnapshotSessionStore(),
+    pageSession,
     snapshotProjection: new SnapshotProjectionBaselineStore(),
     resolveWorkspace: (workspaceName: string) => {
         const workspace = workspaceRegistry.getWorkspace(workspaceName);

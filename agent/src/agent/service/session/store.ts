@@ -24,7 +24,7 @@ export type SessionSettle = {
     report?: AgentRunReport;
 };
 
-const SETTLED: ReadonlySet<SessionState> = new Set(['paused', 'completed', 'failed', 'cancelled']);
+const SETTLED: ReadonlySet<SessionState> = new Set(['paused', 'completed', 'failed', 'cancelled', 'interrupted']);
 
 const INTERRUPTED_ERROR: SessionSnapshot['error'] = Object.freeze({
     code: 'ERR_SESSION_INTERRUPTED',
@@ -94,6 +94,7 @@ export type SessionStore = {
     settle: (sessionId: SessionId, patch: SessionSettle) => SessionSnapshot | null;
     reopen: (sessionId: SessionId) => SessionSnapshot | null;
     terminate: (sessionId: SessionId, patch: SessionSettle) => SessionSnapshot | null;
+    discard: (sessionId: SessionId) => boolean;
     get: (sessionId: SessionId) => SessionSnapshot | null;
     getReport: (sessionId: SessionId) => AgentRunReport | null;
     list: () => SessionSnapshot[];
@@ -111,7 +112,7 @@ export const createSessionStore = (options: SessionStoreOptions = {}): SessionSt
             const record: SessionRecord = metadata.state === 'running'
                 ? {
                     ...fromPersisted(metadata),
-                    state: 'failed',
+                    state: 'interrupted',
                     error: INTERRUPTED_ERROR,
                     endedAt: now,
                     reportAvailable: false,
@@ -188,6 +189,13 @@ export const createSessionStore = (options: SessionStoreOptions = {}): SessionSt
             }
             persist(record);
             return toSnapshot(record);
+        },
+        discard: (sessionId) => {
+            const record = records.get(sessionId);
+            if (!record) {return false;}
+            records.delete(sessionId);
+            storage?.delete(sessionId);
+            return true;
         },
         get: (sessionId) => {
             const record = records.get(sessionId);
