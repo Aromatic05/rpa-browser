@@ -7,6 +7,7 @@ import {promises as fs} from 'node:fs';
 import {sendControlEval} from '../../src/interface/control/client';
 import {startSecurityFauxModel, type SecurityFauxModelHandle} from './agent_security_faux_model';
 import type {Action} from '../../src/interface/actions/action_protocol';
+import {e2eRuntimePortEnv} from './e2e_runtime_env';
 
 export const SECURITY_WORKSPACE = 'default';
 
@@ -183,6 +184,7 @@ export const startSecurityAgent = async (
         cwd,
         env: {
             ...process.env,
+            ...e2eRuntimePortEnv(),
             RPA_CONTROL_EVAL: '1',
             RPA_CONTROL_ENDPOINT: endpoint,
             RPA_USER_DATA_DIR: userDataDir,

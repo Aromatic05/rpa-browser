@@ -1,6 +1,17 @@
 import net from 'node:net';
 
 const DEFAULT_BASE_PORT = 17600;
+const MAX_BASE_PORT = 64535;
+
+const configuredBasePort = (): number | undefined => {
+    const raw = process.env.RPA_RUNTIME_PORT_BASE?.trim();
+    if (!raw) {return undefined;}
+    const value = Number(raw);
+    if (!Number.isInteger(value) || value < 1024 || value > MAX_BASE_PORT) {
+        throw new Error(`RPA_RUNTIME_PORT_BASE must be an integer between 1024 and ${String(MAX_BASE_PORT)}`);
+    }
+    return value;
+};
 
 export type PortAllocator = {
     allocate: (workspaceName: string, serviceName: string) => Promise<number>;
@@ -22,7 +33,7 @@ const isPortAvailable = (port: number, host?: string): Promise<boolean> =>
 
 export const createPortAllocator = (basePort?: number): PortAllocator => {
     const allocations = new Map<string, number>();
-    const base = basePort ?? DEFAULT_BASE_PORT;
+    const base = basePort ?? configuredBasePort() ?? DEFAULT_BASE_PORT;
     let nextPort = base;
 
     const allocate = async (workspaceName: string, serviceName: string): Promise<number> => {
