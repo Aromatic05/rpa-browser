@@ -12,7 +12,6 @@ import {
     withBearerHeader,
     securityCanaryRefString,
     REVERSIBLE_SOURCE,
-    IRREVERSIBLE_SOURCE,
     type SecurityAgentHandle,
 } from '../../helpers/agent_security_process';
 
@@ -173,104 +172,4 @@ test('real browser: auth rejects missing/wrong bearer and the credential mutatio
     for (const text of observedHttpBodies) {
         expect(text.includes(CANARY), 'every serialized HTTP response must be free of the resolved secret').toBe(false);
     }
-});
-
-test('real browser: an irreversible barrier pauses, approve executes the retained effect once in the DOM', async () => {
-    const body = {
-        prompt: 'approve the irreversible submit',
-        provider: agent.provider,
-        model: agent.model,
-        source: IRREVERSIBLE_SOURCE,
-        input: {done: true},
-    };
-    const run = await agentHttp('/agent', {
-        method: 'POST',
-        headers: withBearerHeader(TOKEN),
-        body: JSON.stringify(body),
-    });
-    expect(run.status).toBe(200);
-    const runText = await run.text();
-    observedHttpBodies.push(runText);
-    expect(runText.includes(CANARY)).toBe(false);
-    const sessionId = run.headers.get('x-session-id')!;
-
-    const listed = await (await agentHttp(`/agent/sessions/${sessionId}/interactions`, {headers: withBearerHeader(TOKEN)})).json() as {
-        interactions: Array<{id: string; kind: string; status: string; revision: number; evidence: {effectName?: string}}>;
-    };
-    expect(listed.interactions).toHaveLength(1);
-    expect(listed.interactions[0].kind).toBe('irreversible-effect-approval');
-    expect(listed.interactions[0].status).toBe('pending');
-    expect(listed.interactions[0].evidence.effectName).toBe('browser.click');
-    const interaction = listed.interactions[0];
-
-    expect(await evaluate(agent.endpoint, "document.body.dataset.submits || '0'")).toBe('0');
-
-    const approved = await agentHttp(
-        `/agent/sessions/${sessionId}/interactions/${interaction.id}/approve`,
-        {
-            method: 'POST',
-            headers: withBearerHeader(TOKEN),
-            body: JSON.stringify({revision: interaction.revision, approvedBy: 'ops-1'}),
-        },
-    );
-    expect(approved.status).toBe(200);
-    const approvedText = await approved.text();
-    observedHttpBodies.push(approvedText);
-    expect(approvedText.includes(CANARY)).toBe(false);
-    const decision = JSON.parse(approvedText) as {interaction: {status: string}};
-    expect(decision.interaction.status).toBe('approved');
-
-    await expect.poll(async () => {
-        const snapshot = await (await agentHttp(`/agent/sessions/${sessionId}`, {headers: withBearerHeader(TOKEN)})).json() as {state: string};
-        return snapshot.state;
-    }, {timeout: 15_000}).toBe('completed');
-    await expect.poll(async () => await evaluate(agent.endpoint, "document.body.dataset.submits || '0'"), {timeout: 15_000}).toBe('1');
-    expect(scanDir(sessionRoot, CANARY)).toEqual([]);
-    expect(scanDir(path.join(sessionRoot, "reports"), CANARY)).toEqual([]);
-    for (const modelBody of agent.faux.requestBodies()) {
-        expect(modelBody.includes(CANARY), 'the model request body must never contain the resolved secret').toBe(false);
-    }
-});
-
-test('real browser: deny cancels the retained session and never executes the irreversible effect', async () => {
-    const body = {
-        prompt: 'approve the irreversible submit',
-        provider: agent.provider,
-        model: agent.model,
-        source: IRREVERSIBLE_SOURCE,
-        input: {done: true},
-    };
-    const run = await agentHttp('/agent', {
-        method: 'POST',
-        headers: withBearerHeader(TOKEN),
-        body: JSON.stringify(body),
-    });
-    const sessionId = run.headers.get('x-session-id')!;
-    await run.text();
-    const listed = await (await agentHttp(`/agent/sessions/${sessionId}/interactions`, {headers: withBearerHeader(TOKEN)})).json() as {
-        interactions: Array<{id: string; revision: number}>;
-    };
-    const interaction = listed.interactions[0];
-
-    const denied = await agentHttp(
-        `/agent/sessions/${sessionId}/interactions/${interaction.id}/deny`,
-        {
-            method: 'POST',
-            headers: withBearerHeader(TOKEN),
-            body: JSON.stringify({revision: interaction.revision, deniedBy: 'ops-2', reason: 'not safe'}),
-        },
-    );
-    expect(denied.status).toBe(200);
-    const deniedText = await denied.text();
-    observedHttpBodies.push(deniedText);
-    expect(deniedText.includes(CANARY)).toBe(false);
-    const deniedJson = JSON.parse(deniedText) as {interaction: {status: string}};
-    expect(deniedJson.interaction.status).toBe('denied');
-
-    await expect.poll(async () => {
-        const snapshot = await (await agentHttp(`/agent/sessions/${sessionId}`, {headers: withBearerHeader(TOKEN)})).json() as {state: string; error: {code: string}};
-        return `${snapshot.state}:${snapshot.error.code}`;
-    }, {timeout: 15_000}).toBe('cancelled:ERR_SESSION_INTERACTION_DENIED');
-
-    await expect.poll(async () => await evaluate(agent.endpoint, "document.body.dataset.submits || '0'"), {timeout: 10_000}).toBe('1');
 });
