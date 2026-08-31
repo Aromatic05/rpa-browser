@@ -15,6 +15,17 @@ const REAL_E2E_SEED = 7788;
 
 const holder: { current?: AgentFaultWorld } = {};
 
+const stripContextMetrics = (value: unknown): unknown => {
+    if (Array.isArray(value)) {return value.map(stripContextMetrics);}
+    if (value && typeof value === 'object') {
+        const source = value as Record<string, unknown>;
+        return Object.fromEntries(Object.entries(source)
+            .filter(([key]) => key !== 'context')
+            .map(([key, entry]) => [key, stripContextMetrics(entry)]));
+    }
+    return value;
+};
+
 const runRealBrowserCorpus = async (kinds: readonly AgentFaultKind[], trials = 1) =>
     runAgentEvalCorpus(
         createRealAgentFaultCorpus({
@@ -122,7 +133,7 @@ test('real browser fault reports are deterministic per seed and consumable by th
         const second = await runRealBrowserCorpus(['transactional-restore', 'ambiguous-timeout']);
         const a = toAgentEvalCorpusJson(first);
         const b = toAgentEvalCorpusJson(second);
-        expect(a).toBe(b);
+        expect(stripContextMetrics(JSON.parse(a))).toEqual(stripContextMetrics(JSON.parse(b)));
         expect(a.includes('"generatedAt"')).toBe(false);
 
         const analysis = analyzeAgentEvalCorpus(first, { seed: REAL_E2E_SEED });

@@ -147,7 +147,7 @@ test('workflow MCP serves real tools, isolates workspaces and follows workflow l
     const reopenedPort = await startMcp(agent.endpoint, workflowA);
     const reopenedTabs = await callTool(reopenedPort, 'browser.list_tabs');
     expect(reopenedTabs.ok, JSON.stringify(reopenedTabs.error || {})).toBeTruthy();
-    expect(reopenedTabs.data?.tabs.length).toBeGreaterThanOrEqual(1);
+    expect(reopenedTabs.data?.tabs).toEqual([]);
 
     expectAction(
       await dispatch(agent.endpoint, controlAction('workflow.saveAs', { sourceName: workflowB, targetName: workflowC })),

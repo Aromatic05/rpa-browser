@@ -6,7 +6,7 @@ import { sendControlEval } from '../../src/interface/control/client';
 import type { StepUnion } from '../../src/automation/runner/steps/types';
 import type { Action } from '../../src/interface/actions/action_protocol';
 
-export type AgentHandle = { endpoint: string; close: () => Promise<void> };
+export type AgentHandle = { endpoint: string; workflowRoot: string; close: () => Promise<void> };
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 const envHeaded = () => process.env.RPA_E2E_HEADED === '1';
@@ -60,6 +60,7 @@ export const startAgent = async (opts?: { headed?: boolean; workflowFixtureDir?:
 
   return {
     endpoint,
+    workflowRoot,
     close: async () => {
       try {
         if (!proc.killed) { proc.kill('SIGTERM'); await new Promise<void>((r) => { const t = setTimeout(r, 2000); proc.once('exit', () => { clearTimeout(t); r(); }); }); }
