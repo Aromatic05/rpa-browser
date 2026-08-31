@@ -64,8 +64,12 @@
         "@playwright/test": "^1.57.0",
         "@types/node": "^22.19.19",
         "@types/ws": "^8.5.10",
+        "antd": "^5.29.3",
         "concurrently": "^9.2.1",
+        "element-plus": "^2.14.5",
         "esbuild": "^0.25.0",
+        "react": "^19.2.8",
+        "react-dom": "^19.2.8",
         "tsx": "^4.20.5",
         "typescript": "^5.9.2"
     }
