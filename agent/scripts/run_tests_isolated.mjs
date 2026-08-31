@@ -2,16 +2,21 @@ import {spawn} from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import {fileURLToPath} from 'node:url';
 
 const args = process.argv.slice(2);
 if (args.length === 0) {
     throw new Error('run_tests_isolated requires Node test arguments');
 }
 
-const workflowRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'rpa-test-workflows-'));
-const child = spawn(process.execPath, args, {
+const processRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'rpa-test-processes-'));
+const isolationImport = path.join(
+    path.dirname(fileURLToPath(import.meta.url)),
+    'test_process_isolation.mjs',
+);
+const child = spawn(process.execPath, ['--import', isolationImport, ...args], {
     cwd: process.cwd(),
-    env: {...process.env, RPA_WORKFLOW_ROOT: workflowRoot},
+    env: {...process.env, RPA_TEST_PROCESS_ROOT: processRoot},
     stdio: 'inherit',
 });
 
@@ -36,7 +41,7 @@ try {
         });
     });
 } finally {
-    await fs.rm(workflowRoot, {recursive: true, force: true});
+    await fs.rm(processRoot, {recursive: true, force: true});
 }
 
 process.exitCode = exitCode;

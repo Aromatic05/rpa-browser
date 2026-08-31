@@ -33,6 +33,11 @@ export const SECURITY_CANARY = 'tok_security_e2e_canary_7f2a9c';
 
 let harnessCounter = 0;
 
+const isolatedHarnessPortBase = (): number | null => {
+    if (!process.env.RPA_TEST_PROCESS_ROOT?.trim()) {return null;}
+    return 20_000 + (process.pid % 100) * 400;
+};
+
 export const apiTokenRefString = (): string =>
     serializeCredentialRef(createCredentialRef({id: 'env:API_TOKEN', kind: 'token', provider: 'env'}));
 
@@ -329,7 +334,8 @@ export const buildSecurityHarness = async (
         : createFauxAgentModelRuntime();
     const world = options.browserWorld ?? await buildSecurityWorkspace();
     const config = structuredClone(defaultRunnerConfig);
-    const portBegin = (options.portBegin ?? 29400) + harnessCounter * 50;
+    const isolatedBase = isolatedHarnessPortBase();
+    const portBegin = (isolatedBase ?? options.portBegin ?? 29400) + harnessCounter * 50;
     harnessCounter += 1;
     const portAllocator = createPortAllocator(portBegin);
     const tabs = world.tabs;
