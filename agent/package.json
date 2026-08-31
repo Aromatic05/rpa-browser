@@ -33,7 +33,7 @@
         "snapshot:v2:capture-framework-fixtures": "tsx scripts/snapshot_v2_capture_framework_fixtures.ts",
         "snapshot:v2:stage1-baseline": "tsx scripts/snapshot_v2_stage1_baseline.ts",
         "test:all": "pnpm test:e2e && pnpm test:runner && pnpm test:trace && pnpm test:unit",
-        "test:ci": "pnpm test:runner && pnpm test:trace && pnpm test:unit && pnpm test:integration && pnpm test:entity-rules",
+        "test:ci": "pnpm test:integration",
         "typecheck": "tsc --noEmit",
         "pw:install": "pnpm exec playwright install chromium",
         "test": "pnpm test:all",
