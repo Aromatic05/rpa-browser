@@ -17,8 +17,15 @@ export type BackendWorkspaceView = Record<string, unknown>;
 export type BackendEvent = Record<string, unknown>;
 export type BackendTaskList = Readonly<{ active: readonly BackendTaskView[]; history: readonly BackendTaskView[] }>;
 export type BackendEventsResponse = Readonly<{ events: readonly BackendEvent[]; nextSeq: number; gap: boolean }>;
+export type BackendLibrarySummary = Record<string, unknown>;
 
 export type GuidanceMode = 'manual' | 'teach' | 'annotate';
+
+export type TeachKind = 'procedure' | 'recovery' | 'demonstration';
+
+export type AuthoringActivity = 'teach' | 'annotate';
+
+export type AuthoringOutcome = 'saved' | 'discarded';
 
 export type ProductTransportErrorCode =
     | 'unreachable'
@@ -64,6 +71,9 @@ export interface ProductBackendClient {
     chooseRecovery(taskId: string, interactionToken: string, optionId: string): Promise<BackendTaskView>;
     beginGuidance(taskId: string, interactionToken: string, mode: GuidanceMode): Promise<BackendTaskView>;
     returnControl(taskId: string, interactionToken: string, mode: GuidanceMode, savedReference?: string): Promise<BackendTaskView>;
+    beginAuthoring(input: {activity: 'teach'; teachKind: TeachKind} | {activity: 'annotate'}): Promise<BackendWorkspaceView>;
+    endAuthoring(outcome: AuthoringOutcome): Promise<BackendWorkspaceView>;
+    librarySummary(): Promise<BackendLibrarySummary>;
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -166,6 +176,9 @@ export const createProductHttpClient = (options: ProductHttpClientOptions): Prod
                 mode,
                 ...(savedReference === undefined ? {} : { savedReference }),
             }),
+        beginAuthoring: (input) => request('POST', '/agent/product/authoring/begin', input),
+        endAuthoring: (outcome) => request('POST', '/agent/product/authoring/end', { outcome }),
+        librarySummary: () => request('GET', '/agent/product/library'),
     };
 };
 
@@ -181,7 +194,10 @@ export type ProductRequest =
     | { verb: 'answer'; taskId: string; interactionToken: string; value: unknown }
     | { verb: 'recovery'; taskId: string; interactionToken: string; optionId: string }
     | { verb: 'takeover'; taskId: string; interactionToken: string; mode: GuidanceMode }
-    | { verb: 'returnControl'; taskId: string; interactionToken: string; mode: GuidanceMode; savedReference?: string };
+    | { verb: 'returnControl'; taskId: string; interactionToken: string; mode: GuidanceMode; savedReference?: string }
+    | { verb: 'beginAuthoring'; activity: AuthoringActivity; teachKind?: TeachKind }
+    | { verb: 'endAuthoring'; outcome: AuthoringOutcome }
+    | { verb: 'librarySummary' };
 
 /** Pure dispatcher: maps a typed product request onto the backend client. */
 export const dispatchProductRequest = async (client: ProductBackendClient, request: ProductRequest): Promise<unknown> => {
@@ -239,6 +255,21 @@ export const dispatchProductRequest = async (client: ProductBackendClient, reque
                 body.mode === 'manual' || body.mode === 'teach' || body.mode === 'annotate' ? body.mode : 'manual',
                 typeof body.savedReference === 'string' ? body.savedReference : undefined,
             );
+        case 'beginAuthoring':
+            if (body.activity === 'annotate') {
+                return await client.beginAuthoring({ activity: 'annotate' });
+            }
+            if (body.activity === 'teach') {
+                const teachKind = body.teachKind === 'recovery' || body.teachKind === 'demonstration'
+                    ? body.teachKind
+                    : 'procedure';
+                return await client.beginAuthoring({ activity: 'teach', teachKind });
+            }
+            throw new ProductTransportError('bad_args', `unsupported authoring activity: ${String(body.activity)}`);
+        case 'endAuthoring':
+            return await client.endAuthoring(body.outcome === 'saved' ? 'saved' : 'discarded');
+        case 'librarySummary':
+            return await client.librarySummary();
         default:
             throw new ProductTransportError('bad_args', `unsupported product request verb: ${String(body.verb)}`);
     }
@@ -301,6 +332,14 @@ export const createProductMessageClient = (): ProductBackendClient => {
             call({ verb: 'takeover', taskId, interactionToken, mode }) as Promise<BackendTaskView>,
         returnControl: (taskId, interactionToken, mode, savedReference) =>
             call({ verb: 'returnControl', taskId, interactionToken, mode, savedReference }) as Promise<BackendTaskView>,
+        beginAuthoring: (input) =>
+            call({
+                verb: 'beginAuthoring',
+                activity: input.activity,
+                ...(input.activity === 'teach' ? { teachKind: input.teachKind } : {}),
+            }) as Promise<BackendWorkspaceView>,
+        endAuthoring: (outcome) => call({ verb: 'endAuthoring', outcome }) as Promise<BackendWorkspaceView>,
+        librarySummary: () => call({ verb: 'librarySummary' }) as Promise<BackendLibrarySummary>,
     };
 };
 

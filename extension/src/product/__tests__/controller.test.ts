@@ -72,7 +72,7 @@ class StubBackend implements ProductBackendClient {
     answerImpl: (token: string, value: unknown) => BackendTaskView = () => task({ status: 'running' });
     recoveryImpl: (token: string, optionId: string) => BackendTaskView = () => task({ status: 'running' });
     takeoverImpl: (token: string, mode: string) => BackendTaskView = () => task({ status: 'running' });
-    returnControlImpl: (token: string, mode: string) => BackendTaskView = () => task({ status: 'running' });
+    returnControlImpl: (token: string, mode: string, savedReference?: string) => BackendTaskView = () => task({ status: 'running' });
 
     private log(name: string, args: unknown[]): void {
         this.live.push({ name, args });
@@ -133,9 +133,42 @@ class StubBackend implements ProductBackendClient {
         return Promise.resolve(this.takeoverImpl(interactionToken, mode));
     }
 
-    returnControl(taskId: string, interactionToken: string, mode: string): Promise<BackendTaskView> {
-        this.log('returnControl', [taskId, interactionToken, mode]);
-        return Promise.resolve(this.returnControlImpl(interactionToken, mode));
+    returnControl(taskId: string, interactionToken: string, mode: string, savedReference?: string): Promise<BackendTaskView> {
+        this.log('returnControl', [taskId, interactionToken, mode, savedReference]);
+        return Promise.resolve(this.returnControlImpl(interactionToken, mode, savedReference));
+    }
+
+    beginAuthoringImpl: (input: {activity: string; teachKind?: string}) => BackendWorkspaceView = (input) => ({
+        workspace: 'ws-1',
+        reservation: {
+            owner: input.activity === 'teach' ? 'standalone_teach' : 'standalone_annotate',
+            humanControl: 'none',
+            ...(input.activity === 'teach' && input.teachKind ? {teachKind: input.teachKind} : {}),
+        },
+    });
+
+    beginAuthoring(input: {activity: 'teach'; teachKind: string} | {activity: 'annotate'}): Promise<BackendWorkspaceView> {
+        this.log('beginAuthoring', [input]);
+        return Promise.resolve(this.beginAuthoringImpl(input));
+    }
+
+    endAuthoringImpl: () => BackendWorkspaceView = () => ({
+        workspace: 'ws-1',
+        reservation: { owner: 'none', humanControl: 'none' },
+    });
+
+    endAuthoring(outcome: string): Promise<BackendWorkspaceView> {
+        this.log('endAuthoring', [outcome]);
+        return Promise.resolve(this.endAuthoringImpl());
+    }
+
+    librarySummaryImpl: () => Record<string, unknown> = () => ({
+        procedures: [{ name: 'Ensure login', health: 'needs_review' }],
+    });
+
+    librarySummary(): Promise<Record<string, unknown>> {
+        this.log('librarySummary', []);
+        return Promise.resolve(this.librarySummaryImpl());
     }
 }
 
@@ -345,7 +378,7 @@ test('clarification, recovery, takeover and return-control map to product comman
     await settle();
     assert.deepEqual(
         backend.live.find((entry) => entry.name === 'returnControl')?.args,
-        ['task-1', 'tok-2', 'manual'],
+        ['task-1', 'tok-2', 'manual', undefined],
         'return-control reuses the mode the user took',
     );
 });
@@ -381,7 +414,7 @@ test('return-control with an explicit active mode preserves it', async () => {
     await settle();
     assert.deepEqual(
         backend.live.find((entry) => entry.name === 'returnControl')?.args,
-        ['task-1', 'tok-9', 'teach'],
+        ['task-1', 'tok-9', 'teach', undefined],
     );
 });
 

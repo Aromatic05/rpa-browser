@@ -9,13 +9,24 @@
 import type {
     ActivityEvent,
     AgentTaskView,
+    AnnotateStage,
+    AnnotateView,
+    BusinessArea,
     CommandPort,
     GuidanceMode,
+    LibrarySummary,
     StartError,
     TeachKind,
+    TeachView,
     WorkspaceProductView,
 } from '../product/model/contracts.js';
-import { isTerminalStatus, sanitizeActivityEvent, sanitizeWorkspaceView } from '../product/model/projection.js';
+import {
+    isTerminalStatus,
+    sanitizeActivityEvent,
+    sanitizeReservationTeachKind,
+    sanitizeReservationValue,
+    sanitizeWorkspaceView,
+} from '../product/model/projection.js';
 import {
     ProductTransportError,
     type BackendEvent,
@@ -24,13 +35,40 @@ import {
     type ProductBackendClient,
 } from '../shared/product_transport.js';
 
+/** Coarse recorder state projected by the narrow checkpoint-recorder bridge. */
+export type StructuredTeachSnapshot = {
+    status: 'idle' | 'recording' | 'review';
+    kind: TeachKind;
+    stepCount: number;
+    stepSummaries: string[];
+    businessAreas: BusinessArea[];
+    selectedSelector?: string;
+};
+
+/** Authoring action outcomes observed from the real recorder/annotator bridges. */
+export type AuthoringActionNotice = {
+    type: string;
+    ok: boolean;
+    payload?: Record<string, unknown>;
+    reply?: Record<string, unknown>;
+};
+
 export type ProductAuthoringBridge = {
-    openAnnotator?: (profileName?: string) => unknown;
-    closeAnnotator?: () => unknown;
-    startTeach?: (kind: TeachKind, businessArea?: string) => unknown;
-    stopTeach?: () => unknown;
-    saveTeach?: () => unknown;
-    discardTeach?: () => unknown;
+    beginStructuredTeach: (kind: 'procedure' | 'recovery', selector?: string) => void;
+    stopStructuredTeach: () => void;
+    saveStructuredTeach: () => void;
+    discardStructuredTeach: () => void;
+    readStructuredTeachState: () => Promise<StructuredTeachSnapshot | null>;
+    startDemonstration: () => void;
+    stopDemonstration: () => void;
+    saveDemonstration: () => void;
+    discardDemonstration: () => void;
+    readDemonstrationState: () => Promise<{status: 'idle' | 'review'; stepCount: number} | null>;
+    openAnnotator: (profileName?: string) => Promise<boolean>;
+    closeAnnotator: () => void;
+    /** Ends any linked (Task-owned) teach activity without touching the Task
+     *  reservation: cancels an unsaved checkpoint recording and/or demo. */
+    endLinkedTeach: () => void;
 };
 
 export type ProductControllerOptions = {
@@ -56,6 +94,12 @@ export type ProductControllerHandle = {
     stop(): void;
     /** One authoritative sync + event cursor pass. Exposed for tests/integration. */
     refresh(): Promise<void>;
+    /** Feeds one real recorder/annotator action outcome observed by the narrow
+     *  content bridge into the authoring projection (never invented locally). */
+    noteAuthoringAction(notice: AuthoringActionNotice): void;
+    /** Truthful annotator canvas open/close signal from the existing session
+     *  controller; never used to fabricate recording state. */
+    noteAnnotateCanvas(open: boolean): void;
 };
 
 const emptyLibrary = (): WorkspaceProductView['librarySummary'] => ({
@@ -83,6 +127,23 @@ export const createProductController = (options: ProductControllerOptions): Prod
     const offlineRetryMs = options.offlineRetryMs ?? 5000;
     const maxAutoReconnects = options.maxAutoReconnects ?? 3;
 
+    type StandaloneAuthoring = {
+        activity: 'teach' | 'annotate';
+        teachKind?: TeachKind;
+        recordingConfirmed: boolean;
+        savedReference?: string;
+        annotateCanvasOpen: boolean;
+        annotateStage?: AnnotateStage;
+        annotateDirty: boolean;
+        annotateSavedSummary?: { profileName: string; entityCount?: number };
+    };
+    type LinkedAuthoring = {
+        taskId: string;
+        mode: 'teach' | 'annotate';
+        toolLaunched: boolean;
+        savedReference?: string;
+    };
+
     const state: {
         view: WorkspaceProductView;
         timelines: Map<string, ActivityEvent[]>;
@@ -93,6 +154,13 @@ export const createProductController = (options: ProductControllerOptions): Prod
         running: boolean;
         failures: number;
         inFlight: boolean;
+        authoring: StandaloneAuthoring | null;
+        linked: LinkedAuthoring | null;
+        library: LibrarySummary | undefined;
+        libraryUnavailable: boolean;
+        teachSnapshot: StructuredTeachSnapshot | null;
+        teachPreview: boolean;
+        demoReview: {stepCount: number} | null;
     } = {
         view: {
             workspace: options.workspace,
@@ -110,6 +178,13 @@ export const createProductController = (options: ProductControllerOptions): Prod
         running: false,
         failures: 0,
         inFlight: false,
+        authoring: null,
+        linked: null,
+        library: undefined,
+        libraryUnavailable: false,
+        teachSnapshot: null,
+        teachPreview: false,
+        demoReview: null,
     };
 
     const listeners = new Set<(view: WorkspaceProductView) => void>();
@@ -141,6 +216,315 @@ export const createProductController = (options: ProductControllerOptions): Prod
             return { kind: 'service', message: error.message };
         }
         return { kind: 'service', message: error instanceof Error ? error.message : String(error) };
+    };
+
+    const bridge = (): ProductAuthoringBridge | undefined => options.authoring;
+
+    let libraryLoadedOnce = false;
+
+    const resetAuthoringLocal = (): void => {
+        state.authoring = null;
+        state.teachSnapshot = null;
+        state.demoReview = null;
+    };
+
+    const structuredKind = (kind: TeachKind | undefined): kind is 'procedure' | 'recovery' =>
+        kind === 'procedure' || kind === 'recovery';
+
+    const effectiveTeachKind = (authoring: StandaloneAuthoring): TeachKind | undefined =>
+        authoring.teachKind
+        ?? (state.teachSnapshot && state.teachSnapshot.status !== 'idle' ? state.teachSnapshot.kind : undefined)
+        ?? (state.demoReview ? 'demonstration' : undefined);
+
+    const buildTeachView = (): TeachView | undefined => {
+        const authoring = state.authoring;
+        if (!authoring && state.teachPreview && state.teachSnapshot) {
+            const snapshot = state.teachSnapshot;
+            return {
+                teachKind: snapshot.kind,
+                phase: 'setup',
+                stepCount: 0,
+                businessAreas: snapshot.businessAreas,
+                unsavedAsset: false,
+            };
+        }
+        if (authoring?.activity !== 'teach') {
+            return undefined;
+        }
+        const teachKind = effectiveTeachKind(authoring);
+        if (!teachKind) {
+            return undefined;
+        }
+        if (structuredKind(teachKind)) {
+            const snapshot = state.teachSnapshot;
+            const phase: TeachView['phase'] = !snapshot || snapshot.status === 'idle'
+                ? 'setup'
+                : snapshot.status === 'recording'
+                    ? 'recording'
+                    : 'review';
+            const stepSummaries = snapshot?.stepSummaries ?? [];
+            return {
+                teachKind,
+                phase,
+                stepCount: snapshot?.stepCount ?? 0,
+                businessAreas: snapshot?.businessAreas ?? [],
+                ...(snapshot?.selectedSelector ? {selectedBusinessArea: snapshot.selectedSelector} : {}),
+                unsavedAsset: phase === 'recording' || phase === 'review',
+                ...(phase === 'recording' && !authoring.recordingConfirmed ? {interrupted: true} : {}),
+                ...(phase === 'review'
+                    ? {
+                        review: {
+                            summary: `${String(snapshot?.stepCount ?? 0)} actions recorded`,
+                            stepSummaries,
+                            canSave: (snapshot?.stepCount ?? 0) > 0,
+                        },
+                    }
+                    : {}),
+            };
+        }
+        const phase: TeachView['phase'] = state.demoReview
+            ? 'review'
+            : authoring.recordingConfirmed
+                ? 'recording'
+                : 'setup';
+        const stepCount = state.demoReview?.stepCount ?? 0;
+        return {
+            teachKind,
+            phase,
+            stepCount,
+            businessAreas: [],
+            unsavedAsset: phase === 'recording' || phase === 'review',
+            ...(phase === 'review'
+                ? {
+                    review: {
+                        summary: `${String(stepCount)} actions recorded`,
+                        stepSummaries: [],
+                        canSave: stepCount > 0,
+                    },
+                }
+                : {}),
+        };
+    };
+
+    const buildAnnotateView = (): AnnotateView | undefined => {
+        const authoring = state.authoring;
+        if (authoring?.activity !== 'annotate') {
+            return undefined;
+        }
+        return {
+            active: true,
+            canvasOpen: authoring.annotateCanvasOpen,
+            ...(authoring.annotateStage ? {stage: authoring.annotateStage} : {}),
+            dirty: authoring.annotateDirty,
+            ...(authoring.annotateSavedSummary ? {savedSummary: authoring.annotateSavedSummary} : {}),
+        };
+    };
+
+    const fetchLibrary = async (): Promise<void> => {
+        try {
+            const raw = await client.librarySummary();
+            const merged = sanitizeWorkspaceView({
+                workspace: options.workspace,
+                reservation: 'idle',
+                librarySummary: raw,
+            });
+            state.library = merged.librarySummary;
+            state.libraryUnavailable = false;
+        } catch (error) {
+            if (error instanceof ProductTransportError && error.code === 'not_found') {
+                state.libraryUnavailable = true;
+                return;
+            }
+            // Connectivity/other failures keep the last-known library untouched.
+        }
+    };
+
+    const syncTeachSnapshot = async (): Promise<void> => {
+        const authoring = state.authoring;
+        if (authoring?.activity !== 'teach') {
+            state.teachSnapshot = null;
+            state.demoReview = null;
+            return;
+        }
+        const kind = authoring.teachKind;
+        if (kind === 'demonstration') {
+            await syncDemonstrationSnapshot(authoring);
+            return;
+        }
+        try {
+            state.teachSnapshot = (await bridge()?.readStructuredTeachState()) ?? null;
+        } catch {
+            // Keep the last-known recorder snapshot; never invent one.
+        }
+        if (!kind && (!state.teachSnapshot || state.teachSnapshot.status === 'idle')) {
+            await syncDemonstrationSnapshot(authoring);
+        }
+    };
+
+    const syncDemonstrationSnapshot = async (authoring: StandaloneAuthoring): Promise<void> => {
+        try {
+            const demo = (await bridge()?.readDemonstrationState()) ?? null;
+            if (demo?.status === 'review' && demo.stepCount > 0) {
+                state.demoReview = { stepCount: demo.stepCount };
+                return;
+            }
+            if (demo?.status === 'idle') {
+                // The runtime reports nothing recorded (or capture is gone):
+                // truthfully drop back to setup instead of a fake recording.
+                authoring.recordingConfirmed = false;
+                state.demoReview = null;
+            }
+        } catch {
+            // Same: last-known only.
+        }
+    };
+
+    /** Releases the standalone reservation for the finished activity. The
+     *  outcome decides only whether the Library is re-observed afterwards. */
+    const endAuthoringActivity = async (outcome: 'saved' | 'discarded'): Promise<void> => {
+        resetAuthoringLocal();
+        try {
+            await client.endAuthoring(outcome);
+            if (outcome === 'saved') {
+                await fetchLibrary();
+            }
+        } catch (error) {
+            if (error instanceof ProductTransportError && error.code === 'unreachable') {
+                applyDisconnected();
+                return;
+            }
+        }
+        await syncOnce();
+    };
+
+    const handleAuthoringNotice = (notice: AuthoringActionNotice): void => {
+        const { type, ok, payload, reply } = notice;
+        const authoring = state.authoring;
+        const linked = state.linked;
+        if (!ok) {
+            if ((type === 'record.start' || type === 'checkpoint.record.start')
+                && authoring?.activity === 'teach') {
+                const failure = isRecord(reply?.payload) ? reply.payload : {};
+                setStartError('service', typeof failure.message === 'string' && failure.message
+                    ? failure.message
+                    : 'the recording service could not start the activity');
+                void endAuthoringActivity('discarded');
+            }
+            return;
+        }
+        if (type === 'checkpoint.record.start' || type === 'record.start') {
+            if (authoring?.activity === 'teach') {
+                authoring.recordingConfirmed = true;
+            }
+            return;
+        }
+        if (type === 'checkpoint.record.stop') {
+            if (authoring?.activity === 'teach' && structuredKind(authoring.teachKind)) {
+                state.demoReview = null;
+            }
+            return;
+        }
+        if (type === 'record.stop') {
+            if (authoring?.activity === 'teach' && authoring.teachKind === 'demonstration') {
+                state.demoReview = { stepCount: typeof reply?.stepCount === 'number' ? reply.stepCount : 0 };
+            }
+            return;
+        }
+        if (type === 'checkpoint.record.save') {
+            const kind = payload?.kind === 'recovery' ? 'recovery' : 'procedure';
+            // The real reply is {saved, checkpointId, name, stepCount};
+            // checkpointId is the stable artifact identity (the display name is
+            // not used for linkage).
+            const checkpointId = typeof reply?.checkpointId === 'string' ? reply.checkpointId : undefined;
+            const savedReference = checkpointId ? `${kind}:${checkpointId}` : undefined;
+            if (authoring?.activity === 'teach') {
+                void endAuthoringActivity('saved');
+            } else if (linked?.mode === 'teach') {
+                linked.savedReference = savedReference;
+            }
+            return;
+        }
+        if (type === 'checkpoint.record.cancel') {
+            if (authoring?.activity === 'teach') {
+                void endAuthoringActivity('discarded');
+            }
+            return;
+        }
+        if (type === 'record.save') {
+            if (authoring?.activity === 'teach') {
+                void endAuthoringActivity('saved');
+            } else if (linked?.mode === 'teach') {
+                const name = typeof reply?.recordingName === 'string' ? reply.recordingName : undefined;
+                linked.savedReference = name ? `demonstration:${name}` : 'demonstration';
+            }
+            return;
+        }
+        if (type === 'record.clear') {
+            if (authoring?.activity === 'teach') {
+                void endAuthoringActivity('discarded');
+            }
+            return;
+        }
+        if (type === 'entity_rules.annotator.open') {
+            if (authoring?.activity === 'annotate') {
+                authoring.annotateCanvasOpen = true;
+                authoring.annotateStage = 'scope';
+            }
+            return;
+        }
+        if (type === 'entity_rules.annotator.pick') {
+            if (authoring?.activity === 'annotate') {
+                authoring.annotateStage = 'scope';
+                authoring.annotateDirty = true;
+            }
+            return;
+        }
+        if (type === 'entity_rules.annotator.recognize') {
+            if (authoring?.activity === 'annotate') {
+                authoring.annotateStage = 'recognize';
+            }
+            return;
+        }
+        if (type === 'entity_rules.annotator.apply') {
+            if (authoring?.activity === 'annotate') {
+                authoring.annotateStage = 'edit';
+                authoring.annotateDirty = true;
+            }
+            return;
+        }
+        if (type === 'entity_rules.annotator.check') {
+            if (authoring?.activity === 'annotate') {
+                authoring.annotateStage = 'review';
+            }
+            return;
+        }
+        if (type === 'entity_rules.annotator.save') {
+            if (authoring?.activity === 'annotate' || linked?.mode === 'annotate') {
+                // Real canvas-v1 protocol: the request carries `canvasDraft`
+                // (no `draft`), and the authoritative saved identity is the
+                // reply's `profileName`. entityCount only comes from the real
+                // canvas draft when present; otherwise it stays unknown.
+                const savedProfile = typeof reply?.profileName === 'string' ? reply.profileName : undefined;
+                const canvasDraft = isRecord(payload?.canvasDraft) ? payload.canvasDraft : undefined;
+                const entityCount = canvasDraft && Array.isArray(canvasDraft.entities)
+                    ? canvasDraft.entities.length
+                    : undefined;
+                if (authoring?.activity === 'annotate') {
+                    authoring.annotateDirty = false;
+                    if (savedProfile) {
+                        authoring.annotateSavedSummary = {
+                            profileName: savedProfile,
+                            ...(entityCount === undefined ? {} : { entityCount }),
+                        };
+                        authoring.savedReference = `page_knowledge:${savedProfile}`;
+                    }
+                }
+                if (linked?.mode === 'annotate' && savedProfile) {
+                    linked.savedReference = `page_knowledge:${savedProfile}`;
+                }
+            }
+            return;
+        }
     };
 
     const syncActiveTaskEvents = async (rawTask: BackendTaskView): Promise<void> => {
@@ -195,6 +579,44 @@ export const createProductController = (options: ProductControllerOptions): Prod
         }
     };
 
+    /** Requirement: linked guidance reuses the Task reservation and launches
+     *  the existing human tool — it never acquires a second reservation. */
+    const launchLinkedTool = (task: AgentTaskView): void => {
+        const linked = state.linked;
+        if (linked?.taskId !== task.taskId || linked.toolLaunched) {
+            return;
+        }
+        const interaction = task.interaction;
+        if (interaction?.kind !== 'takeover' || interaction.stage !== 'active') {
+            return;
+        }
+        const activeMode = interaction.activeMode ?? state.tookMode?.mode;
+        if (!activeMode) {
+            return;
+        }
+        linked.toolLaunched = true;
+        const authoring = bridge();
+        if (!authoring) {
+            return;
+        }
+        if (linked.mode === 'teach' && activeMode === 'teach') {
+            const kind = interaction.teachKind === 'demonstration'
+                ? 'demonstration'
+                : interaction.teachKind === 'recovery'
+                    ? 'recovery'
+                    : 'procedure';
+            if (kind === 'demonstration') {
+                authoring.startDemonstration();
+            } else {
+                authoring.beginStructuredTeach(kind);
+            }
+            return;
+        }
+        if (linked.mode === 'annotate' && activeMode === 'annotate') {
+            void authoring.openAnnotator();
+        }
+    };
+
     const applyConnected = (
         rawWorkspace: BackendWorkspaceView,
         rawActive: Record<string, unknown> | undefined,
@@ -216,6 +638,18 @@ export const createProductController = (options: ProductControllerOptions): Prod
             const targetTaskId = taskId ?? sanitized.activeTask.taskId;
             sanitized.activeTask.timeline = state.timelines.get(targetTaskId) ?? [];
             applyTookMode(sanitized.activeTask);
+            launchLinkedTool(sanitized.activeTask);
+        }
+        // The authoring projection is assembled from real bridge snapshots and
+        // the standalone reservation; it is never a locally invented activity.
+        const teach = buildTeachView();
+        const annotate = buildAnnotateView();
+        sanitized.authoring = teach || annotate
+            ? { ...(teach ? { teach } : {}), ...(annotate ? { annotate } : {}) }
+            : undefined;
+        sanitized.libraryUnavailable = state.libraryUnavailable || undefined;
+        if (state.library) {
+            sanitized.librarySummary = state.library;
         }
         // A workspace-conflict start error is only truthful while the workspace
         // is still occupied; clear it as soon as the projection returns to idle.
@@ -268,6 +702,41 @@ export const createProductController = (options: ProductControllerOptions): Prod
         );
     };
 
+    /** Reservation-driven adoption: a reloaded surface takes over the backend
+     *  reservation truthfully; when the backend no longer owns an authoring
+     *  activity, the local activity state is cleared, never carried over. */
+    const adoptReservation = (rawReservation: unknown): void => {
+        const reservation = sanitizeReservationValue(rawReservation);
+        const teachKind = sanitizeReservationTeachKind(rawReservation);
+        if (reservation === 'teach') {
+            if (state.authoring?.activity !== 'teach') {
+                state.authoring = {
+                    activity: 'teach',
+                    ...(teachKind ? { teachKind } : {}),
+                    recordingConfirmed: false,
+                    annotateCanvasOpen: false,
+                    annotateDirty: false,
+                };
+            } else if (!state.authoring.teachKind && teachKind) {
+                state.authoring.teachKind = teachKind;
+            }
+        } else if (reservation === 'annotate') {
+            if (state.authoring?.activity !== 'annotate') {
+                state.authoring = {
+                    activity: 'annotate',
+                    recordingConfirmed: false,
+                    annotateCanvasOpen: false,
+                    annotateDirty: false,
+                };
+            }
+        } else if (state.authoring) {
+            resetAuthoringLocal();
+        }
+        if (reservation !== 'task') {
+            state.linked = null;
+        }
+    };
+
     const syncOnce = async (): Promise<void> => {
         if (state.inFlight) {
             return;
@@ -278,6 +747,14 @@ export const createProductController = (options: ProductControllerOptions): Prod
             const rawActive = isRecord(rawWorkspace.activeTask) ? rawWorkspace.activeTask : undefined;
             if (rawActive) {
                 await syncActiveTaskEvents(rawActive);
+            }
+            adoptReservation(rawWorkspace.reservation);
+            if (state.authoring?.activity === 'teach') {
+                await syncTeachSnapshot();
+            }
+            if (!libraryLoadedOnce && !state.libraryUnavailable) {
+                libraryLoadedOnce = true;
+                await fetchLibrary();
             }
             let historyRaw: unknown[] | undefined;
             // History only changes at terminal boundaries; skip the extra list
@@ -403,6 +880,11 @@ export const createProductController = (options: ProductControllerOptions): Prod
                 return;
             }
             state.tookMode = { taskId: target.taskId, mode };
+            if (mode === 'teach' || mode === 'annotate') {
+                // Linked guidance reuses the Task reservation; it never begins
+                // a standalone authoring activity.
+                state.linked = { taskId: target.taskId, mode, toolLaunched: false };
+            }
             void decide(({ taskId, token }) => client.beginGuidance(taskId, token, mode));
         },
         returnControl: () => {
@@ -413,8 +895,19 @@ export const createProductController = (options: ProductControllerOptions): Prod
             }
             const mode = interaction.activeMode ?? 'manual';
             void decide(async ({ taskId, token }) => {
-                const updated = await client.returnControl(taskId, token, mode);
+                const linked = state.linked;
+                const authoring = options.authoring;
+                if (linked?.taskId === taskId && authoring) {
+                    if (linked.mode === 'teach') {
+                        authoring.endLinkedTeach();
+                    } else {
+                        authoring.closeAnnotator();
+                    }
+                }
+                const savedReference = linked?.taskId === taskId ? linked.savedReference : undefined;
+                const updated = await client.returnControl(taskId, token, mode, savedReference);
                 state.tookMode = null;
+                state.linked = null;
                 return updated;
             });
         },
@@ -422,25 +915,98 @@ export const createProductController = (options: ProductControllerOptions): Prod
             state.failures = 0;
             void syncOnce();
         },
-        openTeach: () => undefined,
+        openTeach: () => {
+            void (async () => {
+                state.teachPreview = true;
+                try {
+                    const snapshot = await bridge()?.readStructuredTeachState();
+                    if (snapshot) {state.teachSnapshot = snapshot;}
+                } catch {
+                    // The surface simply shows no areas; nothing is invented.
+                }
+                await syncOnce();
+            })();
+        },
         openAnnotate: () => {
-            options.authoring?.openAnnotator?.();
+            const authoring = state.authoring;
+            if (authoring?.activity === 'annotate') {
+                void (async () => {
+                    const opened = await options.authoring?.openAnnotator();
+                    if (opened) {
+                        authoring.annotateCanvasOpen = true;
+                    }
+                    await syncOnce();
+                })();
+                return;
+            }
+            void beginStandalone({ activity: 'annotate' });
         },
         closeAnnotate: () => {
-            options.authoring?.closeAnnotator?.();
+            if (state.authoring?.activity !== 'annotate') {
+                return;
+            }
+            void (async () => {
+                options.authoring?.closeAnnotator();
+                await endAuthoringActivity(state.authoring?.savedReference ? 'saved' : 'discarded');
+            })();
         },
-        openCurrentActivity: () => undefined,
+        openCurrentActivity: () => {
+            const authoring = state.authoring;
+            if (authoring?.activity === 'annotate' && !authoring.annotateCanvasOpen) {
+                void options.authoring?.openAnnotator();
+            }
+        },
         startTeach: (kind, businessArea) => {
-            options.authoring?.startTeach?.(kind, businessArea);
+            void beginStandalone(
+                kind === 'demonstration'
+                    ? { activity: 'teach', teachKind: 'demonstration' }
+                    : { activity: 'teach', teachKind: kind },
+                kind === 'demonstration' ? undefined : businessArea,
+            );
         },
         stopTeach: () => {
-            options.authoring?.stopTeach?.();
+            const authoring = state.authoring;
+            if (authoring?.activity !== 'teach') {
+                return;
+            }
+            if (structuredKind(authoring.teachKind ?? state.teachSnapshot?.kind)) {
+                options.authoring?.stopStructuredTeach();
+            } else {
+                options.authoring?.stopDemonstration();
+            }
+            void syncOnce();
         },
         saveTeach: () => {
-            options.authoring?.saveTeach?.();
+            const authoring = state.authoring;
+            if (authoring?.activity !== 'teach') {
+                return;
+            }
+            if (structuredKind(authoring.teachKind ?? state.teachSnapshot?.kind)) {
+                options.authoring?.saveStructuredTeach();
+            } else {
+                options.authoring?.saveDemonstration();
+            }
+            void syncOnce();
         },
         discardTeach: () => {
-            options.authoring?.discardTeach?.();
+            const authoring = state.authoring;
+            if (authoring?.activity !== 'teach') {
+                return;
+            }
+            const structured = structuredKind(authoring.teachKind ?? state.teachSnapshot?.kind);
+            const unsaved = state.view.authoring?.teach?.unsavedAsset === true;
+            if (structured) {
+                options.authoring?.discardStructuredTeach();
+            } else {
+                options.authoring?.discardDemonstration();
+            }
+            if (!unsaved) {
+                // Nothing was recorded (setup phase): the tool's cancel is a
+                // no-op on the backend, so release the reservation directly.
+                void endAuthoringActivity('discarded');
+                return;
+            }
+            void syncOnce();
         },
         newTask: () => {
             state.startError = undefined;
@@ -451,13 +1017,75 @@ export const createProductController = (options: ProductControllerOptions): Prod
         saveAutomation: () => undefined,
         viewDetails: () => undefined,
         replayDemonstration: () => undefined,
-        editPageKnowledge: () => undefined,
+        editPageKnowledge: (ref) => {
+            void beginStandalone({ activity: 'annotate' }, undefined, ref.profileName);
+        },
         selectHistoryEntry: () => undefined,
         navigate: () => undefined,
         collapse: () => undefined,
         openDeveloper: () => undefined,
         closeDeveloper: () => undefined,
         resize: () => undefined,
+    };
+
+    /** Begins a standalone authoring activity: the backend reservation first,
+     *  then the existing human tool. Conflicts are surfaced, never queued. */
+    const beginStandalone = async (
+        input: {activity: 'annotate'} | {activity: 'teach'; teachKind: TeachKind},
+        selector?: string,
+        profileName?: string,
+    ): Promise<void> => {
+        if (state.view.reservation !== 'idle' || state.authoring) {
+            setStartError('workspace', 'this workspace is already in use by another activity');
+            return;
+        }
+        const authoring = options.authoring;
+        if (!authoring) {
+            setStartError('service', 'authoring tools are not available on this page');
+            return;
+        }
+        try {
+            await client.beginAuthoring(input);
+        } catch (error) {
+            setStartError(startErrorFor(error).kind, error instanceof Error ? error.message : String(error));
+            await syncOnce();
+            return;
+        }
+        state.startError = undefined;
+        state.authoring = input.activity === 'teach'
+            ? {
+                activity: 'teach',
+                teachKind: input.teachKind,
+                // Nothing is "recording" until the real record.start succeeds;
+                // the observed notice flips this flag, never the reservation.
+                recordingConfirmed: false,
+                annotateCanvasOpen: false,
+                annotateDirty: false,
+            }
+            : { activity: 'annotate', recordingConfirmed: false, annotateCanvasOpen: false, annotateDirty: false };
+        if (input.activity === 'teach') {
+            try {
+                if (input.teachKind === 'demonstration') {
+                    authoring.startDemonstration();
+                } else {
+                    authoring.beginStructuredTeach(input.teachKind, selector);
+                }
+            } catch (error) {
+                setStartError(startErrorFor(error).kind, error instanceof Error ? error.message : String(error));
+                await endAuthoringActivity('discarded');
+                return;
+            }
+            await syncOnce();
+            return;
+        }
+        const opened = await authoring.openAnnotator(profileName).catch(() => false);
+        if (!opened) {
+            setStartError('service', 'the annotator could not be opened on this page');
+            await endAuthoringActivity('discarded');
+            return;
+        }
+        state.authoring.annotateCanvasOpen = true;
+        await syncOnce();
     };
 
     const start = (): void => {
@@ -489,6 +1117,20 @@ export const createProductController = (options: ProductControllerOptions): Prod
         start,
         stop,
         refresh: syncOnce,
+        noteAuthoringAction: (notice) => {
+            handleAuthoringNotice(notice);
+            void syncOnce();
+        },
+        noteAnnotateCanvas: (open) => {
+            const authoring = state.authoring;
+            if (authoring?.activity === 'annotate') {
+                authoring.annotateCanvasOpen = open;
+                if (!open) {
+                    authoring.annotateStage = undefined;
+                }
+            }
+            void syncOnce();
+        },
     };
 };
 

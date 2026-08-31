@@ -28,7 +28,7 @@ const pausedProgram = (source: string, pause: {reason: 'barrier'; continuationId
     pause,
 });
 
-const makeHarness = async (options: {defaults?: boolean} = {}) => {
+const makeHarness = async (options: {defaults?: boolean; library?: boolean} = {}) => {
     const port = await portAllocator.allocate('agent-server-product', 'agent');
     const state = {runCalls: 0, resumeCalls: 0, controlCalls: 0};
     const controlInputs: unknown[] = [];
@@ -66,6 +66,27 @@ const makeHarness = async (options: {defaults?: boolean} = {}) => {
         workspaceName: 'agent-server-product',
         port,
         ...(options.defaults ? {productDefaults: {provider: 'p', model: 'm'}} : {}),
+        ...(options.library ? {productLibrary: async () => [{
+            kind: 'procedure' as const,
+            name: '查询订单',
+            title: '查询订单',
+            meaning: 'look up an order',
+            inputs: [],
+            outputs: [],
+            updatedAt: 1,
+            revision: 'r1',
+            dependencies: [],
+            health: 'needs_review' as const,
+            capabilities: {
+                runtimeApplied: false,
+                callableFromDsl: true,
+                agentDiscovery: true,
+                runnerRecovery: false,
+                agentRecovery: false,
+                replayable: false,
+                modelLoadSeam: false,
+            },
+        }]} : {}),
     });
     return {
         baseUrl: `http://127.0.0.1:${String(port)}`,
@@ -243,6 +264,70 @@ test('the product task composer requires configured provider/model defaults', as
         assert.equal((await started.json() as any).code, 'ERR_BAD_ARGS');
     } finally {
         await harness.stop();
+        portAllocator.release('agent-server-product', 'agent');
+    }
+});
+
+test('standalone authoring over HTTP acquires, projects and releases the reservation', async () => {
+    const harness = await makeHarness({defaults: true});
+    try {
+        const began = await post(`${harness.baseUrl}/agent/product/authoring/begin`, {activity: 'teach', teachKind: 'procedure'});
+        assert.equal(began.status, 200);
+        const view = await began.json() as any;
+        assert.equal(view.reservation.owner, 'standalone_teach');
+
+        const blocked = await post(`${harness.baseUrl}/agent/product/authoring/begin`, {activity: 'annotate'});
+        assert.equal(blocked.status, 409);
+        assert.equal((await blocked.json() as any).code, 'ERR_ACTIVITY_CONFLICT');
+
+        const secondTask = await post(`${harness.baseUrl}/agent/product/tasks`, {prompt: 'steal'});
+        assert.equal(secondTask.status, 409);
+        assert.equal((await secondTask.json() as any).code, 'ERR_ACTIVITY_CONFLICT');
+
+        const ended = await post(`${harness.baseUrl}/agent/product/authoring/end`, {outcome: 'discarded'});
+        assert.equal(ended.status, 200);
+        assert.equal((await ended.json() as any).reservation.owner, 'none');
+    } finally {
+        await harness.stop();
+        portAllocator.release('agent-server-product', 'agent');
+    }
+});
+
+test('authoring begin validates the activity and teach kind', async () => {
+    const harness = await makeHarness({defaults: true});
+    try {
+        const badActivity = await post(`${harness.baseUrl}/agent/product/authoring/begin`, {activity: 'playback'});
+        assert.equal(badActivity.status, 400);
+        const badKind = await post(`${harness.baseUrl}/agent/product/authoring/begin`, {activity: 'teach', teachKind: 'checkpoint'});
+        assert.equal(badKind.status, 400);
+        const badOutcome = await post(`${harness.baseUrl}/agent/product/authoring/end`, {outcome: 'pending'});
+        assert.equal(badOutcome.status, 400);
+        assert.equal((await badKind.json() as any).error.includes('teachKind'), true);
+    } finally {
+        await harness.stop();
+        portAllocator.release('agent-server-product', 'agent');
+    }
+});
+
+test('the product library endpoint projects real health evidence and reports unavailability', async () => {
+    const harness = await makeHarness({defaults: true, library: true});
+    try {
+        const res = await fetch(`${harness.baseUrl}/agent/product/library`);
+        assert.equal(res.status, 200);
+        const body = await res.json() as any;
+        assert.deepEqual(body.procedures, [{name: '查询订单', health: 'needs_review'}],
+            'health evidence passes through unchanged; never fabricated ready');
+    } finally {
+        await harness.stop();
+        portAllocator.release('agent-server-product', 'agent');
+    }
+    const plain = await makeHarness({defaults: true});
+    try {
+        const res = await fetch(`${plain.baseUrl}/agent/product/library`);
+        assert.equal(res.status, 404);
+        assert.equal((await res.json() as any).code, 'ERR_LIBRARY_UNAVAILABLE');
+    } finally {
+        await plain.stop();
         portAllocator.release('agent-server-product', 'agent');
     }
 });

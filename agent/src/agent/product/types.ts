@@ -96,21 +96,37 @@ export type WorkspaceProductReservationView = Readonly<{
     owner: ActivityOwnerKind;
     ownerTaskId?: string;
     humanControl: ActivityHumanControl;
+    /** Coarse Teach kind owned by a standalone Teach activity (never an id). */
+    teachKind?: 'procedure' | 'recovery' | 'demonstration';
 }>;
 
+/**
+ * Bounded, sanitized Library projection (spec §9.3/§12.1): user-facing asset
+ * names and coarse evidence only. `status`/`health` carry the real Library
+ * dependency-health evidence (`ready|needs_review|broken|unknown`); the product
+ * surface never fabricates `ready`. No bodies, steps, selectors or ids.
+ */
+export type WorkspaceLibraryHealth = 'ready' | 'needs_review' | 'broken' | 'unknown';
+
 export type WorkspaceLibrarySummary = Readonly<{
-    automations: number;
-    procedures: number;
-    recoveries: number;
-    demonstrations: number;
-    pageKnowledge: number;
+    automations: ReadonlyArray<Readonly<{name: string; description?: string; status?: WorkspaceLibraryHealth}>>;
+    procedures: ReadonlyArray<Readonly<{name: string; health?: WorkspaceLibraryHealth}>>;
+    recoveries: ReadonlyArray<Readonly<{name: string; health?: WorkspaceLibraryHealth}>>;
+    demonstrations: ReadonlyArray<Readonly<{name: string; stepCount: number; health?: WorkspaceLibraryHealth}>>;
+    pageKnowledge: ReadonlyArray<Readonly<{
+        profileName: string;
+        label: string;
+        pageKind?: string;
+        urlPattern?: string;
+        entityCount: number;
+        health?: WorkspaceLibraryHealth;
+    }>>;
 }>;
 
 export type WorkspaceProductView = Readonly<{
     workspace: string;
     reservation: WorkspaceProductReservationView;
     activeTask?: AgentTaskView;
-    librarySummary?: WorkspaceLibrarySummary;
 }>;
 
 export type ProductEvent =
@@ -142,6 +158,7 @@ export type ProductEvent =
         kind: 'human_guidance_completed';
         mode: GuidanceMode;
         savedAssetKind?: string;
+        savedAssetRef?: string;
     }>
     | Readonly<{
         seq: number;
@@ -198,4 +215,19 @@ export type ProductReturnControlInput = Readonly<{
     interactionToken: string;
     mode: GuidanceMode;
     savedReference?: string;
+}>;
+
+/** Standalone authoring reservation commands (spec §10/§13). Begin acquires the
+ *  same WorkspaceActivityReservation a Task would; it conflicts (never queues)
+ *  with any active owner, and a waiting_for_user Task keeps its ownership. */
+export type ProductBeginAuthoringInput = Readonly<
+    | {activity: 'teach'; teachKind: 'procedure' | 'recovery' | 'demonstration'}
+    | {activity: 'annotate'}
+>;
+
+/** Ends the active standalone authoring reservation. `saved` means the asset
+ *  was persisted to the Library; `discarded` means the draft was thrown away.
+ *  Task-owned reservations are never released through this command. */
+export type ProductEndAuthoringInput = Readonly<{
+    outcome: 'saved' | 'discarded';
 }>;

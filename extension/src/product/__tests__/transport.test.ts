@@ -45,6 +45,10 @@ test('http client maps product intents to the real /agent/product routes', async
     await client.chooseRecovery('task-1', 'tok-1', 'retry');
     await client.beginGuidance('task-1', 'tok-1', 'teach');
     await client.returnControl('task-1', 'tok-1', 'manual');
+    await client.beginAuthoring({ activity: 'teach', teachKind: 'procedure' });
+    await client.beginAuthoring({ activity: 'annotate' });
+    await client.endAuthoring('saved');
+    await client.librarySummary();
 
     const expected: Array<[string, string, string | undefined]> = [
         ['POST', '/agent/product/tasks', '{"prompt":"fill the form"}'],
@@ -59,6 +63,10 @@ test('http client maps product intents to the real /agent/product routes', async
         ['POST', '/agent/product/tasks/task-1/recovery', '{"interactionToken":"tok-1","optionId":"retry"}'],
         ['POST', '/agent/product/tasks/task-1/takeover', '{"interactionToken":"tok-1","mode":"teach"}'],
         ['POST', '/agent/product/tasks/task-1/return-control', '{"interactionToken":"tok-1","mode":"manual"}'],
+        ['POST', '/agent/product/authoring/begin', '{"activity":"teach","teachKind":"procedure"}'],
+        ['POST', '/agent/product/authoring/begin', '{"activity":"annotate"}'],
+        ['POST', '/agent/product/authoring/end', '{"outcome":"saved"}'],
+        ['GET', '/agent/product/library', undefined],
     ];
     assert.equal(calls.length, expected.length, 'one request per product command');
     calls.forEach((call, index) => {
@@ -127,6 +135,9 @@ test('dispatchProductRequest forwards every product verb to the backend client',
         chooseRecovery: () => { dispatched.push('recovery'); return Promise.resolve({}); },
         beginGuidance: () => { dispatched.push('takeover'); return Promise.resolve({}); },
         returnControl: () => { dispatched.push('returnControl'); return Promise.resolve({}); },
+        beginAuthoring: () => { dispatched.push('beginAuthoring'); return Promise.resolve({}); },
+        endAuthoring: () => { dispatched.push('endAuthoring'); return Promise.resolve({}); },
+        librarySummary: () => { dispatched.push('librarySummary'); return Promise.resolve({}); },
     };
     const { dispatchProductRequest } = await import('../../shared/product_transport.js');
     const verbs: Array<{ request: ProductRequest; name: string }> = [
@@ -142,6 +153,10 @@ test('dispatchProductRequest forwards every product verb to the backend client',
         { request: { verb: 'recovery', taskId: 't', interactionToken: 'tok', optionId: 'o' }, name: 'recovery' },
         { request: { verb: 'takeover', taskId: 't', interactionToken: 'tok', mode: 'manual' }, name: 'takeover' },
         { request: { verb: 'returnControl', taskId: 't', interactionToken: 'tok', mode: 'manual' }, name: 'returnControl' },
+        { request: { verb: 'beginAuthoring', activity: 'teach', teachKind: 'recovery' }, name: 'beginAuthoring' },
+        { request: { verb: 'beginAuthoring', activity: 'annotate' }, name: 'beginAuthoring' },
+        { request: { verb: 'endAuthoring', outcome: 'discarded' }, name: 'endAuthoring' },
+        { request: { verb: 'librarySummary' }, name: 'librarySummary' },
     ];
     for (const entry of verbs) {
         await dispatchProductRequest(client, entry.request);

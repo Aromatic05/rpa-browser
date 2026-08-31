@@ -53,10 +53,13 @@ const activeActivitySummary = (ctx: SurfaceContext): { title: string; statusText
             statusText: waiting ? 'Waiting for you' : 'Running',
         };
     }
-    if (ctx.view.authoring?.teach) {
-        return { title: 'Teaching in progress', statusText: 'Running' };
+    if (ctx.view.reservation === 'teach' || ctx.view.authoring?.teach) {
+        return {
+            title: ctx.view.authoring?.teach?.interrupted ? 'Teaching interrupted' : 'Teaching in progress',
+            statusText: ctx.view.authoring?.teach?.interrupted ? 'Needs your review' : 'Running',
+        };
     }
-    if (ctx.view.authoring?.annotate?.active) {
+    if (ctx.view.reservation === 'annotate' || ctx.view.authoring?.annotate?.active) {
         return { title: 'Annotating in progress', statusText: 'Running' };
     }
     return { title: 'Playback in progress', statusText: 'Running' };
@@ -214,7 +217,10 @@ const renderTeachStatus = (root: HTMLElement, ctx: SurfaceContext): void => {
         return;
     }
     if (teach.phase === 'recording') {
-        const pill = statusLine('●', `Teaching · ${String(teach.stepCount)} actions`, 'running', true);
+        const copy = teach.interrupted
+            ? 'Teaching interrupted — recording did not resume on this page'
+            : `Teaching · ${String(teach.stepCount)} actions`;
+        const pill = statusLine('●', copy, teach.interrupted ? 'waiting' : 'running', !teach.interrupted);
         const row = el('div', 'rpa-row');
         row.append(
             pill,
@@ -227,6 +233,11 @@ const renderTeachStatus = (root: HTMLElement, ctx: SurfaceContext): void => {
                 { dataAction: 'stop-teach' },
             ),
         );
+        if (teach.interrupted) {
+            row.append(
+                button('Discard', () => { ctx.commands.discardTeach(); }, 'danger', { dataAction: 'discard-teach' }),
+            );
+        }
         root.append(card([row]));
         return;
     }
@@ -249,6 +260,16 @@ const renderTeachStatus = (root: HTMLElement, ctx: SurfaceContext): void => {
     }
     if (teach.phase === 'saving') {
         root.append(card([muted('Saving…')]));
+    }
+    if (teach.phase === 'setup' && ctx.view.reservation === 'teach') {
+        const row = el('div', 'rpa-row');
+        row.append(
+            button('End Teaching', () => { ctx.commands.discardTeach(); }, 'ghost', { dataAction: 'end-teach' }),
+        );
+        root.append(card([
+            muted('Pick the area and start recording in the on-page recorder.'),
+            row,
+        ]));
     }
 };
 
@@ -299,7 +320,7 @@ export const renderTeachSurface = (root: HTMLElement, ctx: SurfaceContext): void
         select.append(placeholder);
         for (const area of areas) {
             const option = el('option', undefined, [`${area.label} · ${String(area.entityCount)} entities`]);
-            option.setAttribute('value', area.profileName);
+            option.setAttribute('value', area.selector ?? area.profileName);
             select.append(option);
         }
         select.value = ctx.ui.businessArea || '';
@@ -349,26 +370,40 @@ export const renderAnnotateSurface = (root: HTMLElement, ctx: SurfaceContext): v
     const cardBody: Array<Node | string> = [
         muted('Open the annotator canvas to label this page’s business objects into Page Knowledge.'),
     ];
-    if (annotate?.active) {
+    if (annotate?.active && !annotate.canvasOpen) {
+        cardBody.push(
+            statusLine('⚠', 'Annotation activity is owned by this panel but the canvas is not open on this page', 'waiting'),
+        );
+    }
+    if (annotate?.canvasOpen) {
         cardBody.push(statusLine('✎', 'Annotating on the page', 'info'));
         if (annotate.stage) {
             cardBody.push(muted(`Stage: ${annotate.stage}`));
         }
+        if (annotate.dirty) {
+            cardBody.push(muted('Unsaved changes in the canvas.'));
+        }
     }
     if (annotate?.savedSummary) {
+        const summary = annotate.savedSummary;
         cardBody.push(
-            muted(
-                `Saved Page Knowledge: ${annotate.savedSummary.profileName} · ${String(annotate.savedSummary.entityCount)} objects`,
-            ),
+            muted(summary.entityCount === undefined
+                ? `Saved Page Knowledge: ${summary.profileName}`
+                : `Saved Page Knowledge: ${summary.profileName} · ${String(summary.entityCount)} objects`),
         );
     }
     const row = el('div', 'rpa-row');
     row.append(
-        button('Open Annotator', () => { ctx.commands.openAnnotate(); }, 'primary', { dataAction: 'open-annotator' }),
+        button(
+            annotate?.active && !annotate.canvasOpen ? 'Reopen Annotator' : 'Open Annotator',
+            () => { ctx.commands.openAnnotate(); },
+            'primary',
+            { dataAction: 'open-annotator' },
+        ),
     );
     if (annotate?.active) {
         row.append(
-            button('Close Annotator', () => { ctx.commands.closeAnnotate(); }, 'ghost', { dataAction: 'close-annotator' }),
+            button('Close Activity', () => { ctx.commands.closeAnnotate(); }, 'ghost', { dataAction: 'close-annotator' }),
         );
     }
     cardBody.push(row);

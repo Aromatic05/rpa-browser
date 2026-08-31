@@ -24,10 +24,24 @@ test('Library never renders Step as an asset and shows dependency metadata only'
 
         assert.match(text, /12 actions · replayable/);
         assert.match(text, /form · 1 entity/);
+        assert.match(text, /needs review/, 'real library health evidence is shown, never a fabricated ready');
 
         assert.equal(/\bstep\b/i.test(text), false, 'Step must never render as an asset in the Library');
         assert.equal(text.includes('dsl'), false);
         assert.equal(text.includes('yaml'), false);
+    } finally {
+        fixture.cleanup();
+    }
+});
+
+test('an unavailable Library projection says so instead of faking completeness', () => {
+    const fixture = mount(libraryView());
+    try {
+        openLibrary(fixture);
+        const view = { ...libraryView(), libraryUnavailable: true };
+        fixture.handle.setView(view);
+        const text = bodyText(fixture);
+        assert.match(text, /does not expose a Library projection/i);
     } finally {
         fixture.cleanup();
     }

@@ -34,6 +34,9 @@ export type TeachPhase = 'setup' | 'recording' | 'review' | 'saving';
 
 export type AnnotateStage = 'scope' | 'recognize' | 'review' | 'edit';
 
+/** Real Library dependency-health vocabulary; never fabricated. */
+export type LibraryHealth = 'ready' | 'needs_review' | 'broken' | 'unknown';
+
 export type GuidanceMode = 'manual' | 'teach' | 'annotate';
 
 export type StartErrorKind = 'service' | 'auth' | 'workspace';
@@ -51,7 +54,15 @@ export type ActivityEvent =
     | { kind: 'interaction_requested'; summary: string; at: number }
     | { kind: 'interaction_resolved'; summary: string; at: number }
     | { kind: 'human_guidance_started'; mode: GuidanceMode; summary: string; at: number }
-    | { kind: 'human_guidance_completed'; mode: GuidanceMode; summary: string; at: number }
+    | {
+          kind: 'human_guidance_completed';
+          mode: GuidanceMode;
+          summary: string;
+          /** Sanitized saved-asset kind/ref only (spec §12.2); no ids or bodies. */
+          savedAssetKind?: string;
+          savedAssetRef?: string;
+          at: number;
+      }
     | { kind: 'effect_applied'; summary: string; status: 'ok' | 'failed'; at: number }
     | { kind: 'world_conflict'; summary: string; at: number }
     | { kind: 'task_terminated'; outcome: TaskOutcome; at: number }
@@ -110,6 +121,7 @@ export type InteractionRequest =
           /** Backend-declared stage; `active` means human control was taken. */
           stage?: 'offered' | 'active';
           activeMode?: GuidanceMode;
+          teachKind?: TeachKind;
       };
 
 export type TaskResultView = {
@@ -142,6 +154,9 @@ export type BusinessArea = {
     profileName: string;
     label: string;
     entityCount: number;
+    /** Opaque recorder-entity selector (`profileName` + business tag); never
+     *  rendered and never an internal checkpoint/session id. */
+    selector?: string;
 };
 
 /** Sanitized structured Teach projection (AgentProductInteraction §12.1). */
@@ -152,6 +167,10 @@ export type TeachView = {
     businessAreas: BusinessArea[];
     selectedBusinessArea?: string;
     unsavedAsset: boolean;
+    /** Truthful reload semantics: the recording service still reports an
+     *  active recording the page cannot re-arm — offer Stop & Review/Discard,
+     *  never a fake continuing recording. */
+    interrupted?: boolean;
     review?: {
         summary: string;
         stepSummaries: string[];
@@ -160,19 +179,22 @@ export type TeachView = {
 };
 
 export type AnnotateView = {
+    /** The standalone Annotate activity is owned (reservation held). */
     active: boolean;
+    /** The existing Annotator Canvas is currently open for this activity. */
+    canvasOpen: boolean;
     stage?: AnnotateStage;
     dirty: boolean;
-    savedSummary?: { profileName: string; entityCount: number };
+    savedSummary?: { profileName: string; entityCount?: number };
 };
 
-export type AutomationSummary = { name: string; description?: string; status?: string };
+export type AutomationSummary = { name: string; description?: string; status?: string; health?: LibraryHealth };
 
-export type ProcedureSummary = { name: string };
+export type ProcedureSummary = { name: string; health?: LibraryHealth };
 
-export type RecoverySummary = { name: string };
+export type RecoverySummary = { name: string; health?: LibraryHealth };
 
-export type DemonstrationSummary = { name: string; stepCount: number };
+export type DemonstrationSummary = { name: string; stepCount: number; health?: LibraryHealth };
 
 export type PageKnowledgeSummary = {
     profileName: string;
@@ -180,6 +202,7 @@ export type PageKnowledgeSummary = {
     pageKind?: string;
     urlPattern?: string;
     entityCount: number;
+    health?: LibraryHealth;
 };
 
 export type LibrarySummary = {
@@ -205,10 +228,16 @@ export type TaskHistoryEntry = {
 export type WorkspaceProductView = {
     workspace: string;
     reservation: WorkspaceReservation;
+    /** Coarse Teach kind while a standalone Teach owns the reservation; lets a
+     *  reloaded surface adopt the activity truthfully instead of guessing. */
+    reservationTeachKind?: TeachKind;
     connection: ConnectionState;
     activeTask?: AgentTaskView;
     authoring?: { teach?: TeachView; annotate?: AnnotateView };
     librarySummary: LibrarySummary;
+    /** True when the backend reports no real Library projection is available;
+     *  the surface must say so instead of rendering an empty-but-complete look. */
+    libraryUnavailable?: boolean;
     history: TaskHistoryEntry[];
     startError?: StartError;
     reconnectAttempts?: number;

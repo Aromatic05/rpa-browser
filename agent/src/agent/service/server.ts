@@ -8,6 +8,7 @@ import {
 import {SessionCancelledError, ActivityConflictError, type SessionManager} from './session/manager';
 import type {AgentExecutionMode} from '../execution/types';
 import {createProductController, ProductCommandError} from '../product';
+import type {LibraryAssetSummary} from '../library/contracts';
 import type {AgentServiceEndpoint, AgentServiceSecurity} from './security/contracts';
 import {authorizeAgentRequest} from './security/guard';
 import type {Principal} from '../../security/context';
@@ -123,6 +124,9 @@ export type AgentHttpServerOptions = {
     /** Default provider/model/executionMode for the product task composer (the
      *  product surface is provider-agnostic and uses product defaults). */
     productDefaults?: Readonly<{provider: string; model: string; executionMode?: AgentExecutionMode}>;
+    /** Real committed Library summaries for the bounded product Library
+     *  projection. When absent, `/agent/product/library` reports unavailable. */
+    productLibrary?: () => Promise<ReadonlyArray<LibraryAssetSummary>>;
 };
 
 export const createAgentHttpServer = async (
@@ -138,6 +142,7 @@ export const createAgentHttpServer = async (
         manager: options.manager,
         workspace: options.workspaceName,
         ...(options.productDefaults === undefined ? {} : {defaults: options.productDefaults}),
+        ...(options.productLibrary === undefined ? {} : {library: options.productLibrary}),
     });
 
     const writeJsonSafe = (res: http.ServerResponse, status: number, payload: unknown): void => {
@@ -285,6 +290,53 @@ export const createAgentHttpServer = async (
                 const principal = await requireAuthz('sessionList');
                 if (!principal) {return;}
                 writeJsonSafe(res, 200, product.workspaceView());
+                return;
+            }
+
+            if (pathname === `${productPath}/library` && req.method === 'GET') {
+                const principal = await requireAuthz('sessionList');
+                if (!principal) {return;}
+                const summary = await product.librarySummary();
+                if (summary === null) {
+                    writeJsonSafe(res, 404, {
+                        error: 'library projection is unavailable on this workspace service',
+                        code: 'ERR_LIBRARY_UNAVAILABLE',
+                    });
+                    return;
+                }
+                writeJsonSafe(res, 200, summary);
+                return;
+            }
+
+            if (pathname === `${productPath}/authoring/begin` && req.method === 'POST') {
+                const principal = await requireAuthz('run');
+                if (!principal) {return;}
+                const body = (await readJsonBody(req)) as Record<string, unknown>;
+                const activity = requireField(body, 'activity');
+                if (activity === 'annotate') {
+                    writeJsonSafe(res, 200, product.beginAuthoring({activity: 'annotate'}));
+                    return;
+                }
+                if (activity === 'teach') {
+                    const teachKind = requireField(body, 'teachKind');
+                    if (teachKind !== 'procedure' && teachKind !== 'recovery' && teachKind !== 'demonstration') {
+                        throw new AgentRequestError("teachKind must be 'procedure', 'recovery' or 'demonstration'");
+                    }
+                    writeJsonSafe(res, 200, product.beginAuthoring({activity: 'teach', teachKind}));
+                    return;
+                }
+                throw new AgentRequestError("activity must be 'teach' or 'annotate'");
+            }
+
+            if (pathname === `${productPath}/authoring/end` && req.method === 'POST') {
+                const principal = await requireAuthz('run');
+                if (!principal) {return;}
+                const body = (await readJsonBody(req)) as Record<string, unknown>;
+                const outcome = requireField(body, 'outcome');
+                if (outcome !== 'saved' && outcome !== 'discarded') {
+                    throw new AgentRequestError("outcome must be 'saved' or 'discarded'");
+                }
+                writeJsonSafe(res, 200, product.endAuthoring({outcome}));
                 return;
             }
 
@@ -448,6 +500,10 @@ export const createAgentHttpServer = async (
             }
             if (error instanceof ProductCommandError) {
                 if (error.code === 'ERR_STALE') {
+                    writeJsonSafe(res, 409, {error: error.message, code: error.code});
+                    return;
+                }
+                if (error.code === 'ERR_ACTIVITY_CONFLICT') {
                     writeJsonSafe(res, 409, {error: error.message, code: error.code});
                     return;
                 }

@@ -36,11 +36,23 @@ const libraryItem = (name: string, meta: string, action?: HTMLButtonElement | nu
     return item;
 };
 
+const healthMarker = (health?: string): string => {
+    if (health === 'needs_review') {return ' · needs review';}
+    if (health === 'broken') {return ' · broken reference';}
+    if (health === 'unknown') {return ' · health unknown';}
+    return '';
+};
+
 export const renderLibrarySurface = (root: HTMLElement, ctx: SurfaceContext): void => {
     root.append(sectionTitle('Library'));
     const library = ctx.view.librarySummary;
     const mutationsDisabled = isMutationDisabled(ctx);
     const workspaceBusy = isActiveActivity(ctx.view);
+    if (ctx.view.libraryUnavailable) {
+        root.append(
+            card([hint('This workspace service does not expose a Library projection yet; the lists below may be incomplete.')]),
+        );
+    }
 
     const automations = section('automations', 'Automations');
     if (library.automations.length === 0) {
@@ -48,17 +60,20 @@ export const renderLibrarySurface = (root: HTMLElement, ctx: SurfaceContext): vo
     }
     for (const automation of library.automations) {
         automations.append(
-            libraryItem(automation.name, automation.description ?? automation.status ?? 'Saved automation'),
+            libraryItem(
+                automation.name,
+                `${automation.description ?? automation.status ?? 'Saved automation'}${healthMarker(automation.health)}`,
+            ),
         );
     }
     root.append(automations);
 
     const proceduresAndRecovery = section('procedures', 'Procedures & Recovery');
     const procedureItems = library.procedures.map((procedure) =>
-        libraryItem(procedure.name, 'Procedure · callable from workflows'),
+        libraryItem(procedure.name, `Procedure · callable from workflows${healthMarker(procedure.health)}`),
     );
     const recoveryItems = library.recoveries.map((recovery) =>
-        libraryItem(recovery.name, 'Recovery · used by the runner on failure'),
+        libraryItem(recovery.name, `Recovery · used by the runner on failure${healthMarker(recovery.health)}`),
     );
     if (procedureItems.length === 0 && recoveryItems.length === 0) {
         proceduresAndRecovery.append(emptyState('No procedures or recoveries yet.'));
@@ -79,7 +94,7 @@ export const renderLibrarySurface = (root: HTMLElement, ctx: SurfaceContext): vo
         demonstrations.append(
             libraryItem(
                 demonstration.name,
-                `${String(demonstration.stepCount)} actions · replayable`,
+                `${String(demonstration.stepCount)} actions · replayable${healthMarker(demonstration.health)}`,
                 button(
                     'Replay',
                     () => {
@@ -106,11 +121,12 @@ export const renderLibrarySurface = (root: HTMLElement, ctx: SurfaceContext): vo
               ? `${String(knowledge.entityCount)} entities`
               : '',
         knowledge.urlPattern,
-    ];
+        ].filter((part): part is string => part !== undefined && part.length > 0);
+        const marker = healthMarker(knowledge.health);
         pageKnowledge.append(
             libraryItem(
                 knowledge.label,
-                parts.filter((part): part is string => part !== undefined && part.length > 0).join(' · '),
+                `${parts.join(' · ')}${marker}`,
                 button(
                     'Annotate/Edit',
                     () => {

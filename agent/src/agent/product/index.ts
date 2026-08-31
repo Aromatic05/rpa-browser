@@ -20,6 +20,7 @@ export {
 export type {ProjectAgentTaskViewInput} from './projection';
 export {createProductController, ProductCommandError, PRODUCT_USER_ACTOR} from './controller';
 export type {ProductController, ProductControllerOptions, ProductTaskList} from './controller';
+export {librarySummaryFrom} from './library';
 export type {
     AgentTaskStatus,
     AgentTaskPhase,
@@ -31,6 +32,7 @@ export type {
     WorkspaceProductView,
     WorkspaceProductReservationView,
     WorkspaceLibrarySummary,
+    WorkspaceLibraryHealth,
     ProductEvent,
     ProductEventsResponse,
     ProductStartTaskInput,
@@ -41,4 +43,6 @@ export type {
     ProductChooseRecoveryInput,
     ProductBeginGuidanceInput,
     ProductReturnControlInput,
+    ProductBeginAuthoringInput,
+    ProductEndAuthoringInput,
 } from './types';

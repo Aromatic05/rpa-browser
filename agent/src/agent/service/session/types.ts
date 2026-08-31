@@ -72,6 +72,9 @@ export type ActivityReservationSnapshot = Readonly<{
     owner: ActivityOwnerKind;
     ownerTaskId?: string;
     humanControl: ActivityHumanControl;
+    /** Coarse Teach kind while a standalone Teach owns the reservation; lets a
+     *  reloaded product surface adopt the activity truthfully. */
+    teachKind?: 'procedure' | 'recovery' | 'demonstration';
 }>;
 
 /** Workspace-level product activity reservation port consumed by the session

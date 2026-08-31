@@ -8,6 +8,7 @@ import type {
     WorkspaceServiceStopResult,
 } from '../../automation/runtime/service/types';
 import type {AgentRunRequest, AgentRunResult, AgentRunner} from '../execution/types';
+import type {LibraryAssetSummary} from '../library/contracts';
 import {createAgentHttpServer} from './server';
 import {createSessionManager, type SessionManager} from './session/manager';
 import {createFileSystemSessionStorage} from './session/storage';
@@ -51,6 +52,10 @@ export type WorkspaceAgentServiceDeps = {
      */
     retention?: SessionRetentionPolicy;
     interaction?: SessionInteractionPolicy;
+    /** Real committed Library summaries for the product Library projection
+     *  (`GET /agent/product/library`). When absent the projection is
+     *  explicitly unavailable rather than fabricated. */
+    productLibrary?: () => Promise<ReadonlyArray<LibraryAssetSummary>>;
 };
 
 export const createWorkspaceAgentService = (deps: WorkspaceAgentServiceDeps): WorkspaceAgentService => {
@@ -101,6 +106,7 @@ export const createWorkspaceAgentService = (deps: WorkspaceAgentServiceDeps): Wo
                     healthPath: deps.healthPath,
                     log: deps.log,
                     security: security ?? undefined,
+                    ...(deps.productLibrary === undefined ? {} : {productLibrary: deps.productLibrary}),
                 });
                 stopServer = server.stop;
                 status = 'running';

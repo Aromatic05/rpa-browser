@@ -60,6 +60,13 @@ export const createWorkspaceActivityReservation = (): WorkspaceActivityReservati
                 humanControl,
             });
         }
+        if (active.kind === 'standalone_teach') {
+            return Object.freeze({
+                owner: 'standalone_teach',
+                humanControl: 'none' as const,
+                teachKind: active.teachKind,
+            });
+        }
         return Object.freeze({
             owner: ownerKindOf(active),
             humanControl: 'none',
