@@ -1,11 +1,11 @@
 import type { Locator, Page } from 'playwright';
-import { resolveAtomicActionTarget, type RecordedTargetCandidate } from './target';
+import { resolveAtomicActionTarget } from './target';
+import type { RecordedTargetOptions } from './recorded_fallback';
 import type { AtomicActionFailure, AtomicActionResult } from '../model/contracts';
 
-export type AtomicTargetInput = {
+export type AtomicTargetInput = RecordedTargetOptions & {
     nodeId?: string;
     selector?: string;
-    getReplayCandidates?: () => readonly RecordedTargetCandidate[];
 };
 
 export const executeAtomicClick = async (

@@ -144,6 +144,7 @@ export type SelectOptionActionResult =
         selectedValues: string[];
         selectedLabels: string[];
         captureRevision: number;
+        replayFallback?: true;
     }
     | {
         ok: false;

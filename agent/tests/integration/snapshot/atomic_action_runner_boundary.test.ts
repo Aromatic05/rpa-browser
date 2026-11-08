@@ -7,6 +7,7 @@ import type { Step } from '../../../src/automation/runner/steps/types';
 const executorPaths = {
     click: '../../../src/automation/runner/steps/executors/click.ts',
     fill: '../../../src/automation/runner/steps/executors/fill.ts',
+    select: '../../../src/automation/runner/steps/executors/select_option/index.ts',
     type: '../../../src/automation/runner/steps/executors/type.ts',
     hover: '../../../src/automation/runner/steps/executors/hover.ts',
     pressKey: '../../../src/automation/runner/steps/executors/press_key.ts',
@@ -18,6 +19,7 @@ const executorPaths = {
 const importExecutors = async () => ({
     click: (await import(executorPaths.click)).executeBrowserClick,
     fill: (await import(executorPaths.fill)).executeBrowserFill,
+    select: (await import(executorPaths.select)).executeBrowserSelectOption,
     type: (await import(executorPaths.type)).executeBrowserType,
     hover: (await import(executorPaths.hover)).executeBrowserHover,
     pressKey: (await import(executorPaths.pressKey)).executeBrowserPressKey,
@@ -235,6 +237,46 @@ test('recorded fallback rejects conflicting hints, duplicate names and non-visib
         }, deps, 'workspace', {recordingReplay: true});
         assert.equal(unverified.error?.code, 'ERR_NOT_FOUND');
         assert.equal(await page.getByTestId('save').getAttribute('data-clicked'), null);
+    } finally {
+        await browser.close();
+    }
+});
+
+test('select replay recovers a renamed dropdown and rejects ambiguous alternatives before selection', async () => {
+    const browser = await chromium.launch({headless: true});
+    try {
+        const page = await browser.newPage();
+        const {select} = await importExecutors();
+        const deps = createDeps(page) as never;
+        const step: Step<'browser.select_option'> = {
+            id: 'level', name: 'browser.select_option',
+            args: {selector: '#old-level', kind: 'native_select', values: ['gold']},
+            resolve: {hint: {raw: {locatorCandidates: [
+                {kind: 'role', role: 'combobox', name: 'Customer level'},
+                {kind: 'label', text: 'Customer level'},
+            ]}}},
+        };
+        const dropdown = (id: string) => `<label for="${id}">Customer level</label>
+            <select id="${id}"><option value="basic">Basic</option><option value="gold">Gold</option></select>`;
+        await page.setContent(dropdown('new-level'));
+        const replay = {recordingReplay: true};
+        const direct = await select(step, deps, 'workspace');
+        assert.equal(direct.error?.code, 'ERR_NOT_FOUND');
+        const recovered = await select(step, deps, 'workspace', replay);
+        assert.equal(recovered.ok, true, JSON.stringify(recovered.error));
+        assert.equal(recovered.data.resolver, 'recorded-target-fallback');
+        assert.equal(await page.locator('#new-level').inputValue(), 'gold');
+
+        await page.setContent(dropdown('new-level') + dropdown('other-level'));
+        const conflict = await select(step, deps, 'workspace', replay);
+        assert.equal(conflict.error?.code, 'ERR_AMBIGUOUS');
+        assert.deepEqual(await page.locator('select').evaluateAll((nodes) =>
+            nodes.map((node) => (node as HTMLSelectElement).value)), ['basic', 'basic']);
+
+        await page.setContent(dropdown('old-level') + dropdown('other-level'));
+        const missingOption = await select({...step, args: {...step.args, values: ['unknown']}}, deps, 'workspace', replay);
+        assert.equal(missingOption.error?.code, 'ERR_NOT_FOUND');
+        assert.match(missingOption.error?.message ?? '', /option not found/);
     } finally {
         await browser.close();
     }
