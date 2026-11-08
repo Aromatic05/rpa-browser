@@ -61,6 +61,9 @@ pnpm control --source "ctx.log('hello')"
 # 非发布合并门禁
 pnpm test
 
+# 产品无窗口启动冒烟（先构建产品并安装 Chromium）
+pnpm test:product-start
+
 # 单独运行核心套件
 pnpm test:agent:snapshot
 pnpm test:agent:entity-rules

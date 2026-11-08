@@ -1,0 +1,38 @@
+name: Windows regression
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  replay:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    env:
+      RPA_HEADLESS: 'true'
+      RPA_E2E_HEADED: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Install package manager
+        run: |
+          $pnpmVersion = (Get-Content package.json -Raw | ConvertFrom-Json).packageManager
+          npm install --global $pnpmVersion
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm pw:install
+      - run: pnpm test:repo-contract
+      - run: pnpm typecheck
+      - run: pnpm test:extension
+      - run: pnpm build:product
+      - run: pnpm test:product-start
+      - name: Check protocol and browser target resolution
+        run: pnpm --filter ./agent exec node scripts/run_tests_isolated.mjs --import tsx --test tests/integration/actions/classify_discipline.test.ts tests/integration/snapshot/atomic_action_runner_boundary.test.ts tests/integration/snapshot/control_action_browser.test.ts tests/integration/snapshot/control_framework_browser.test.ts
+      - name: Exercise browser actions and recording playback
+        run: pnpm --filter ./agent exec playwright test tests/e2e/step_actions/basic_actions.spec.ts tests/e2e/multitab/record_replay.spec.ts --workers=1

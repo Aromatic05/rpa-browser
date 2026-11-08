@@ -130,7 +130,7 @@ const preparePackageLinks = async (directory: string, packageNames: string[]) =>
         const packageDirectory = await resolvePnpmPackage(packageName);
         const link = path.join(nodeModules, ...packageName.split('/'));
         await fs.mkdir(path.dirname(link), { recursive: true });
-        await fs.symlink(packageDirectory, link, 'dir');
+        await fs.symlink(packageDirectory, link, process.platform === 'win32' ? 'junction' : 'dir');
     }
 };
 
