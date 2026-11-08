@@ -243,6 +243,16 @@ export type WorkspaceProductView = {
     reservationTeachKind?: TeachKind;
     connection: ConnectionState;
     activeTask?: AgentTaskView;
+    playbackAvailable?: boolean;
+    playback?: {
+        phase: 'running' | 'completed' | 'failed' | 'canceled';
+        recordingName?: string;
+        completed: number;
+        total: number;
+        failure?: {index?: number; code?: string; fallbackConflict?: boolean};
+    };
+    playbackPending?: boolean;
+    playbackError?: string;
     authoring?: { teach?: TeachView; annotate?: AnnotateView };
     librarySummary: LibrarySummary;
     /** True when the backend reports no real Library projection is available;
@@ -262,6 +272,8 @@ export type PageKnowledgeRef = { profileName: string };
  * is the only place that knows raw RPC names (spec §16).
  */
 export type CommandPort = {
+    replayDemonstration(name: string): void;
+    stopPlayback(): void;
     startTask(prompt: string): void;
     pauseTask(): void;
     resumeTask(): void;

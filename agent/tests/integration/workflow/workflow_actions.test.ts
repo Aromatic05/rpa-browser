@@ -291,6 +291,18 @@ test('play.stop waits for an active replay step before releasing the workspace',
         assert.equal((started.reply.payload as {replayId: string}).replayId, 'play-owner-start');
         await stepStarted;
         assert.equal(workspace.state, 'playing');
+        assert.equal(workspace.record.playbackView()?.phase, 'running');
+        const productView = async () => (await workspace.router.handle({
+            v: 1, id: 'play-workspace-view', type: 'agent.product', workspaceName: name, payload: {verb: 'workspaceView'},
+        }, workspace, registry)).reply.payload as {reservation: {owner: string}; playback?: {phase: string}};
+        assert.equal((await productView()).reservation.owner, 'playback');
+        await assert.rejects(() => workspace.router.handle({
+            v: 1, id: 'teach-during-play', type: 'agent.product', workspaceName: name,
+            payload: {verb: 'beginAuthoring', activity: 'teach', teachKind: 'demonstration'},
+        }, workspace, registry), (error: unknown) => error instanceof ActionError && error.code === ERROR_CODES.ERR_CONFLICT);
+        await assert.rejects(() => workspace.router.handle({
+            v: 1, id: 'old-play-stop', type: 'play.stop', workspaceName: name, payload: {replayId: 'old-run'},
+        }, workspace, registry), (error: unknown) => error instanceof ActionError && error.code === ERROR_CODES.ERR_STALE);
 
         let stopSettled = false;
         const stopPromise = workspace.router.handle({
@@ -313,6 +325,11 @@ test('play.stop waits for an active replay step before releasing the workspace',
         const stopped = await stopPromise;
         assert.equal(stopped.reply.type, 'play.stop.result');
         assert.equal(workspace.state, 'idle');
+        assert.equal(workspace.record.playbackView()?.phase, 'completed');
+        assert.deepEqual(
+            [(await productView()).reservation.owner, (await productView()).playback?.phase],
+            ['none', 'completed'],
+        );
         const replayEvents = emitted.filter((action) => action.type.startsWith('play.'));
         assert.equal(replayEvents[0]?.type, 'play.progress');
         assert.equal((replayEvents[0]?.payload as {completed: number}).completed, 0);

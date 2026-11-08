@@ -131,6 +131,7 @@ export const createWorkspaceAgentFactory = (
         ...(options.productDefaults === undefined ? {} : {productDefaults: options.productDefaults}),
         ...(options.productModelSettings === undefined ? {} : {productModelSettings: options.productModelSettings}),
         productLibrary: () => workspaceLibrary.list(),
+        playbackView: deps.playbackView,
         productSaveAutomation: programSaver,
         continuationRestorer: async (request, image) => {
             const restored = await programExecutor.restoreContinuation(image);
@@ -144,6 +145,11 @@ export const createWorkspaceAgentFactory = (
     });
     return {
         service,
+        acquirePlayback: () => {
+            const owner = {kind: 'playback' as const};
+            if (!service.sessions.activityAcquire(owner).ok) {return null;}
+            return () => {service.sessions.activityRelease(owner);};
+        },
         control: createAgentControl(service),
     };
 };

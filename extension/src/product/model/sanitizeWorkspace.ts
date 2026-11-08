@@ -297,6 +297,11 @@ export const sanitizeWorkspaceView = (raw: unknown): WorkspaceProductView => {
     const record = isRecord(raw) ? raw : {};
     const authoring = sanitizeAuthoring(record.authoring);
     const activeTask = sanitizeTaskView(record.activeTask);
+    const playback = isRecord(record.playback) ? record.playback : {};
+    const phase = playback.phase;
+    const failure = isRecord(playback.failure) ? playback.failure : undefined;
+    const count = (value: unknown): number | undefined =>
+        typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
     return {
         workspace: asNonEmptyString(record.workspace) ?? '',
         modelConfigured: asBoolean(record.modelConfigured) ?? undefined,
@@ -304,6 +309,20 @@ export const sanitizeWorkspaceView = (raw: unknown): WorkspaceProductView => {
         reservationTeachKind: sanitizeReservationTeachKind(record.reservation),
         connection: isConnection(record.connection) ? record.connection : 'connected',
         activeTask: activeTask ?? undefined,
+        playbackAvailable: asBoolean(record.playbackAvailable) ?? undefined,
+        playback: phase === 'running' || phase === 'completed' || phase === 'failed' || phase === 'canceled'
+            ? {
+                phase,
+                recordingName: asNonEmptyString(playback.recordingName)?.slice(0, 120),
+                completed: count(playback.completed) ?? 0,
+                total: count(playback.total) ?? 0,
+                ...(failure ? {failure: {
+                    index: count(failure.index),
+                    code: typeof failure.code === 'string' && /^ERR_[A-Z0-9_]{1,60}$/.test(failure.code) ? failure.code : undefined,
+                    fallbackConflict: failure.fallbackConflict === true,
+                }} : {}),
+            }
+            : undefined,
         authoring,
         librarySummary: sanitizeLibrary(record.librarySummary),
         libraryUnavailable: asBoolean(record.libraryUnavailable) ?? undefined,

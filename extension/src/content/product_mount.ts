@@ -224,7 +224,7 @@ export const buildAuthoringBridge = (
         },
         saveDemonstration: (recordingName) => {
             void (async () => {
-                const result = await dispatchObserved('record.save', {recordingName});
+                const result = await dispatchObserved('record.save', {recordingName, includeStepResolve: true});
                 if (result.ok) {demoActive = null;}
             })();
         },
@@ -339,6 +339,7 @@ export const mountProductFromContent = (options: ProductMountOptions): ProductMo
         workspace: options.workspaceName,
         now: options.now,
         authoring: bridge,
+        dispatchPlayback: async (type, payload) => asAction(await options.dispatchAction(type, payload)),
     });
     controllerRef = controller;
     const uiHandle: ProductUIHandle = mountProductUIImpl({

@@ -173,7 +173,9 @@ export const mountProductUI = (opts: ProductUIOptions): ProductUIHandle => {
     };
 
     const routeToActive = (): void => {
-        if (state.view.reservation === 'teach') {
+        if (state.view.reservation === 'playback') {
+            state.surface = 'library';
+        } else if (state.view.reservation === 'teach') {
             state.surface = 'teach';
         } else if (state.view.reservation === 'annotate') {
             state.surface = 'annotate';
@@ -184,6 +186,9 @@ export const mountProductUI = (opts: ProductUIOptions): ProductUIHandle => {
     };
 
     const defaultSurfaceFor = (view: WorkspaceProductView): ProductSurface => {
+        if (view.reservation === 'playback') {
+            return 'library';
+        }
         if (view.reservation === 'teach') {
             return 'teach';
         }

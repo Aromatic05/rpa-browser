@@ -35,6 +35,7 @@ import {
     type BackendWorkspaceView,
     type ProductBackendClient,
 } from '../shared/product_transport.js';
+import type {Action} from '../shared/types.js';
 
 /** Coarse recorder state projected by the narrow checkpoint-recorder bridge. */
 export type StructuredTeachSnapshot = {
@@ -85,6 +86,7 @@ export type ProductControllerOptions = {
     /** Bounded automatic reconnects before a manual Retry is required. */
     maxAutoReconnects?: number;
     authoring?: ProductAuthoringBridge;
+    dispatchPlayback?: (type: 'play.start' | 'play.stop', payload: Record<string, unknown>) => Promise<Action | null>;
 };
 
 export type ProductControllerHandle = {
@@ -127,6 +129,9 @@ export const createProductController = (options: ProductControllerOptions): Prod
     const idlePollIntervalMs = options.idlePollIntervalMs ?? 8000;
     const offlineRetryMs = options.offlineRetryMs ?? 5000;
     const maxAutoReconnects = options.maxAutoReconnects ?? 3;
+    let playbackId: string | undefined;
+    let playbackPending = false;
+    let playbackError: string | undefined;
 
     type StandaloneAuthoring = {
         activity: 'teach' | 'annotate';
@@ -206,7 +211,8 @@ export const createProductController = (options: ProductControllerOptions): Prod
 
     const isOffline = (): boolean => state.view.connection !== 'connected';
     const hasActiveWork = (): boolean =>
-        Boolean(state.view.activeTask && !isTerminalStatus(state.view.activeTask.status));
+        state.view.reservation === 'playback' || playbackPending
+        || Boolean(state.view.activeTask && !isTerminalStatus(state.view.activeTask.status));
 
     const setStartError = (kind: StartError['kind'], message: string): void => {
         state.startError = { kind, message };
@@ -658,6 +664,8 @@ export const createProductController = (options: ProductControllerOptions): Prod
             workspace: rawWorkspace.workspace,
             modelConfigured: rawWorkspace.modelConfigured,
             reservation: rawWorkspace.reservation,
+            playbackAvailable: rawWorkspace.playbackAvailable,
+            playback: rawWorkspace.playback,
             ...(taskId ? { activeTask: rawActive } : {}),
             history: historyRaw ?? [],
             connection: 'connected',
@@ -666,6 +674,12 @@ export const createProductController = (options: ProductControllerOptions): Prod
             ...(state.startError ? { startError: state.startError } : {}),
         };
         const sanitized = sanitizeWorkspaceView(record);
+        const nextPlaybackId = isRecord(rawWorkspace.playback) && typeof rawWorkspace.playback.replayId === 'string'
+            ? rawWorkspace.playback.replayId : undefined;
+        if (nextPlaybackId && nextPlaybackId !== playbackId) {playbackError = undefined;}
+        playbackId = nextPlaybackId;
+        sanitized.playbackPending = playbackPending;
+        sanitized.playbackError = playbackError;
         if (sanitized.activeTask) {
             const targetTaskId = taskId ?? sanitized.activeTask.taskId;
             sanitized.activeTask.timeline = state.timelines.get(targetTaskId) ?? [];
@@ -867,7 +881,38 @@ export const createProductController = (options: ProductControllerOptions): Prod
         }
     };
 
+    const runPlaybackCommand = async (type: 'play.start' | 'play.stop', payload: Record<string, unknown>): Promise<void> => {
+        if (!options.dispatchPlayback || playbackPending || isOffline() || !state.view.playbackAvailable) {return;}
+        playbackPending = true;
+        playbackError = undefined;
+        state.view = {...state.view, playbackPending, playbackError};
+        emit();
+        try {
+            const reply = await options.dispatchPlayback(type, payload);
+            if (type === 'play.start' ? reply?.type !== 'play.started' : reply?.type !== 'play.stop.result') {
+                playbackError = type === 'play.start'
+                    ? 'Could not start replay. Check that the recording exists and the workspace is free.'
+                    : 'Could not stop this replay. Check the current playback status.';
+            }
+        } catch {
+            playbackError = 'Could not confirm the playback request. Check the current status.';
+        } finally {
+            playbackPending = false;
+            state.view = {...state.view, playbackPending, playbackError};
+            emit();
+            await syncOnce();
+        }
+    };
+
     const commands: CommandPort = {
+        replayDemonstration: (name) => {
+            if (state.view.reservation !== 'idle' || !name.trim()) {return;}
+            void runPlaybackCommand('play.start', {recordingName: name, stopOnError: true});
+        },
+        stopPlayback: () => {
+            if (state.view.playback?.phase !== 'running' || !playbackId) {return;}
+            void runPlaybackCommand('play.stop', {replayId: playbackId});
+        },
         startTask: (prompt) => {
             const value = prompt.trim();
             if (value.length === 0) {

@@ -93,6 +93,7 @@ export const createRuntimeWorkspace = (deps: CreateRuntimeWorkspaceDeps): Runtim
         runtime: deps.runtime,
         pageRegistry,
         emit: deps.emit,
+        acquirePlayback: () => agentBinding.acquirePlayback ? agentBinding.acquirePlayback() : () => undefined,
         log: getLogger('action'),
     });
     const dsl = createDslControl({ runStepsDeps: deps.runStepsDeps });
@@ -124,6 +125,7 @@ export const createRuntimeWorkspace = (deps: CreateRuntimeWorkspaceDeps): Runtim
     const agentBinding = deps.agentFactory({
         workspaceName: deps.name,
         tabs,
+        playbackView: record.playbackView,
         runStepsDeps: deps.runStepsDeps,
         runnerConfig: deps.runnerConfig,
         portAllocator: deps.portAllocator,

@@ -43,6 +43,45 @@ const healthMarker = (health?: string): string => {
     return '';
 };
 
+const renderPlayback = (ctx: SurfaceContext): HTMLElement | undefined => {
+    const {playback, playbackPending, playbackError} = ctx.view;
+    if (!playback && !playbackPending && !playbackError) {return undefined;}
+    const contents: HTMLElement[] = [];
+    if (playback) {
+        const title = {
+            running: 'Replay in progress',
+            completed: playback.failure ? 'Replay completed with errors' : 'Replay completed',
+            failed: 'Replay stopped',
+            canceled: 'Replay canceled',
+        }[playback.phase];
+        contents.push(el('strong', undefined, [title]));
+        contents.push(hint(`${playback.recordingName ?? 'Unsaved recording'} · ${playback.completed} / ${playback.total} actions processed`));
+        if (playback.failure) {
+            const {index, code, fallbackConflict} = playback.failure;
+            const reason = code === 'ERR_AMBIGUOUS'
+                ? fallbackConflict ? 'The backup clues matched more than one element.' : 'The target matched more than one element.'
+                : code === 'ERR_NOT_FOUND' || code === 'ERR_STALE' || code === 'ERR_UNRESOLVED'
+                    ? 'The recorded target could not be found on the current page.'
+                    : code === 'ERR_TIMEOUT' || code === 'ERR_PAGE_NOT_READY'
+                        ? 'The page or target did not become ready in time.'
+                        : 'Check the current page and try replaying again.';
+            contents.push(hint(index === undefined ? reason : `Action ${index + 1}: ${reason}`));
+        }
+        if (playback.phase === 'running') {
+            contents.push(button('Stop replay', ctx.commands.stopPlayback, 'danger', {
+                disabled: isMutationDisabled(ctx) || playbackPending,
+                dataAction: 'stop-playback',
+            }));
+        }
+    }
+    if (playbackPending) {contents.push(hint('Waiting for the playback request…'));}
+    if (playbackError) {contents.push(hint(playbackError));}
+    const panel = card(contents);
+    panel.dataset.rpaProductPlayback = playback?.phase ?? 'pending';
+    panel.setAttribute('role', 'status');
+    return panel;
+};
+
 export const renderLibrarySurface = (root: HTMLElement, ctx: SurfaceContext): void => {
     root.append(sectionTitle('Library'));
     const library = ctx.view.librarySummary;
@@ -87,6 +126,8 @@ export const renderLibrarySurface = (root: HTMLElement, ctx: SurfaceContext): vo
     root.append(proceduresAndRecovery);
 
     const demonstrations = section('demonstrations', 'Demonstrations');
+    const playback = renderPlayback(ctx);
+    if (playback) {demonstrations.append(playback);}
     if (library.demonstrations.length === 0) {
         demonstrations.append(emptyState('No demonstrations yet.'));
     }
@@ -95,6 +136,17 @@ export const renderLibrarySurface = (root: HTMLElement, ctx: SurfaceContext): vo
             libraryItem(
                 demonstration.name,
                 `${String(demonstration.stepCount)} recorded actions${healthMarker(demonstration.health)}`,
+                ctx.view.playbackAvailable ? button(
+                    'Replay',
+                    () => {ctx.commands.replayDemonstration(demonstration.name);},
+                    'ghost',
+                    {
+                        disabled: mutationsDisabled || workspaceBusy || ctx.view.playbackPending
+                            || demonstration.stepCount === 0 || demonstration.health === 'broken',
+                        ariaLabel: `Replay ${demonstration.name}`,
+                        dataAction: 'replay',
+                    },
+                ) : undefined,
             ),
         );
     }

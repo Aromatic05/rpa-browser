@@ -77,3 +77,28 @@ test('editing is disabled while another workspace activity owns the reservation'
         fixture.cleanup();
     }
 });
+
+test('Library starts and stops playback and explains a failed action', () => {
+    const view = {...libraryView(), playbackAvailable: true};
+    const fixture = mount(view);
+    try {
+        openLibrary(fixture);
+        const replay = fixture.shadow.querySelector<HTMLButtonElement>('[data-rpa-product-action="replay"]');
+        assert.ok(replay);
+        replay.click();
+        assert.deepEqual(fixture.calls.find((call) => call.name === 'replayDemonstration')?.args, ['New vendor onboarding']);
+
+        fixture.handle.setView({...view, reservation: 'playback', playback: {phase: 'running', completed: 1, total: 2}});
+        assert.equal(fixture.shadow.querySelector<HTMLButtonElement>('[data-rpa-product-action="replay"]')?.disabled, true);
+        fixture.shadow.querySelector<HTMLButtonElement>('[data-rpa-product-action="stop-playback"]')?.click();
+        assert.ok(fixture.calls.some((call) => call.name === 'stopPlayback'));
+
+        fixture.handle.setView({...view, playback: {
+            phase: 'failed', completed: 2, total: 2,
+            failure: {index: 1, code: 'ERR_AMBIGUOUS', fallbackConflict: true},
+        }});
+        assert.match(bodyText(fixture), /Action 2: The backup clues matched more than one element/);
+    } finally {
+        fixture.cleanup();
+    }
+});

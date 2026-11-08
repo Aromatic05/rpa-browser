@@ -10,6 +10,8 @@ Replay 执行录制得到的 Step 序列，支持 tab 映射、补建 tab、事�
 
 - `play.start`：异步启动 replay。
 - `play.stop`：设置取消标记。
+- 普通界面的 Library → Demonstrations 支持启动和停止已保存的录制。进度和最近结果由工作区状态提供，切页或重载面板后仍可查看。
+- 回放独占工作区的产品活动预约，结束后释放。`play.stop` 可带 `replayId`，防止旧界面误停新回放。
 
 ### replayRecording 行为
 

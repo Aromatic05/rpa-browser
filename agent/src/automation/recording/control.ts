@@ -59,6 +59,7 @@ export type RecordControlServices = {
     runtime: ExecutionBindings;
     pageRegistry: PageRegistry;
     emit?: (action: Action) => void;
+    acquirePlayback?: () => (() => void) | null;
     log: Logger | ((...args: unknown[]) => void);
 };
 
@@ -80,6 +81,16 @@ const logError = (log: RecordControlServices['log'], ...args: unknown[]): void =
 
 export type RecordControl = {
     handle: (input: WorkspaceRouterInput) => Promise<ControlPlaneResult>;
+    playbackView: () => RecordingPlaybackView | undefined;
+};
+
+export type RecordingPlaybackView = {
+    replayId: string;
+    recordingName?: string;
+    phase: 'running' | 'completed' | 'failed' | 'canceled';
+    completed: number;
+    total: number;
+    failure?: {index?: number; name?: string; code?: string; fallbackConflict?: boolean};
 };
 
 const requireWorkspaceName = (action: Action, type: string): string => {
@@ -171,8 +182,10 @@ const stopRecordingCapture = async (
 };
 
 export const createRecordControl = (services: RecordControlServices): RecordControl => {
-    let activeReplay: {tabName: string; completion: Promise<void>; owner: symbol} | null = null;
+    let activeReplay: {tabName: string; completion: Promise<void>; owner: symbol; replayId: string} | null = null;
+    let playback: RecordingPlaybackView | undefined;
     return {
+    playbackView: () => playback,
     handle: async (input) => {
         const { action, workspace } = input;
 
@@ -491,11 +504,12 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
             if (!replay) {
                 throw new ActionError(ERROR_CODES.ERR_BAD_STATE, 'playback session is not active');
             }
+            const requestedId = isRecord(action.payload) ? action.payload.replayId : undefined;
+            if (requestedId !== undefined && requestedId !== replay.replayId) {
+                throw new ActionError(ERROR_CODES.ERR_STALE, 'the playback has changed');
+            }
             cancelReplay(services.recordingState, replay.tabName);
             await replay.completion;
-            if (getWorkspaceState(workspace) === 'playing') {
-                leaveWorkspaceState(workspace, 'playing', action.type);
-            }
             return { reply: replyAction(action, { stopped: true }), events: [] };
         }
 
@@ -555,7 +569,13 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
             const replayWorkspaceName = currentWorkspaceName;
             const initialTabName = currentTab.name;
             const releaseStartupExecution = acquireWorkspaceExecution(workspace, action.type);
+            let releasePlayback: (() => void) | undefined;
             try {
+                if (services.acquirePlayback) {
+                    const release = services.acquirePlayback();
+                    if (!release) {throw new ActionError(ERROR_CODES.ERR_BAD_STATE, 'the workspace is already in use');}
+                    releasePlayback = release;
+                }
                 const initialBinding = await services.runtime.awaitExecutableTab({
                     workspace,
                     pageRegistry: services.pageRegistry,
@@ -570,12 +590,24 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
                         // Replay continues from the current page when entry navigation fails.
                     }
                 }
+            } catch (error) {
+                releasePlayback?.();
+                throw error;
             } finally {
                 releaseStartupExecution();
             }
 
             enterWorkspaceState(workspace, 'playing', action.type);
             beginReplay(services.recordingState, initialTabName);
+            let view: RecordingPlaybackView = {
+                replayId: action.id, recordingName: sourceRecordingName || undefined,
+                phase: 'running', completed: 0, total: bundle.steps.length,
+            };
+            const projectPlayback = (patch: Partial<RecordingPlaybackView>): void => {
+                view = {...view, ...patch};
+                playback = view;
+            };
+            projectPlayback({});
             const emitPlayEvent = (type: string, payloadData: Record<string, unknown>) => {
                 services.emit?.({
                     v: 1,
@@ -597,6 +629,7 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
                     emitPlayEvent(ACTION_TYPES.PLAY_STEP_FINISHED, { workspaceName: replayWorkspaceName, tabName: initialTabName, ...event });
                     return;
                 }
+                projectPlayback({completed: event.completed});
                 emitPlayEvent(ACTION_TYPES.PLAY_PROGRESS, {
                     workspaceName: replayWorkspaceName,
                     tabName: initialTabName,
@@ -625,6 +658,7 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
                         onEvent: publishReplayEvent,
                     });
                     if (replayed.error?.code === 'ERR_CANCELED') {
+                        projectPlayback({phase: 'canceled'});
                         logWarning(services.log, '[RPA:play]', 'replay canceled', {
                             workspaceName: replayWorkspaceName,
                             tabName: initialTabName,
@@ -640,6 +674,14 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
                     if (!replayed.ok && (stopOnError || replayed.error)) {
                         const failure = replayed.error ?? firstFailed?.error;
                         const failureDetails = isRecord(failure?.details) ? failure.details : {};
+                        projectPlayback({
+                            phase: 'failed',
+                            failure: {
+                                ...(failedStep ? {index: failedIndex, name: failedStep.name} : {}),
+                                code: failure?.code,
+                                fallbackConflict: failureDetails.resolution === 'recorded-target-fallback',
+                            },
+                        });
                         logError(services.log, '[RPA:play]', 'replay failed', {
                             workspaceName: replayWorkspaceName,
                             tabName: initialTabName,
@@ -670,10 +712,15 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
                         });
                         return;
                     }
+                    projectPlayback({
+                        phase: 'completed',
+                        ...(firstFailed ? {failure: {index: failedStep ? failedIndex : undefined, name: failedStep?.name, code: firstFailed.error?.code}} : {}),
+                    });
                     emitPlayEvent(ACTION_TYPES.PLAY_COMPLETED, {
                         workspaceName: replayWorkspaceName, tabName: initialTabName, results: replayed.results, ...failureLocation,
                     });
                 } catch (error) {
+                    projectPlayback({phase: 'failed', failure: {code: 'ERR_INTERNAL'}});
                     const message = error instanceof Error ? error.message : String(error);
                     logError(services.log, '[RPA:play]', 'replay crashed', {
                         workspaceName: replayWorkspaceName,
@@ -688,6 +735,7 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
                     });
                 } finally {
                     endReplay(services.recordingState, initialTabName);
+                    releasePlayback?.();
                     if (activeReplay?.owner === replayOwner) {
                         activeReplay = null;
                     }
@@ -696,7 +744,7 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
                     }
                 }
             })();
-            activeReplay = {tabName: initialTabName, completion: replayTask, owner: replayOwner};
+            activeReplay = {tabName: initialTabName, completion: replayTask, owner: replayOwner, replayId: action.id};
             void replayTask;
 
             return {

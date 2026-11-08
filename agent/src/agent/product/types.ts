@@ -131,6 +131,8 @@ export type WorkspaceProductView = Readonly<{
     modelConfigured: boolean;
     reservation: WorkspaceProductReservationView;
     activeTask?: AgentTaskView;
+    playbackAvailable?: boolean;
+    playback?: import('../../automation/recording/control').RecordingPlaybackView;
 }>;
 
 export type ProductModelSetupStatus = AgentModelSetupStatus;

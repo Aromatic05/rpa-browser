@@ -262,7 +262,7 @@ test('records and replays active and passive multi-tab workflow', async () => {
   expect(replayState.auditOpened).toBe('true');
 });
 
-test('saved recording recovers a renamed button and stops if its label becomes ambiguous', async () => {
+test('product Library replays a renamed button and explains an ambiguous target', async () => {
   const ws = 'default';
   const send = (type: string, payload?: Record<string, unknown>) => dispatch(ep, act(type, ws, payload));
   const evaluate = async (id: string, expression: string) => {
@@ -270,42 +270,38 @@ test('saved recording recovers a renamed button and stops if its label becomes a
     mustOk(result, id);
     return result.data;
   };
-  const waitForIdle = async () => {
-    await expect.poll(async () => {
-      const result = await sendControlEval(
-        {source: 'return ctx.resolveWorkspace("default").state;'},
-        {endpoint: ep, timeoutMs: 3_000},
-      );
-      return result.result;
-    }, {timeout: 20_000}).toBe('idle');
-  };
-  const developerMode = await sendControlEval({
-    source: `
-      const context = ctx.resolveWorkspace("default").tabs.getActiveTab().page.context();
-      const isExtension = (worker) => worker.url().startsWith('chrome-extension://');
-      const worker = context.serviceWorkers().find(isExtension)
-        || await context.waitForEvent('serviceworker', {predicate: isExtension, timeout: 5000});
-      await worker.evaluate(() => chrome.storage.local.set({rpaProductDevMode: true}));
+  const clickReplay = async () => {
+    await expect.poll(() => evaluate('click-library-replay', `
+      const root = document.querySelector('#rpa-product-panel')?.shadowRoot;
+      const replay = root?.querySelector('[aria-label="Replay renamed-save"]');
+      if (!replay || replay.disabled) return false;
+      replay.click();
       return true;
-    `,
-  }, {endpoint: ep, timeoutMs: 7_000});
-  expect(developerMode.ok, developerMode.error?.message).toBe(true);
+    `), {timeout: 15_000}).toBe(true);
+  };
+  const playbackText = (phase: 'completed' | 'failed') => evaluate('library-playback-result', `
+    return document.querySelector('#rpa-product-panel')?.shadowRoot
+      ?.querySelector('[data-rpa-product-playback="${phase}"]')?.textContent || '';
+  `);
   const goto = await runStep(ep, ws, st('open-fixture', 'browser.goto', {
     url: `${baseURL}/step_actions/customer_profile.html`,
   }));
   mustOk(goto, 'open fixture');
-  await expect.poll(() => evaluate('open-play-panel', `
-    const root = document.querySelector('#rpa-floating-panel')?.shadowRoot;
-    if (!root) return false;
-    root.querySelector('.ball').click();
-    [...root.querySelectorAll('.tabs button')].find(button => button.textContent === 'Play').click();
-    return true;
-  `)).toBe(true);
   expect((await send('record.start')).type).toBe('record.start.result');
   mustOk(await runStep(ep, ws, st('record-click', 'browser.click', {selector: '#saveBtn'})), 'record save click');
   expect((await send('record.stop')).type).toBe('record.stop.result');
   const recordingName = 'renamed-save';
   expect((await send('record.save', {recordingName, includeStepResolve: true})).type).toBe('record.save.result');
+  mustOk(await runStep(ep, ws, st('reload-fixture', 'browser.reload', {})), 'reload fixture after saving');
+  await expect.poll(() => evaluate('open-library', `
+    const root = document.querySelector('#rpa-product-panel')?.shadowRoot;
+    const launcher = root?.querySelector('[data-rpa-product-launcher]');
+    const library = root?.querySelector('[data-rpa-product-nav="library"]');
+    if (!launcher || !library) return false;
+    launcher.click();
+    library.click();
+    return true;
+  `), {timeout: 15_000}).toBe(true);
 
   await evaluate('rename-button', `
     const button = document.querySelector('#saveBtn');
@@ -314,8 +310,8 @@ test('saved recording recovers a renamed button and stops if its label becomes a
     button.addEventListener('click', () => { button.dataset.replayed = 'true'; });
     return true;
   `);
-  expect((await send('play.start', {recordingName, stopOnError: true})).type).toBe('play.started');
-  await waitForIdle();
+  await clickReplay();
+  await expect.poll(() => playbackText('completed'), {timeout: 15_000}).toMatch(/Replay completed/);
   expect(await evaluate('check-replayed', "return document.querySelector('#new-save')?.dataset.replayed === 'true';")).toBe(true);
 
   await evaluate('add-duplicate', `
@@ -327,13 +323,10 @@ test('saved recording recovers a renamed button and stops if its label becomes a
     button.after(other);
     return true;
   `);
-  expect((await send('play.start', {recordingName, stopOnError: true})).type).toBe('play.started');
-  await waitForIdle();
+  await clickReplay();
+  await expect.poll(() => playbackText('failed'), {timeout: 15_000})
+    .toMatch(/Action \d+: The backup clues matched more than one element/);
   expect(await evaluate('check-neither-clicked', "return document.querySelectorAll('[data-replayed=true]').length;")).toBe(0);
-  await expect.poll(() => evaluate('play-panel-failure', `
-    const root = document.querySelector('#rpa-floating-panel')?.shadowRoot;
-    return root?.querySelector('[data-playback-status="failed"]')?.textContent || '';
-  `)).toMatch(/Step \d+ browser\.click \(ERR_AMBIGUOUS\).*backup clues match more than one element/);
 });
 
 test.setTimeout(180_000);
