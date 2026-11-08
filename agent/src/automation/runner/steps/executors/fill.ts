@@ -1,6 +1,7 @@
 import type { Page } from 'playwright';
 import type { Step, StepResult } from '../types';
-import type { RunStepsDeps } from '../../run_steps_types';
+import type { RunStepsDeps, RunStepsExecutionContext } from '../../run_steps_types';
+import { recordedActionTarget } from '../helpers/recorded_action_target';
 import { awaitPageBoundBinding } from '../helpers/runtime_binding';
 import { pickDelayMs, waitForHumanDelay } from '../helpers/delay';
 import { executeAtomicFill } from '../../../snapshot';
@@ -9,12 +10,11 @@ export const executeBrowserFill = async (
     step: Step<'browser.fill'>,
     deps: RunStepsDeps,
     workspaceName: string,
+    context?: RunStepsExecutionContext,
 ): Promise<StepResult> => {
     const binding = await awaitPageBoundBinding(deps, workspaceName);
-    const result = await executeAtomicFill(binding.page, {
-        nodeId: step.args.nodeId ?? step.resolve?.hint?.target?.nodeId,
-        selector: step.args.selector ?? step.resolve?.hint?.locator?.direct?.query,
-    }, step.args.value, {
+    const target = recordedActionTarget(binding.page, step, context);
+    const result = await executeAtomicFill(binding.page, target, step.args.value, {
         timeoutMs: deps.config.waitPolicy.visibleTimeoutMs,
     });
     if (!result.ok) {
@@ -28,7 +28,7 @@ export const executeBrowserFill = async (
             nodeId: result.nodeId,
             controlRef: result.controlRef,
             captureRevision: result.captureRevision,
-            resolver: 'snapshot-v2-canonical-locator',
+            resolver: result.replayFallback ? 'recorded-target-fallback' : 'snapshot-v2-canonical-locator',
         },
     };
 };

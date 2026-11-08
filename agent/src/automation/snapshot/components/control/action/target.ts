@@ -1,7 +1,7 @@
 import type { Locator, Page } from 'playwright';
 import { resolveExecutableLocator } from '../../../indexes/locator/execute';
 import { captureControlSnapshot, captureLocatorExecutionSnapshot } from '../capture/browser';
-import { captureSelectorTarget } from './selector_capture';
+import { captureLocatorTarget, captureSelectorTarget } from './selector_capture';
 import type {
     AtomicActionFailure,
     AtomicActionTargetRequest,
@@ -16,13 +16,59 @@ export type AtomicActionTarget = {
     actionNodeId: string;
     locator: Locator;
     control?: ControlComponent;
+    replayFallback?: true;
 };
+
+export type RecordedTargetCandidate = {kind: string; locator: Locator};
 
 export type AtomicActionTargetResolution =
     | { ok: true; target: AtomicActionTarget }
     | { ok: false; error: AtomicActionFailure };
 
 export const resolveAtomicActionTarget = async (
+    page: Page,
+    request: AtomicActionTargetRequest & {getReplayCandidates?: () => readonly RecordedTargetCandidate[]},
+): Promise<AtomicActionTargetResolution> => {
+    const exact = await resolveExactTarget(page, request);
+    if (exact.ok || (exact.error.code !== 'ERR_NOT_FOUND' && exact.error.code !== 'ERR_STALE')) {return exact;}
+    const candidates = request.getReplayCandidates?.();
+    if (!candidates?.length) {return exact;}
+
+    const details = {
+        resolution: 'recorded-target-fallback',
+        primaryCode: exact.error.code,
+        candidateKinds: [...new Set(candidates.map((candidate) => candidate.kind))],
+    };
+    // A union deduplicates evidence for the same element and rejects both multiple
+    // matches within one candidate and disagreements between different candidates.
+    const locator = candidates.slice(1)
+        .reduce((combined, candidate) => combined.or(candidate.locator), candidates[0].locator);
+    const captured = await captureLocatorTarget(page, locator, details, true);
+    if (!captured.ok) {
+        if (captured.code === 'ERR_AMBIGUOUS') {
+            return failed(captured.code, 'recorded fallback candidates matched multiple elements', captured.details);
+        }
+        return failed(exact.error.code, exact.error.message, {
+            ...exact.error.details,
+            ...details,
+            fallbackCode: captured.code,
+            fallbackReason: captured.message,
+        });
+    }
+    const observation = captured.snapshot.observation;
+    const scopeId = observation.nodes[captured.nodeId].scopeId;
+    if (!observation.scopes.rootScopeIds.includes(scopeId) || observation.scopes.scopes[scopeId].kind !== 'document') {
+        return failed('ERR_UNRESOLVED', 'recorded fallback target is outside the main document', details);
+    }
+
+    const resolved = await resolveCanonicalTarget(page, captured.snapshot, captured.nodeId, request.requiredCapabilities ?? []);
+    if (!resolved.ok) {
+        return failed(resolved.error.code, resolved.error.message, {...resolved.error.details, ...details});
+    }
+    return {ok: true, target: {...resolved.target, replayFallback: true}};
+};
+
+const resolveExactTarget = async (
     page: Page,
     request: AtomicActionTargetRequest,
 ): Promise<AtomicActionTargetResolution> => {
@@ -51,7 +97,15 @@ export const resolveAtomicActionTarget = async (
         });
     }
 
-    const required = request.requiredCapabilities ?? [];
+    return await resolveCanonicalTarget(page, snapshot, nodeId, request.requiredCapabilities ?? []);
+};
+
+const resolveCanonicalTarget = async (
+    page: Page,
+    snapshot: ControlSnapshot,
+    nodeId: string,
+    required: readonly ControlCapability[],
+): Promise<AtomicActionTargetResolution> => {
     const controls = controlsForNode(snapshot, nodeId, required);
     if (required.length > 0 && controls.length === 0) {
         return failed('ERR_UNRESOLVED', 'canonical node does not expose the required capability', {

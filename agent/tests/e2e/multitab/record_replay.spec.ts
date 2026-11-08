@@ -262,4 +262,56 @@ test('records and replays active and passive multi-tab workflow', async () => {
   expect(replayState.auditOpened).toBe('true');
 });
 
+test('saved recording recovers a renamed button and stops if its label becomes ambiguous', async () => {
+  const ws = 'default';
+  const send = (type: string, payload?: Record<string, unknown>) => dispatch(ep, act(type, ws, payload));
+  const evaluate = async (id: string, expression: string) => {
+    const result = await runStep(ep, ws, st(id, 'browser.evaluate', {expression}));
+    mustOk(result, id);
+    return result.data;
+  };
+  const waitForIdle = async () => {
+    await expect.poll(async () => {
+      const result = await sendControlEval(
+        {source: 'return ctx.resolveWorkspace("default").state;'},
+        {endpoint: ep, timeoutMs: 3_000},
+      );
+      return result.result;
+    }, {timeout: 20_000}).toBe('idle');
+  };
+  const goto = await runStep(ep, ws, st('open-fixture', 'browser.goto', {
+    url: `${baseURL}/step_actions/customer_profile.html`,
+  }));
+  mustOk(goto, 'open fixture');
+  expect((await send('record.start')).type).toBe('record.start.result');
+  mustOk(await runStep(ep, ws, st('record-click', 'browser.click', {selector: '#saveBtn'})), 'record save click');
+  expect((await send('record.stop')).type).toBe('record.stop.result');
+  const recordingName = 'renamed-save';
+  expect((await send('record.save', {recordingName, includeStepResolve: true})).type).toBe('record.save.result');
+
+  await evaluate('rename-button', `
+    const button = document.querySelector('#saveBtn');
+    button.id = 'new-save';
+    button.removeAttribute('data-testid');
+    button.addEventListener('click', () => { button.dataset.replayed = 'true'; });
+    return true;
+  `);
+  expect((await send('play.start', {recordingName, stopOnError: true})).type).toBe('play.started');
+  await waitForIdle();
+  expect(await evaluate('check-replayed', "return document.querySelector('#new-save')?.dataset.replayed === 'true';")).toBe(true);
+
+  await evaluate('add-duplicate', `
+    const button = document.querySelector('#new-save');
+    delete button.dataset.replayed;
+    const other = button.cloneNode(true);
+    other.id = 'duplicate-save';
+    other.addEventListener('click', () => { other.dataset.replayed = 'true'; });
+    button.after(other);
+    return true;
+  `);
+  expect((await send('play.start', {recordingName, stopOnError: true})).type).toBe('play.started');
+  await waitForIdle();
+  expect(await evaluate('check-neither-clicked', "return document.querySelectorAll('[data-replayed=true]').length;")).toBe(0);
+});
+
 test.setTimeout(180_000);

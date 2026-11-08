@@ -174,6 +174,7 @@ export type AtomicActionSuccess = {
     nodeId: ObservationNodeId;
     controlRef?: string;
     captureRevision: number;
+    replayFallback?: true;
 };
 
 export type AtomicActionResult = AtomicActionSuccess | AtomicActionFailure;

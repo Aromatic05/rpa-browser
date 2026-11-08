@@ -1,5 +1,6 @@
 import type { Step, StepResult } from '../types';
-import type { RunStepsDeps } from '../../run_steps_types';
+import type { RunStepsDeps, RunStepsExecutionContext } from '../../run_steps_types';
+import { recordedActionTarget } from '../helpers/recorded_action_target';
 import { awaitPageBoundBinding } from '../helpers/runtime_binding';
 import { executeAtomicType } from '../../../snapshot';
 
@@ -13,12 +14,11 @@ export const executeBrowserType = async (
     step: Step<'browser.type'>,
     deps: RunStepsDeps,
     workspaceName: string,
+    context?: RunStepsExecutionContext,
 ): Promise<StepResult> => {
     const binding = await awaitPageBoundBinding(deps, workspaceName);
-    const result = await executeAtomicType(binding.page, {
-        nodeId: step.args.nodeId ?? step.resolve?.hint?.target?.nodeId,
-        selector: step.args.selector ?? step.resolve?.hint?.locator?.direct?.query,
-    }, step.args.text, {
+    const target = recordedActionTarget(binding.page, step, context);
+    const result = await executeAtomicType(binding.page, target, step.args.text, {
         timeoutMs: deps.config.waitPolicy.visibleTimeoutMs,
         delayMs: deps.config.humanPolicy.enabled
             ? pickDelayMs(
@@ -37,7 +37,7 @@ export const executeBrowserType = async (
             nodeId: result.nodeId,
             controlRef: result.controlRef,
             captureRevision: result.captureRevision,
-            resolver: 'snapshot-v2-canonical-locator',
+            resolver: result.replayFallback ? 'recorded-target-fallback' : 'snapshot-v2-canonical-locator',
         },
     };
 };

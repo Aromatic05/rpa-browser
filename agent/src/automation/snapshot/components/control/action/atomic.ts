@@ -1,10 +1,11 @@
 import type { Locator, Page } from 'playwright';
-import { resolveAtomicActionTarget } from './target';
+import { resolveAtomicActionTarget, type RecordedTargetCandidate } from './target';
 import type { AtomicActionFailure, AtomicActionResult } from '../model/contracts';
 
 export type AtomicTargetInput = {
     nodeId?: string;
     selector?: string;
+    getReplayCandidates?: () => readonly RecordedTargetCandidate[];
 };
 
 export const executeAtomicClick = async (
@@ -123,6 +124,7 @@ const runAction = async (
         nodeId: string;
         snapshot: { observation: { identity: { captureRevision: number } } };
         control?: { ref: string };
+        replayFallback?: true;
     },
     action: (locator: Locator) => Promise<void>,
 ): Promise<AtomicActionResult> => {
@@ -133,6 +135,7 @@ const runAction = async (
             nodeId: target.nodeId,
             controlRef: target.control?.ref,
             captureRevision: target.snapshot.observation.identity.captureRevision,
+            ...(target.replayFallback ? {replayFallback: true} : {}),
         };
     } catch (error) {
         return fromError(error);

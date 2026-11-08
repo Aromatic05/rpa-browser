@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import { captureControlSnapshot } from '../../../src/automation/snapshot';
+import type { Step } from '../../../src/automation/runner/steps/types';
 
 const executorPaths = {
     click: '../../../src/automation/runner/steps/executors/click.ts',
@@ -127,6 +128,113 @@ test('click fill type hover and targeted press_key execute through V2 canonical 
         } as never, deps as never, 'workspace');
         assert.equal(press.ok, true);
         assert.equal(await page.locator('#Name').getAttribute('data-last-key'), 'Enter');
+    } finally {
+        await browser.close();
+    }
+});
+
+test('recording replay uses agreeing exact hints only after the primary target fails', async () => {
+    const browser = await chromium.launch({headless: true});
+    try {
+        const page = await browser.newPage();
+        const {click, fill, type} = await importExecutors();
+        const deps = createDeps(page) as never;
+        const replay = {recordingReplay: true};
+        const clickStep: Step<'browser.click'> = {
+            id: 'save',
+            name: 'browser.click',
+            args: {selector: '#old-save'},
+            resolve: {hint: {target: {attrs: {'data-testid': 'save'}}, raw: {locatorCandidates: [
+                {kind: 'role', role: 'button', name: 'Save'},
+                {kind: 'testid', testId: 'save'},
+            ]}}},
+        };
+        await page.setContent('<button id="new-save" data-testid="save" onclick="this.dataset.clicked = true">Save</button>');
+        const direct = await click(clickStep, deps, 'workspace');
+        assert.equal(direct.error?.code, 'ERR_NOT_FOUND');
+        assert.equal(await page.locator('#new-save').getAttribute('data-clicked'), null);
+
+        const recovered = await click(clickStep, deps, 'workspace', replay);
+        assert.equal(recovered.ok, true, JSON.stringify(recovered.error));
+        assert.equal(recovered.data.resolver, 'recorded-target-fallback');
+        assert.equal(await page.locator('#new-save').getAttribute('data-clicked'), 'true');
+
+        const stale = await click({
+            ...clickStep, args: {nodeId: 'node-from-a-previous-document'},
+        }, deps, 'workspace', replay);
+        assert.equal(stale.ok, true, JSON.stringify(stale.error));
+        assert.equal(stale.data.resolver, 'recorded-target-fallback');
+
+        await page.setContent('<button id="old-save" onclick="this.dataset.clicked = true">Original</button><button>Save</button><button data-testid="save">Save</button>');
+        const exact = await click(clickStep, deps, 'workspace', replay);
+        assert.equal(exact.ok, true, JSON.stringify(exact.error));
+        assert.equal(exact.data.resolver, 'snapshot-v2-canonical-locator');
+        assert.equal(await page.locator('#old-save').getAttribute('data-clicked'), 'true');
+
+        await page.setContent('<label for="new-name">Customer</label><input id="new-name" placeholder="Full name">');
+        const resolve = {hint: {raw: {locatorCandidates: [
+            {kind: 'label', text: 'Customer'},
+            {kind: 'placeholder', text: 'Full name'},
+        ]}}};
+        const filled = await fill({
+            id: 'fill', name: 'browser.fill', args: {selector: '#old-name', value: 'Alice'}, resolve,
+        }, deps, 'workspace', replay);
+        assert.equal(filled.ok, true, JSON.stringify(filled.error));
+        const typed = await type({
+            id: 'type', name: 'browser.type', args: {selector: '#old-name', text: ' Smith'}, resolve,
+        }, deps, 'workspace', replay);
+        assert.equal(typed.ok, true, JSON.stringify(typed.error));
+        assert.equal(await page.locator('#new-name').inputValue(), 'Alice Smith');
+    } finally {
+        await browser.close();
+    }
+});
+
+test('recorded fallback rejects conflicting hints, duplicate names and non-visible targets', async () => {
+    const browser = await chromium.launch({headless: true});
+    try {
+        const page = await browser.newPage();
+        const {click} = await importExecutors();
+        const deps = createDeps(page) as never;
+        const step: Step<'browser.click'> = {
+            id: 'save',
+            name: 'browser.click',
+            args: {selector: '#old-save'},
+            resolve: {hint: {target: {attrs: {'data-testid': 'save'}}, raw: {locatorCandidates: [
+                {kind: 'role', role: 'button', name: 'Save'},
+                {kind: 'testid', testId: 'save'},
+            ]}}},
+        };
+        await page.setContent('<button class="old">First</button><button class="old">Second</button><button>Save</button>');
+        const ambiguousPrimary = await click({
+            ...step, args: {selector: '.old'},
+        }, deps, 'workspace', {recordingReplay: true});
+        assert.equal(ambiguousPrimary.error?.code, 'ERR_AMBIGUOUS');
+        assert.match(ambiguousPrimary.error?.message ?? '', /^selector/);
+
+        for (const markup of [
+            '<button data-testid="save">Archive</button><button>Save</button>',
+            '<button>Save</button><button>Save</button>',
+        ]) {
+            await page.setContent(markup);
+            await page.evaluate(() => document.addEventListener('click', () => {document.body.dataset.clicked = 'true';}, {once: true}));
+            const result = await click(step, deps, 'workspace', {recordingReplay: true});
+            assert.equal(result.error?.code, 'ERR_AMBIGUOUS');
+            assert.match(result.error?.message ?? '', /recorded fallback/);
+            assert.equal(await page.locator('body').getAttribute('data-clicked'), null);
+        }
+        await page.setContent('<button data-testid="save" hidden>Save</button>');
+        const hidden = await click(step, deps, 'workspace', {recordingReplay: true});
+        assert.equal(hidden.error?.code, 'ERR_NOT_FOUND');
+        assert.match(JSON.stringify(hidden.error?.details), /not visible/);
+
+        await page.setContent('<button data-testid="save" onclick="this.dataset.clicked = true">Unrelated action</button>');
+        const unverified = await click({
+            ...step,
+            resolve: {hint: {raw: step.resolve?.hint?.raw}},
+        }, deps, 'workspace', {recordingReplay: true});
+        assert.equal(unverified.error?.code, 'ERR_NOT_FOUND');
+        assert.equal(await page.getByTestId('save').getAttribute('data-clicked'), null);
     } finally {
         await browser.close();
     }

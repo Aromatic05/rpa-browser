@@ -1,16 +1,18 @@
 import type { Step, StepResult } from '../types';
-import type { RunStepsDeps } from '../../run_steps_types';
+import type { RunStepsDeps, RunStepsExecutionContext } from '../../run_steps_types';
+import { recordedActionTarget } from '../helpers/recorded_action_target';
 import { awaitPageBoundBinding } from '../helpers/runtime_binding';
 import { pickDelayMs, waitForHumanDelay } from '../helpers/delay';
-import { executeAtomicClick } from '../../../snapshot';
+import { executeAtomicClick, type AtomicActionSuccess } from '../../../snapshot';
 
 export const executeBrowserClick = async (
     step: Step<'browser.click'>,
     deps: RunStepsDeps,
     workspaceName: string,
+    context?: RunStepsExecutionContext,
 ): Promise<StepResult> => {
     const binding = await awaitPageBoundBinding(deps, workspaceName);
-    const target = targetFromStep(step);
+    const target = recordedActionTarget(binding.page, step, context);
     if (!target.nodeId && !target.selector) {
         return failed(step.id, 'ERR_BAD_ARGS', 'browser.click requires an exact nodeId or selector');
     }
@@ -42,19 +44,14 @@ export const executeBrowserClick = async (
     return success(step.id, result);
 };
 
-const targetFromStep = (step: Step<'browser.click'>) => ({
-    nodeId: step.args.nodeId ?? step.resolve?.hint?.target?.nodeId,
-    selector: step.args.selector ?? step.resolve?.hint?.locator?.direct?.query,
-});
-
-const success = (stepId: string, result: { nodeId: string; controlRef?: string; captureRevision: number }): StepResult => ({
+const success = (stepId: string, result: AtomicActionSuccess): StepResult => ({
     stepId,
     ok: true,
     data: {
         nodeId: result.nodeId,
         controlRef: result.controlRef,
         captureRevision: result.captureRevision,
-        resolver: 'snapshot-v2-canonical-locator',
+        resolver: result.replayFallback ? 'recorded-target-fallback' : 'snapshot-v2-canonical-locator',
     },
 });
 

@@ -268,7 +268,11 @@ export const replayRecording = async (req: ReplayRequest): Promise<ReplayResult>
             ? Math.floor(req.replayOptions.stepIntervalMs)
             : 0;
     const runOne = async (step: StepUnion): Promise<RunStepsResult> => {
-        const { pipe, checkpoint } = await runStepList(req.workspaceName, [step], req.deps, { stopOnError: true, stepResolves: req.stepResolves });
+        const { pipe, checkpoint } = await runStepList(req.workspaceName, [step], req.deps, {
+            stopOnError: true,
+            stepResolves: req.stepResolves,
+            recordingReplay: true,
+        });
         const items = pipe.items;
         const results = items.map((item) => ({ stepId: item.stepId, ok: item.ok, data: item.data, error: item.error }));
         return { ok: checkpoint.status !== 'failed' && results.every((item) => item.ok), results };
