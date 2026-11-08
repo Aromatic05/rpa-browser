@@ -582,7 +582,7 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
                     id: crypto.randomUUID(),
                     type,
                     workspaceName: replayWorkspaceName,
-                    payload: payloadData,
+                    payload: {...payloadData, replayId: action.id},
                     at: Date.now(),
                     traceId: action.traceId,
                 });
@@ -608,6 +608,7 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
             const replayOwner = Symbol(`play:${replayWorkspaceName}:${initialTabName}`);
             const replayTask = (async () => {
                 try {
+                    publishReplayEvent({type: 'progress', completed: 0, total: bundle.steps.length});
                     const replayed = await replayRecording({
                         workspaceName: replayWorkspaceName,
                         initialTabName,
@@ -632,16 +633,17 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
                         emitPlayEvent(ACTION_TYPES.PLAY_CANCELED, { workspaceName: replayWorkspaceName, tabName: initialTabName, results: replayed.results });
                         return;
                     }
-                    if (!replayed.ok && stopOnError) {
-                        const firstFailed = replayed.results.find((item) => !item.ok);
-                        const failedStep = bundle.steps.find((step) => step.id === firstFailed?.stepId);
-                        const failureDetails = isRecord(firstFailed?.error?.details)
-                            ? firstFailed.error.details
-                            : {};
+                    const firstFailed = replayed.results.find((item) => !item.ok);
+                    const failedIndex = firstFailed ? bundle.steps.findIndex((step) => step.id === firstFailed.stepId) : -1;
+                    const failedStep = failedIndex < 0 || replayed.error ? undefined : bundle.steps[failedIndex];
+                    const failureLocation = failedStep ? {failedStep: {index: failedIndex, name: failedStep.name}} : {};
+                    if (!replayed.ok && (stopOnError || replayed.error)) {
+                        const failure = replayed.error ?? firstFailed?.error;
+                        const failureDetails = isRecord(failure?.details) ? failure.details : {};
                         logError(services.log, '[RPA:play]', 'replay failed', {
                             workspaceName: replayWorkspaceName,
                             tabName: initialTabName,
-                            stepId: firstFailed?.stepId,
+                            stepId: failedStep?.id,
                             stepName: failedStep?.name,
                             confidence: failureDetails.confidence,
                             chosenPath: failureDetails.chosenPath,
@@ -655,19 +657,22 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
                             snapshotUrl: failureDetails.snapshotUrl,
                             attempts: failureDetails.attempts,
                             warnings: failureDetails.warnings,
-                            message: firstFailed?.error?.message || replayed.error?.message || 'replay failed',
-                            error: firstFailed?.error || replayed.error,
+                            message: failure?.message || 'replay failed',
+                            error: failure,
                         });
                         emitPlayEvent(ACTION_TYPES.PLAY_FAILED, {
                             workspaceName: replayWorkspaceName,
                             tabName: initialTabName,
                             code: ERROR_CODES.ERR_ASSERTION_FAILED,
-                            message: firstFailed?.error?.message || replayed.error?.message || 'replay failed',
-                            details: { results: replayed.results, failed: firstFailed?.error || replayed.error },
+                            message: failure?.message || 'replay failed',
+                            details: { results: replayed.results, failed: failure },
+                            ...failureLocation,
                         });
                         return;
                     }
-                    emitPlayEvent(ACTION_TYPES.PLAY_COMPLETED, { workspaceName: replayWorkspaceName, tabName: initialTabName, results: replayed.results });
+                    emitPlayEvent(ACTION_TYPES.PLAY_COMPLETED, {
+                        workspaceName: replayWorkspaceName, tabName: initialTabName, results: replayed.results, ...failureLocation,
+                    });
                 } catch (error) {
                     const message = error instanceof Error ? error.message : String(error);
                     logError(services.log, '[RPA:play]', 'replay crashed', {
@@ -702,6 +707,7 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
                         workspaceName: replayWorkspaceName,
                         tabName: initialTabName,
                         stepCount: bundle.steps.length,
+                        replayId: action.id,
                         stopOnError,
                         source: sourceRecordingName || 'unsaved',
                     },

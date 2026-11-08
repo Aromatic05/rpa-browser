@@ -1,5 +1,6 @@
 import type { Action } from '../shared/types.js';
 import { preparePanelAction, pushPanelLog, type PanelLogEntry } from './panel_actions.js';
+import { updatePlaybackStatus, type PlaybackStatus } from './playback_status.js';
 import {mountCheckpointRecorderUI} from './checkpoint_recorder_ui.js';
 import {mountEntityRulesBrowserUI} from './entity_rules_browser_ui.js';
 import type {EntityRuleSelection} from '../../../shared/entity-rules-contract/index.js';
@@ -79,7 +80,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         recordingName: '',
         lastReply: '' as string,
         logs: [] as PanelLogEntry[],
-        playEvents: [] as string[],
+        playbackByWorkspace: new Map<string, PlaybackStatus>(),
         replaySource: 'unsaved' as string,
         savedRecordings: [] as Array<{ recordingName: string; stepCount: number }>,
         unsavedStepCount: 0,
@@ -220,7 +221,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         const reply = await opts.onAction(prepared.type, prepared.payload, prepared.address);
         logAction(reply.type.endsWith('.failed') ? 'failed' : 'reply', reply);
         setOutput(reply);
-        interceptAction(reply, prepared.type);
+        interceptAction(reply, prepared.type, prepared.address?.workspaceName);
         renderActiveView();
         return reply;
     };
@@ -343,15 +344,7 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
         }
     };
 
-    const addPlayEvent = (action: Action) => {
-        const keys = ['play.started', 'play.step.started', 'play.step.finished', 'play.progress', 'play.completed', 'play.failed', 'play.canceled'];
-        if (!keys.includes(action.type)) {return;}
-        const payload = (action.payload && typeof action.payload === 'object') ? action.payload as Record<string, unknown> : {};
-        const summary = `${action.type} ${JSON.stringify(sanitizeForDisplay(payload)).slice(0, 120)}`;
-        state.playEvents = [...state.playEvents, summary].slice(-20);
-    };
-
-    const interceptAction = (action: Action, requestType?: string) => {
+    const interceptAction = (action: Action, requestType?: string, requestWorkspace?: string) => {
         const payload = (action.payload && typeof action.payload === 'object') ? action.payload as Record<string, unknown> : {};
         if (Array.isArray(payload.workspaces)) {
             state.workspaces = payload.workspaces as WorkspaceItem[];
@@ -537,7 +530,14 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
             void refreshTabs();
             void refreshRecordings();
         }
-        addPlayEvent(action);
+        if (action.type.startsWith('play.')) {
+            const workspaceName = action.workspaceName
+                || (typeof payload.workspaceName === 'string' ? payload.workspaceName : requestWorkspace);
+            if (workspaceName) {
+                const playback = updatePlaybackStatus(state.playbackByWorkspace.get(workspaceName), action, requestType);
+                if (playback) {state.playbackByWorkspace.set(workspaceName, playback);}
+            }
+        }
     };
 
     const createButton = (label: string, onClick: () => unknown, primary = false): HTMLButtonElement => {
@@ -745,15 +745,41 @@ export const mountFloatingUI = (opts: FloatingUIOptions): FloatingUIHandle => {
             createButton('Stop', () => sendPanelAction('play.stop', {})),
         );
         box.append(row);
-        const events = document.createElement('div');
-        events.className = 'list';
-        state.playEvents.slice().reverse().forEach((item) => {
-            const line = document.createElement('div');
-            line.className = 'hint';
-            line.textContent = item;
-            events.appendChild(line);
-        });
-        box.append(events);
+        const playback = state.playbackByWorkspace.get(state.activeWorkspaceName);
+        if (playback) {
+            const summary = document.createElement('div');
+            summary.className = 'list';
+            summary.dataset.playbackStatus = playback.phase;
+            summary.setAttribute('role', 'status');
+            const title = document.createElement('strong');
+            title.textContent = {
+                running: 'Playback in progress',
+                completed: playback.failure ? 'Playback completed with errors' : 'Playback completed',
+                failed: 'Playback stopped',
+                canceled: 'Playback canceled',
+                'start-failed': 'Could not start playback',
+            }[playback.phase];
+            const progress = document.createElement('div');
+            progress.className = 'hint';
+            progress.textContent = playback.total === undefined
+                ? `${playback.completed} steps processed`
+                : `${playback.completed} / ${playback.total} steps processed`;
+            summary.append(title);
+            if (playback.phase !== 'start-failed') {summary.append(progress);}
+            if (playback.current) {
+                const current = document.createElement('div');
+                current.textContent = `Running step ${playback.current.index + 1} ${playback.current.name}`.trim();
+                summary.append(current);
+            }
+            if (playback.failure) {
+                const {step, code, reason} = playback.failure;
+                const failure = document.createElement('div');
+                const label = step ? `Step ${step.index + 1} ${step.name}`.trim() : 'Playback error';
+                failure.textContent = `${label}${code ? ` (${code})` : ''}. ${reason}`;
+                summary.append(failure);
+            }
+            box.append(summary);
+        }
         root.append(box);
         return root;
     };

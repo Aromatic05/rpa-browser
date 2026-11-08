@@ -207,6 +207,31 @@ await log('inbound tab.setActive activates the mapped tab without focusing its d
     assert.deepEqual(calls, [['tabs.update', 11, { active: true }]]);
 });
 
+await log('replay events follow the origin tab when playback switches tabs', () => {
+    globalThis.chrome = createChromeMock();
+    const router = createCmdRouter({
+        sessionWorkspaceName: 'ws-bound',
+        wsClient: withActionReplies(async () => ({ok: true, data: {}})),
+        onRefresh: () => undefined,
+    });
+    router.restoreState({
+        tabs: [
+            {chromeTabNo: 11, bindingName: 'origin', lastUrl: '', windowId: 7, updatedAt: 1},
+            {chromeTabNo: 12, bindingName: 'active', lastUrl: '', windowId: 7, updatedAt: 1},
+        ],
+        bindings: [],
+        activeChromeTabNo: 12,
+        activeWindowId: 7,
+    });
+    const event = {
+        v: 1, id: 'event', type: 'play.failed', workspaceName: 'ws-bound',
+        payload: {replayId: 'run', tabName: 'origin'},
+    };
+    assert.equal(router.resolveActionTargetTabName(event), 11);
+    assert.equal(router.resolveActionTargetTabName({...event, workspaceName: 'other'}), null);
+    assert.equal(router.resolveActionTargetTabName({...event, payload: {...event.payload, tabName: 'gone'}}), 12);
+});
+
 await log('inbound workspace.setActive never focuses a desktop window', async () => {
     const calls = [];
     globalThis.chrome = createChromeMock();

@@ -279,10 +279,28 @@ test('saved recording recovers a renamed button and stops if its label becomes a
       return result.result;
     }, {timeout: 20_000}).toBe('idle');
   };
+  const developerMode = await sendControlEval({
+    source: `
+      const context = ctx.resolveWorkspace("default").tabs.getActiveTab().page.context();
+      const isExtension = (worker) => worker.url().startsWith('chrome-extension://');
+      const worker = context.serviceWorkers().find(isExtension)
+        || await context.waitForEvent('serviceworker', {predicate: isExtension, timeout: 5000});
+      await worker.evaluate(() => chrome.storage.local.set({rpaProductDevMode: true}));
+      return true;
+    `,
+  }, {endpoint: ep, timeoutMs: 7_000});
+  expect(developerMode.ok, developerMode.error?.message).toBe(true);
   const goto = await runStep(ep, ws, st('open-fixture', 'browser.goto', {
     url: `${baseURL}/step_actions/customer_profile.html`,
   }));
   mustOk(goto, 'open fixture');
+  await expect.poll(() => evaluate('open-play-panel', `
+    const root = document.querySelector('#rpa-floating-panel')?.shadowRoot;
+    if (!root) return false;
+    root.querySelector('.ball').click();
+    [...root.querySelectorAll('.tabs button')].find(button => button.textContent === 'Play').click();
+    return true;
+  `)).toBe(true);
   expect((await send('record.start')).type).toBe('record.start.result');
   mustOk(await runStep(ep, ws, st('record-click', 'browser.click', {selector: '#saveBtn'})), 'record save click');
   expect((await send('record.stop')).type).toBe('record.stop.result');
@@ -312,6 +330,10 @@ test('saved recording recovers a renamed button and stops if its label becomes a
   expect((await send('play.start', {recordingName, stopOnError: true})).type).toBe('play.started');
   await waitForIdle();
   expect(await evaluate('check-neither-clicked', "return document.querySelectorAll('[data-replayed=true]').length;")).toBe(0);
+  await expect.poll(() => evaluate('play-panel-failure', `
+    const root = document.querySelector('#rpa-floating-panel')?.shadowRoot;
+    return root?.querySelector('[data-playback-status="failed"]')?.textContent || '';
+  `)).toMatch(/Step \d+ browser\.click \(ERR_AMBIGUOUS\).*backup clues match more than one element/);
 });
 
 test.setTimeout(180_000);

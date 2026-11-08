@@ -98,6 +98,11 @@ export const createCmdRouter = (options: CmdRouterOptions): CmdRouter => {
 
     const resolveActionTargetTabName = (action: Action) => {
         if (action.workspaceName && action.workspaceName !== options.sessionWorkspaceName) {return null;}
+        if (action.type.startsWith('play.') && isRecord(action.payload)
+            && typeof action.payload.replayId === 'string' && typeof action.payload.tabName === 'string') {
+            const origin = state.findChromeTabNoByBindingName(action.payload.tabName);
+            if (origin !== null) {return origin;}
+        }
         const activeChromeTabNo = state.getActiveChromeTabNo();
         return typeof activeChromeTabNo === 'number' ? activeChromeTabNo : null;
     };

@@ -16,7 +16,7 @@ const result = (type: string, payload: Record<string, unknown>): Action => ({
     payload,
 });
 
-test('page rule and checkpoint actions stay scoped to the content page workspace', async () => {
+test('page actions and playback feedback stay scoped to their respective workspaces', async () => {
     const dom = new JSDOM('<!doctype html><html><body></body></html>', {url: 'https://example.test/orders'});
     const previous = {
         window: globalThis.window,
@@ -41,9 +41,11 @@ test('page rule and checkpoint actions stay scoped to the content page workspace
         },
     });
     const calls: Array<{type: string; address?: {workspaceName?: string; tabName?: string}}> = [];
+    let emit: (action: Action) => void = () => undefined;
     const handle = mountFloatingUI({
         tabName: 'page-tab',
         workspaceName: 'page-workspace',
+        onEvent: (handler) => {emit = handler;},
         onAction: async (type, _payload, address) => {
             calls.push({type, address});
             if (type === 'workspace.list') {
@@ -77,6 +79,21 @@ test('page rule and checkpoint actions stay scoped to the content page workspace
         assert.deepEqual(ruleCall?.address, {workspaceName: 'page-workspace'});
         const debugTabCall = calls.findLast((call) => call.type === 'tab.list');
         assert.deepEqual(debugTabCall?.address, {workspaceName: 'debug-workspace'});
+
+        const playTab = [...shadow.querySelectorAll<HTMLButtonElement>('.tabs button')].find((button) => button.textContent === 'Play');
+        assert.ok(playTab);
+        playTab.click();
+        const failedStep = {
+            index: 1, total: 3, stepName: 'browser.click', ok: false,
+            error: {code: 'ERR_AMBIGUOUS', details: {resolution: 'recorded-target-fallback'}},
+        };
+        emit({v: 1, id: 'foreign', type: 'play.step.finished', workspaceName: 'page-workspace', payload: {...failedStep, replayId: 'foreign-run'}});
+        assert.equal(shadow.querySelector('[data-playback-status]'), null);
+        emit({v: 1, id: 'step', type: 'play.step.finished', workspaceName: 'debug-workspace', payload: {...failedStep, replayId: 'local-run'}});
+        emit({v: 1, id: 'failure', type: 'play.failed', workspaceName: 'debug-workspace', payload: {replayId: 'local-run'}});
+        const playback = shadow.querySelector('[data-playback-status="failed"]');
+        assert.match(playback?.textContent ?? '', /Step 2 browser\.click \(ERR_AMBIGUOUS\)/);
+        assert.match(playback?.textContent ?? '', /backup clues match more than one element/);
 
         handle.onPageChanged();
         handle.setPageWorkspace('rebound-workspace');
