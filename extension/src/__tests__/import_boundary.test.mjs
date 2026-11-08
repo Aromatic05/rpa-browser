@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import {fileURLToPath} from 'node:url';
 import { send } from '../../dist/shared/send.js';
 
 const log = async (name, fn) => {
@@ -31,7 +32,7 @@ const hasActionsImport = (text) =>
     || text.includes('/actions/');
 
 await log('shared files do not import actions', async () => {
-    const files = walk(new URL('../shared', import.meta.url).pathname).filter((path) => path.endsWith('.ts'));
+    const files = walk(fileURLToPath(new URL('../shared', import.meta.url))).filter((path) => path.endsWith('.ts'));
     for (const file of files) {
         const src = fs.readFileSync(file, 'utf8');
         assert.equal(hasActionsImport(src), false, file);
@@ -39,7 +40,7 @@ await log('shared files do not import actions', async () => {
 });
 
 await log('content files do not import actions', async () => {
-    const files = walk(new URL('../content', import.meta.url).pathname).filter((path) => path.endsWith('.ts'));
+    const files = walk(fileURLToPath(new URL('../content', import.meta.url))).filter((path) => path.endsWith('.ts'));
     for (const file of files) {
         const src = fs.readFileSync(file, 'utf8');
         assert.equal(hasActionsImport(src), false, file);

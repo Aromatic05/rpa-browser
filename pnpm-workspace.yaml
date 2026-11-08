@@ -4,3 +4,4 @@ packages:
   - agent/debug/snapshot-viewer
 allowBuilds:
   esbuild: true
+shellEmulator: true

@@ -1,4 +1,3 @@
-import {spawn} from 'node:child_process';
 import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
@@ -8,6 +7,7 @@ import {sendControlEval} from '../../src/interface/control/client';
 import {startSecurityFauxModel, type SecurityFauxModelHandle} from './agent_security_faux_model';
 import type {Action} from '../../src/interface/actions/action_protocol';
 import {e2eRuntimePortEnv} from './e2e_runtime_env';
+import {e2eControlEndpoint, spawnE2eAgent, stopE2eAgent} from './e2e_agent_process';
 
 export const SECURITY_WORKSPACE = 'default';
 
@@ -174,13 +174,13 @@ export const startSecurityAgent = async (
     await fs.writeFile(path.join(defaultWorkflow, 'entity_rules', 'secret-rule', 'annotation.yaml'), ANNOTATION, 'utf8');
     await fs.writeFile(path.join(defaultWorkflow, 'entity_rules', 'secret-rule', 'page.yaml'), PAGE_RULE, 'utf8');
 
-    const endpoint = path.join(tempRoot, 'agent.sock');
+    const endpoint = e2eControlEndpoint(tempRoot);
     await fs.mkdir(userDataDir, {recursive: true});
 
     const traceFilePath = options.traceFilePath ?? path.join(tempRoot, 'trace', 'trace.jsonl');
     const keepTemp = process.env.RPA_E2E_KEEP_TEMP === '1';
 
-    const proc = spawn('pnpm', ['dev:headless'], {
+    const proc = spawnE2eAgent({
         cwd,
         env: {
             ...process.env,
@@ -203,7 +203,6 @@ export const startSecurityAgent = async (
             RUNNER_TRACE_FILE_ENABLED: 'true',
             RUNNER_TRACE_FILE_PATH: traceFilePath,
         },
-        stdio: 'pipe',
     });
 
     let stderr = '';
@@ -247,22 +246,12 @@ export const startSecurityAgent = async (
                 // best-effort
             }
             try {
-                if (!proc.killed) {
-                    proc.kill('SIGTERM');
-                    await new Promise<void>((resolve) => {
-                        const timer = setTimeout(resolve, 3000);
-                        proc.once('exit', () => {
-                            clearTimeout(timer);
-                            resolve();
-                        });
-                    });
-                }
-                if (proc.exitCode === null) {proc.kill('SIGKILL');}
+                await stopE2eAgent(proc);
             } finally {
                 if (keepTemp) {
                     console.log(`[security-e2e] temp kept at ${tempRoot}`);
                 } else {
-                    await fs.rm(tempRoot, {recursive: true, force: true}).catch(() => undefined);
+                    await fs.rm(tempRoot, {recursive: true, force: true, maxRetries: 5}).catch(() => undefined);
                 }
             }
         },

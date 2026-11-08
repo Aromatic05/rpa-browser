@@ -1,4 +1,3 @@
-import { spawn } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
@@ -6,6 +5,7 @@ import { sendControlEval } from '../../src/interface/control/client';
 import type { StepUnion } from '../../src/automation/runner/steps/types';
 import type { Action } from '../../src/interface/actions/action_protocol';
 import {e2eRuntimePortEnv} from './e2e_runtime_env';
+import {e2eControlEndpoint, spawnE2eAgent, stopE2eAgent} from './e2e_agent_process';
 
 export type AgentHandle = { endpoint: string; workflowRoot: string; close: () => Promise<void> };
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -33,13 +33,16 @@ export const startAgent = async (opts?: { headed?: boolean; workflowFixtureDir?:
       errorOnExist: true,
     });
   }
-  const endpoint = path.join(tempRoot, 'agent.sock');
+  const endpoint = e2eControlEndpoint(tempRoot);
   const keepTemp = process.env.RPA_E2E_KEEP_TEMP === '1';
 
-  const proc = spawn('pnpm', [headed ? 'dev' : 'dev:headless'], {
-    cwd: path.resolve(process.cwd()),
-    env: { ...process.env, ...e2eRuntimePortEnv(), RPA_CONTROL_EVAL: '1', RPA_CONTROL_ENDPOINT: endpoint, RPA_USER_DATA_DIR: userDataDir, RPA_WORKFLOW_ROOT: workflowRoot },
-    stdio: 'pipe',
+  const proc = spawnE2eAgent({
+    cwd: process.cwd(),
+    headed,
+    env: {
+      ...process.env, ...e2eRuntimePortEnv(), RPA_CONTROL_EVAL: '1', RPA_CONTROL_ENDPOINT: endpoint,
+      RPA_USER_DATA_DIR: userDataDir, RPA_WORKFLOW_ROOT: workflowRoot,
+    },
   });
 
   let stderr = '';
@@ -57,21 +60,21 @@ export const startAgent = async (opts?: { headed?: boolean; workflowFixtureDir?:
     throw new Error(`agent startup timeout after 30000ms: control endpoint not ready ${stderr}`);
   };
 
-  await waitAgentReady();
-
-  return {
-    endpoint,
-    workflowRoot,
-    close: async () => {
-      try {
-        if (!proc.killed) { proc.kill('SIGTERM'); await new Promise<void>((r) => { const t = setTimeout(r, 2000); proc.once('exit', () => { clearTimeout(t); r(); }); }); }
-        if (proc.exitCode === null) proc.kill('SIGKILL');
-      } finally {
-        if (keepTemp) console.log(`[e2e] temp kept at ${tempRoot}`);
-        else await fs.rm(tempRoot, { recursive: true, force: true });
-      }
-    },
+  const close = async () => {
+    try {
+      await stopE2eAgent(proc);
+    } finally {
+      if (keepTemp) console.log(`[e2e] temp kept at ${tempRoot}`);
+      else await fs.rm(tempRoot, { recursive: true, force: true, maxRetries: 5 });
+    }
   };
+  try {
+    await waitAgentReady();
+  } catch (error) {
+    await close();
+    throw error;
+  }
+  return { endpoint, workflowRoot, close };
 };
 
 export const runStep = async (ep: string, ws: string, step: StepUnion) => {
