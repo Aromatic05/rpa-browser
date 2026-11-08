@@ -17,7 +17,7 @@ export const executeBrowserType = async (
     context?: RunStepsExecutionContext,
 ): Promise<StepResult> => {
     const binding = await awaitPageBoundBinding(deps, workspaceName);
-    const target = recordedActionTarget(binding.page, step, context);
+    const target = recordedActionTarget(step, context);
     const result = await executeAtomicType(binding.page, target, step.args.text, {
         timeoutMs: deps.config.waitPolicy.visibleTimeoutMs,
         delayMs: deps.config.humanPolicy.enabled

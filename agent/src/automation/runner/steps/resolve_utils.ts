@@ -79,6 +79,7 @@ const hasUsableHint = (hint?: ResolveHint): boolean => {
         ));
     return Boolean(
         hint.target?.nodeId
+            || hint.raw?.framePath !== undefined
             || hint.target?.primaryDomId
             || (hint.target?.sourceDomIds && hint.target.sourceDomIds.length > 0)
             || hint.raw?.selector

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { chromium } from 'playwright';
 import { captureControlSnapshot } from '../../../src/automation/snapshot';
 import type { Step } from '../../../src/automation/runner/steps/types';
+import {captureRecordedFramePath} from '../../../src/automation/snapshot/components/control/action/recorded_frame';
 
 const executorPaths = {
     click: '../../../src/automation/runner/steps/executors/click.ts',
@@ -277,6 +278,93 @@ test('select replay recovers a renamed dropdown and rejects ambiguous alternativ
         const missingOption = await select({...step, args: {...step.args, values: ['unknown']}}, deps, 'workspace', replay);
         assert.equal(missingOption.error?.code, 'ERR_NOT_FOUND');
         assert.match(missingOption.error?.message ?? '', /option not found/);
+    } finally {
+        await browser.close();
+    }
+});
+
+test('nested iframe replay uses recorded host identities and refuses missing or changed frames', async () => {
+    const browser = await chromium.launch({headless: true});
+    try {
+        const page = await browser.newPage();
+        await page.setContent('<button id="old" onclick="this.dataset.hit = true">Confirm</button><iframe id="outer"></iframe>');
+        const outer = page.frameLocator('#outer');
+        await outer.locator('body').evaluate((body) => {
+            const inner = document.createElement('iframe');
+            inner.id = 'inner';
+            inner.srcdoc = '<button id="new" onclick="this.dataset.hit = true">Confirm</button>';
+            body.append(inner);
+        });
+        const button = outer.frameLocator('#inner').locator('#new');
+        await button.waitFor();
+        const inner = page.frames().find((frame) => frame.url() === 'about:srcdoc');
+        assert.ok(inner);
+        const framePath = await captureRecordedFramePath(inner);
+        assert.deepEqual(framePath, [{id: 'outer', origin: 'about:blank'}, {id: 'inner', origin: 'about:srcdoc'}]);
+        const step: Step<'browser.click'> = {
+            id: 'confirm', name: 'browser.click', args: {selector: '#old'},
+            resolve: {hint: {raw: {framePath, locatorCandidates: [{kind: 'role', role: 'button', name: 'Confirm'}]}}},
+        };
+        const {click} = await importExecutors();
+        const deps = createDeps(page) as never;
+        const replay = {recordingReplay: true};
+        const result = await click(step, deps, 'workspace', replay);
+        assert.equal(result.ok, true, JSON.stringify(result.error));
+        assert.equal(result.data.resolver, 'recorded-target-fallback');
+        assert.equal(await button.getAttribute('data-hit'), 'true');
+        assert.equal(await page.locator('#old').getAttribute('data-hit'), null);
+
+        await inner.locator('body').evaluate((body) => {
+            body.insertAdjacentHTML('beforeend', '<label for="new-level">Level</label><select id="new-level"><option>Basic</option><option>Gold</option></select>');
+        });
+        const {select} = await importExecutors();
+        const selected = await select({
+            id: 'level', name: 'browser.select_option',
+            args: {selector: '#old-level', kind: 'native_select', values: ['Gold']},
+            resolve: {hint: {raw: {framePath, locatorCandidates: [{kind: 'label', text: 'Level'}]}}},
+        } satisfies Step<'browser.select_option'>, deps, 'workspace', replay);
+        assert.equal(selected.ok, true, JSON.stringify(selected.error));
+        assert.equal(await inner.locator('#new-level').inputValue(), 'Gold');
+
+        await outer.locator('#inner').evaluate((host) => {host.removeAttribute('srcdoc');});
+        await outer.frameLocator('#inner').locator('body').waitFor();
+        const changed = await click(step, deps, 'workspace', replay);
+        assert.equal(changed.error?.details?.frameIssue, 'changed');
+        await outer.locator('#inner').evaluate((host) => {host.remove();});
+        const missing = await click(step, deps, 'workspace', replay);
+        assert.equal(missing.error?.details?.frameIssue, 'missing');
+        assert.equal(await page.locator('#old').getAttribute('data-hit'), null);
+    } finally {
+        await browser.close();
+    }
+});
+
+test('a separate-process iframe with incomplete control facts never fills an outer-page decoy', async () => {
+    const browser = await chromium.launch({headless: true, args: ['--site-per-process']});
+    try {
+        const page = await browser.newPage();
+        await page.route('https://outer.test/**', async (route) => {
+            await route.fulfill({contentType: 'text/html', body:
+                '<input id="old"><iframe id="details" src="https://embedded.test/form"></iframe>'});
+        });
+        await page.route('https://embedded.test/**', async (route) => {
+            await route.fulfill({contentType: 'text/html', body:
+                '<label for="new">Order code</label><input id="new">'});
+        });
+        await page.goto('https://outer.test/');
+        const frame = page.frames().find((item) => item.url() === 'https://embedded.test/form');
+        assert.ok(frame);
+        const framePath = await captureRecordedFramePath(frame);
+        assert.deepEqual(framePath, [{id: 'details', origin: 'https://embedded.test'}]);
+        const {fill} = await importExecutors();
+        const result = await fill({
+            id: 'fill', name: 'browser.fill', args: {selector: '#old', value: 'ABC-123'},
+            resolve: {hint: {raw: {framePath, locatorCandidates: [{kind: 'label', text: 'Order code'}]}}},
+        } satisfies Step<'browser.fill'>, createDeps(page) as never, 'workspace', {recordingReplay: true});
+        assert.equal(result.error?.code, 'ERR_UNRESOLVED');
+        assert.match(result.error?.message ?? '', /required capability/);
+        assert.equal(await frame.locator('#new').inputValue(), '');
+        assert.equal(await page.locator('#old').inputValue(), '');
     } finally {
         await browser.close();
     }

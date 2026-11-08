@@ -1,8 +1,9 @@
-import type { Locator, Page } from 'playwright';
+import type { Frame, Locator, Page } from 'playwright';
 import { resolveExecutableLocator } from '../../../indexes/locator/execute';
 import { captureControlSnapshot, captureLocatorExecutionSnapshot } from '../capture/browser';
-import { captureSelectorTarget } from './selector_capture';
+import { captureLocatorTarget, captureSelectorTarget } from './selector_capture';
 import { captureRecordedFallback, type RecordedTargetOptions } from './recorded_fallback';
+import { recordedFrameFailure, resolveRecordedFrame, verifyRecordedFrameTarget } from './recorded_frame';
 import { resolveControlRef } from '../assembly/build';
 import type {
     ControlComponent,
@@ -21,12 +22,22 @@ type SelectTarget =
     | {ok: true; snapshot: ControlSnapshot; control: ControlComponent; replayFallback?: true}
     | {ok: false; error: SelectFailure};
 
-const captureSelectTarget = async (page: Page, request: SelectOptionRequest): Promise<SelectTarget> => {
-    const selectorCapture = request.selector ? await captureSelectorTarget(page, request.selector) : undefined;
+const captureSelectTarget = async (
+    page: Page, request: SelectOptionRequest, options: RecordedTargetOptions, frame?: Frame,
+): Promise<SelectTarget> => {
+    if (frame && !request.selector) {return {ok: false, error: failure('ERR_NOT_FOUND', 'recorded iframe has no primary selector')};}
+    if (frame && request.selector?.includes('>>')) {return {ok: false, error: recordedFrameFailure('unsupported')};}
+    const selectorCapture = request.selector
+        ? frame ? await captureLocatorTarget(page, frame.locator(request.selector), {}) : await captureSelectorTarget(page, request.selector)
+        : undefined;
     if (selectorCapture && !selectorCapture.ok) {
         return {ok: false, error: failure(selectorCapture.code as SelectFailure['code'], selectorCapture.message, selectorCapture.details)};
     }
     const snapshot = selectorCapture?.snapshot ?? await captureControlSnapshot(page);
+    if (frame && selectorCapture) {
+        const failure = await verifyRecordedFrameTarget(page, frame, options.framePath ?? [], snapshot.observation, selectorCapture.nodeId);
+        if (failure) {return {ok: false, error: failure};}
+    }
     const target = await resolveRequestedControl(snapshot, request, selectorCapture?.nodeId);
     return target.ok ? {ok: true, snapshot, control: target.control} : target;
 };
@@ -36,11 +47,18 @@ const captureSelectTargetWithFallback = async (
     request: SelectOptionRequest,
     options: ExecuteSelectOptionOptions,
 ): Promise<SelectTarget> => {
-    const exact = await captureSelectTarget(page, request);
+    let frame: Frame | undefined;
+    if (options.framePath !== undefined) {
+        if (request.controlRef || request.nodeId) {return {ok: false, error: recordedFrameFailure('unsupported')};}
+        const scope = await resolveRecordedFrame(page, options.framePath);
+        if (!scope.ok) {return {ok: false, error: scope};}
+        frame = scope.frame;
+    }
+    const exact = await captureSelectTarget(page, request, options, frame);
     if (exact.ok || request.controlRef || (request.kind !== 'native_select' && request.kind !== 'custom_select')) {
         return exact;
     }
-    const fallback = await captureRecordedFallback(page, options, exact.error);
+    const fallback = await captureRecordedFallback(page, options, exact.error, frame);
     if (!fallback) {return exact;}
     if (!fallback.ok) {return {ok: false, error: fallback};}
     const target = await resolveRequestedControl(fallback.snapshot, {...request, nodeId: fallback.nodeId, selector: undefined});

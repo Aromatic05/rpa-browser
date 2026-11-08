@@ -91,6 +91,7 @@ export type RecordedEventType =
     | 'copy';
 
 export type RecorderEvent = {
+    framePath?: import('../../snapshot/components/control/action/recorded_frame').RecordedFramePath | null;
     tabName: string;
     ts: number;
     type: RecordedEventType;
@@ -141,7 +142,7 @@ export type RecorderEvent = {
 export const installRecorder = async (
     page: Page,
     tabName: string,
-    onEvent: (event: RecorderEvent) => void | Promise<void>,
+    onEvent: (event: RecorderEvent, frame: import('playwright').Frame) => void | Promise<void>,
 ): Promise<void> => {
     if (installedPages.has(page)) {return;}
     installedPages.add(page);
@@ -150,27 +151,23 @@ export const installRecorder = async (
 
     try {
         await page.exposeBinding(bindingName, (source, event: RecorderEvent) => {
-            void onEvent({
+            return onEvent({
                 ...event,
+                framePath: undefined,
                 pageUrl: source.page.url() || null,
-            });
+            }, source.frame);
         });
     } catch {
         // ignore if binding already exists
     }
 
-    await page.addInitScript({ content: `window.__rpa_recorder_binding = ${JSON.stringify(bindingName)};` });
-    await page.addInitScript({ content: `window.__rpa_tab_token = ${JSON.stringify(tabName)};` });
-    await page.addInitScript({ path: payloadBundlePath });
+    const bootstrap = `window.__rpa_recorder_binding = ${JSON.stringify(bindingName)};\n`
+        + `window.__rpa_tab_token = ${JSON.stringify(tabName)};\n`
+        + fs.readFileSync(payloadBundlePath, 'utf8');
+    await page.addInitScript({content: bootstrap});
     for (const frame of page.frames()) {
         try {
-            await frame.evaluate((name) => {
-                (window as Window & { __rpa_recorder_binding?: string }).__rpa_recorder_binding = name;
-            }, bindingName);
-            await frame.evaluate((name) => {
-                (window as Window & { __rpa_tab_token?: string }).__rpa_tab_token = name;
-            }, tabName);
-            await frame.addScriptTag({ path: payloadBundlePath });
+            await frame.addScriptTag({content: bootstrap});
         } catch {
             // ignore if frame is not ready or cross-origin
         }

@@ -72,7 +72,7 @@ export const persistRecordedStep = (
     const candidate = normalizeStepResolve(enhancement ? {
         hint: enhancement.resolveHint,
         policy: enhancement.resolvePolicy,
-    } : undefined);
+    } : step.resolve?.hint?.raw?.framePath !== undefined ? step.resolve : undefined);
     if (candidate && isValidStepResolve(candidate) && CHECKPOINT_RESOLVE_STEPS.has(step.name)) {
         const resolveId = `recorded-${index + 1}`;
         args.resolveId = resolveId;

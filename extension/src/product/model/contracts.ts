@@ -249,7 +249,7 @@ export type WorkspaceProductView = {
         recordingName?: string;
         completed: number;
         total: number;
-        failure?: {index?: number; code?: string; fallbackConflict?: boolean};
+        failure?: {index?: number; code?: string; fallbackConflict?: boolean; frameIssue?: import('../../shared/recorded_frame_feedback.js').RecordedFrameIssue};
     };
     playbackPending?: boolean;
     playbackError?: string;

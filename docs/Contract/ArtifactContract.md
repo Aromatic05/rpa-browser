@@ -74,11 +74,15 @@ agent/.artifacts/workflows/<scene>/
 
 - 主写路径：`recordings/<recording-name>/`
 - 默认录制名：`recording-YYYYMMDD-HHmmss`
-- `record.save` 当前默认 `includeStepResolve: false`
+- `record.save` 当前默认 `includeStepResolve: false`。iframe 步骤仍保存来源范围，避免回放落到外层页面。
 
 `steps.yaml` 是 core steps，`step_resolve.yaml` 是 sidecar；不得混写运行时字段。
 
-录制回放的点击、填充、逐字输入和下拉选择优先使用主定位。主定位找不到元素或已失效时，可用录制保存的精确角色与名称、标签、占位文本或目标自身的 `data-testid` 在主文档定位。所有命中的线索须指向同一个可见元素，且通过原有控件校验；冲突返回 `ERR_AMBIGUOUS`，该步不执行。保存时没有保留定位线索的旧录制沿用原有行为。
+录制回放的点击、填充、逐字输入和下拉选择优先使用主定位。主定位找不到元素或已失效时，可用录制保存的精确角色与名称、标签、占位文本或目标自身的 `data-testid` 恢复定位。所有命中的线索须指向同一个可见元素，且通过原有控件校验；冲突返回 `ERR_AMBIGUOUS`，该步不执行。
+
+新录制的 iframe 目标保存每层宿主的唯一 ID 和来源（HTTP(S) origin、`about:srcdoc` 或 `about:blank`）。主定位和备用定位都限定在核对过的 iframe 内，最多八层。ID 缺失或重复、来源改变、不可识别的 iframe，以及已知处于 iframe 内但缺少路径的旧录制均会停止该步。iframe 内的点击、填充、逐字输入、带目标的按键和下拉选择支持此路径；其他 iframe 动作会拒绝执行。
+
+跨站 iframe 仍须通过原有控件校验。Chromium 的独立渲染进程若无法提供完整的控件信息，回放会停止该步，不会退回外层页面。
 
 ### 6. checkpoints 规则
 
@@ -145,7 +149,7 @@ tabs:
 
 ## 限制
 
-- `record.save` 在 `includeStepResolve` 未显式开启时不会写 `step_resolve.yaml`。
+- `record.save` 在 `includeStepResolve` 未显式开启时仅为需要保留 iframe 来源的步骤写 `step_resolve.yaml`。
 - `expectedTabs` 当前不做多 tab 全量校验。
 - `records[]`、`checkpoints[]` 在 manifest 中声明后会严格检查目标文件存在。
 

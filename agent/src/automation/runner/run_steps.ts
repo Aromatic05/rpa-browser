@@ -26,6 +26,7 @@ import type { DslEntityRulesResolver, DslResolveResolver } from '../dsl/link';
 import type { Workflow } from '../workflow';
 import { resolveStepEntityRulesExecution, type WorkspaceEntityRulesProvider } from '../snapshot/rules/runtime';
 import { summarizeStepArgs } from './step_event_summary';
+import { recordedFrameFailure } from '../snapshot/components/control/action/recorded_frame';
 
 export type {
     Checkpoint,
@@ -67,6 +68,7 @@ export const createConsoleStepSink = (prefix = '[step]'): StepSink => ({
 });
 
 let defaultDeps: RunStepsDeps | null = null;
+const FRAME_ACTIONS = new Set(['browser.click', 'browser.fill', 'browser.type', 'browser.select_option', 'browser.press_key']);
 
 const queueWaiters = new WeakMap<StepsQueue, Set<() => void>>();
 const signalWaiters = new WeakMap<SignalChannel, Set<() => void>>();
@@ -199,6 +201,11 @@ export const executeStepWithRuntimeContracts = async (
     }
 
     const fn = executors[step.name];
+    const hint = runtimeStep.step.resolve?.hint;
+    if ((hint?.raw?.framePath !== undefined || (options.recordingReplay && hint?.locator?.scope?.kind === 'iframe'))
+        && !FRAME_ACTIONS.has(step.name)) {
+        return {stepId: step.id, ok: false, error: recordedFrameFailure('unsupported')};
+    }
     const mayMutatePage = shouldMarkPageSessionDirtyByStep(runtimeStep.step.name, runtimeStep.step.args);
     try {
         return await fn(runtimeStep.step, deps, workspaceName, {
@@ -600,10 +607,11 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
             let finalResult = result;
             let nextStatus: RunStatus | undefined;
             const details = result.error?.details;
-            const fallbackConflict = req.recordingReplay && result.error?.code === 'ERR_AMBIGUOUS'
+            const unsafeReplayRecovery = req.recordingReplay
                 && details !== null && typeof details === 'object'
-                && 'resolution' in details && details.resolution === 'recorded-target-fallback';
-            if (!result.ok && !fallbackConflict) {
+                && 'resolution' in details && (details.resolution === 'recorded-frame'
+                    || (result.error?.code === 'ERR_AMBIGUOUS' && details.resolution === 'recorded-target-fallback'));
+            if (!result.ok && !unsafeReplayRecovery) {
                 const checkpointAttempts = new Map<string, number>();
                 let failedResult = result;
                 while (!failedResult.ok) {

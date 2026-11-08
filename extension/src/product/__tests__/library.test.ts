@@ -98,6 +98,11 @@ test('Library starts and stops playback and explains a failed action', () => {
             failure: {index: 1, code: 'ERR_AMBIGUOUS', fallbackConflict: true},
         }});
         assert.match(bodyText(fixture), /Action 2: The backup clues matched more than one element/);
+        fixture.handle.setView({...view, playback: {
+            phase: 'failed', completed: 2, total: 2,
+            failure: {index: 1, code: 'ERR_AMBIGUOUS', frameIssue: 'ambiguous'},
+        }});
+        assert.match(bodyText(fixture), /Action 2: More than one embedded page matches the recording/);
     } finally {
         fixture.cleanup();
     }

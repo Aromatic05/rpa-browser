@@ -31,7 +31,8 @@ export const isFillLikeEvent = (event: RecorderEvent): boolean => {
         && typeof event.value === 'string';
 };
 
-export const fillEventKey = (tabName: string, selector: string): string => `${tabName}::${selector}`;
+export const fillEventKey = (tabName: string, selector: string, framePath?: RecorderEvent['framePath']): string =>
+    JSON.stringify([tabName, framePath ?? [], selector]);
 
 export const queuePendingFillEvent = (
     state: RecordingState,
@@ -47,7 +48,7 @@ export const queuePendingFillEvent = (
         pending = new Map();
         state.pendingFillEvents.set(recordingToken, pending);
     }
-    pending.set(fillEventKey(tabName, selector), { event: { ...event, selector }, tabName, recordSeq });
+    pending.set(fillEventKey(tabName, selector, event.framePath), { event: { ...event, selector }, tabName, recordSeq });
 };
 
 export const flushPendingFillEvents = (

@@ -1,8 +1,9 @@
-import type { Locator, Page } from 'playwright';
+import type { Frame, Locator, Page } from 'playwright';
 import { resolveExecutableLocator } from '../../../indexes/locator/execute';
 import { captureControlSnapshot, captureLocatorExecutionSnapshot } from '../capture/browser';
-import { captureSelectorTarget } from './selector_capture';
+import { captureLocatorTarget, captureSelectorTarget } from './selector_capture';
 import { captureRecordedFallback, type RecordedTargetOptions } from './recorded_fallback';
+import { recordedFrameFailure, resolveRecordedFrame, verifyRecordedFrameTarget } from './recorded_frame';
 import type {
     AtomicActionFailure,
     AtomicActionTargetRequest,
@@ -28,9 +29,15 @@ export const resolveAtomicActionTarget = async (
     page: Page,
     request: AtomicActionTargetRequest & RecordedTargetOptions,
 ): Promise<AtomicActionTargetResolution> => {
-    const exact = await resolveExactTarget(page, request);
+    let frame: Frame | undefined;
+    if (request.framePath !== undefined) {
+        const scope = await resolveRecordedFrame(page, request.framePath);
+        if (!scope.ok) {return {ok: false, error: scope};}
+        frame = scope.frame;
+    }
+    const exact = await resolveExactTarget(page, request, frame);
     if (exact.ok) {return exact;}
-    const captured = await captureRecordedFallback(page, request, exact.error);
+    const captured = await captureRecordedFallback(page, request, exact.error, frame);
     if (!captured) {return exact;}
     if (!captured.ok) {return {ok: false, error: captured};}
 
@@ -43,8 +50,18 @@ export const resolveAtomicActionTarget = async (
 
 const resolveExactTarget = async (
     page: Page,
-    request: AtomicActionTargetRequest,
+    request: AtomicActionTargetRequest & RecordedTargetOptions,
+    frame?: Frame,
 ): Promise<AtomicActionTargetResolution> => {
+    if (frame) {
+        if (!request.selector) {return failed('ERR_NOT_FOUND', 'recorded iframe has no primary selector');}
+        if (request.selector.includes('>>')) {return {ok: false, error: recordedFrameFailure('unsupported')};}
+        const captured = await captureLocatorTarget(page, frame.locator(request.selector), {});
+        if (!captured.ok) {return {ok: false, error: captured};}
+        const failure = await verifyRecordedFrameTarget(page, frame, request.framePath ?? [], captured.snapshot.observation, captured.nodeId);
+        if (failure) {return {ok: false, error: failure};}
+        return await resolveCanonicalTarget(page, captured.snapshot, captured.nodeId, request.requiredCapabilities ?? []);
+    }
     if (!request.nodeId && !request.selector) {
         return failed('ERR_BAD_ARGS', 'nodeId or selector is required');
     }

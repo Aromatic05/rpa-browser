@@ -136,6 +136,7 @@ export type ResolveHint = {
         };
     };
     raw?: {
+        framePath?: import('../../snapshot/components/control/action/recorded_frame').RecordedFramePath | null;
         selector?: string;
         locatorCandidates?: Array<{
             kind: string;

@@ -4,6 +4,7 @@
  * Never renders raw DSL/YAML/step JSON; never presents Step as an asset.
  */
 import { isActiveActivity } from '../model/projection.js';
+import { recordedFrameFeedback } from '../../shared/recorded_frame_feedback.js';
 import {
     button,
     card,
@@ -57,8 +58,8 @@ const renderPlayback = (ctx: SurfaceContext): HTMLElement | undefined => {
         contents.push(el('strong', undefined, [title]));
         contents.push(hint(`${playback.recordingName ?? 'Unsaved recording'} · ${playback.completed} / ${playback.total} actions processed`));
         if (playback.failure) {
-            const {index, code, fallbackConflict} = playback.failure;
-            const reason = code === 'ERR_AMBIGUOUS'
+            const {index, code, fallbackConflict, frameIssue} = playback.failure;
+            const reason = frameIssue ? recordedFrameFeedback(frameIssue) : code === 'ERR_AMBIGUOUS'
                 ? fallbackConflict ? 'The backup clues matched more than one element.' : 'The target matched more than one element.'
                 : code === 'ERR_NOT_FOUND' || code === 'ERR_STALE' || code === 'ERR_UNRESOLVED'
                     ? 'The recorded target could not be found on the current page.'

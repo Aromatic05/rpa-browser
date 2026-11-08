@@ -46,6 +46,7 @@ import type { ExecutionBindings } from '../runtime/execution/bindings';
 import type { PageRegistry } from '../runtime/browser/page_registry';
 import type { Logger } from '../../platform/logging/logger';
 import { getLogger } from '../../platform/logging/logger';
+import type { RecordedFrameIssue } from '../snapshot/components/control/action/recorded_frame';
 
 const RECORDING_DUMMY: WorkflowDummy = { kind: 'recording' };
 
@@ -90,7 +91,7 @@ export type RecordingPlaybackView = {
     phase: 'running' | 'completed' | 'failed' | 'canceled';
     completed: number;
     total: number;
-    failure?: {index?: number; name?: string; code?: string; fallbackConflict?: boolean};
+    failure?: {index?: number; name?: string; code?: string; fallbackConflict?: boolean; frameIssue?: RecordedFrameIssue};
 };
 
 const requireWorkspaceName = (action: Action, type: string): string => {
@@ -680,6 +681,9 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
                                 ...(failedStep ? {index: failedIndex, name: failedStep.name} : {}),
                                 code: failure?.code,
                                 fallbackConflict: failureDetails.resolution === 'recorded-target-fallback',
+                                frameIssue: failureDetails.frameIssue === 'missing' || failureDetails.frameIssue === 'ambiguous'
+                                    || failureDetails.frameIssue === 'changed' || failureDetails.frameIssue === 'unsupported'
+                                    ? failureDetails.frameIssue : undefined,
                             },
                         });
                         logError(services.log, '[RPA:play]', 'replay failed', {

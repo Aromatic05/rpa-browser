@@ -12,8 +12,8 @@ export const executeBrowserClick = async (
     context?: RunStepsExecutionContext,
 ): Promise<StepResult> => {
     const binding = await awaitPageBoundBinding(deps, workspaceName);
-    const target = recordedActionTarget(binding.page, step, context);
-    if (!target.nodeId && !target.selector) {
+    const target = recordedActionTarget(step, context);
+    if (!target.nodeId && !target.selector && target.framePath === undefined) {
         return failed(step.id, 'ERR_BAD_ARGS', 'browser.click requires an exact nodeId or selector');
     }
 

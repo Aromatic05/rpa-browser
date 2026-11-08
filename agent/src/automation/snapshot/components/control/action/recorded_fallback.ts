@@ -1,10 +1,12 @@
-import type {Locator, Page} from 'playwright';
+import type {Frame, Locator, Page} from 'playwright';
 import type {ControlSnapshot} from '../model/contracts';
 import {captureLocatorTarget} from './selector_capture';
+import {matchesRecordedFramePath, verifyRecordedFrameTarget, type RecordedFramePath} from './recorded_frame';
 
 export type RecordedTargetCandidate = {kind: string; locator: Locator};
 export type RecordedTargetOptions = {
-    getReplayCandidates?: () => readonly RecordedTargetCandidate[];
+    framePath?: RecordedFramePath | null;
+    getReplayCandidates?: (context: Page | Frame) => readonly RecordedTargetCandidate[];
 };
 
 type RecordedFallback =
@@ -20,9 +22,10 @@ export const captureRecordedFallback = async (
     page: Page,
     options: RecordedTargetOptions,
     primary: {code: string; message: string; details?: Record<string, unknown>},
+    frame?: Frame,
 ): Promise<RecordedFallback | undefined> => {
     if (primary.code !== 'ERR_NOT_FOUND' && primary.code !== 'ERR_STALE') {return undefined;}
-    const candidates = options.getReplayCandidates?.();
+    const candidates = options.getReplayCandidates?.(frame ?? page);
     if (!candidates?.length) {return undefined;}
     const details = {
         resolution: 'recorded-target-fallback',
@@ -46,9 +49,10 @@ export const captureRecordedFallback = async (
             details: {...primary.details, ...details, fallbackCode: captured.code, fallbackReason: captured.message},
         };
     }
-    const observation = captured.snapshot.observation;
-    const scopeId = observation.nodes[captured.nodeId].scopeId;
-    if (!observation.scopes.rootScopeIds.includes(scopeId) || observation.scopes.scopes[scopeId].kind !== 'document') {
+    if (frame) {
+        const failure = await verifyRecordedFrameTarget(page, frame, options.framePath ?? [], captured.snapshot.observation, captured.nodeId);
+        if (failure) {return failure;}
+    } else if (!matchesRecordedFramePath(captured.snapshot.observation, captured.nodeId, [])) {
         return {ok: false, code: 'ERR_UNRESOLVED', message: 'recorded fallback target is outside the main document', details};
     }
     return {...captured, details};

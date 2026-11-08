@@ -11,15 +11,16 @@ export const executeBrowserSelectOption = async (
     context?: RunStepsExecutionContext,
 ): Promise<StepResult> => {
     const binding = await awaitPageBoundBinding(deps, workspaceName);
-    const target = recordedActionTarget(binding.page, step, context);
+    const target = recordedActionTarget(step, context);
     const result = await executeSelectOptionOnPage(binding.page, {
         kind: step.args.kind,
         values: step.args.values,
         nodeId: target.nodeId,
-        selector: step.args.selector ?? (context?.recordingReplay && !target.nodeId ? target.selector : undefined),
+        selector: step.args.selector ?? ((target.framePath !== undefined || context?.recordingReplay) && !target.nodeId ? target.selector : undefined),
     }, {
         timeoutMs: deps.config.waitPolicy.visibleTimeoutMs,
         getReplayCandidates: target.getReplayCandidates,
+        framePath: target.framePath,
     });
 
     if (!result.ok) {

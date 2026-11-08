@@ -97,7 +97,7 @@ export const executeAtomicPressKey = async (
     if (!key.trim()) {
         return failure('ERR_BAD_ARGS', 'key must be non-empty');
     }
-    if (!target?.nodeId && !target?.selector) {
+    if (!target?.nodeId && !target?.selector && target?.framePath === undefined) {
         try {
             await page.keyboard.press(key);
             return { ok: true, nodeId: '', captureRevision: 0 };

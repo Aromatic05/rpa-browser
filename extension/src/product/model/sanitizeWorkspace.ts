@@ -35,6 +35,7 @@ import {
     isTeachPhase,
 } from './guards.js';
 import { sanitizeTaskView } from './sanitize.js';
+import { asRecordedFrameIssue } from '../../shared/recorded_frame_feedback.js';
 
 const RESERVATION_OWNER: Record<string, WorkspaceProductView['reservation']> = {
     none: 'idle',
@@ -320,6 +321,7 @@ export const sanitizeWorkspaceView = (raw: unknown): WorkspaceProductView => {
                     index: count(failure.index),
                     code: typeof failure.code === 'string' && /^ERR_[A-Z0-9_]{1,60}$/.test(failure.code) ? failure.code : undefined,
                     fallbackConflict: failure.fallbackConflict === true,
+                    frameIssue: asRecordedFrameIssue(failure.frameIssue),
                 }} : {}),
             }
             : undefined,

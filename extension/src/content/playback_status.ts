@@ -1,4 +1,5 @@
 import type {Action} from '../shared/types.js';
+import {asRecordedFrameIssue, recordedFrameFeedback} from '../shared/recorded_frame_feedback.js';
 
 type Step = {index: number; name: string};
 type Failure = {step?: Step; code: string; reason: string};
@@ -52,8 +53,9 @@ const reasonFor = (code: string, fallback: boolean): string => {
 const failureFrom = (error: Record<string, unknown>, step?: Step): Failure => {
     const code = typeof error.code === 'string' && /^ERR_[A-Z0-9_]{1,60}$/.test(error.code)
         ? error.code : '';
-    const fallback = record(error.details).resolution === 'recorded-target-fallback';
-    return {step, code, reason: reasonFor(code, fallback)};
+    const details = record(error.details);
+    const issue = asRecordedFrameIssue(details.frameIssue);
+    return {step, code, reason: issue ? recordedFrameFeedback(issue) : reasonFor(code, details.resolution === 'recorded-target-fallback')};
 };
 
 export const updatePlaybackStatus = (

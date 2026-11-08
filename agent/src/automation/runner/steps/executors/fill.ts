@@ -13,7 +13,7 @@ export const executeBrowserFill = async (
     context?: RunStepsExecutionContext,
 ): Promise<StepResult> => {
     const binding = await awaitPageBoundBinding(deps, workspaceName);
-    const target = recordedActionTarget(binding.page, step, context);
+    const target = recordedActionTarget(step, context);
     const result = await executeAtomicFill(binding.page, target, step.args.value, {
         timeoutMs: deps.config.waitPolicy.visibleTimeoutMs,
     });
