@@ -238,3 +238,26 @@ AI 可以直接新增、删除和修改合法 artifact，而不需要手工同�
 - `dsl.run` 尚未接入 task runner durable checkpoint store，进程崩溃后不能从 DSL cursor 继续。
 - DSL diagnostic 尚无完整 source span。
 - Workflow transaction 提供进程级 rollback，但当前不是完整的掉电 durability protocol。
+
+## CSV 批量执行样例
+
+`agent/scripts/examples/run_csv_workflow.ts` 演示如何把 CSV 表头映射到同一份已保存 DSL 的 `input`。例如在本地测试工作区的演示表单中保存名为 `csv-customer-demo` 的 DSL：
+
+```text
+fill input.selector with input.customer
+output customer = input.customer
+```
+
+在专门用于测试、已开启本地 Control Eval 的 Agent 中打开项目自带的客户信息测试表单（`agent/tests/fixtures/step_actions/customer_profile.html`），然后从仓库根目录执行：
+
+```powershell
+pnpm --filter ./agent demo:csv default csv-customer-demo scripts/examples/customer_rows.csv --selector-column selector
+```
+
+命令只报告行号、状态和错误代码。样例的第 3 行故意指定不存在的字段；第 2、4 行仍会完成。CSV 会在第一行执行前整体校验，字段默认保留字符串类型，`--selector-column` 显式将指定列绑定为 DSL 的浏览器定位目标。如果连接中断或执行结果无法确认，批次停止，避免重复执行可能已发生的操作。Control Eval 默认关闭，样例不自动修改该设置。
+
+构建产品并安装 Chromium 后，也可以直接复跑无窗口集成样例：
+
+```powershell
+pnpm --filter ./agent exec playwright test tests/e2e/step_actions/basic_actions.spec.ts --grep "CSV example" --workers=1
+```

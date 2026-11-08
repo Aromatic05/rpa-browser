@@ -33,6 +33,6 @@ jobs:
       - run: pnpm build:product
       - run: pnpm test:product-start
       - name: Check protocol and browser target resolution
-        run: pnpm --filter ./agent exec node scripts/run_tests_isolated.mjs --import tsx --test tests/integration/actions/classify_discipline.test.ts tests/integration/snapshot/atomic_action_runner_boundary.test.ts tests/integration/snapshot/control_action_browser.test.ts tests/integration/snapshot/control_framework_browser.test.ts
+        run: pnpm --filter ./agent exec node scripts/run_tests_isolated.mjs --import tsx --test tests/integration/actions/classify_discipline.test.ts tests/integration/snapshot/atomic_action_runner_boundary.test.ts tests/integration/snapshot/control_action_browser.test.ts tests/integration/snapshot/control_framework_browser.test.ts tests/integration/workflow/csv_workflow_example.test.ts
       - name: Exercise browser actions and recording playback
         run: pnpm --filter ./agent exec playwright test tests/e2e/step_actions/basic_actions.spec.ts tests/e2e/multitab/record_replay.spec.ts --workers=1
