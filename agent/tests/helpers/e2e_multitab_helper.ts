@@ -20,10 +20,10 @@ const resolveStepDelayMs = () => {
   return process.env.RPA_E2E_HEADED === '1' ? 600 : 0;
 };
 
-export const startAgent = async (opts?: { headed?: boolean; workflowFixtureDir?: string }): Promise<AgentHandle> => {
+export const startAgent = async (opts?: { headed?: boolean; workflowFixtureDir?: string; userDataDir?: string }): Promise<AgentHandle> => {
   const headed = opts?.headed ?? envHeaded();
   const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'rpa-e2e-'));
-  const userDataDir = path.join(tempRoot, 'user-data');
+  const userDataDir = opts?.userDataDir ?? path.join(tempRoot, 'user-data');
   const workflowRoot = path.join(tempRoot, 'workflow');
   await fs.mkdir(userDataDir, { recursive: true });
   if (opts?.workflowFixtureDir) {
