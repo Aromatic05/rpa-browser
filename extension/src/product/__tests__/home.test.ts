@@ -135,7 +135,7 @@ test('Teach setup distinguishes Structured Teach from Basic Demonstration', () =
         const demonstration = fixture.shadow.querySelector('input[data-rpa-product-field="teach-kind"][value="demonstration"]') as HTMLInputElement;
         demonstration.checked = true;
         demonstration.dispatchEvent(new fixture.dom.window.Event('change', { bubbles: true }));
-        assert.match(bodyText(fixture), /Basic demonstration is the secondary path/);
+        assert.match(bodyText(fixture), /无需 API。点击 Start Teaching/);
         assert.equal(
             fixture.shadow.querySelector('[data-rpa-product-field="business-area"]'),
             null,
@@ -149,4 +149,18 @@ test('Teach setup distinguishes Structured Teach from Basic Demonstration', () =
     } finally {
         fixture.cleanup();
     }
+});
+test('record and replay starts an unconfigured user in demonstration mode without a business area', () => {
+    const fixture = mount({...idleView(), modelConfigured: false});
+    try {
+        openPanel(fixture);
+        (fixture.shadow.querySelector('[data-rpa-product-action="record-demo"]') as HTMLButtonElement).click();
+        assert.equal(fixture.body.dataset.rpaProductSurface, 'teach');
+        const mode = fixture.shadow.querySelector('input[value="demonstration"]') as HTMLInputElement;
+        assert.equal(mode.checked, true);
+        const start = fixture.shadow.querySelector('[data-rpa-product-action="start-teach"]') as HTMLButtonElement;
+        assert.equal(start.disabled, false);
+        start.click();
+        assert.deepEqual(fixture.calls.find(call => call.name === 'startTeach')?.args, ['demonstration', undefined]);
+    } finally {fixture.cleanup();}
 });

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -241,15 +241,31 @@
           <div class="mark" aria-hidden="true">R</div>
           <h1>RPA Browser</h1>
         </div>
-        <p>Run saved automations here. Open any website to create tasks, teach procedures, or annotate page knowledge from the Agent sidebar.</p>
+        <p>让浏览器重复你做过的操作：录制填表、点击等步骤，保存后再次回放。不填 API 也能开始；用自然语言指挥 AI 才需要配置模型。</p>
       </div>
       <div id="connectionPill" class="connection"><strong id="wsStatus">Connecting…</strong></div>
     </header>
 
+    <section id="welcome" class="panel" style="margin-bottom:24px" aria-labelledby="welcomeTitle">
+      <div class="panel-header"><div class="panel-title"><h2 id="welcomeTitle">第一次用？先试一次录制回放</h2><p>无需 API · 本地练习 · 不会提交真实业务数据</p></div></div>
+      <div class="setup-body">
+        <p>你操作一遍，浏览器替你重复一遍。例如：填写姓名、选择类别、提交表单。回放后，页面会再次显示提交结果。</p>
+        <div><button id="openPractice" class="primary" type="button">打开练习页，开始体验</button></div>
+        <ol style="line-height:2">
+          <li>进入练习页，点击页面上的 <strong>Open Agent</strong> 悬浮按钮。</li>
+          <li>点击 <strong>录制与回放</strong>，再点击 <strong>Start Teaching</strong> 开始录制。</li>
+          <li>填写练习表单并提交，然后点 <strong>Stop &amp; Review</strong>。</li>
+          <li>为录制命名，点 <strong>Save Demonstration</strong>。到 <strong>Library</strong> 找到它，点 <strong>Replay</strong>。</li>
+        </ol>
+        <p>已经配置好 API？打开目标网页，在 Open Agent 面板的 New task 输入要求，再点 Start Task。AI 会尝试操作网页，可在面板查看进度并停止。</p>
+        <p>使用自己的网页：在地址栏输入网址，打开 Open Agent 面板即可。录制保存在 Library；下方 Automations 列表显示完整自动化。</p>
+        <span id="welcomeStatus" role="status"></span>
+      </div>
+    </section>
     <section id="modelSetup" class="panel" aria-labelledby="modelSetupTitle" hidden>
       <div class="panel-header">
         <div class="panel-title">
-          <h2 id="modelSetupTitle">Finish setup</h2>
+          <h2 id="modelSetupTitle">可选：配置 AI 模型</h2>
           <p>Connect an OpenAI-compatible model once. The API key is stored locally in a private file, never in the runner config.</p>
         </div>
       </div>
@@ -273,7 +289,8 @@
           </label>
         </div>
         <div class="setup-actions">
-          <span id="modelSetupStatus" aria-live="polite">Model setup is required before running tasks.</span>
+          <span id="modelSetupStatus" aria-live="polite">录制与回放无需 API。配置模型后才能启动 AI 任务。</span>
+          <button id="skipModelSetup" type="button">暂时跳过，先用基础功能</button>
           <button id="saveModelSetup" class="primary" type="button">Save setup</button>
         </div>
       </div>
@@ -287,7 +304,7 @@
         </div>
         <div class="panel-tools">
           <span id="restoreStatus" aria-live="polite">Loading…</span>
-          <button id="modelSettingsBtn" type="button">Model settings</button>
+          <button id="modelSettingsBtn" type="button">AI 模型设置（可选）</button>
           <button id="refreshRestore" type="button">Refresh</button>
         </div>
       </div>

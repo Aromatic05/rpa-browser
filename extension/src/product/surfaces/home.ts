@@ -40,7 +40,7 @@ const TEACH_KIND_OPTIONS: Array<{ value: TeachKind; label: string; hint: string;
     {
         value: 'demonstration',
         label: 'Basic demonstration',
-        hint: 'Secondary: records a raw example for replay.',
+        hint: '无需 API：记录点击和填表，保存后可在 Library 回放。',
         structured: false,
     },
 ];
@@ -109,6 +109,14 @@ const renderErrorStrip = (root: HTMLElement, ctx: SurfaceContext): void => {
 };
 
 const renderComposer = (root: HTMLElement, ctx: SurfaceContext): void => {
+    root.append(card([
+        cardTitle('录制与回放 · 无需 API'),
+        muted('开始录制 → 操作网页 → Stop & Review → 命名并 Save Demonstration → Library → Replay。'),
+        button('录制与回放', () => {
+            ctx.ui.teachKind = 'demonstration';
+            ctx.commands.openTeach();
+        }, 'primary', {dataAction: 'record-demo'}),
+    ]));
     root.append(sectionTitle('New task'));
 
     const prompt = ctx.ui.composer.trim();
@@ -174,7 +182,7 @@ const renderComposer = (root: HTMLElement, ctx: SurfaceContext): void => {
     }
 
     const helper = !modelReady
-        ? muted('Model setup is required before starting tasks. Open a new tab to finish RPA Browser setup.')
+        ? muted('Model setup is required for AI tasks only. 录制与回放可直接使用；AI 模型设置在新标签页。')
         : prompt.length === 0
             ? muted('Describe the task first.')
             : null;
@@ -330,7 +338,7 @@ export const renderTeachSurface = (root: HTMLElement, ctx: SurfaceContext): void
         hint(
             isStructured
                 ? 'Structured teaching saves a reusable Procedure or Recovery the agent can call on.'
-                : 'Basic demonstration is the secondary path: a raw recorded example for replay.',
+                : '无需 API。点击 Start Teaching，操作网页，再点 Stop & Review；命名保存后，在 Library 点击 Replay。',
         ),
     );
 

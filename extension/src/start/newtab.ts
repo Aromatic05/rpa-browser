@@ -336,11 +336,11 @@ const applyModelStatus = (status: ModelSetupStatus, showConfigured = false): boo
             ? 'Leave blank to keep the current key'
             : 'Required for first setup';
     }
-    if (modelSetupEl) {modelSetupEl.hidden = configured && !showConfigured;}
+    if (modelSetupEl) {modelSetupEl.hidden = !showConfigured;}
     if (modelSetupStatusEl) {
         modelSetupStatusEl.textContent = configured
             ? 'Model is ready. Save only if you want to change these settings.'
-            : 'Model setup is required before starting agent tasks.';
+            : '录制与回放无需 API。只有 AI 任务需要配置模型。';
     }
     return configured;
 };
@@ -352,7 +352,7 @@ const refreshModelStatus = async (scope: BoundScope, showConfigured = false): Pr
         {workspaceName: scope.workspaceName},
     );
     if (!result.ok || !result.data) {
-        if (modelSetupEl) {modelSetupEl.hidden = false;}
+        if (modelSetupEl) {modelSetupEl.hidden = !showConfigured;}
         if (modelSetupStatusEl) {
             modelSetupStatusEl.textContent = `Could not read model setup: ${result.error?.message ?? 'unknown error'}`;
         }
@@ -390,6 +390,9 @@ const saveModelSetup = async (): Promise<void> => {
             return;
         }
         applyModelStatus(result.data, false);
+        const status = document.getElementById('welcomeStatus');
+        if (status) {status.textContent = 'AI 配置已保存。打开目标网页，在 Open Agent 的 New task 输入任务；也可先体验上面的练习。';}
+        document.getElementById('welcome')?.scrollIntoView({block: 'start'});
     } finally {
         if (saveModelSetupBtn) {saveModelSetupBtn.disabled = false;}
     }
@@ -429,7 +432,7 @@ const renderAutomationList = (items: AutomationItem[]) => {
     if (!automations.length) {
         const empty = document.createElement('div');
         empty.className = 'empty';
-        empty.textContent = 'No saved automations yet.';
+        empty.textContent = '还没有完整自动化。首次体验请点上方“打开练习页”；保存的录制请到网页侧栏 Library 查看。';
         restoreListEl.appendChild(empty);
         return;
     }
@@ -535,3 +538,21 @@ modelSettingsBtn?.addEventListener('click', () => {
     })();
 });
 saveModelSetupBtn?.addEventListener('click', () => {void saveModelSetup();});
+
+document.getElementById('skipModelSetup')?.addEventListener('click', () => {
+    if (modelSetupEl) {modelSetupEl.hidden = true;}
+    document.getElementById('welcome')?.scrollIntoView({block: 'start'});
+});
+document.getElementById('openPractice')?.addEventListener('click', () => {
+    void (async () => {
+        const status = document.getElementById('welcomeStatus');
+        try {
+            const bound = boundScope ?? await connectAndRefresh();
+            if (!bound) {throw new Error(offlineCopy);}
+            const config = await readSessionConfig();
+            location.assign('http://127.0.0.1:' + String(config.wsPort) + '/rpa-practice');
+        } catch (error) {
+            if (status) {status.textContent = error instanceof Error ? error.message : String(error);}
+        }
+    })();
+});
