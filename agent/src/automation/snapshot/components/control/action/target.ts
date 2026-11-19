@@ -1,7 +1,9 @@
-import type { Locator, Page } from 'playwright';
+import type { Frame, Locator, Page } from 'playwright';
 import { resolveExecutableLocator } from '../../../indexes/locator/execute';
 import { captureControlSnapshot, captureLocatorExecutionSnapshot } from '../capture/browser';
-import { captureSelectorTarget } from './selector_capture';
+import { captureLocatorTarget, captureSelectorTarget } from './selector_capture';
+import { captureRecordedFallback, type RecordedTargetOptions } from './recorded_fallback';
+import { recordedFrameFailure, resolveRecordedFrame, verifyRecordedFrameTarget } from './recorded_frame';
 import type {
     AtomicActionFailure,
     AtomicActionTargetRequest,
@@ -16,6 +18,7 @@ export type AtomicActionTarget = {
     actionNodeId: string;
     locator: Locator;
     control?: ControlComponent;
+    replayFallback?: true;
 };
 
 export type AtomicActionTargetResolution =
@@ -24,8 +27,41 @@ export type AtomicActionTargetResolution =
 
 export const resolveAtomicActionTarget = async (
     page: Page,
-    request: AtomicActionTargetRequest,
+    request: AtomicActionTargetRequest & RecordedTargetOptions,
 ): Promise<AtomicActionTargetResolution> => {
+    let frame: Frame | undefined;
+    if (request.framePath !== undefined) {
+        const scope = await resolveRecordedFrame(page, request.framePath);
+        if (!scope.ok) {return {ok: false, error: scope};}
+        frame = scope.frame;
+    }
+    const exact = await resolveExactTarget(page, request, frame);
+    if (exact.ok) {return exact;}
+    const captured = await captureRecordedFallback(page, request, exact.error, frame);
+    if (!captured) {return exact;}
+    if (!captured.ok) {return {ok: false, error: captured};}
+
+    const resolved = await resolveCanonicalTarget(page, captured.snapshot, captured.nodeId, request.requiredCapabilities ?? []);
+    if (!resolved.ok) {
+        return failed(resolved.error.code, resolved.error.message, {...resolved.error.details, ...captured.details});
+    }
+    return {ok: true, target: {...resolved.target, replayFallback: true}};
+};
+
+const resolveExactTarget = async (
+    page: Page,
+    request: AtomicActionTargetRequest & RecordedTargetOptions,
+    frame?: Frame,
+): Promise<AtomicActionTargetResolution> => {
+    if (frame) {
+        if (!request.selector) {return failed('ERR_NOT_FOUND', 'recorded iframe has no primary selector');}
+        if (request.selector.includes('>>')) {return {ok: false, error: recordedFrameFailure('unsupported')};}
+        const captured = await captureLocatorTarget(page, frame.locator(request.selector), {});
+        if (!captured.ok) {return {ok: false, error: captured};}
+        const failure = await verifyRecordedFrameTarget(page, frame, request.framePath ?? [], captured.snapshot.observation, captured.nodeId);
+        if (failure) {return {ok: false, error: failure};}
+        return await resolveCanonicalTarget(page, captured.snapshot, captured.nodeId, request.requiredCapabilities ?? []);
+    }
     if (!request.nodeId && !request.selector) {
         return failed('ERR_BAD_ARGS', 'nodeId or selector is required');
     }
@@ -51,7 +87,15 @@ export const resolveAtomicActionTarget = async (
         });
     }
 
-    const required = request.requiredCapabilities ?? [];
+    return await resolveCanonicalTarget(page, snapshot, nodeId, request.requiredCapabilities ?? []);
+};
+
+const resolveCanonicalTarget = async (
+    page: Page,
+    snapshot: ControlSnapshot,
+    nodeId: string,
+    required: readonly ControlCapability[],
+): Promise<AtomicActionTargetResolution> => {
     const controls = controlsForNode(snapshot, nodeId, required);
     if (required.length > 0 && controls.length === 0) {
         return failed('ERR_UNRESOLVED', 'canonical node does not expose the required capability', {

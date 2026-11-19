@@ -122,6 +122,8 @@ export const noopCommandPort = (): CommandPort => {
     const noop = (): void => undefined;
     return {
         startTask: noop,
+        replayDemonstration: noop,
+        stopPlayback: noop,
         pauseTask: noop,
         resumeTask: noop,
         stopTask: noop,

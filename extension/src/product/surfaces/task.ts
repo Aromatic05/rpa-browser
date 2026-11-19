@@ -23,14 +23,14 @@ import { renderResultView } from './result.js';
 
 const renderTaskStatus = (task: AgentTaskView): HTMLElement => {
     if (task.status === 'running') {
-        const text = task.phase ? `Running · ${phaseLabel(task.phase)}` : 'Running';
+        const text = task.phase ? `正在执行 · Running · ${phaseLabel(task.phase)}` : '正在执行 · Running';
         return statusLine('●', text, 'running', true);
     }
     if (task.status === 'waiting_for_user') {
-        return statusLine('●', 'Waiting for you', 'waiting', true);
+        return statusLine('●', '等待你处理 · Waiting for you', 'waiting', true);
     }
     if (task.status === 'paused') {
-        return statusLine('Ⅱ', 'Paused', 'info', false);
+        return statusLine('Ⅱ', '已暂停 · Paused', 'info', false);
     }
     return statusLine('●', 'Running', 'running', false);
 };
@@ -105,7 +105,7 @@ const renderTimeline = (ctx: SurfaceContext, task: AgentTaskView): HTMLElement =
 /** Indeterminate progress: never a fabricated percentage (spec §6). */
 const renderIndeterminate = (): HTMLElement => {
     const wrap = el('div', 'rpa-indeterminate-wrap');
-    wrap.append(muted('Working…'), el('div', 'rpa-indeterminate'));
+    wrap.append(muted('正在操作网页…'), el('div', 'rpa-indeterminate'));
     return wrap;
 };
 
@@ -140,16 +140,16 @@ export const renderTaskSurface = (root: HTMLElement, ctx: SurfaceContext): void 
     const actions = el('div', 'rpa-row');
     if (task.status === 'running') {
         actions.append(
-            button('Pause', () => { ctx.commands.pauseTask(); }, 'ghost', {dataAction: 'pause-task'}),
+            button('暂停', () => { ctx.commands.pauseTask(); }, 'ghost', {dataAction: 'pause-task'}),
         );
     } else if (task.status === 'paused') {
         actions.append(
-            button('Resume', () => { ctx.commands.resumeTask(); }, 'primary', {dataAction: 'resume-task'}),
+            button('继续', () => { ctx.commands.resumeTask(); }, 'primary', {dataAction: 'resume-task'}),
         );
     }
     actions.append(stopButton(ctx));
     actions.append(
-        button('History', () => { ctx.commands.navigate('history'); }, 'ghost', { dataAction: 'history' }),
+        button('历史', () => { ctx.commands.navigate('history'); }, 'ghost', { dataAction: 'history' }),
     );
-    root.append(card([sectionTitle('Timeline'), renderTimeline(ctx, task), renderIndeterminate(), actions]));
+    root.append(card([sectionTitle('执行进度'), renderTimeline(ctx, task), renderIndeterminate(), actions]));
 };

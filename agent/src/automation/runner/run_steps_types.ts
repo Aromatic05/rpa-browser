@@ -87,6 +87,7 @@ export type RunStepsDeps = {
 };
 
 export type RunStepsExecutionContext = {
+    recordingReplay?: boolean;
     checkpointProvider?: DslCheckpointProvider;
     entityRulesProvider?: WorkspaceEntityRulesProvider;
     entityRulesResolver?: DslEntityRulesResolver;
@@ -94,6 +95,7 @@ export type RunStepsExecutionContext = {
 };
 
 export type RunStepsRequest = {
+    recordingReplay?: boolean;
     runId: string;
     workspaceName: string;
     stepsQueue: StepsQueue;

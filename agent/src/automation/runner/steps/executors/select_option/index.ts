@@ -1,21 +1,26 @@
 import { awaitPageBoundBinding } from '../../helpers/runtime_binding';
+import { recordedActionTarget } from '../../helpers/recorded_action_target';
 import type { Step, StepResult } from '../../types';
-import type { RunStepsDeps } from '../../../run_steps';
+import type { RunStepsDeps, RunStepsExecutionContext } from '../../../run_steps';
 import { executeSelectOptionOnPage } from '../../../../snapshot';
 
 export const executeBrowserSelectOption = async (
     step: Step<'browser.select_option'>,
     deps: RunStepsDeps,
     workspaceName: string,
+    context?: RunStepsExecutionContext,
 ): Promise<StepResult> => {
     const binding = await awaitPageBoundBinding(deps, workspaceName);
+    const target = recordedActionTarget(step, context);
     const result = await executeSelectOptionOnPage(binding.page, {
         kind: step.args.kind,
         values: step.args.values,
-        nodeId: step.args.nodeId ?? step.resolve?.hint?.target?.nodeId,
-        selector: step.args.selector,
+        nodeId: target.nodeId,
+        selector: step.args.selector ?? ((target.framePath !== undefined || context?.recordingReplay) && !target.nodeId ? target.selector : undefined),
     }, {
         timeoutMs: deps.config.waitPolicy.visibleTimeoutMs,
+        getReplayCandidates: target.getReplayCandidates,
+        framePath: target.framePath,
     });
 
     if (!result.ok) {
@@ -38,6 +43,7 @@ export const executeBrowserSelectOption = async (
             selectedValues: result.selectedValues,
             selectedLabels: result.selectedLabels,
             captureRevision: result.captureRevision,
+            ...(result.replayFallback ? {resolver: 'recorded-target-fallback'} : {}),
         },
     };
 };

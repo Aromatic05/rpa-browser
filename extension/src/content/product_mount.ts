@@ -224,7 +224,7 @@ export const buildAuthoringBridge = (
         },
         saveDemonstration: (recordingName) => {
             void (async () => {
-                const result = await dispatchObserved('record.save', {recordingName});
+                const result = await dispatchObserved('record.save', {recordingName, includeStepResolve: true});
                 if (result.ok) {demoActive = null;}
             })();
         },
@@ -241,7 +241,8 @@ export const buildAuthoringBridge = (
             const unsaved = payload && isRecord(payload.unsaved) ? payload.unsaved : undefined;
             const stepCount = typeof unsaved?.stepCount === 'number' ? unsaved.stepCount : 0;
             if (!actionSucceeded(reply)) {return null;}
-            if (demoActive === 'recording') {
+            if (payload?.status === 'recording' || (payload?.status === undefined && demoActive === 'recording')) {
+                demoActive = 'recording';
                 return {status: 'recording', stepCount};
             }
             if (demoActive === 'review') {
@@ -339,9 +340,11 @@ export const mountProductFromContent = (options: ProductMountOptions): ProductMo
         workspace: options.workspaceName,
         now: options.now,
         authoring: bridge,
+        dispatchPlayback: async (type, payload) => asAction(await options.dispatchAction(type, payload)),
     });
     controllerRef = controller;
     const uiHandle: ProductUIHandle = mountProductUIImpl({
+        openStartPage: () => {void chrome.runtime.sendMessage({type:'rpa.product.openStartPage'});},
         view: controller.getView(),
         commands: controller.commands,
         now: options.now,
@@ -355,6 +358,18 @@ export const mountProductFromContent = (options: ProductMountOptions): ProductMo
     controller.start();
 
     let unmounted = false;
+    const onboardingStorage = (globalThis as {chrome?: {storage?: {local?: Pick<typeof chrome.storage.local, 'get' | 'remove'>}}}).chrome?.storage?.local;
+    if (onboardingStorage) {
+        void onboardingStorage.get('rpaOnboardingIntent').then(async (stored) => {
+            const intent = stored.rpaOnboardingIntent as {url?: string; mode?: string; createdAt?: number; workspace?: string} | undefined;
+            if (!intent?.url || !intent.createdAt || Date.now() - intent.createdAt > 120_000 || Date.now() < intent.createdAt
+                || intent.workspace !== options.workspaceName || (intent.mode !== 'record' && intent.mode !== 'ai')) {return;}
+            const expected = new URL(intent.url).hostname.replace(/^www\./u, '');
+            if (location.hostname.replace(/^www\./u, '') !== expected) {return;}
+            await onboardingStorage.remove('rpaOnboardingIntent');
+            if (!unmounted) {uiHandle.open(intent.mode);}
+        }).catch(() => undefined);
+    }
     return {
         refresh: async () => {
             if (unmounted) {

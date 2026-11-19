@@ -1,7 +1,9 @@
 import { test, expect } from '@playwright/test';
+import {readFile} from 'node:fs/promises';
 import { startAgent, runStep, dispatch } from '../../helpers/e2e_multitab_helper';
 import { startFixtureServer } from '../../helpers/server';
 import type { StepUnion } from '../../../src/automation/runner/steps/types';
+import {runSavedCsvWorkflow} from '../../../scripts/examples/run_csv_workflow';
 
 const st = <T extends StepUnion['name']>(id: string, name: T, args: Extract<StepUnion, { name: T }>['args']): Extract<StepUnion, { name: T }> => ({ id, name, args } as unknown as Extract<StepUnion, { name: T }>);
 const log = (m: string) => console.log(`[e2e-mt][${new Date().toISOString()}] ${m}`);
@@ -23,6 +25,27 @@ test.beforeEach(async () => {
 test.afterEach(async () => {
   await closeAgent();
   await closeFixture();
+});
+
+test('CSV example fills the fixture row by row and reports the failed source line', async () => {
+  const workspaceName = 'default';
+  const dslName = 'csv-customer-demo';
+  const opened = await runStep(ep, workspaceName, st('csv-fixture', 'browser.goto', {url: fixtureUrl}));
+  expect(opened.ok, JSON.stringify(opened.error)).toBe(true);
+  const saved = await dispatch(ep, {
+    v: 1, id: crypto.randomUUID(), type: 'dsl.save', workspaceName,
+    payload: {dslName, content: 'fill input.selector with input.customer\noutput customer = input.customer'},
+  });
+  expect(saved.type, JSON.stringify(saved.payload)).toBe('dsl.save.result');
+  const csv = await readFile(new URL('../../../scripts/examples/customer_rows.csv', import.meta.url), 'utf8');
+  const rows = await runSavedCsvWorkflow(csv, {workspaceName, dslName, endpoint: ep, selectorColumn: 'selector'});
+  expect(rows.map(({line, status}) => ({line, status})), JSON.stringify(rows)).toEqual([
+    {line: 2, status: 'completed'}, {line: 3, status: 'failed'}, {line: 4, status: 'completed'},
+  ]);
+  const filled = await runStep(ep, workspaceName, st('csv-final-value', 'browser.evaluate', {
+    expression: 'return document.querySelector("#customerName").value;',
+  }));
+  expect(filled.data).toBe('Chen, Jia');
 });
 
 test('E2E-1 step actions should work via agent + extension + workspace on real fixture page', async () => {

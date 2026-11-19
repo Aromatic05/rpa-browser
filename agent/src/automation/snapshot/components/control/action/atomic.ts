@@ -1,8 +1,9 @@
 import type { Locator, Page } from 'playwright';
 import { resolveAtomicActionTarget } from './target';
+import type { RecordedTargetOptions } from './recorded_fallback';
 import type { AtomicActionFailure, AtomicActionResult } from '../model/contracts';
 
-export type AtomicTargetInput = {
+export type AtomicTargetInput = RecordedTargetOptions & {
     nodeId?: string;
     selector?: string;
 };
@@ -96,7 +97,7 @@ export const executeAtomicPressKey = async (
     if (!key.trim()) {
         return failure('ERR_BAD_ARGS', 'key must be non-empty');
     }
-    if (!target?.nodeId && !target?.selector) {
+    if (!target?.nodeId && !target?.selector && target?.framePath === undefined) {
         try {
             await page.keyboard.press(key);
             return { ok: true, nodeId: '', captureRevision: 0 };
@@ -123,6 +124,7 @@ const runAction = async (
         nodeId: string;
         snapshot: { observation: { identity: { captureRevision: number } } };
         control?: { ref: string };
+        replayFallback?: true;
     },
     action: (locator: Locator) => Promise<void>,
 ): Promise<AtomicActionResult> => {
@@ -133,6 +135,7 @@ const runAction = async (
             nodeId: target.nodeId,
             controlRef: target.control?.ref,
             captureRevision: target.snapshot.observation.identity.captureRevision,
+            ...(target.replayFallback ? {replayFallback: true} : {}),
         };
     } catch (error) {
         return fromError(error);

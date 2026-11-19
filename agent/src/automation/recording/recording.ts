@@ -1,5 +1,6 @@
 import type { Page } from 'playwright';
 import { installRecorder, type RecorderEvent } from './capture/recorder';
+import {captureRecordedFramePath} from '../snapshot/components/control/action/recorded_frame';
 import type { StepName } from '../runner/steps/types';
 import {
     appendWorkspaceRecordingEvent,
@@ -59,7 +60,7 @@ export type {
     RecordingState,
 };
 
-type RecorderEventSink = (event: RecorderEvent, page: Page, tabName: string) => void | Promise<void>;
+type RecorderEventSink = (event: RecorderEvent, page: Page, tabName: string, admittedToken?: string) => void | Promise<void>;
 let recorderEventSink: RecorderEventSink | null = null;
 
 export const setRecorderEventSink = (sink: RecorderEventSink | null): void => {
@@ -174,11 +175,23 @@ export const ensureRecorder = async (
     tabName: string,
     navDedupeWindowMs: number,
 ): Promise<void> => {
-    await installRecorder(page, tabName, (event) => {
-        if (recorderEventSink) {
-            return recorderEventSink(event, page, tabName);
-        }
-        void appendWorkspaceRecordingEvent(state, workspaceName, tabName, event, navDedupeWindowMs, page);
+    let scopeQueue = Promise.resolve();
+    await installRecorder(page, tabName, (event, frame) => {
+        if (!isWorkspaceRecordingEnabled(state, workspaceName)) {return;}
+        const admittedToken = getWorkspaceUnsavedToken(state, workspaceName);
+        return trackWorkspaceRecordingEvent(state, workspaceName, async () => {
+            // Preserve dispatch order while frame metadata is fetched over Playwright.
+            const scoped = scopeQueue.then(async () => {
+                if (frame !== page.mainFrame()) {event.framePath = await captureRecordedFramePath(frame) ?? null;}
+            });
+            scopeQueue = scoped;
+            await scoped;
+            if (recorderEventSink) {
+                await recorderEventSink(event, page, tabName, admittedToken);
+                return;
+            }
+            await appendWorkspaceRecordingEvent(state, workspaceName, tabName, event, navDedupeWindowMs, page, admittedToken);
+        });
     });
     installNavigationRecorder(state, workspaceName, page, tabName, navDedupeWindowMs);
 };

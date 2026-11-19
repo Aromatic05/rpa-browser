@@ -17,6 +17,8 @@ export const createCommandRecorder = (): { commands: CommandPort; calls: Command
         calls.push({ name, args });
     };
     const commands: CommandPort = {
+        replayDemonstration: record('replayDemonstration'),
+        stopPlayback: record('stopPlayback'),
         startTask: record('startTask'),
         pauseTask: record('pauseTask'),
         resumeTask: record('resumeTask'),

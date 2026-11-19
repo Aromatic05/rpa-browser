@@ -144,6 +144,7 @@ export type SelectOptionActionResult =
         selectedValues: string[];
         selectedLabels: string[];
         captureRevision: number;
+        replayFallback?: true;
     }
     | {
         ok: false;
@@ -174,6 +175,7 @@ export type AtomicActionSuccess = {
     nodeId: ObservationNodeId;
     controlRef?: string;
     captureRevision: number;
+    replayFallback?: true;
 };
 
 export type AtomicActionResult = AtomicActionSuccess | AtomicActionFailure;

@@ -38,6 +38,10 @@ export const enrichRecordedStepWithSnapshot = async (input: {
         ? input.state.checkpointRecordings.get(input.workspaceName)
         : undefined;
     const capturedSemanticHints = semanticHintsFromEvent(event, checkpointSession);
+    if (event.framePath !== undefined) {
+        // Unscoped snapshot matching can bind a same-named element in another frame.
+        return withRawContext(event, buildLowConfidenceRawOnlyResolve(event));
+    }
     if (isPageLevelEvent(event)) {
         const snapshot = await (input.resolveSnapshot ?? resolveRecordSnapshotForEvent)({
             event,
@@ -182,6 +186,7 @@ const withRawContext = (event: RecorderEvent, enhancement?: RecordedStepEnhancem
     const mergedRaw: ResolveHint['raw'] = {
         ...(existingHint?.raw || {}),
         selector: event.selector,
+        ...(event.framePath !== undefined ? {framePath: event.framePath} : {}),
         locatorCandidates: event.locatorCandidates?.map((candidate) => ({...candidate})),
         scopeHint: event.scopeHint || undefined,
         targetHint: event.targetHint,

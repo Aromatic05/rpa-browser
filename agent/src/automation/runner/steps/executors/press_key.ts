@@ -1,5 +1,6 @@
 import type { Step, StepResult } from '../types';
-import type { RunStepsDeps } from '../../run_steps_types';
+import type { RunStepsDeps, RunStepsExecutionContext } from '../../run_steps_types';
+import { recordedActionTarget } from '../helpers/recorded_action_target';
 import { awaitPageBoundBinding } from '../helpers/runtime_binding';
 import { pickDelayMs, waitForHumanDelay } from '../helpers/delay';
 import { executeAtomicPressKey } from '../../../snapshot';
@@ -8,13 +9,12 @@ export const executeBrowserPressKey = async (
     step: Step<'browser.press_key'>,
     deps: RunStepsDeps,
     workspaceName: string,
+    context?: RunStepsExecutionContext,
 ): Promise<StepResult> => {
     const binding = await awaitPageBoundBinding(deps, workspaceName);
-    const target = {
-        nodeId: step.args.nodeId ?? step.resolve?.hint?.target?.nodeId,
-        selector: step.args.selector ?? step.resolve?.hint?.locator?.direct?.query,
-    };
-    const hasTarget = Boolean(target.nodeId || target.selector);
+    const target = recordedActionTarget(step, step.resolve?.hint?.raw?.framePath !== undefined
+        || step.resolve?.hint?.locator?.scope?.kind === 'iframe' ? context : undefined);
+    const hasTarget = Boolean(target.nodeId || target.selector || target.framePath !== undefined);
     const result = await executeAtomicPressKey(
         binding.page,
         hasTarget ? target : undefined,
@@ -38,7 +38,7 @@ export const executeBrowserPressKey = async (
             nodeId: result.nodeId || undefined,
             controlRef: result.controlRef,
             captureRevision: result.captureRevision || undefined,
-            resolver: hasTarget ? 'snapshot-v2-canonical-locator' : 'page-keyboard',
+            resolver: result.replayFallback ? 'recorded-target-fallback' : hasTarget ? 'snapshot-v2-canonical-locator' : 'page-keyboard',
         },
     };
 };

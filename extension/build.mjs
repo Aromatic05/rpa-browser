@@ -19,6 +19,7 @@ await writeFile(
     'utf8',
 );
 await copyFile(path.join(root, 'newtab.html'), path.join(distDir, 'newtab.html'));
+await copyFile(path.join(root, 'newtab_bootstrap.js'), path.join(distDir, 'newtab_bootstrap.js'));
 
 const serviceWorkerPath = path.join(distDir, 'entry', 'sw.js');
 const serviceWorker = await readFile(serviceWorkerPath, 'utf8');

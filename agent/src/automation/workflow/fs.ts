@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import YAML from 'yaml';
 import { WorkflowError } from './errors';
 
-const ARTIFACT_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+const ARTIFACT_NAME_PATTERN = /^[\p{L}\p{N}][\p{L}\p{N}\p{M}._-]*$/u;
 
 export const requireArtifactName = (value: unknown, label = 'artifact name'): string => {
     if (typeof value !== 'string' || !ARTIFACT_NAME_PATTERN.test(value) || value === '.' || value === '..') {

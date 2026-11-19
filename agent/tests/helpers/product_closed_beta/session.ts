@@ -1,11 +1,11 @@
 import crypto from 'node:crypto';
-import {spawn} from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import {promises as fs} from 'node:fs';
 import {sendControlEval} from '../../../src/interface/control/client';
 import {dispatch, runStep} from '../e2e_multitab_helper';
 import {e2eRuntimePortEnv} from '../e2e_runtime_env';
+import {e2eControlEndpoint, spawnE2eAgent, stopE2eAgent} from '../e2e_agent_process';
 import type {StepUnion} from '../../../src/automation/runner/steps/types';
 import type {Action} from '../../../src/interface/actions/action_protocol';
 import type {ClosedBetaModelHandle} from './faux_model_server';
@@ -71,7 +71,7 @@ export const startClosedBetaSession = async (
 
     const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'rpa-closed-beta-'));
     const userDataDir = path.join(tempRoot, 'user-data');
-    const endpoint = path.join(tempRoot, 'agent.sock');
+    const endpoint = e2eControlEndpoint(tempRoot);
     const workflowRoot = options.workflowRoot ?? path.join(tempRoot, 'workflow');
     const sessionStorageRoot = options.sessionStorageRoot ?? path.join(tempRoot, 'session-storage');
     const reportRoot = path.join(tempRoot, 'session-storage', 'reports');
@@ -90,7 +90,7 @@ export const startClosedBetaSession = async (
           }
         : {};
 
-    const proc = spawn('pnpm', ['dev:headless'], {
+    const proc = spawnE2eAgent({
         cwd,
         env: {
             ...process.env,
@@ -111,7 +111,6 @@ export const startClosedBetaSession = async (
                 ? {RUNNER_AGENT_AUTH_ENABLED: 'true', RPA_AGENT_AUTH_TOKEN: options.auth.token}
                 : {}),
         },
-        stdio: 'pipe',
     });
 
     let stderr = '';
@@ -143,7 +142,7 @@ export const startClosedBetaSession = async (
         await sleep(100);
     }
     if (!ready) {
-        proc.kill('SIGKILL');
+        await stopE2eAgent(proc);
         throw new Error(`closed-beta agent startup timeout\n${stderr}`);
     }
 
@@ -157,20 +156,8 @@ export const startClosedBetaSession = async (
             ? {provider, model, baseUrl: options.modelServer.baseUrl}
             : null,
         close: async () => {
-            if (!proc.killed) {
-                proc.kill('SIGTERM');
-                await new Promise<void>((resolve) => {
-                    const timer = setTimeout(resolve, 3000);
-                    proc.once('exit', () => {
-                        clearTimeout(timer);
-                        resolve();
-                    });
-                });
-            }
-            if (proc.exitCode === null) {
-                proc.kill('SIGKILL');
-            }
-            await fs.rm(tempRoot, {recursive: true, force: true}).catch(() => undefined);
+            await stopE2eAgent(proc);
+            await fs.rm(tempRoot, {recursive: true, force: true, maxRetries: 5}).catch(() => undefined);
         },
         product: async (command) => {
             const reply = await dispatch(endpointValue, productAction(command));

@@ -160,12 +160,14 @@ const setStatus = (text: string, ok = false) => {
     connectionPillEl?.classList.toggle('ok', ok);
 };
 
-const offlineCopy = 'Agent service is offline. Start RPA Browser, then retry.';
+const offlineCopy = 'RPA 服务未连接。请保持启动终端运行；关闭旧窗口后，通过“启动RPA.cmd”或 pnpm start 重新打开 RPA 浏览器。';
 
 const applyOfflineState = (message: string): void => {
     boundScope = null;
     window.__rpa_start_error = message;
     setStatus('Offline');
+    const notice = document.getElementById('runtimeNotice');
+    if (notice) {notice.hidden = false; notice.textContent = offlineCopy;}
     if (modelSetupEl) {modelSetupEl.hidden = true;}
     if (modelSetupStatusEl) {modelSetupStatusEl.textContent = offlineCopy;}
     if (restoreStatusEl) {restoreStatusEl.textContent = offlineCopy;}
@@ -178,6 +180,8 @@ const applyOfflineState = (message: string): void => {
 const applyConnectedState = (): void => {
     window.__rpa_start_error = undefined;
     setStatus('Connected', true);
+    const notice = document.getElementById('runtimeNotice');
+    if (notice) {notice.hidden = true;}
     if (refreshRestoreBtn) {refreshRestoreBtn.textContent = 'Refresh';}
     if (modelSettingsBtn) {modelSettingsBtn.disabled = false;}
     if (saveModelSetupBtn) {saveModelSetupBtn.disabled = false;}
@@ -336,11 +340,11 @@ const applyModelStatus = (status: ModelSetupStatus, showConfigured = false): boo
             ? 'Leave blank to keep the current key'
             : 'Required for first setup';
     }
-    if (modelSetupEl) {modelSetupEl.hidden = configured && !showConfigured;}
+    if (modelSetupEl) {modelSetupEl.hidden = !showConfigured;}
     if (modelSetupStatusEl) {
         modelSetupStatusEl.textContent = configured
             ? 'Model is ready. Save only if you want to change these settings.'
-            : 'Model setup is required before starting agent tasks.';
+            : '录制与回放无需 API。只有 AI 任务需要配置模型。';
     }
     return configured;
 };
@@ -352,7 +356,7 @@ const refreshModelStatus = async (scope: BoundScope, showConfigured = false): Pr
         {workspaceName: scope.workspaceName},
     );
     if (!result.ok || !result.data) {
-        if (modelSetupEl) {modelSetupEl.hidden = false;}
+        if (modelSetupEl) {modelSetupEl.hidden = !showConfigured;}
         if (modelSetupStatusEl) {
             modelSetupStatusEl.textContent = `Could not read model setup: ${result.error?.message ?? 'unknown error'}`;
         }
@@ -390,6 +394,9 @@ const saveModelSetup = async (): Promise<void> => {
             return;
         }
         applyModelStatus(result.data, false);
+        const status = document.getElementById('welcomeStatus');
+        if (status) {status.textContent = 'AI 配置已保存。在上方粘贴目标网址，选择“AI 帮我操作”，打开后在右侧助手输入任务。';}
+        document.getElementById('welcome')?.scrollIntoView({block: 'start'});
     } finally {
         if (saveModelSetupBtn) {saveModelSetupBtn.disabled = false;}
     }
@@ -429,7 +436,7 @@ const renderAutomationList = (items: AutomationItem[]) => {
     if (!automations.length) {
         const empty = document.createElement('div');
         empty.className = 'empty';
-        empty.textContent = 'No saved automations yet.';
+        empty.textContent = '还没有进阶自动化。你可以先点上方“开始录制练习”；保存的网页录制请到助手的“我的录制”查看。';
         restoreListEl.appendChild(empty);
         return;
     }
@@ -535,3 +542,50 @@ modelSettingsBtn?.addEventListener('click', () => {
     })();
 });
 saveModelSetupBtn?.addEventListener('click', () => {void saveModelSetup();});
+document.getElementById('configureAi')?.addEventListener('click', () => {modelSettingsBtn?.click();});
+
+document.getElementById('skipModelSetup')?.addEventListener('click', () => {
+    if (modelSetupEl) {modelSetupEl.hidden = true;}
+    document.getElementById('welcome')?.scrollIntoView({block: 'start'});
+});
+const openTargetWebsite = async (url: string, mode: 'record' | 'ai'): Promise<void> => {
+    const bound = boundScope ?? await connectAndRefresh();
+    if (!bound) {throw new Error(offlineCopy);}
+    const config = await readSessionConfig();
+    await chrome.storage.local.set({rpaOnboardingIntent: {url, mode, workspace: config.workspaceName, createdAt: Date.now()}});
+    const opened = await chrome.runtime.sendMessage<{type:string;url:string}, {ok?:boolean;error?:string}>({type:'rpa.product.openTarget',url});
+    if (opened.ok !== true) {throw new Error(opened.error ?? '无法打开新标签页，请重试。');}
+    const status = document.getElementById('welcomeStatus');
+    if (status) {status.textContent = '已在新标签页打开网站；此首页会保留。';}
+};
+
+const showWelcomeError = (error: unknown): void => {
+    const status = document.getElementById('welcomeStatus');
+    if (status) {status.textContent = error instanceof Error ? error.message : String(error);}
+};
+document.getElementById('openPractice')?.addEventListener('click', () => {
+    void (async () => {
+        try {
+            const config = await readSessionConfig();
+            await openTargetWebsite('http://127.0.0.1:' + String(config.wsPort) + '/rpa-practice', 'record');
+        } catch (error) {showWelcomeError(error);}
+    })();
+});
+document.getElementById('openWebsite')?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    void (async () => {
+        const button = document.getElementById('openWebsiteBtn') as HTMLButtonElement | null;
+        try {
+            const input = document.getElementById('websiteUrl') as HTMLInputElement;
+            const raw = input.value.trim();
+            if (!raw) {throw new Error('请先粘贴目标网站的网址。');}
+            const candidate = /^[a-z][a-z0-9+.-]*:/iu.test(raw) && !/^[\w.-]+:\d+(?:\/|$)/u.test(raw) ? raw : 'https://' + raw;
+            let url: URL;
+            try {url = new URL(candidate);} catch {throw new Error('网址格式不正确，请输入完整的 http:// 或 https:// 网址。');}
+            if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) {throw new Error('请使用普通的 http:// 或 https:// 网页地址，在打开网站后再登录。');}
+            if (button) {button.disabled = true;}
+            const mode = (document.getElementById('websiteMode') as HTMLSelectElement).value === 'ai' ? 'ai' : 'record';
+            await openTargetWebsite(url.href, mode);
+        } catch (error) {showWelcomeError(error); if (button) {button.disabled = false;}}
+    })();
+});

@@ -1,18 +1,19 @@
-import {spawn} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
 import {cp, mkdir, readdir, rename, rm, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {spawnPnpm} from './dev_cdp_runtime.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const buildId = (process.env.RPA_EXTENSION_BUILD_ID || '').trim() ||
     `${new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14)}-${randomUUID().slice(0, 8)}`;
 
 const run = (args) => new Promise((resolve, reject) => {
-    const child = spawn('pnpm', args, {
+    const child = spawnPnpm(args, {
         cwd: root,
         env: {...process.env, RPA_EXTENSION_BUILD_ID: buildId},
         stdio: 'inherit',
+        detached: false,
     });
     child.once('error', reject);
     child.once('exit', (code, signal) => {

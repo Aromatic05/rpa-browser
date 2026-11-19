@@ -1,5 +1,6 @@
 import path from 'node:path';
 import type {PortAllocator} from '../../automation/runtime/service/ports';
+import type {RecordingPlaybackView} from '../../automation/recording/control';
 import type {
     WorkspaceService,
     WorkspaceServiceStartResult,
@@ -62,6 +63,7 @@ export type WorkspaceAgentServiceDeps = {
      *  (`GET /agent/product/library`). When absent the projection is
      *  explicitly unavailable rather than fabricated. */
     productLibrary?: () => Promise<ReadonlyArray<LibraryAssetSummary>>;
+    playbackView?: () => RecordingPlaybackView | undefined;
     /** Persists a completed product Task's retained Program into this
      * workspace's DSL library. */
     productSaveAutomation?: AgentProgramSaver;
@@ -95,6 +97,7 @@ export const createWorkspaceAgentService = (deps: WorkspaceAgentServiceDeps): Wo
     const product = createProductController({
         manager: sessions,
         workspace: deps.workspaceName,
+        playbackView: deps.playbackView,
         ...(deps.productDefaults === undefined ? {} : {defaults: deps.productDefaults}),
         ...(deps.productModelSettings === undefined ? {} : {modelSettings: deps.productModelSettings}),
         ...(deps.productLibrary === undefined ? {} : {library: deps.productLibrary}),
