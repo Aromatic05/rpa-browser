@@ -13,7 +13,7 @@ test('welcome permits no-key practice and the practice form produces a visible r
             await page.locator('#welcome').waitFor();
             await page.waitForFunction(() => document.getElementById('wsStatus')?.textContent === 'Connected');
             const initiallyHidden = await page.locator('#modelSetup').isHidden();
-            await page.locator('#modelSettingsBtn').click();
+            await page.locator('#configureAi').click();
             await page.locator('#modelSetup').waitFor({state:'visible'});
             await page.locator('#skipModelSetup').click();
             const skipped = await page.locator('#modelSetup').isHidden();

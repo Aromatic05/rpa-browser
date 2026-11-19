@@ -9,11 +9,13 @@
  * provider/model/executionMode, or internal action names appear in this layer.
  */
 
+import type {RecordedFrameIssue} from '../../shared/recorded_frame_feedback.js';
+
 export type WorkspaceReservation = 'idle' | 'task' | 'teach' | 'annotate' | 'playback';
 
 export type ConnectionState = 'connected' | 'disconnected';
 
-export type ProductSurface = 'home' | 'task' | 'library' | 'history' | 'teach' | 'annotate' | 'developer';
+export type ProductSurface = 'home' | 'task' | 'library' | 'history' | 'teach' | 'annotate' | 'developer' | 'guide';
 
 export type TaskLifecycleStatus =
     | 'draft'
@@ -249,7 +251,7 @@ export type WorkspaceProductView = {
         recordingName?: string;
         completed: number;
         total: number;
-        failure?: {index?: number; code?: string; fallbackConflict?: boolean; frameIssue?: import('../../shared/recorded_frame_feedback.js').RecordedFrameIssue};
+        failure?: {index?: number; code?: string; fallbackConflict?: boolean; frameIssue?: RecordedFrameIssue};
     };
     playbackPending?: boolean;
     playbackError?: string;

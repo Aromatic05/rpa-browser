@@ -223,13 +223,24 @@
       text-align: center;
       font-size: 14px;
     }
+    [hidden] { display: none !important; }
+    h3 {margin:0 0 8px;font-size:16px;}
+    .setup-body p {margin:0;line-height:1.8;color:var(--muted);}
+    .use-cases {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;}
+    .use-cases article,.site-entry {padding:18px;border:1px solid var(--line);border-radius:12px;}
+    .use-cases strong {display:block;margin-top:12px;font-size:13px;color:var(--accent);}
+    .practice-entry {padding:20px;background:#edf8f4;border-radius:12px;display:grid;gap:14px;}
+    .site-entry {display:grid;gap:14px;}
+    select {font:inherit;min-height:40px;padding:8px;border:1px solid var(--line);border-radius:9px;background:white;}
+    details {line-height:1.9;} summary {cursor:pointer;font-weight:600;}
+    button:disabled {opacity:.55;cursor:wait;}
     @media (max-width: 680px) {
       .shell { width: min(100% - 24px, 920px); padding-top: 32px; }
       .hero { flex-direction: column; }
       .panel-header { align-items: flex-start; flex-direction: column; }
       .panel-tools { width: 100%; justify-content: space-between; }
       .restore-item { align-items: flex-start; }
-      .setup-grid { grid-template-columns: 1fr; }
+      .setup-grid,.use-cases { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -241,32 +252,40 @@
           <div class="mark" aria-hidden="true">R</div>
           <h1>RPA Browser</h1>
         </div>
-        <p>让浏览器重复你做过的操作：录制填表、点击等步骤，保存后再次回放。不填 API 也能开始；用自然语言指挥 AI 才需要配置模型。</p>
+        <p>把网页上的重复点击、选择和填表交给浏览器。你可以先录制一次再重复执行，也可以让 AI 按要求尝试完成。</p>
       </div>
       <div id="connectionPill" class="connection"><strong id="wsStatus">Connecting…</strong></div>
     </header>
 
     <section id="welcome" class="panel" style="margin-bottom:24px" aria-labelledby="welcomeTitle">
-      <div class="panel-header"><div class="panel-title"><h2 id="welcomeTitle">第一次用？先试一次录制回放</h2><p>无需 API · 本地练习 · 不会提交真实业务数据</p></div></div>
+      <div class="panel-header"><div class="panel-title"><h2 id="welcomeTitle">你想让浏览器帮你做什么？</h2><p>先选一种方式，再打开你要处理的网站。基础录制不需要 API。</p></div></div>
       <div class="setup-body">
-        <p>你操作一遍，浏览器替你重复一遍。例如：填写姓名、选择类别、提交表单。回放后，页面会再次显示提交结果。</p>
-        <div><button id="openPractice" class="primary" type="button">打开练习页，开始体验</button></div>
-        <ol style="line-height:2">
-          <li>进入练习页，点击页面上的 <strong>Open Agent</strong> 悬浮按钮。</li>
-          <li>点击 <strong>录制与回放</strong>，再点击 <strong>Start Teaching</strong> 开始录制。</li>
-          <li>填写练习表单并提交，然后点 <strong>Stop &amp; Review</strong>。</li>
-          <li>为录制命名，点 <strong>Save Demonstration</strong>。到 <strong>Library</strong> 找到它，点 <strong>Replay</strong>。</li>
-        </ol>
-        <p>已经配置好 API？打开目标网页，在 Open Agent 面板的 New task 输入要求，再点 Start Task。AI 会尝试操作网页，可在面板查看进度并停止。</p>
-        <p>使用自己的网页：在地址栏输入网址，打开 Open Agent 面板即可。录制保存在 Library；下方 Automations 列表显示完整自动化。</p>
-        <span id="welcomeStatus" role="status"></span>
+        <div class="use-cases">
+          <article><h3>重复同样的操作</h3><p>录下固定菜单、筛选、填表等操作，以后回放。适合固定流程；会重复相同的输入值。</p><strong>选“录制与回放” · 无需 API</strong></article>
+          <article><h3>按一句话处理当前网页</h3><p>给出具体目标和数据，让 AI 尝试操作。例如填写当前表单，填完先停下让你检查。</p><strong>选“AI 帮我操作” · 需要模型</strong><button id="configureAi" type="button">配置或更换 AI 模型</button></article>
+        </div>
+        <div class="practice-entry"><div><h3>第一次使用：先完成一次练习</h3><p>录下填写表单 → 保存 → 清空表单 → 回放，亲眼看到浏览器自动重做。只用本地数据。</p></div><button id="openPractice" class="primary" type="button">开始录制练习</button></div>
+        <form id="openWebsite" class="site-entry">
+          <h3>用在自己的网页上</h3>
+          <label class="setup-field" for="websiteUrl">目标网址<input id="websiteUrl" type="text" required autocomplete="url" placeholder="粘贴网址，例如 https://example.com" /></label>
+          <label class="setup-field" for="websiteMode">打开后做什么<select id="websiteMode"><option value="record">录制与回放（无需 API）</option><option value="ai">AI 帮我操作（需要模型）</option></select></label>
+          <button id="openWebsiteBtn" class="primary" type="submit">打开网站并显示助手</button>
+          <p>会在当前 RPA 浏览器中打开，右侧自动显示助手。需要登录时，先自己登录并到达要操作的页面，再开始。</p>
+        </form>
+        <span id="welcomeStatus" role="status" aria-live="polite"></span>
+        <details><summary>在其他网站使用 / 去哪里看结果？</summary><ol>
+          <li>也可以直接在这个窗口的地址栏打开其他网站，点击网页右侧的 <strong>RPA 助手</strong>。不是桌面上任意浏览器都能使用。</li>
+          <li><strong>录制：</strong>开始录制 → 自己操作网页 → 停止并检查 → 命名并保存。保存后进入“我的录制”；下次回到相同流程起点，再回放。</li>
+          <li><strong>AI：</strong>在“开始”的输入框写清目标、数据和结束条件，启动后在“任务”查看进度和结果。API 配置可随时在下方打开。</li>
+          <li><strong>看不到助手？</strong>刷新网页。Chrome 设置页、扩展商店等浏览器特殊页面不支持；网页里可随时点“怎么用”查看步骤。</li>
+        </ol></details>
       </div>
     </section>
     <section id="modelSetup" class="panel" aria-labelledby="modelSetupTitle" hidden>
       <div class="panel-header">
         <div class="panel-title">
           <h2 id="modelSetupTitle">可选：配置 AI 模型</h2>
-          <p>Connect an OpenAI-compatible model once. The API key is stored locally in a private file, never in the runner config.</p>
+          <p>只用于 AI 任务，录制与回放可以跳过。保存后返回目标网页，在助手里输入任务。密钥仅保存在本机。</p>
         </div>
       </div>
       <div class="setup-body">
@@ -291,7 +310,7 @@
         <div class="setup-actions">
           <span id="modelSetupStatus" aria-live="polite">录制与回放无需 API。配置模型后才能启动 AI 任务。</span>
           <button id="skipModelSetup" type="button">暂时跳过，先用基础功能</button>
-          <button id="saveModelSetup" class="primary" type="button">Save setup</button>
+          <button id="saveModelSetup" class="primary" type="button">保存 AI 配置</button>
         </div>
       </div>
     </section>
@@ -299,8 +318,8 @@
     <section id="automationPanel" class="panel" aria-labelledby="automationTitle">
       <div class="panel-header">
         <div class="panel-title">
-          <h2 id="automationTitle">Automations</h2>
-          <p>Only complete, runnable automations are shown here.</p>
+          <h2 id="automationTitle">进阶自动化（Automations）</h2>
+          <p>这里显示完整的进阶自动化。你保存的网页录制在网页助手的“我的录制”里。</p>
         </div>
         <div class="panel-tools">
           <span id="restoreStatus" aria-live="polite">Loading…</span>

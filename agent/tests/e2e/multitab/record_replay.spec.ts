@@ -311,7 +311,7 @@ test('product Library replays a renamed button and explains an ambiguous target'
     return true;
   `);
   await clickReplay();
-  await expect.poll(() => playbackText('completed'), {timeout: 15_000}).toMatch(/Replay completed/);
+  await expect.poll(() => playbackText('completed'), {timeout: 15_000}).toMatch(/回放完成/);
   expect(await evaluate('check-replayed', "return document.querySelector('#new-save')?.dataset.replayed === 'true';")).toBe(true);
 
   await evaluate('add-duplicate', `

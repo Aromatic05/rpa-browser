@@ -20,6 +20,7 @@ import { renderHistorySurface } from '../surfaces/result.js';
 import { renderAnnotateSurface, renderHomeSurface, renderTeachSurface } from '../surfaces/home.js';
 import { renderLibrarySurface } from '../surfaces/library.js';
 import { renderTaskSurface } from '../surfaces/task.js';
+import {renderGuideSurface} from '../surfaces/guide.js';
 import { productStyles } from './styles.js';
 
 const ROOT_ID = 'rpa-product-panel';
@@ -41,7 +42,7 @@ export type ProductUIHandle = {
     setView(view: WorkspaceProductView): void;
     setDeveloperEnabled(enabled: boolean): void;
     unmount(): void;
-    open(): void;
+    open(intent?: 'record' | 'ai'): void;
     close(): void;
 };
 
@@ -126,7 +127,13 @@ export const mountProductUI = (opts: ProductUIOptions): ProductUIHandle => {
         panel.style.width = `${String(effective)}px`;
     };
 
-    const openPanel = (): void => {
+    let pendingDemonstrationName = '';
+    const openPanel = (intent?: 'record' | 'ai'): void => {
+        if (intent === 'record') {
+            state.ui.teachKind = 'demonstration';
+            state.surface = 'teach';
+            opts.commands.openTeach();
+        } else if (intent === 'ai') {state.surface = 'home';}
         state.collapsed = false;
         launcher.hidden = true;
         panel.hidden = false;
@@ -231,6 +238,14 @@ export const mountProductUI = (opts: ProductUIOptions): ProductUIHandle => {
             opts.commands.openCurrentActivity();
             routeToActive();
         },
+        saveTeach: (name) => {
+            if (state.view.authoring?.teach?.teachKind === 'demonstration') {pendingDemonstrationName = name?.trim() ?? '';}
+            opts.commands.saveTeach(name);
+        },
+        discardTeach: () => {
+            pendingDemonstrationName = '';
+            opts.commands.discardTeach();
+        },
         newTask: () => {
             state.ui.composer = '';
             state.ui.automationSaveOpen = false;
@@ -290,6 +305,9 @@ export const mountProductUI = (opts: ProductUIOptions): ProductUIHandle => {
         body.dataset.rpaProductSurface = state.surface;
         const ctx = buildContext();
         switch (state.surface) {
+            case 'guide':
+                renderGuideSurface(body, ctx);
+                break;
             case 'home':
                 renderHomeSurface(body, ctx);
                 break;
@@ -316,12 +334,12 @@ export const mountProductUI = (opts: ProductUIOptions): ProductUIHandle => {
 
     const renderLauncher = (): void => {
         launcher.innerHTML = '';
-        launcher.textContent = 'A';
+        launcher.textContent = state.view.authoring?.teach?.phase === 'recording' ? '● 录制中' : 'RPA 助手';
         const dot = el('span', 'rpa-launcher-dot');
         const waiting = interactionWaitingKind(state.view);
         const teaching = state.view.authoring?.teach?.phase === 'recording';
         const annotating = state.view.authoring?.annotate?.canvasOpen === true;
-        let ariaLabel = 'Open Agent';
+        let ariaLabel = '打开 RPA 助手';
         if (state.view.connection === 'disconnected') {
             dot.classList.add('rpa-launcher-dot--disconnected');
             ariaLabel = 'Agent disconnected';
@@ -352,10 +370,11 @@ export const mountProductUI = (opts: ProductUIOptions): ProductUIHandle => {
 
     const renderHeader = (): void => {
         header.innerHTML = '';
+        header.append(button('怎么用', () => {navigateTo('guide');}, 'ghost', {dataAction: 'help'}));
         const authoringLocked = state.view.reservation === 'teach' || state.view.reservation === 'annotate';
         if (state.surface !== 'home') {
             header.append(
-                button('← Back', navigateBack, 'ghost', {
+                button('← 返回', navigateBack, 'ghost', {
                     className: 'rpa-header-action',
                     dataAction: 'back',
                     ariaLabel: 'Back',
@@ -363,11 +382,11 @@ export const mountProductUI = (opts: ProductUIOptions): ProductUIHandle => {
             );
         }
         if (authoringLocked) {
-            const title = state.view.reservation === 'teach' ? 'Teach the agent' : 'Annotate this page';
+            const title = state.view.reservation === 'teach' ? '录制操作' : '标注网页';
             header.append(el('div', 'rpa-brand', [title]));
             const tools = el('div', 'rpa-header-tools');
             tools.append(
-                button('Collapse', collapsePanel, 'ghost', {
+                button('收起', collapsePanel, 'ghost', {
                     className: 'rpa-header-action',
                     dataAction: 'collapse-panel',
                     ariaLabel: 'Collapse sidebar',
@@ -376,13 +395,13 @@ export const mountProductUI = (opts: ProductUIOptions): ProductUIHandle => {
             header.append(tools);
             return;
         }
-        header.append(el('div', 'rpa-brand', ['Agent']));
+        header.append(el('div', 'rpa-brand', ['RPA']));
         const nav = el('div', 'rpa-nav');
         const navItems: Array<{ key: ProductSurface; label: string; enabled: boolean }> = [
-            { key: 'home', label: 'Home', enabled: true },
-            { key: 'task', label: 'Task', enabled: state.view.activeTask !== undefined },
-            { key: 'library', label: 'Library', enabled: true },
-            { key: 'history', label: 'History', enabled: true },
+            { key: 'home', label: '开始', enabled: true },
+            { key: 'task', label: '任务', enabled: state.view.activeTask !== undefined },
+            { key: 'library', label: '我的录制', enabled: true },
+            { key: 'history', label: '历史', enabled: true },
         ];
         for (const item of navItems) {
             const navBtn = document.createElement('button');
@@ -405,7 +424,7 @@ export const mountProductUI = (opts: ProductUIOptions): ProductUIHandle => {
         if (activeTask && !isTerminalStatus(activeTask.status)) {
             if (activeTask.status === 'running') {
                 tools.append(
-                    button('Pause', () => { commands.pauseTask(); }, 'ghost', {
+                    button('暂停', () => { commands.pauseTask(); }, 'ghost', {
                         className: 'rpa-header-action',
                         dataAction: 'pause-task',
                         ariaLabel: 'Pause task',
@@ -413,7 +432,7 @@ export const mountProductUI = (opts: ProductUIOptions): ProductUIHandle => {
                 );
             } else if (activeTask.status === 'paused') {
                 tools.append(
-                    button('Resume', () => { commands.resumeTask(); }, 'primary', {
+                    button('继续', () => { commands.resumeTask(); }, 'primary', {
                         className: 'rpa-header-action',
                         dataAction: 'resume-task',
                         ariaLabel: 'Resume task',
@@ -442,7 +461,7 @@ export const mountProductUI = (opts: ProductUIOptions): ProductUIHandle => {
         }
         tools.append(devBtn);
         tools.append(
-            button('Collapse', collapsePanel, 'ghost', {
+            button('收起', collapsePanel, 'ghost', {
                 className: 'rpa-header-action',
                 dataAction: 'collapse-panel',
                 ariaLabel: 'Collapse sidebar',
@@ -482,6 +501,14 @@ export const mountProductUI = (opts: ProductUIOptions): ProductUIHandle => {
     };
 
     const renderAll = (): void => {
+        const focused = shadow.activeElement;
+        const editable = focused instanceof HTMLInputElement || focused instanceof HTMLTextAreaElement ? focused : null;
+        const field = editable?.getAttribute('data-rpa-product-field');
+        const composerFocused = editable?.hasAttribute('data-rpa-product-composer');
+        const selectionStart = editable?.selectionStart;
+        const selectionEnd = editable?.selectionEnd;
+        const previousSurface = body.dataset.rpaProductSurface;
+        const scrollTop = body.scrollTop;
         launcher.hidden = !state.collapsed;
         panel.hidden = state.collapsed;
         renderConnectionBanner();
@@ -490,6 +517,15 @@ export const mountProductUI = (opts: ProductUIOptions): ProductUIHandle => {
         renderFooter();
         renderLauncher();
         applyPanelWidth();
+        if (previousSurface === body.dataset.rpaProductSurface) {
+            body.scrollTop = scrollTop;
+            const restored = field ? body.querySelector<HTMLInputElement>('[data-rpa-product-field="' + field + '"]')
+                : composerFocused ? body.querySelector<HTMLTextAreaElement>('[data-rpa-product-composer]') : null;
+            if (restored) {
+                restored.focus({preventScroll: true});
+                if (typeof selectionStart === 'number' && typeof selectionEnd === 'number') {restored.setSelectionRange(selectionStart, selectionEnd);}
+            }
+        }
     };
 
     const focusComposerIfHome = (): void => {
@@ -575,9 +611,15 @@ export const mountProductUI = (opts: ProductUIOptions): ProductUIHandle => {
         state.view = view;
         state.productStateKey = key;
         const userSelectedSurface =
-            state.surface === 'library' || state.surface === 'history' || state.surface === 'developer';
+            state.surface === 'library' || state.surface === 'history' || state.surface === 'developer' || state.surface === 'guide';
         if (previousKey !== key && !userSelectedSurface) {
             state.surface = defaultSurfaceFor(view);
+        }
+        if (pendingDemonstrationName && view.reservation === 'idle'
+            && view.librarySummary.demonstrations.some(item => item.name === pendingDemonstrationName)) {
+            state.ui.savedDemonstrationName = pendingDemonstrationName;
+            pendingDemonstrationName = '';
+            state.surface = 'library';
         }
         renderAll();
     };

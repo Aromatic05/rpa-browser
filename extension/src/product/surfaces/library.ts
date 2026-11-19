@@ -50,13 +50,13 @@ const renderPlayback = (ctx: SurfaceContext): HTMLElement | undefined => {
     const contents: HTMLElement[] = [];
     if (playback) {
         const title = {
-            running: 'Replay in progress',
-            completed: playback.failure ? 'Replay completed with errors' : 'Replay completed',
-            failed: 'Replay stopped',
-            canceled: 'Replay canceled',
+            running: '正在回放',
+            completed: playback.failure ? '回放结束，但有操作失败' : '回放完成，请查看网页结果',
+            failed: '回放已停止',
+            canceled: '回放已取消',
         }[playback.phase];
         contents.push(el('strong', undefined, [title]));
-        contents.push(hint(`${playback.recordingName ?? 'Unsaved recording'} · ${playback.completed} / ${playback.total} actions processed`));
+        contents.push(hint(`${playback.recordingName ?? '未保存的录制'} · ${String(playback.completed)} / ${String(playback.total)} actions processed`));
         if (playback.failure) {
             const {index, code, fallbackConflict, frameIssue} = playback.failure;
             const reason = frameIssue ? recordedFrameFeedback(frameIssue) : code === 'ERR_AMBIGUOUS'
@@ -66,10 +66,10 @@ const renderPlayback = (ctx: SurfaceContext): HTMLElement | undefined => {
                     : code === 'ERR_TIMEOUT' || code === 'ERR_PAGE_NOT_READY'
                         ? 'The page or target did not become ready in time.'
                         : 'Check the current page and try replaying again.';
-            contents.push(hint(index === undefined ? reason : `Action ${index + 1}: ${reason}`));
+            contents.push(hint(index === undefined ? reason : `Action ${String(index + 1)}: ${reason}`));
         }
         if (playback.phase === 'running') {
-            contents.push(button('Stop replay', ctx.commands.stopPlayback, 'danger', {
+            contents.push(button('停止回放', () => {ctx.commands.stopPlayback();}, 'danger', {
                 disabled: isMutationDisabled(ctx) || playbackPending,
                 dataAction: 'stop-playback',
             }));
@@ -84,7 +84,9 @@ const renderPlayback = (ctx: SurfaceContext): HTMLElement | undefined => {
 };
 
 export const renderLibrarySurface = (root: HTMLElement, ctx: SurfaceContext): void => {
-    root.append(sectionTitle('Library'));
+    root.append(sectionTitle('我的录制'));
+    root.append(card([hint('先打开录制时的网站，登录并回到流程起点，再点击“回放”。回放会重复保存的操作和原来的输入值。')]));
+    if (ctx.ui.savedDemonstrationName) {root.append(card([el('strong', undefined, ['已保存：' + ctx.ui.savedDemonstrationName]), hint('下一步：回到流程起点，再点击下面这条录制的“回放”。')]));}
     const library = ctx.view.librarySummary;
     const mutationsDisabled = isMutationDisabled(ctx);
     const workspaceBusy = isActiveActivity(ctx.view);
@@ -106,7 +108,9 @@ export const renderLibrarySurface = (root: HTMLElement, ctx: SurfaceContext): vo
             ),
         );
     }
-    root.append(automations);
+    const advanced = el('details', 'rpa-block');
+    advanced.append(el('summary', undefined, ['进阶资产：Automations / Procedures & Recovery / Page Knowledge']));
+    advanced.append(automations);
 
     const proceduresAndRecovery = section('procedures', 'Procedures & Recovery');
     const procedureItems = library.procedures.map((procedure) =>
@@ -124,13 +128,13 @@ export const renderLibrarySurface = (root: HTMLElement, ctx: SurfaceContext): vo
     for (const item of recoveryItems) {
         proceduresAndRecovery.append(item);
     }
-    root.append(proceduresAndRecovery);
+    advanced.append(proceduresAndRecovery);
 
-    const demonstrations = section('demonstrations', 'Demonstrations');
+    const demonstrations = section('demonstrations', '保存的网页录制（Demonstrations）');
     const playback = renderPlayback(ctx);
     if (playback) {demonstrations.append(playback);}
     if (library.demonstrations.length === 0) {
-        demonstrations.append(emptyState('No demonstrations yet.'));
+        demonstrations.append(emptyState('还没有录制。点击“开始”→“录制与回放”，操作一次网页并保存。'));
     }
     for (const demonstration of library.demonstrations) {
         demonstrations.append(
@@ -138,11 +142,11 @@ export const renderLibrarySurface = (root: HTMLElement, ctx: SurfaceContext): vo
                 demonstration.name,
                 `${String(demonstration.stepCount)} recorded actions${healthMarker(demonstration.health)}`,
                 ctx.view.playbackAvailable ? button(
-                    'Replay',
+                    '回放',
                     () => {ctx.commands.replayDemonstration(demonstration.name);},
                     'ghost',
                     {
-                        disabled: mutationsDisabled || workspaceBusy || ctx.view.playbackPending
+                        disabled: mutationsDisabled || workspaceBusy || (ctx.view.playbackPending ?? false)
                             || demonstration.stepCount === 0 || demonstration.health === 'broken',
                         ariaLabel: `Replay ${demonstration.name}`,
                         dataAction: 'replay',
@@ -183,7 +187,8 @@ export const renderLibrarySurface = (root: HTMLElement, ctx: SurfaceContext): vo
             ),
         );
     }
-    root.append(pageKnowledge);
+    advanced.append(pageKnowledge);
+    root.append(advanced);
 
     if (workspaceBusy) {
         root.append(card([hint('The workspace is in use. Editing is paused.')]));

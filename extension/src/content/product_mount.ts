@@ -356,6 +356,18 @@ export const mountProductFromContent = (options: ProductMountOptions): ProductMo
     controller.start();
 
     let unmounted = false;
+    const onboardingStorage = (globalThis as {chrome?: {storage?: {local?: Pick<typeof chrome.storage.local, 'get' | 'remove'>}}}).chrome?.storage?.local;
+    if (onboardingStorage) {
+        void onboardingStorage.get('rpaOnboardingIntent').then(async (stored) => {
+            const intent = stored.rpaOnboardingIntent as {url?: string; mode?: string; createdAt?: number; workspace?: string} | undefined;
+            if (!intent?.url || !intent.createdAt || Date.now() - intent.createdAt > 120_000 || Date.now() < intent.createdAt
+                || intent.workspace !== options.workspaceName || (intent.mode !== 'record' && intent.mode !== 'ai')) {return;}
+            const expected = new URL(intent.url).hostname.replace(/^www\./u, '');
+            if (location.hostname.replace(/^www\./u, '') !== expected) {return;}
+            await onboardingStorage.remove('rpaOnboardingIntent');
+            if (!unmounted) {uiHandle.open(intent.mode);}
+        }).catch(() => undefined);
+    }
     return {
         refresh: async () => {
             if (unmounted) {

@@ -15,7 +15,7 @@ test('launcher toggles the right-docked panel and an explicit collapse button re
 
         const collapse = fixture.shadow.querySelector('[data-rpa-product-action="collapse-panel"]') as HTMLButtonElement;
         assert.ok(collapse);
-        assert.equal(collapse.textContent, 'Collapse', 'collapse is a visible text control, not a cryptic glyph');
+        assert.equal(collapse.textContent, '收起', 'collapse is a visible text control, not a cryptic glyph');
         collapse.click();
         assert.equal(fixture.panel.hidden, true, 'collapse hides the panel');
         assert.equal(fixture.launcher.hidden, false, 'collapse restores the launcher');
@@ -32,7 +32,7 @@ test('non-home surfaces always expose a visible back button', () => {
         libraryNav.click();
         const back = fixture.shadow.querySelector('[data-rpa-product-action="back"]') as HTMLButtonElement;
         assert.ok(back);
-        assert.match(back.textContent, /Back/);
+        assert.match(back.textContent, /返回/);
         back.click();
         assert.equal(fixture.body.dataset.rpaProductSurface, 'home');
     } finally {

@@ -14,7 +14,7 @@ test('Home composer emits only a typed startTask intent with the trimmed prompt'
         openPanel(fixture);
         const start = fixture.shadow.querySelector('[data-rpa-product-action="start"]') as HTMLButtonElement;
         assert.equal(start.disabled, true, 'Start disabled while the prompt is empty');
-        assert.match(bodyText(fixture), /Describe the task first\./);
+        assert.match(bodyText(fixture), /先写下你想让 AI/);
 
         typeComposer(fixture, '  Fill the order form  ');
         assert.equal(start.disabled, false);
@@ -51,7 +51,7 @@ test('an unconfigured model is a first-run setup state, not a fake service outag
         const start = fixture.shadow.querySelector('[data-rpa-product-action="start"]') as HTMLButtonElement;
         assert.equal(textarea.disabled, true);
         assert.equal(start.disabled, true);
-        assert.match(bodyText(fixture), /Model setup is required/);
+        assert.match(bodyText(fixture), /AI 功能尚未配置/);
         assert.equal(bodyText(fixture).includes('Agent service is not reachable'), false);
         assert.ok(fixture.shadow.querySelector('[data-rpa-product-action="teach"]'));
         assert.ok(fixture.shadow.querySelector('[data-rpa-product-action="annotate"]'));
@@ -135,7 +135,7 @@ test('Teach setup distinguishes Structured Teach from Basic Demonstration', () =
         const demonstration = fixture.shadow.querySelector('input[data-rpa-product-field="teach-kind"][value="demonstration"]') as HTMLInputElement;
         demonstration.checked = true;
         demonstration.dispatchEvent(new fixture.dom.window.Event('change', { bubbles: true }));
-        assert.match(bodyText(fixture), /无需 API。点击 Start Teaching/);
+        assert.match(bodyText(fixture), /开始录制/);
         assert.equal(
             fixture.shadow.querySelector('[data-rpa-product-field="business-area"]'),
             null,
@@ -156,8 +156,8 @@ test('record and replay starts an unconfigured user in demonstration mode withou
         openPanel(fixture);
         (fixture.shadow.querySelector('[data-rpa-product-action="record-demo"]') as HTMLButtonElement).click();
         assert.equal(fixture.body.dataset.rpaProductSurface, 'teach');
-        const mode = fixture.shadow.querySelector('input[value="demonstration"]') as HTMLInputElement;
-        assert.equal(mode.checked, true);
+        assert.match(bodyText(fixture), /第 1 步/);
+        assert.equal(fixture.shadow.querySelector('[data-rpa-product-field="business-area"]'), null);
         const start = fixture.shadow.querySelector('[data-rpa-product-action="start-teach"]') as HTMLButtonElement;
         assert.equal(start.disabled, false);
         start.click();

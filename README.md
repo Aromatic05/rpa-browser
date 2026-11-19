@@ -51,7 +51,7 @@ pnpm mcp:hot
 pnpm control --source "ctx.log('hello')"
 ```
 
-首次 `pnpm start` 打开的 RPA Browser 新标签页会在模型尚未配置时显示 `Finish setup`。Provider、Model 和 OpenAI-compatible Base URL 写入本地 runner config；API key 单独写入权限为 `0600` 的本地 secret 文件，runner config 和运行日志不保存明文 key。保存后同一 Agent 进程立即生效，无需重启浏览器或运行时。
+首次打开会显示中文使用入口：可以不填 API，先点“开始录制练习”；也可以粘贴目标网址，选择录制或 AI 任务，打开后自动显示助手。网页内右侧“RPA 助手”提供“怎么用”和“我的录制”。AI 模型配置为可选项，密钥仅保存在本机。完整的场景和操作步骤见 [使用入门](docs/使用入门.md)。
 
 仓库不再提供独立 `mock/` 应用。框架页面回归由 Playwright E2E 页面、浏览器采集 fixture 和 replay corpus 提供。
 

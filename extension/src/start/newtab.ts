@@ -391,7 +391,7 @@ const saveModelSetup = async (): Promise<void> => {
         }
         applyModelStatus(result.data, false);
         const status = document.getElementById('welcomeStatus');
-        if (status) {status.textContent = 'AI 配置已保存。打开目标网页，在 Open Agent 的 New task 输入任务；也可先体验上面的练习。';}
+        if (status) {status.textContent = 'AI 配置已保存。在上方粘贴目标网址，选择“AI 帮我操作”，打开后在右侧助手输入任务。';}
         document.getElementById('welcome')?.scrollIntoView({block: 'start'});
     } finally {
         if (saveModelSetupBtn) {saveModelSetupBtn.disabled = false;}
@@ -432,7 +432,7 @@ const renderAutomationList = (items: AutomationItem[]) => {
     if (!automations.length) {
         const empty = document.createElement('div');
         empty.className = 'empty';
-        empty.textContent = '还没有完整自动化。首次体验请点上方“打开练习页”；保存的录制请到网页侧栏 Library 查看。';
+        empty.textContent = '还没有进阶自动化。你可以先点上方“开始录制练习”；保存的网页录制请到助手的“我的录制”查看。';
         restoreListEl.appendChild(empty);
         return;
     }
@@ -538,21 +538,47 @@ modelSettingsBtn?.addEventListener('click', () => {
     })();
 });
 saveModelSetupBtn?.addEventListener('click', () => {void saveModelSetup();});
+document.getElementById('configureAi')?.addEventListener('click', () => {modelSettingsBtn?.click();});
 
 document.getElementById('skipModelSetup')?.addEventListener('click', () => {
     if (modelSetupEl) {modelSetupEl.hidden = true;}
     document.getElementById('welcome')?.scrollIntoView({block: 'start'});
 });
+const openTargetWebsite = async (url: string, mode: 'record' | 'ai'): Promise<void> => {
+    const bound = boundScope ?? await connectAndRefresh();
+    if (!bound) {throw new Error(offlineCopy);}
+    const config = await readSessionConfig();
+    await chrome.storage.local.set({rpaOnboardingIntent: {url, mode, workspace: config.workspaceName, createdAt: Date.now()}});
+    location.assign(url);
+};
+
+const showWelcomeError = (error: unknown): void => {
+    const status = document.getElementById('welcomeStatus');
+    if (status) {status.textContent = error instanceof Error ? error.message : String(error);}
+};
 document.getElementById('openPractice')?.addEventListener('click', () => {
     void (async () => {
-        const status = document.getElementById('welcomeStatus');
         try {
-            const bound = boundScope ?? await connectAndRefresh();
-            if (!bound) {throw new Error(offlineCopy);}
             const config = await readSessionConfig();
-            location.assign('http://127.0.0.1:' + String(config.wsPort) + '/rpa-practice');
-        } catch (error) {
-            if (status) {status.textContent = error instanceof Error ? error.message : String(error);}
-        }
+            await openTargetWebsite('http://127.0.0.1:' + String(config.wsPort) + '/rpa-practice', 'record');
+        } catch (error) {showWelcomeError(error);}
+    })();
+});
+document.getElementById('openWebsite')?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    void (async () => {
+        const button = document.getElementById('openWebsiteBtn') as HTMLButtonElement | null;
+        try {
+            const input = document.getElementById('websiteUrl') as HTMLInputElement;
+            const raw = input.value.trim();
+            if (!raw) {throw new Error('请先粘贴目标网站的网址。');}
+            const candidate = /^[a-z][a-z0-9+.-]*:/iu.test(raw) && !/^[\w.-]+:\d+(?:\/|$)/u.test(raw) ? raw : 'https://' + raw;
+            let url: URL;
+            try {url = new URL(candidate);} catch {throw new Error('网址格式不正确，请输入完整的 http:// 或 https:// 网址。');}
+            if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) {throw new Error('请使用普通的 http:// 或 https:// 网页地址，在打开网站后再登录。');}
+            if (button) {button.disabled = true;}
+            const mode = (document.getElementById('websiteMode') as HTMLSelectElement).value === 'ai' ? 'ai' : 'record';
+            await openTargetWebsite(url.href, mode);
+        } catch (error) {showWelcomeError(error); if (button) {button.disabled = false;}}
     })();
 });

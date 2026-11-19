@@ -44,7 +44,8 @@ export const productStyles = `
     top: 50%;
     right: 12px;
     transform: translateY(-50%);
-    width: 44px;
+    min-width: 104px;
+    padding: 0 16px;
     height: 44px;
     border-radius: 999px;
     border: none;
@@ -207,6 +208,7 @@ export const productStyles = `
 
 .rpa-body {
     flex: 1 1 auto;
+    min-height: 0;
     overflow-y: auto;
     overflow-x: hidden;
     padding: 16px;

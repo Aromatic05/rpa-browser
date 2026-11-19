@@ -19,10 +19,10 @@ import {
 } from '../components/common.js';
 
 const OUTCOME_META: Record<TaskOutcome, { glyph: string; label: string; tone: string }> = {
-    completed: { glyph: '✓', label: 'Task completed', tone: 'success' },
-    failed: { glyph: '✗', label: 'Task failed', tone: 'error' },
-    cancelled: { glyph: '⊘', label: 'Task stopped', tone: 'muted' },
-    interrupted: { glyph: '⏸', label: 'Task interrupted', tone: 'info' },
+    completed: { glyph: '✓', label: '任务完成 · Task completed', tone: 'success' },
+    failed: { glyph: '✗', label: '任务失败 · Task failed', tone: 'error' },
+    cancelled: { glyph: '⊘', label: '任务已停止 · Task stopped', tone: 'muted' },
+    interrupted: { glyph: '⏸', label: '任务中断 · Task interrupted', tone: 'info' },
 };
 
 const failedTaskCopy = (task: AgentTaskView): string => {
@@ -34,7 +34,7 @@ const failedTaskCopy = (task: AgentTaskView): string => {
 
 const primaryCopy = (task: AgentTaskView, outcome: TaskOutcome): Node => {
     if (outcome === 'completed') {
-        return task.result?.output ? muted(`Output: ${task.result.output}`) : muted('The task finished successfully.');
+        return task.result?.output ? muted(`结果：${task.result.output}`) : muted('任务已完成。请检查网页中的变化，并核对下方结果。');
     }
     if (outcome === 'failed') {
         const wrapper = el('div', undefined, [muted(failedTaskCopy(task))]);
@@ -63,11 +63,11 @@ export const renderResultView = (root: HTMLElement, ctx: SurfaceContext, task: A
     const reportCopy = result?.reportAvailable ? ' · Report available' : '';
     body.append(muted(`Effects applied: ${String(result?.effectsCount ?? 0)}${reportCopy}`));
     const row = el('div', 'rpa-row');
-    row.append(button('New Task', () => { ctx.commands.newTask(); }, 'primary', { dataAction: 'new-task' }));
+    row.append(button('开始新任务', () => { ctx.commands.newTask(); }, 'primary', { dataAction: 'new-task' }));
     if (outcome === 'completed' && result?.saveEligible) {
         if (!ctx.ui.automationSaveOpen && ctx.view.automationSave?.status !== 'saved') {
             row.append(
-                button('Save Automation', () => {
+                button('保存为进阶自动化', () => {
                     ctx.ui.automationSaveOpen = true;
                     ctx.ui.automationName = task.title;
                     ctx.rerender();
