@@ -163,6 +163,31 @@ export const createCmdRouter = (options: CmdRouterOptions): CmdRouter => {
     };
 
     const handleMessage = (message: unknown, sender: chrome.runtime.MessageSender, sendResponse: (payload?: unknown) => void) => {
+        if (isRecord(message) && message.type === 'rpa.product.openTarget' && sender.id === chrome.runtime.id) {
+            void (async () => {
+                const url = typeof message.url === 'string' ? new URL(message.url) : null;
+                if (!url || !['http:', 'https:'].includes(url.protocol)) {throw new Error('invalid website URL');}
+                const tab = await chrome.tabs.create({url:url.href, active:true});
+                if (tab.id === undefined) {throw new Error('failed to create tab');}
+                const bound = await life.ensureOpenedAndBound(tab.id, tab.windowId);
+                if (!bound) {throw new Error('new tab binding failed');}
+                const result = await sendAction({v:1,id:crypto.randomUUID(),type:'tab.setActive',workspaceName:options.sessionWorkspaceName,payload:{tabName:bound.bindingName,source:'extension.newtab'}});
+                if (result.type.endsWith('.failed')) {throw new Error('new tab activation failed');}
+                sendResponse({ok:true});
+            })().catch((error: unknown) => {sendResponse({ok:false,error:error instanceof Error ? error.message : String(error)});});
+            return true;
+        }
+        if (isRecord(message) && message.type === 'rpa.product.openStartPage' && sender.id === chrome.runtime.id) {
+            void (async () => {
+                const url = chrome.runtime.getURL('newtab.html');
+                const tabs = await chrome.tabs.query(sender.tab ? {windowId:sender.tab.windowId} : {});
+                const existing = tabs.find(tab => tab.url?.startsWith(url));
+                if (existing?.id !== undefined) {await chrome.tabs.update(existing.id, {active:true});}
+                else {await chrome.tabs.create({url, active:true});}
+                sendResponse({ok:true});
+            })().catch(() => {sendResponse({ok:false});});
+            return true;
+        }
         if (!isRecord(message) || typeof message.type !== 'string') {return;}
         const typedMessage = message as TypedRuntimeMessage;
 
@@ -381,6 +406,9 @@ export const createCmdRouter = (options: CmdRouterOptions): CmdRouter => {
                 if (typeof chromeTabNo === 'number') {
                     const tabState = state.getTabState(chromeTabNo);
                     const bindingName = tabState?.bindingName;
+                    if (bindingName && isRecord(action) && ['record.start', 'checkpoint.record.start', 'play.start'].includes(String(action.type))) {
+                        await sendAction({v:1,id:crypto.randomUUID(),type:'tab.setActive',workspaceName:options.sessionWorkspaceName,payload:{tabName:bindingName,source:'extension.user-action'}});
+                    }
                     if (bindingName && isRecord(action) && shouldAttachWorkspaceFromSender(action)) {
                         const mapped = state.getBindingWorkspaceTab(bindingName);
                         action.workspaceName = mapped?.workspaceName ?? options.sessionWorkspaceName;

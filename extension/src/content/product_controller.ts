@@ -134,6 +134,7 @@ export const createProductController = (options: ProductControllerOptions): Prod
     let playbackError: string | undefined;
 
     type StandaloneAuthoring = {
+        error?: string;
         activity: 'teach' | 'annotate';
         teachKind?: TeachKind;
         recordingConfirmed: boolean;
@@ -306,6 +307,7 @@ export const createProductController = (options: ProductControllerOptions): Prod
         const stepCount = state.demoReview?.stepCount ?? state.demoStepCount;
         return {
             teachKind,
+            error: authoring.error,
             phase,
             stepCount,
             businessAreas: [],
@@ -431,6 +433,7 @@ export const createProductController = (options: ProductControllerOptions): Prod
         const authoring = state.authoring;
         const linked = state.linked;
         if (!ok) {
+            if (authoring?.activity === 'teach') {authoring.error = typeof reply?.message === 'string' ? reply.message : '录制操作失败，请重试。'; void syncOnce();}
             if ((type === 'record.start' || type === 'checkpoint.record.start')
                 && authoring?.activity === 'teach') {
                 const failure = isRecord(reply?.payload) ? reply.payload : {};

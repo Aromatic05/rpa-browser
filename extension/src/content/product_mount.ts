@@ -241,7 +241,8 @@ export const buildAuthoringBridge = (
             const unsaved = payload && isRecord(payload.unsaved) ? payload.unsaved : undefined;
             const stepCount = typeof unsaved?.stepCount === 'number' ? unsaved.stepCount : 0;
             if (!actionSucceeded(reply)) {return null;}
-            if (demoActive === 'recording') {
+            if (payload?.status === 'recording' || (payload?.status === undefined && demoActive === 'recording')) {
+                demoActive = 'recording';
                 return {status: 'recording', stepCount};
             }
             if (demoActive === 'review') {
@@ -343,6 +344,7 @@ export const mountProductFromContent = (options: ProductMountOptions): ProductMo
     });
     controllerRef = controller;
     const uiHandle: ProductUIHandle = mountProductUIImpl({
+        openStartPage: () => {void chrome.runtime.sendMessage({type:'rpa.product.openStartPage'});},
         view: controller.getView(),
         commands: controller.commands,
         now: options.now,

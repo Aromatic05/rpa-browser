@@ -221,6 +221,8 @@ export const productStyles = `
     background: var(--rpa-surface);
 }
 
+.rpa-file-preview {white-space:pre-wrap;overflow-wrap:anywhere;max-height:140px;overflow:auto;font-size:12px;}
+
 /* ---- Surface headers / banners ---- */
 .rpa-connection-banner {
     display: flex;

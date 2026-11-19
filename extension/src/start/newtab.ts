@@ -553,7 +553,10 @@ const openTargetWebsite = async (url: string, mode: 'record' | 'ai'): Promise<vo
     if (!bound) {throw new Error(offlineCopy);}
     const config = await readSessionConfig();
     await chrome.storage.local.set({rpaOnboardingIntent: {url, mode, workspace: config.workspaceName, createdAt: Date.now()}});
-    location.assign(url);
+    const opened = await chrome.runtime.sendMessage<{type:string;url:string}, {ok?:boolean;error?:string}>({type:'rpa.product.openTarget',url});
+    if (opened.ok !== true) {throw new Error(opened.error ?? '无法打开新标签页，请重试。');}
+    const status = document.getElementById('welcomeStatus');
+    if (status) {status.textContent = '已在新标签页打开网站；此首页会保留。';}
 };
 
 const showWelcomeError = (error: unknown): void => {

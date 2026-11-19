@@ -728,9 +728,11 @@ await log('source guard: content and newtab avoid legacy lifecycle publication',
     assert.equal(startSrc.includes("'tab.init'"), false);
     assert.equal(startSrc.includes("sendAction<BoundTokenData>('tab.opened'"), false);
     assert.equal(startSrc.includes("sendAction<RuntimeTabListData>('tab.list'"), true);
-    assert.equal(startSrc.includes('chrome.runtime.sendMessage'), false);
+    assert.equal(startSrc.includes("type:'rpa.product.openTarget'"), true, 'only browser navigation is delegated to the extension worker');
     assert.equal(mainManifest.chrome_url_overrides.newtab, 'newtab.html');
-    assert.equal(newtabHtml.includes('src="./start/newtab.js"'), true);
+    assert.equal(newtabHtml.includes('src="./newtab_bootstrap.js"'), true);
+    const bootstrap = fs.readFileSync(new URL('../../newtab_bootstrap.js', import.meta.url), 'utf8');
+    assert.equal(bootstrap.includes("import('./start/newtab.js')"), true);
     assert.equal(mainManifest.content_security_policy.extension_pages.includes('ws://127.0.0.1:*'), true);
     assert.equal(mainManifest.content_security_policy.extension_pages.includes('ws://localhost:*'), true);
     assert.equal(mainManifest.content_security_policy.extension_pages.includes(':17333'), false);

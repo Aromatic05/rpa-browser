@@ -31,6 +31,9 @@ export type UiState = {
     automationName: string;
     demonstrationName: string;
     savedDemonstrationName: string;
+    taskFile: {name: string; text: string} | null;
+    taskFileLoading: boolean;
+    taskFileError: string;
 };
 
 export const createUiState = (): UiState => ({
@@ -54,6 +57,9 @@ export const createUiState = (): UiState => ({
     automationName: '',
     demonstrationName: '',
     savedDemonstrationName: '',
+    taskFile: null,
+    taskFileLoading: false,
+    taskFileError: '',
 });
 
 export type SurfaceContext = {

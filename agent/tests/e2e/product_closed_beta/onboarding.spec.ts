@@ -10,7 +10,7 @@ test('welcome permits no-key practice and the practice form produces a visible r
     try {
         const result = await sendControlEval({timeoutMs: 60_000, source: `
             const workspace = ctx.resolveWorkspace('default');
-            const page = workspace.tabs.getActiveTab().page;
+            let page = workspace.tabs.getActiveTab().page;
             await page.waitForURL(/newtab.html/, {timeout: 20000});
             await page.locator('#welcome').waitFor();
             await page.waitForFunction(() => document.getElementById('wsStatus')?.textContent === 'Connected');
@@ -19,7 +19,10 @@ test('welcome permits no-key practice and the practice form produces a visible r
             await page.locator('#modelSetup').waitFor({state:'visible'});
             await page.locator('#skipModelSetup').click();
             const skipped = await page.locator('#modelSetup').isHidden();
+            const newPage = page.context().waitForEvent('page');
             await page.locator('#openPractice').click();
+            const startPage = page; page = await newPage;
+            if (!startPage.url().includes('/newtab.html')) {throw new Error('The homepage was replaced');}
             await page.waitForURL(/rpa-practice/);
             await page.locator('#practiceName').fill('体验用户');
             await page.locator('#practiceCategory').selectOption({label:'工作'});

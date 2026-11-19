@@ -170,6 +170,7 @@ export type BusinessArea = {
 
 /** Sanitized structured Teach projection (AgentProductInteraction §12.1). */
 export type TeachView = {
+    error?: string;
     teachKind: TeachKind;
     phase: TeachPhase;
     stepCount: number;

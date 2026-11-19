@@ -419,6 +419,7 @@ export const createRecordControl = (services: RecordControlServices): RecordCont
             const bundle = getWorkspaceUnsavedRecordingBundle(services.recordingState, workspaceName);
             return {
                 reply: replyAction(action, {
+                    status: workspace.state === 'recording' ? 'recording' : bundle.steps.length > 0 ? 'review' : 'idle',
                     steps: bundle.steps,
                     manifest: bundle.manifest,
                     enrichments: bundle.enrichments,

@@ -36,6 +36,7 @@ export type ProductUIOptions = {
     initialWidth?: number;
     renderDeveloperSurface?: (root: HTMLElement) => void;
     now?: () => number;
+    openStartPage?: () => void;
 };
 
 export type ProductUIHandle = {
@@ -248,6 +249,8 @@ export const mountProductUI = (opts: ProductUIOptions): ProductUIHandle => {
         },
         newTask: () => {
             state.ui.composer = '';
+            state.ui.taskFile = null;
+            state.ui.taskFileError = '';
             state.ui.automationSaveOpen = false;
             state.ui.automationName = '';
             opts.commands.newTask();
@@ -370,6 +373,7 @@ export const mountProductUI = (opts: ProductUIOptions): ProductUIHandle => {
 
     const renderHeader = (): void => {
         header.innerHTML = '';
+        if (opts.openStartPage) {header.append(button('RPA 首页', () => {opts.openStartPage?.();}, 'ghost', {dataAction:'open-start'}));}
         header.append(button('怎么用', () => {navigateTo('guide');}, 'ghost', {dataAction: 'help'}));
         const authoringLocked = state.view.reservation === 'teach' || state.view.reservation === 'annotate';
         if (state.surface !== 'home') {
