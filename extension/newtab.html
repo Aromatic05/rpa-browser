@@ -246,6 +246,7 @@
 </head>
 <body>
   <main class="shell">
+    <div id="runtimeNotice" role="alert" style="padding:16px;margin-bottom:20px;border:2px solid #d97706;border-radius:12px;background:#fff7ed;line-height:1.8">正在检查运行环境。请从项目中的“启动RPA.cmd”或 pnpm start 打开的 RPA 浏览器使用；普通 Edge 窗口不会自动带上助手。</div>
     <header class="hero">
       <div>
         <div class="brand">
@@ -266,10 +267,11 @@
         </div>
         <div class="practice-entry"><div><h3>第一次使用：先完成一次练习</h3><p>录下填写表单 → 保存 → 清空表单 → 回放，亲眼看到浏览器自动重做。只用本地数据。</p></div><button id="openPractice" class="primary" type="button">开始录制练习</button></div>
         <form id="openWebsite" class="site-entry">
-          <h3>用在自己的网页上</h3>
+          <h3>在 RPA 窗口打开你的网站</h3>
+          <p><strong>请先确认：这是 pnpm start 或“启动RPA.cmd”弹出的浏览器窗口。</strong>你平时使用的 Edge 不会被自动控制。从 Edge 复制网址到这里即可；网站登录状态也需要在 RPA 窗口中重新建立。</p>
           <label class="setup-field" for="websiteUrl">目标网址<input id="websiteUrl" type="text" required autocomplete="url" placeholder="粘贴网址，例如 https://example.com" /></label>
           <label class="setup-field" for="websiteMode">打开后做什么<select id="websiteMode"><option value="record">录制与回放（无需 API）</option><option value="ai">AI 帮我操作（需要模型）</option></select></label>
-          <button id="openWebsiteBtn" class="primary" type="submit">打开网站并显示助手</button>
+          <button id="openWebsiteBtn" class="primary" type="submit">在 RPA 窗口打开网站</button>
           <p>会在当前 RPA 浏览器中打开，右侧自动显示助手。需要登录时，先自己登录并到达要操作的页面，再开始。</p>
         </form>
         <span id="welcomeStatus" role="status" aria-live="polite"></span>
@@ -331,6 +333,6 @@
     </section>
 
   </main>
-  <script type="module" src="./start/newtab.js"></script>
+  <script src="./newtab_bootstrap.js"></script>
 </body>
 </html>

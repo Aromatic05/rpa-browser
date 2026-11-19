@@ -160,12 +160,14 @@ const setStatus = (text: string, ok = false) => {
     connectionPillEl?.classList.toggle('ok', ok);
 };
 
-const offlineCopy = 'Agent service is offline. Start RPA Browser, then retry.';
+const offlineCopy = 'RPA 服务未连接。请保持启动终端运行；关闭旧窗口后，通过“启动RPA.cmd”或 pnpm start 重新打开 RPA 浏览器。';
 
 const applyOfflineState = (message: string): void => {
     boundScope = null;
     window.__rpa_start_error = message;
     setStatus('Offline');
+    const notice = document.getElementById('runtimeNotice');
+    if (notice) {notice.hidden = false; notice.textContent = offlineCopy;}
     if (modelSetupEl) {modelSetupEl.hidden = true;}
     if (modelSetupStatusEl) {modelSetupStatusEl.textContent = offlineCopy;}
     if (restoreStatusEl) {restoreStatusEl.textContent = offlineCopy;}
@@ -178,6 +180,8 @@ const applyOfflineState = (message: string): void => {
 const applyConnectedState = (): void => {
     window.__rpa_start_error = undefined;
     setStatus('Connected', true);
+    const notice = document.getElementById('runtimeNotice');
+    if (notice) {notice.hidden = true;}
     if (refreshRestoreBtn) {refreshRestoreBtn.textContent = 'Refresh';}
     if (modelSettingsBtn) {modelSettingsBtn.disabled = false;}
     if (saveModelSetupBtn) {saveModelSetupBtn.disabled = false;}
