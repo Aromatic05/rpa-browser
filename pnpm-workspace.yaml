@@ -1,7 +1,11 @@
 packages:
-  - agent
-  - extension
-  - agent/debug/snapshot-viewer
+  - packages/*/*
+  - app/agent
+  - app/extension
+  - app/launcher
+  - app/agent/debug/snapshot-viewer
 allowBuilds:
+  '@google/genai': false
   esbuild: true
-shellEmulator: true
+  protobufjs: false
+  unrs-resolver: true
