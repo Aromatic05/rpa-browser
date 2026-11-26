@@ -15,9 +15,9 @@ export type RecorderSinkDeps = {
     wsTap?: (stage: string, data: Record<string, unknown>) => void;
 };
 
-export const createRecorderEventSinkHandler = (deps: RecorderSinkDeps): ((event: RecorderEvent, page: Page, tabName: string) => Promise<void>) => {
+export const createRecorderEventSinkHandler = (deps: RecorderSinkDeps): ((event: RecorderEvent, page: Page, tabName: string, admittedToken?: string) => Promise<void>) => {
     const wsTap = deps.wsTap || (() => undefined);
-    return async (event: RecorderEvent, page: Page, tabName: string) => {
+    return async (event: RecorderEvent, page: Page, tabName: string, admittedToken?: string) => {
         const workspaceName = deps.findWorkspaceNameByTabName(tabName);
         if (!workspaceName) {
             wsTap('agent.record_event.drop', {
@@ -38,6 +38,7 @@ export const createRecorderEventSinkHandler = (deps: RecorderSinkDeps): ((event:
                 page,
                 tabName,
                 navDedupeWindowMs: deps.navDedupeWindowMs,
+                admittedToken,
             }),
         );
         if (!ingest.accepted) {

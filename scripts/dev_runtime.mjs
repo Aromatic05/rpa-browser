@@ -7,7 +7,7 @@ import {fileURLToPath} from 'node:url';
 
 import {
     acquireInstanceLock,
-    spawnManagedProcess,
+    spawnPnpm,
     terminateProcessTree,
     terminateProcessTreeSync,
 } from './dev_cdp_runtime.mjs';
@@ -23,7 +23,6 @@ const lockDir = path.resolve(
     || process.env.RPA_DEV_CDP_LOCK_DIR
     || path.join(root, '.dev', 'dev-runtime.lock'),
 );
-const pnpmCommand = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
 const watchedPaths = [
     'extension/src',
     'extension/manifest.json',
@@ -71,7 +70,7 @@ const shutdown = (signal = 'SIGTERM', exitCode = 0) => {
 };
 
 const runCommand = (args) => new Promise((resolve, reject) => {
-    const child = spawnManagedProcess(pnpmCommand, args, {
+    const child = spawnPnpm(args, {
         cwd: root,
         stdio: 'inherit',
         detached: false,
@@ -137,7 +136,7 @@ const monitorChild = (child, label, isCurrent = () => true) => {
 
 const startAgent = () => {
     const agentScript = mode === 'cdp' ? 'dev:cdp' : 'dev';
-    const child = spawnManagedProcess(pnpmCommand, ['--filter', './agent', agentScript], {
+    const child = spawnPnpm(['--filter', './agent', agentScript], {
         cwd: root,
         env: {...process.env, RPA_EXTENSION_AUTO_RELOAD: 'false'},
         stdio: 'inherit',
@@ -162,7 +161,7 @@ const main = async () => {
         await runCommand(['build:extension']);
         await runCommand(['--filter', './agent', 'test:runner:bundle']);
 
-        runnerWatch = spawnManagedProcess(pnpmCommand, ['--filter', './agent', 'test:runner:bundle:watch'], {
+        runnerWatch = spawnPnpm(['--filter', './agent', 'test:runner:bundle:watch'], {
             cwd: root,
             stdio: 'inherit',
             detached: false,

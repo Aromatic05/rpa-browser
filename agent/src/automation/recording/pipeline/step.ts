@@ -36,9 +36,11 @@ export const buildResolveFromEvent = (event: RecorderEvent): StepResolve | undef
             role: event.a11yHint?.role,
             name: event.a11yHint?.name,
             text: event.a11yHint?.text,
+            ...(event.framePath !== undefined ? {attrs: event.targetAttrs} : {}),
         },
         raw: {
             selector: event.selector,
+            ...(event.framePath !== undefined ? {framePath: event.framePath} : {}),
             locatorCandidates: event.locatorCandidates?.map((item) => ({ ...item })),
             scopeHint: event.scopeHint || undefined,
             targetHint: event.targetHint,
@@ -47,7 +49,7 @@ export const buildResolveFromEvent = (event: RecorderEvent): StepResolve | undef
     const policy: ResolvePolicy = {
         requireVisible: true,
     };
-    if (!hint.target?.role && !hint.target?.name && !hint.target?.text && !hint.raw?.selector && !(hint.raw?.locatorCandidates || []).length) {
+    if (event.framePath === undefined && !hint.target?.role && !hint.target?.name && !hint.target?.text && !hint.raw?.selector && !(hint.raw?.locatorCandidates || []).length) {
         return undefined;
     }
     return { hint, policy };
@@ -143,6 +145,7 @@ export const toStep = (event: RecorderEvent): StepUnion | null => {
             { direction: delta > 0 ? 'down' : 'up', amount: Math.abs(delta) },
             event.ts,
             { tabName: event.tabName },
+            event.framePath !== undefined ? buildResolveFromEvent(event) : undefined,
         );
     }
     return null;
@@ -192,14 +195,17 @@ export const appendWorkspaceRecordingEvent = async (
     event: RecorderEvent,
     navDedupeWindowMs: number,
     page?: Page,
+    admittedToken?: string,
 ): Promise<{ accepted: boolean }> => {
     const recordLog = getLogger('record');
-    if (!isWorkspaceRecordingEnabled(state, workspaceName)) {return { accepted: false };}
     const effectiveToken = getWorkspaceUnsavedToken(state, workspaceName);
+    if (admittedToken === undefined ? !isWorkspaceRecordingEnabled(state, workspaceName) : admittedToken !== effectiveToken) {
+        return {accepted: false};
+    }
     const eventRecordSeq = nextRecordingSeq(state, effectiveToken);
     if (state.replaying.has(tabName)) {return { accepted: false };}
     if (page) {state.snapshotPort.markDirty(page, 'interaction');}
-    const pendingFillKey = event.selector ? fillEventKey(tabName, event.selector.trim()) : undefined;
+    const pendingFillKey = event.selector ? fillEventKey(tabName, event.selector.trim(), event.framePath) : undefined;
     const buildNormalizeContext = () => ({
         state,
         recordingToken: effectiveToken,

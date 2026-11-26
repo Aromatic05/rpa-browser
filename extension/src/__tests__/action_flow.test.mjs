@@ -35,6 +35,7 @@ await log('action type classifier separates command/reply/event', async () => {
     assert.equal(classifyActionType('workspace.list.result'), 'reply');
     assert.equal(classifyActionType('workspace.list.failed'), 'reply');
     assert.equal(classifyActionType('play.failed'), 'event');
+    assert.equal(classifyActionType('play.started'), 'reply');
     assert.equal(classifyActionType('play.step.finished'), 'event');
 });
 
@@ -117,13 +118,13 @@ await log('ws client resolves pending only on reply actions', async () => {
             data: JSON.stringify({
                 v: 1,
                 id: 'reply-1',
-                type: 'play.start.result',
+                type: 'play.started',
                 replyTo: 'req-1',
                 payload: { started: true },
             }),
         });
         const reply = await promise;
-        assert.equal(reply.type, 'play.start.result');
+        assert.equal(reply.type, 'play.started');
         assert.equal(received.includes('play.step.started'), true);
     } finally {
         globalThis.WebSocket = OriginalWebSocket;

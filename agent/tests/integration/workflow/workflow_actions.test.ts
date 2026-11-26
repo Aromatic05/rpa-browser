@@ -11,6 +11,7 @@ import type {StepUnion} from '../../../src/automation/runner/steps/types';
 import {completeRunStepsDeps} from '../../helpers/run_steps_workspace';
 import {setRecordedStepEnricherForTest} from '../../../src/automation/recording/recording';
 import {createRecorderEventSinkHandler} from '../../../src/automation/recording/sink';
+import type {Action} from '../../../src/interface/actions/action_protocol';
 
 const uniqueName = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
 const cleanup = (name: string) => { try { deleteWorkflowFromFs(name); } catch {} };
@@ -260,7 +261,8 @@ test('play.stop waits for an active replay step before releasing the workspace',
             }),
         } as never,
     }, {workspaceName: name, tabName: 'tab-1'});
-    const {registry, recordingState} = createWorkspaceHarness({runStepsDeps});
+    const emitted: Action[] = [];
+    const {registry, recordingState} = createWorkspaceHarness({runStepsDeps, emit: (action) => {emitted.push(action);}});
     setRunStepsDeps(runStepsDeps);
     try {
         const workflow = createWorkflowOnFs(name);
@@ -286,8 +288,21 @@ test('play.stop waits for an active replay step before releasing the workspace',
             v: 1, id: 'play-owner-start', type: 'play.start', workspaceName: name, payload: {},
         } as any, workspace as any, registry as any);
         assert.equal(started.reply.type, 'play.started');
+        assert.equal((started.reply.payload as {replayId: string}).replayId, 'play-owner-start');
         await stepStarted;
         assert.equal(workspace.state, 'playing');
+        assert.equal(workspace.record.playbackView()?.phase, 'running');
+        const productView = async () => (await workspace.router.handle({
+            v: 1, id: 'play-workspace-view', type: 'agent.product', workspaceName: name, payload: {verb: 'workspaceView'},
+        }, workspace, registry)).reply.payload as {reservation: {owner: string}; playback?: {phase: string}};
+        assert.equal((await productView()).reservation.owner, 'playback');
+        await assert.rejects(() => workspace.router.handle({
+            v: 1, id: 'teach-during-play', type: 'agent.product', workspaceName: name,
+            payload: {verb: 'beginAuthoring', activity: 'teach', teachKind: 'demonstration'},
+        }, workspace, registry), (error: unknown) => error instanceof ActionError && error.code === ERROR_CODES.ERR_CONFLICT);
+        await assert.rejects(() => workspace.router.handle({
+            v: 1, id: 'old-play-stop', type: 'play.stop', workspaceName: name, payload: {replayId: 'old-run'},
+        }, workspace, registry), (error: unknown) => error instanceof ActionError && error.code === ERROR_CODES.ERR_STALE);
 
         let stopSettled = false;
         const stopPromise = workspace.router.handle({
@@ -310,6 +325,20 @@ test('play.stop waits for an active replay step before releasing the workspace',
         const stopped = await stopPromise;
         assert.equal(stopped.reply.type, 'play.stop.result');
         assert.equal(workspace.state, 'idle');
+        assert.equal(workspace.record.playbackView()?.phase, 'completed');
+        assert.deepEqual(
+            [(await productView()).reservation.owner, (await productView()).playback?.phase],
+            ['none', 'completed'],
+        );
+        const replayEvents = emitted.filter((action) => action.type.startsWith('play.'));
+        assert.equal(replayEvents[0]?.type, 'play.progress');
+        assert.equal((replayEvents[0]?.payload as {completed: number}).completed, 0);
+        assert.ok(replayEvents.some((action) => action.type === 'play.step.finished'));
+        assert.ok(replayEvents.some((action) => action.type === 'play.completed' || action.type === 'play.canceled'));
+        for (const event of replayEvents) {
+            assert.equal(event.workspaceName, name);
+            assert.equal((event.payload as {replayId: string}).replayId, 'play-owner-start');
+        }
     } finally {
         releaseStep?.();
         cleanup(name);

@@ -9,11 +9,13 @@
  * provider/model/executionMode, or internal action names appear in this layer.
  */
 
+import type {RecordedFrameIssue} from '../../shared/recorded_frame_feedback.js';
+
 export type WorkspaceReservation = 'idle' | 'task' | 'teach' | 'annotate' | 'playback';
 
 export type ConnectionState = 'connected' | 'disconnected';
 
-export type ProductSurface = 'home' | 'task' | 'library' | 'history' | 'teach' | 'annotate' | 'developer';
+export type ProductSurface = 'home' | 'task' | 'library' | 'history' | 'teach' | 'annotate' | 'developer' | 'guide';
 
 export type TaskLifecycleStatus =
     | 'draft'
@@ -168,6 +170,7 @@ export type BusinessArea = {
 
 /** Sanitized structured Teach projection (AgentProductInteraction §12.1). */
 export type TeachView = {
+    error?: string;
     teachKind: TeachKind;
     phase: TeachPhase;
     stepCount: number;
@@ -243,6 +246,16 @@ export type WorkspaceProductView = {
     reservationTeachKind?: TeachKind;
     connection: ConnectionState;
     activeTask?: AgentTaskView;
+    playbackAvailable?: boolean;
+    playback?: {
+        phase: 'running' | 'completed' | 'failed' | 'canceled';
+        recordingName?: string;
+        completed: number;
+        total: number;
+        failure?: {index?: number; code?: string; fallbackConflict?: boolean; frameIssue?: RecordedFrameIssue};
+    };
+    playbackPending?: boolean;
+    playbackError?: string;
     authoring?: { teach?: TeachView; annotate?: AnnotateView };
     librarySummary: LibrarySummary;
     /** True when the backend reports no real Library projection is available;
@@ -262,6 +275,8 @@ export type PageKnowledgeRef = { profileName: string };
  * is the only place that knows raw RPC names (spec §16).
  */
 export type CommandPort = {
+    replayDemonstration(name: string): void;
+    stopPlayback(): void;
     startTask(prompt: string): void;
     pauseTask(): void;
     resumeTask(): void;

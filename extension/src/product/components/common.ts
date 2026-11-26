@@ -30,6 +30,10 @@ export type UiState = {
     automationSaveOpen: boolean;
     automationName: string;
     demonstrationName: string;
+    savedDemonstrationName: string;
+    taskFile: {name: string; text: string} | null;
+    taskFileLoading: boolean;
+    taskFileError: string;
 };
 
 export const createUiState = (): UiState => ({
@@ -52,6 +56,10 @@ export const createUiState = (): UiState => ({
     automationSaveOpen: false,
     automationName: '',
     demonstrationName: '',
+    savedDemonstrationName: '',
+    taskFile: null,
+    taskFileLoading: false,
+    taskFileError: '',
 });
 
 export type SurfaceContext = {
@@ -217,7 +225,7 @@ export const stopButton = (ctx: SurfaceContext): HTMLButtonElement => {
     const disabled = isMutationDisabled(ctx);
     if (ctx.ui.stopArmed) {
         return button(
-            'Confirm stop',
+            '确认停止',
             () => {
                 ctx.ui.stopArmed = false;
                 clearStopTimer(ctx);
@@ -228,7 +236,7 @@ export const stopButton = (ctx: SurfaceContext): HTMLButtonElement => {
         );
     }
     return button(
-        'Stop',
+        '停止任务',
         () => {
             if (disabled) {
                 return;

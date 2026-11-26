@@ -2,7 +2,7 @@ import {spawn} from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import {fileURLToPath} from 'node:url';
+import {fileURLToPath, pathToFileURL} from 'node:url';
 
 const args = process.argv.slice(2);
 if (args.length === 0) {
@@ -14,7 +14,7 @@ const isolationImport = path.join(
     path.dirname(fileURLToPath(import.meta.url)),
     'test_process_isolation.mjs',
 );
-const child = spawn(process.execPath, ['--import', isolationImport, ...args], {
+const child = spawn(process.execPath, ['--import', pathToFileURL(isolationImport).href, ...args], {
     cwd: process.cwd(),
     env: {...process.env, RPA_TEST_PROCESS_ROOT: processRoot},
     stdio: 'inherit',

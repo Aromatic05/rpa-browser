@@ -262,4 +262,178 @@ test('records and replays active and passive multi-tab workflow', async () => {
   expect(replayState.auditOpened).toBe('true');
 });
 
+test('product Library replays a renamed button and explains an ambiguous target', async () => {
+  const ws = 'default';
+  const send = (type: string, payload?: Record<string, unknown>) => dispatch(ep, act(type, ws, payload));
+  const evaluate = async (id: string, expression: string) => {
+    const result = await runStep(ep, ws, st(id, 'browser.evaluate', {expression}));
+    mustOk(result, id);
+    return result.data;
+  };
+  const clickReplay = async () => {
+    await expect.poll(() => evaluate('click-library-replay', `
+      const root = document.querySelector('#rpa-product-panel')?.shadowRoot;
+      const replay = root?.querySelector('[aria-label="Replay renamed-save"]');
+      if (!replay || replay.disabled) return false;
+      replay.click();
+      return true;
+    `), {timeout: 15_000}).toBe(true);
+  };
+  const playbackText = (phase: 'completed' | 'failed') => evaluate('library-playback-result', `
+    return document.querySelector('#rpa-product-panel')?.shadowRoot
+      ?.querySelector('[data-rpa-product-playback="${phase}"]')?.textContent || '';
+  `);
+  const goto = await runStep(ep, ws, st('open-fixture', 'browser.goto', {
+    url: `${baseURL}/step_actions/customer_profile.html`,
+  }));
+  mustOk(goto, 'open fixture');
+  expect((await send('record.start')).type).toBe('record.start.result');
+  mustOk(await runStep(ep, ws, st('record-click', 'browser.click', {selector: '#saveBtn'})), 'record save click');
+  expect((await send('record.stop')).type).toBe('record.stop.result');
+  const recordingName = 'renamed-save';
+  expect((await send('record.save', {recordingName, includeStepResolve: true})).type).toBe('record.save.result');
+  mustOk(await runStep(ep, ws, st('reload-fixture', 'browser.reload', {})), 'reload fixture after saving');
+  await expect.poll(() => evaluate('open-library', `
+    const root = document.querySelector('#rpa-product-panel')?.shadowRoot;
+    const launcher = root?.querySelector('[data-rpa-product-launcher]');
+    const library = root?.querySelector('[data-rpa-product-nav="library"]');
+    if (!launcher || !library) return false;
+    launcher.click();
+    library.click();
+    return true;
+  `), {timeout: 15_000}).toBe(true);
+
+  await evaluate('rename-button', `
+    const button = document.querySelector('#saveBtn');
+    button.id = 'new-save';
+    button.removeAttribute('data-testid');
+    button.addEventListener('click', () => { button.dataset.replayed = 'true'; });
+    return true;
+  `);
+  await clickReplay();
+  await expect.poll(() => playbackText('completed'), {timeout: 15_000}).toMatch(/回放完成/);
+  expect(await evaluate('check-replayed', "return document.querySelector('#new-save')?.dataset.replayed === 'true';")).toBe(true);
+
+  await evaluate('add-duplicate', `
+    const button = document.querySelector('#new-save');
+    delete button.dataset.replayed;
+    const other = button.cloneNode(true);
+    other.id = 'duplicate-save';
+    other.addEventListener('click', () => { other.dataset.replayed = 'true'; });
+    button.after(other);
+    return true;
+  `);
+  await clickReplay();
+  await expect.poll(() => playbackText('failed'), {timeout: 15_000})
+    .toMatch(/Action \d+: The backup clues matched more than one element/);
+  expect(await evaluate('check-neither-clicked', "return document.querySelectorAll('[data-replayed=true]').length;")).toBe(0);
+});
+
+test('saved iframe recording stays in its original frame after a selector changes', async () => {
+  const ws = 'default';
+  const send = (type: string, payload?: Record<string, unknown>) => dispatch(ep, act(type, ws, payload));
+  const control = async (source: string) => {
+    const result = await sendControlEval({source}, {endpoint: ep, timeoutMs: 10_000});
+    expect(result.ok, result.error?.message).toBe(true);
+    return result.result;
+  };
+  mustOk(await runStep(ep, ws, st('frame-fixture', 'browser.goto', {
+    url: `${baseURL}/step_actions/customer_profile.html`,
+  })), 'open fixture');
+  expect((await send('record.start')).type).toBe('record.start.result');
+  await control(`
+    const page = ctx.resolveWorkspace('default').tabs.getActiveTab().page;
+    await page.evaluate(() => {
+      const html = '<button id="confirm" onclick="this.dataset.clicked = true">Confirm order</button>';
+      document.body.insertAdjacentHTML('beforeend', html);
+      for (const id of ['payment', 'other-frame']) {
+        const frame = document.createElement('iframe');
+        frame.id = id;
+        frame.srcdoc = html;
+        document.body.append(frame);
+      }
+    });
+    await page.frameLocator('#payment').locator('#confirm').waitFor();
+    await page.frameLocator('#other-frame').locator('#confirm').waitFor();
+  `);
+  await control(`
+    const page = ctx.resolveWorkspace('default').tabs.getActiveTab().page;
+    await page.frameLocator('#payment').locator('#confirm').click();
+  `);
+  expect((await send('record.stop')).type).toBe('record.stop.result');
+  const recordingName = 'payment-frame';
+  const captured = (await send('record.get')).payload as {
+    steps: Array<{name: string; args: {selector?: string}; resolve?: {hint?: {raw?: {framePath?: unknown}}}}>;
+  };
+  expect(captured.steps.filter((step) => step.name === 'browser.click').map((step) => ({
+    selector: step.args.selector, path: step.resolve?.hint?.raw?.framePath,
+  }))).toContainEqual({selector: '#confirm', path: [{id: 'payment', origin: 'about:srcdoc'}]});
+  // Frame scope is necessary even when optional target enrichment is disabled.
+  expect((await send('record.save', {recordingName, includeStepResolve: false})).type).toBe('record.save.result');
+  const savedScope = await control(`
+    const artifact = ctx.resolveWorkspace('default').workflow.get('payment-frame', {kind: 'recording'});
+    return Object.values(artifact.stepResolves).find(resolve => resolve.hint?.raw?.framePath)?.hint.raw.framePath;
+  `);
+  expect(savedScope).toEqual([{id: 'payment', origin: 'about:srcdoc'}]);
+
+  await control(`
+    const page = ctx.resolveWorkspace('default').tabs.getActiveTab().page;
+    await page.frameLocator('#payment').locator('#confirm').evaluate(button => {
+      button.id = 'new-confirm';
+      delete button.dataset.clicked;
+    });
+  `);
+  const playback = async () => (await send('agent.product', {verb: 'workspaceView'})).payload as {
+    playback?: {phase: string; failure?: {frameIssue?: string; fallbackConflict?: boolean}};
+  };
+  expect((await send('play.start', {recordingName})).type).toBe('play.started');
+  await expect.poll(async () => (await playback()).playback?.phase).toBe('completed');
+  const clicked = () => control(`
+    const page = ctx.resolveWorkspace('default').tabs.getActiveTab().page;
+    return [
+      await page.locator('#confirm').getAttribute('data-clicked'),
+      await page.frameLocator('#payment').locator('#new-confirm').getAttribute('data-clicked'),
+      await page.frameLocator('#other-frame').locator('#confirm').getAttribute('data-clicked'),
+    ];
+  `);
+  expect(await clicked()).toEqual([null, 'true', null]);
+
+  await control(`
+    const page = ctx.resolveWorkspace('default').tabs.getActiveTab().page;
+    await page.frameLocator('#payment').locator('#new-confirm').evaluate(button => {
+      delete button.dataset.clicked;
+      const duplicate = button.cloneNode(true);
+      duplicate.id = 'duplicate-confirm';
+      button.after(duplicate);
+    });
+  `);
+  expect((await send('play.start', {recordingName})).type).toBe('play.started');
+  await expect.poll(async () => (await playback()).playback?.failure?.fallbackConflict).toBe(true);
+  expect(await clicked()).toEqual([null, null, null]);
+  await control(`
+    const page = ctx.resolveWorkspace('default').tabs.getActiveTab().page;
+    const duplicate = page.frameLocator('#payment').locator('#duplicate-confirm');
+    const hit = await duplicate.getAttribute('data-clicked');
+    await duplicate.evaluate(button => button.remove());
+    return hit;
+  `).then((hit) => expect(hit).toBeNull());
+
+  await control(`
+    const page = ctx.resolveWorkspace('default').tabs.getActiveTab().page;
+    await page.evaluate(() => {
+      const frame = document.getElementById('payment');
+      delete frame.contentDocument.querySelector('#new-confirm').dataset.clicked;
+      const duplicate = frame.cloneNode();
+      document.body.append(duplicate);
+    });
+  `);
+  expect((await send('play.start', {recordingName})).type).toBe('play.started');
+  await expect.poll(async () => (await playback()).playback?.failure?.frameIssue).toBe('ambiguous');
+  await control(`
+    const page = ctx.resolveWorkspace('default').tabs.getActiveTab().page;
+    await page.locator('iframe#payment').nth(1).evaluate(frame => frame.remove());
+  `);
+  expect(await clicked()).toEqual([null, null, null]);
+});
+
 test.setTimeout(180_000);

@@ -26,6 +26,7 @@ import type { DslEntityRulesResolver, DslResolveResolver } from '../dsl/link';
 import type { Workflow } from '../workflow';
 import { resolveStepEntityRulesExecution, type WorkspaceEntityRulesProvider } from '../snapshot/rules/runtime';
 import { summarizeStepArgs } from './step_event_summary';
+import { recordedFrameFailure } from '../snapshot/components/control/action/recorded_frame';
 
 export type {
     Checkpoint,
@@ -67,6 +68,7 @@ export const createConsoleStepSink = (prefix = '[step]'): StepSink => ({
 });
 
 let defaultDeps: RunStepsDeps | null = null;
+const FRAME_ACTIONS = new Set(['browser.click', 'browser.fill', 'browser.type', 'browser.select_option', 'browser.press_key']);
 
 const queueWaiters = new WeakMap<StepsQueue, Set<() => void>>();
 const signalWaiters = new WeakMap<SignalChannel, Set<() => void>>();
@@ -113,6 +115,7 @@ export type RunLocalStepResults = Record<
 >;
 
 export type ExecuteStepRuntimeOptions = {
+    recordingReplay?: boolean;
     runLocalStepResults?: RunLocalStepResults;
     entityRulesProvider?: WorkspaceEntityRulesProvider;
     stepResolves?: Record<string, StepResolve>;
@@ -198,9 +201,15 @@ export const executeStepWithRuntimeContracts = async (
     }
 
     const fn = executors[step.name];
+    const hint = runtimeStep.step.resolve?.hint;
+    if ((hint?.raw?.framePath !== undefined || (options.recordingReplay && hint?.locator?.scope?.kind === 'iframe'))
+        && !FRAME_ACTIONS.has(step.name)) {
+        return {stepId: step.id, ok: false, error: recordedFrameFailure('unsupported')};
+    }
     const mayMutatePage = shouldMarkPageSessionDirtyByStep(runtimeStep.step.name, runtimeStep.step.args);
     try {
         return await fn(runtimeStep.step, deps, workspaceName, {
+            recordingReplay: options.recordingReplay,
             checkpointProvider: options.checkpointProvider,
             entityRulesProvider: options.entityRulesProvider,
             entityRulesResolver: options.entityRulesResolver,
@@ -223,7 +232,9 @@ const executeOne = async (
     entityRulesProvider?: WorkspaceEntityRulesProvider,
     entityRulesResolver?: DslEntityRulesResolver,
     resolveResolver?: DslResolveResolver,
+    recordingReplay?: boolean,
 ): Promise<ExecStepResult> => await executeStepWithRuntimeContracts(step, workspaceName, deps, {
+    recordingReplay,
     runLocalStepResults,
     stepResolves,
     checkpointProvider,
@@ -579,6 +590,7 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
                 checkpointRuntime.entityRulesProvider,
                 checkpointRuntime.entityRulesResolver,
                 checkpointRuntime.resolveResolver,
+                req.recordingReplay,
             );
 
             await writeStepEvent(resolvedDeps.stepSinks, {
@@ -594,7 +606,12 @@ export const runSteps = async (req: RunStepsRequest, deps?: RunStepsDeps): Promi
 
             let finalResult = result;
             let nextStatus: RunStatus | undefined;
-            if (!result.ok) {
+            const details = result.error?.details;
+            const unsafeReplayRecovery = req.recordingReplay
+                && details !== null && typeof details === 'object'
+                && 'resolution' in details && (details.resolution === 'recorded-frame'
+                    || (result.error?.code === 'ERR_AMBIGUOUS' && details.resolution === 'recorded-target-fallback'));
+            if (!result.ok && !unsafeReplayRecovery) {
                 const checkpointAttempts = new Map<string, number>();
                 let failedResult = result;
                 while (!failedResult.ok) {
@@ -702,6 +719,7 @@ export const runStepList = async (
     steps: StepUnion[],
     deps?: RunStepsDeps,
     opts?: {
+        recordingReplay?: boolean;
         stopOnError?: boolean;
         runId?: string;
         stepResolves?: Record<string, StepResolve>;
@@ -721,6 +739,7 @@ export const runStepList = async (
             resultPipe: pipe,
             signalChannel: signals,
             stepResolves: opts?.stepResolves,
+            recordingReplay: opts?.recordingReplay,
             checkpoints: opts?.checkpoints,
             checkpointEnabled: opts?.checkpointEnabled,
             checkpointMaxAttempts: opts?.checkpointMaxAttempts,

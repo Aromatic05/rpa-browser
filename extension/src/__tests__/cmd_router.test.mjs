@@ -207,6 +207,31 @@ await log('inbound tab.setActive activates the mapped tab without focusing its d
     assert.deepEqual(calls, [['tabs.update', 11, { active: true }]]);
 });
 
+await log('replay events follow the origin tab when playback switches tabs', () => {
+    globalThis.chrome = createChromeMock();
+    const router = createCmdRouter({
+        sessionWorkspaceName: 'ws-bound',
+        wsClient: withActionReplies(async () => ({ok: true, data: {}})),
+        onRefresh: () => undefined,
+    });
+    router.restoreState({
+        tabs: [
+            {chromeTabNo: 11, bindingName: 'origin', lastUrl: '', windowId: 7, updatedAt: 1},
+            {chromeTabNo: 12, bindingName: 'active', lastUrl: '', windowId: 7, updatedAt: 1},
+        ],
+        bindings: [],
+        activeChromeTabNo: 12,
+        activeWindowId: 7,
+    });
+    const event = {
+        v: 1, id: 'event', type: 'play.failed', workspaceName: 'ws-bound',
+        payload: {replayId: 'run', tabName: 'origin'},
+    };
+    assert.equal(router.resolveActionTargetTabName(event), 11);
+    assert.equal(router.resolveActionTargetTabName({...event, workspaceName: 'other'}), null);
+    assert.equal(router.resolveActionTargetTabName({...event, payload: {...event.payload, tabName: 'gone'}}), 12);
+});
+
 await log('inbound workspace.setActive never focuses a desktop window', async () => {
     const calls = [];
     globalThis.chrome = createChromeMock();
@@ -703,9 +728,11 @@ await log('source guard: content and newtab avoid legacy lifecycle publication',
     assert.equal(startSrc.includes("'tab.init'"), false);
     assert.equal(startSrc.includes("sendAction<BoundTokenData>('tab.opened'"), false);
     assert.equal(startSrc.includes("sendAction<RuntimeTabListData>('tab.list'"), true);
-    assert.equal(startSrc.includes('chrome.runtime.sendMessage'), false);
+    assert.equal(startSrc.includes("type:'rpa.product.openTarget'"), true, 'only browser navigation is delegated to the extension worker');
     assert.equal(mainManifest.chrome_url_overrides.newtab, 'newtab.html');
-    assert.equal(newtabHtml.includes('src="./start/newtab.js"'), true);
+    assert.equal(newtabHtml.includes('src="./newtab_bootstrap.js"'), true);
+    const bootstrap = fs.readFileSync(new URL('../../newtab_bootstrap.js', import.meta.url), 'utf8');
+    assert.equal(bootstrap.includes("import('./start/newtab.js')"), true);
     assert.equal(mainManifest.content_security_policy.extension_pages.includes('ws://127.0.0.1:*'), true);
     assert.equal(mainManifest.content_security_policy.extension_pages.includes('ws://localhost:*'), true);
     assert.equal(mainManifest.content_security_policy.extension_pages.includes(':17333'), false);

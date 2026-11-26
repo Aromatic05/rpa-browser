@@ -1,7 +1,9 @@
-import type { Locator, Page } from 'playwright';
+import type { Frame, Locator, Page } from 'playwright';
 import { resolveExecutableLocator } from '../../../indexes/locator/execute';
 import { captureControlSnapshot, captureLocatorExecutionSnapshot } from '../capture/browser';
-import { captureSelectorTarget } from './selector_capture';
+import { captureLocatorTarget, captureSelectorTarget } from './selector_capture';
+import { captureRecordedFallback, type RecordedTargetOptions } from './recorded_fallback';
+import { recordedFrameFailure, resolveRecordedFrame, verifyRecordedFrameTarget } from './recorded_frame';
 import { resolveControlRef } from '../assembly/build';
 import type {
     ControlComponent,
@@ -11,8 +13,58 @@ import type {
     SelectOptionRequest,
 } from '../model/contracts';
 
-export type ExecuteSelectOptionOptions = {
+export type ExecuteSelectOptionOptions = RecordedTargetOptions & {
     timeoutMs?: number;
+};
+
+type SelectFailure = Extract<SelectOptionActionResult, {ok: false}>;
+type SelectTarget =
+    | {ok: true; snapshot: ControlSnapshot; control: ControlComponent; replayFallback?: true}
+    | {ok: false; error: SelectFailure};
+
+const captureSelectTarget = async (
+    page: Page, request: SelectOptionRequest, options: RecordedTargetOptions, frame?: Frame,
+): Promise<SelectTarget> => {
+    if (frame && !request.selector) {return {ok: false, error: failure('ERR_NOT_FOUND', 'recorded iframe has no primary selector')};}
+    if (frame && request.selector?.includes('>>')) {return {ok: false, error: recordedFrameFailure('unsupported')};}
+    const selectorCapture = request.selector
+        ? frame ? await captureLocatorTarget(page, frame.locator(request.selector), {}) : await captureSelectorTarget(page, request.selector)
+        : undefined;
+    if (selectorCapture && !selectorCapture.ok) {
+        return {ok: false, error: failure(selectorCapture.code as SelectFailure['code'], selectorCapture.message, selectorCapture.details)};
+    }
+    const snapshot = selectorCapture?.snapshot ?? await captureControlSnapshot(page);
+    if (frame && selectorCapture) {
+        const failure = await verifyRecordedFrameTarget(page, frame, options.framePath ?? [], snapshot.observation, selectorCapture.nodeId);
+        if (failure) {return {ok: false, error: failure};}
+    }
+    const target = await resolveRequestedControl(snapshot, request, selectorCapture?.nodeId);
+    return target.ok ? {ok: true, snapshot, control: target.control} : target;
+};
+
+const captureSelectTargetWithFallback = async (
+    page: Page,
+    request: SelectOptionRequest,
+    options: ExecuteSelectOptionOptions,
+): Promise<SelectTarget> => {
+    let frame: Frame | undefined;
+    if (options.framePath !== undefined) {
+        if (request.controlRef || request.nodeId) {return {ok: false, error: recordedFrameFailure('unsupported')};}
+        const scope = await resolveRecordedFrame(page, options.framePath);
+        if (!scope.ok) {return {ok: false, error: scope};}
+        frame = scope.frame;
+    }
+    const exact = await captureSelectTarget(page, request, options, frame);
+    if (exact.ok || request.controlRef || (request.kind !== 'native_select' && request.kind !== 'custom_select')) {
+        return exact;
+    }
+    const fallback = await captureRecordedFallback(page, options, exact.error, frame);
+    if (!fallback) {return exact;}
+    if (!fallback.ok) {return {ok: false, error: fallback};}
+    const target = await resolveRequestedControl(fallback.snapshot, {...request, nodeId: fallback.nodeId, selector: undefined});
+    return target.ok
+        ? {ok: true, snapshot: fallback.snapshot, control: target.control, replayFallback: true}
+        : {ok: false, error: {...target.error, details: {...target.error.details, ...fallback.details}}};
 };
 
 export const executeSelectOptionOnPage = async (
@@ -25,13 +77,13 @@ export const executeSelectOptionOnPage = async (
         return failure('ERR_BAD_ARGS', 'values must contain non-empty strings', { values: request.values });
     }
 
-    const selectorCapture = request.selector ? await captureSelectorTarget(page, request.selector) : undefined;
-    if (selectorCapture && !selectorCapture.ok) {
-        return failure(selectorCapture.code as Extract<SelectOptionActionResult, { ok: false }>['code'], selectorCapture.message, selectorCapture.details);
-    }
-    const initial = selectorCapture?.snapshot ?? await captureControlSnapshot(page);
-    const target = await resolveRequestedControl(initial, request, selectorCapture?.nodeId);
+    const target = await captureSelectTargetWithFallback(page, request, options);
     if (!target.ok) {return target.error;}
+    const initial = target.snapshot;
+    const verify = async (controlRef: string): Promise<SelectOptionActionResult> => {
+        const result = await verifySelection(page, controlRef, request.kind, values);
+        return result.ok && target.replayFallback ? {...result, replayFallback: true} : result;
+    };
     let control = target.control;
 
     if (control.kind !== request.kind) {
@@ -67,7 +119,7 @@ export const executeSelectOptionOnPage = async (
         control = openedResult.control;
         const action = await executeCustomSelect(page, opened, control, values, options.timeoutMs);
         if (!action.ok) {return action;}
-        return await verifySelection(page, control.ref, request.kind, values);
+        return await verify(control.ref);
     }
 
     if (!control.capabilities.includes('select_option')) {
@@ -94,7 +146,7 @@ export const executeSelectOptionOnPage = async (
             break;
     }
     if (!action.ok) {return action;}
-    return await verifySelection(page, control.ref, request.kind, values);
+    return await verify(control.ref);
 };
 
 const waitForCustomSelectComplete = async (
@@ -316,7 +368,7 @@ const resolveRequestedControl = async (
     snapshot: ControlSnapshot,
     request: SelectOptionRequest,
     selectorNodeId?: string,
-): Promise<{ ok: true; control: ControlComponent } | { ok: false; error: SelectOptionActionResult }> => {
+): Promise<{ ok: true; control: ControlComponent } | { ok: false; error: SelectFailure }> => {
     const resolved: Array<{ source: string; control: ControlComponent }> = [];
     if (request.controlRef) {
         const resolution = resolveControlRef(snapshot.controls, request.controlRef);
@@ -481,7 +533,7 @@ const failure = (
     code: Extract<SelectOptionActionResult, { ok: false }>['code'],
     message: string,
     details?: Record<string, unknown>,
-): SelectOptionActionResult => ({ ok: false, code, message, details });
+): SelectFailure => ({ ok: false, code, message, details });
 
 const controlDetails = (control: ControlComponent): Record<string, unknown> => ({
     id: control.id,

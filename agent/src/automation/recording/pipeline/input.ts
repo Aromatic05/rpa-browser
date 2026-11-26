@@ -1,6 +1,6 @@
 import type { Page } from 'playwright';
 import { appendWorkspaceRecordingEvent, appendWorkspaceRecordingStep } from './step';
-import {isWorkspaceRecordingEnabled, type RecordingState} from './state';
+import {getWorkspaceUnsavedToken, isWorkspaceRecordingEnabled, type RecordingState} from './state';
 import type { RecorderEvent } from '../capture/recorder';
 import type { StepUnion } from '../../runner/steps/types';
 import { recordFirstTabPageUrl } from '../tab_lifecycle_recorder';
@@ -23,8 +23,11 @@ export const ingestRecorderEvent = async (input: {
     page: Page;
     tabName: string;
     navDedupeWindowMs: number;
+    admittedToken?: string;
 }): Promise<RecorderIngestResult> => {
-    if (!isWorkspaceRecordingEnabled(input.state, input.workspaceName)) {
+    const token = getWorkspaceUnsavedToken(input.state, input.workspaceName);
+    if (input.admittedToken === undefined
+        ? !isWorkspaceRecordingEnabled(input.state, input.workspaceName) : input.admittedToken !== token) {
         return {accepted: false, reason: 'recording_not_enabled'};
     }
     if (input.event.type !== 'navigate') {
@@ -44,6 +47,7 @@ export const ingestRecorderEvent = async (input: {
         input.event,
         input.navDedupeWindowMs,
         input.page,
+        input.admittedToken,
     );
     if (!appended.accepted) {
         return { accepted: false, reason: 'recording_not_enabled' };

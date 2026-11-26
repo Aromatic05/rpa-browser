@@ -311,6 +311,10 @@ export const normalizeSelectOption = async (
     context: NormalizeContext,
     event: RecorderEvent,
 ): Promise<RecordNormalizerResult> => {
+    if (event.framePath !== undefined) {
+        // Native changes are recorded directly. Do not infer grouped controls from the outer page.
+        return isNativeSelectClickEvent(event) ? {status: 'pending'} : {status: 'pass'};
+    }
     const recordLog = getLogger('record');
     let bindingPromise: ReturnType<typeof resolveRecordTargetBinding> | undefined;
     const resolveBinding = (): ReturnType<typeof resolveRecordTargetBinding> => {

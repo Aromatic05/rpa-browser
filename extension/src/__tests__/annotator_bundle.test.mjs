@@ -32,7 +32,9 @@ test('merged newtab surface is emitted at the manifest-owned path', async () => 
     const newtabHtml = await readFile(`${distRoot}newtab.html`, 'utf8');
     const newtabEntry = await readFile(`${distRoot}start/newtab.js`, 'utf8');
     assert.equal(manifest.chrome_url_overrides.newtab, 'newtab.html');
-    assert.match(newtabHtml, /src="\.\/start\/newtab\.js"/);
+    assert.match(newtabHtml, /src="\.\/newtab_bootstrap\.js"/);
+    const bootstrap = await readFile(`${distRoot}newtab_bootstrap.js`, 'utf8');
+    assert.match(bootstrap, /import\('\.\/start\/newtab\.js'\)/);
     assert.match(newtabEntry, /tab\.report/);
     assert.doesNotMatch(newtabEntry, /tab\.init|tab\.opened/);
 });

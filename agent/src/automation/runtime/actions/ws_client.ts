@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import {PRACTICE_PAGE_HTML} from './practice_page';
 import {createServer} from 'node:http';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { failedAction, isFailedAction, type Action } from '../../../interface/actions/action_protocol';
@@ -223,6 +224,11 @@ export const startActionWsClient = (options: StartActionWsClientOptions): Action
                 'cache-control': 'no-store',
             });
             response.end(START_PAGE_HTML);
+            return;
+        }
+        if (request.method === 'GET' && requestUrl.pathname === '/rpa-practice') {
+            response.writeHead(200, {'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store'});
+            response.end(PRACTICE_PAGE_HTML);
             return;
         }
         response.writeHead(404, {'content-type': 'text/plain; charset=utf-8'});

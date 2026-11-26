@@ -4,6 +4,7 @@ import type {AgentModelSettings} from '../model/settings';
 import type {GuidanceMode, InteractionRecord} from '../interaction/contracts';
 import type {LibraryAssetSummary} from '../library/contracts';
 import type {SessionManager} from '../service/session/manager';
+import type {RecordingPlaybackView} from '../../automation/recording/control';
 import {promptSummaryFrom, projectAgentTaskView} from './projection';
 import {createProductEventLog, type ProductEventSink} from './events';
 import {librarySummaryFrom} from './library';
@@ -64,6 +65,7 @@ export type ProductControllerOptions = Readonly<{
     /** Real committed Library summaries; projected through the bounded product
      *  adapter. When absent, the Library endpoint truthfully reports unavailable. */
     library?: () => Promise<ReadonlyArray<LibraryAssetSummary>>;
+    playbackView?: () => RecordingPlaybackView | undefined;
     saveAutomation?: AgentProgramSaver;
     now?: () => number;
 }>;
@@ -354,6 +356,7 @@ export const createProductController = (options: ProductControllerOptions): Prod
         const activeView = reservation.owner === 'task' && reservation.ownerTaskId !== undefined
             ? viewFor(reservation.ownerTaskId)
             : undefined;
+        const playback = options.playbackView?.();
         return Object.freeze({
             workspace: options.workspace,
             modelConfigured: options.modelSettings?.status().configured
@@ -365,6 +368,7 @@ export const createProductController = (options: ProductControllerOptions): Prod
                 humanControl: reservation.humanControl,
             },
             ...(activeView ? {activeTask: activeView} : {}),
+            ...(options.playbackView ? {playbackAvailable: true, playback} : {}),
         });
     };
 

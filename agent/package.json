@@ -20,6 +20,7 @@
         "mcp:dev": "tsx watch src/app/entrypoints/mcp.ts",
         "mcp:hot": "concurrently -k \"pnpm test:runner:bundle:watch\" \"pnpm mcp:dev\"",
         "control": "tsx src/app/entrypoints/control.ts",
+        "demo:csv": "tsx scripts/examples/run_csv_workflow.ts",
         "test:runner:bundle": "pnpm build:runner",
         "test:runner:bundle:watch": "esbuild src/automation/runner/plugin_entry.ts --bundle --format=esm --platform=node --packages=external --outfile=.runner-dist/plugin.mjs --sourcemap --watch",
         "test:unit": "node scripts/run_tests_isolated.mjs --import tsx --test \"tests/integration/agent/**/*.test.ts\" \"tests/integration/compute/**/*.test.ts\" \"tests/integration/config/**/*.test.ts\" \"tests/integration/control/**/*.test.ts\" \"tests/integration/dsl/**/*.test.ts\" \"tests/integration/mcp/**/*.test.ts\" \"tests/integration/workflow/**/*.test.ts\" \"tests/integration/runner/**/*.test.ts\" tests/integration/protocol_stream.test.ts",

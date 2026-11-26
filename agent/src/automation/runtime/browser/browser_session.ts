@@ -1,4 +1,5 @@
 import path from 'node:path';
+import {recoverDisabledMainExtension} from './extension_startup_recovery';
 import type { BrowserContext, Page, Worker } from 'playwright';
 import {getLogger} from '../../../platform/logging/logger';
 import { createContextManager } from './context_manager';
@@ -125,13 +126,22 @@ const configureExtensionSession = async (
     context: BrowserContext,
     workspaceName: string,
     wsPort: number,
+    extensionPaths: string[],
 ): Promise<ExtensionRuntimeReady> => {
     const bootstrapPage = await context.newPage();
     await bootstrapPage.goto(`http://127.0.0.1:${String(wsPort)}/rpa-start?rpaRuntimeBootstrap=1`, {
         waitUntil: 'domcontentloaded',
         timeout: 10_000,
     });
-    let worker = await resolveExtensionServiceWorker(context);
+    let worker: Worker;
+    try {
+        worker = await resolveExtensionServiceWorker(context);
+    } catch (error) {
+        const recovered = await recoverDisabledMainExtension(context, extensionPaths[0] ?? '');
+        if (!recovered) {throw error;}
+        getLogger('infra').warn('[RPA:infra]', 'Re-enabled the disabled RPA Browser main extension');
+        worker = await resolveExtensionServiceWorker(context);
+    }
     const state = await readExtensionRuntimeState(worker);
 
     await worker.evaluate(async (input: {workspaceName: string; wsPort: number}) => {
@@ -160,6 +170,18 @@ const configureExtensionSession = async (
                 && ready.wsPort === wsPort
                 && ready.sessionKey === `${workspaceName}:${String(wsPort)}`
                 && ready.acceptsAnnotatorOpen) {
+                // A new tab opened while the extension was disabled keeps Chrome's
+                // built-in page even after re-enabling it. Navigate it explicitly.
+                if (!context.pages().some((page) => page.url().includes('/newtab.html'))) {
+                    const startPage = context.pages().find((page) =>
+                        /^chrome:\/\/(?:newtab|new-tab-page)\//u.test(page.url()));
+                    if (startPage) {
+                        const startUrl = new URL('/newtab.html', lastState.workerUrl);
+                        startUrl.searchParams.set('rpaWorkspaceName', workspaceName);
+                        startUrl.searchParams.set('rpaWsPort', String(wsPort));
+                        await startPage.goto(startUrl.href, {waitUntil: 'domcontentloaded', timeout: 10_000});
+                    }
+                }
                 if (!bootstrapPage.isClosed()) {
                     await bootstrapPage.close();
                 }
@@ -348,6 +370,7 @@ export const createWorkspaceBrowserSession = (options: CreateWorkspaceBrowserSes
                     context,
                     options.workspaceName,
                     wsPort,
+                    options.extensionPaths,
                 );
                 actionLog.info('[RPA:agent]', 'browser startup stage', {
                     workspaceName: options.workspaceName,
@@ -377,7 +400,7 @@ export const createWorkspaceBrowserSession = (options: CreateWorkspaceBrowserSes
                         getContext: async () => await contextManager.getContext(),
                         configureMainExtension: async (reloadContext) => {
                             if (wsPort === null) {throw new Error('workspace action websocket port is unavailable');}
-                            await configureExtensionSession(reloadContext, options.workspaceName, wsPort);
+                            await configureExtensionSession(reloadContext, options.workspaceName, wsPort, options.extensionPaths);
                         },
                         startUrl: () => {
                             if (wsPort === null) {return 'chrome://newtab/';}

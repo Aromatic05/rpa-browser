@@ -7,13 +7,13 @@ import {fileURLToPath} from 'node:url';
 import {
     acquireInstanceLock,
     spawnManagedProcess,
+    spawnPnpm,
     terminateProcessTree,
     terminateProcessTreeSync,
 } from './dev_cdp_runtime.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const agentRoot = path.join(root, 'agent');
-const pnpmCommand = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
 const lockDir = path.resolve(
     process.env.RPA_RUNTIME_LOCK_DIR
     || path.join(agentRoot, '.rpa', 'runtime.lock'),
@@ -47,7 +47,7 @@ const productBuildReady = () =>
     && existsSync(recorderPayloadBundlePath);
 
 const runPnpm = (args) => new Promise((resolve, reject) => {
-    const child = spawnManagedProcess(pnpmCommand, args, {
+    const child = spawnPnpm(args, {
         cwd: root,
         stdio: 'inherit',
         detached: false,

@@ -101,6 +101,11 @@ export const spawnManagedProcess = (command, args, options = {}) => {
     return child;
 };
 
+// Only pass the fixed workspace script arguments used by the launchers.
+export const spawnPnpm = (args, options) => process.platform === 'win32'
+    ? spawnManagedProcess(process.env.ComSpec || 'cmd.exe', ['/d', '/c', 'pnpm.cmd', ...args], options)
+    : spawnManagedProcess('pnpm', args, options);
+
 const descendantProcessIds = (rootPid) => {
     if (!rootPid || process.platform === 'win32') {return [];}
     const result = spawnSync('ps', ['-eo', 'pid=,ppid='], {encoding: 'utf8'});
